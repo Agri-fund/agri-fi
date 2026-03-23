@@ -8,6 +8,7 @@ import { StellarModule } from './stellar/stellar.module';
 import { ShipmentsModule } from './shipments/shipments.module';
 import { TradeDealsModule } from './trade-deals/trade-deals.module';
 import { UsersModule } from './users/users.module';
+import { InvestmentsModule } from './investments/investments.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { UsersModule } from './users/users.module';
     ShipmentsModule,
     TradeDealsModule,
     UsersModule,
+    InvestmentsModule,
   ],
 })
 export class AppModule {}

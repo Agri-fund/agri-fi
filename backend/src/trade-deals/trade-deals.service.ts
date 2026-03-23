@@ -77,17 +77,34 @@ export class TradeDealsService {
     return deal;
   }
 
-  async findOne(id: string): Promise<TradeDeal> {
+  async findOne(id: string): Promise<any> {
     const deal = await this.tradeDealRepo.findOne({
       where: { id },
-      relations: ['farmer', 'trader', 'documents'],
+      relations: ['farmer', 'trader', 'documents', 'investments'],
     });
 
     if (!deal) {
       throw new NotFoundException('Trade deal not found');
     }
 
-    return deal;
+    // Calculate tokens remaining
+    const confirmedInvestments = deal.investments?.filter(inv => inv.status === 'confirmed') || [];
+    const tokensSold = confirmedInvestments.reduce((sum, inv) => sum + inv.tokenAmount, 0);
+    const tokensRemaining = deal.tokenCount - tokensSold;
+
+    return {
+      id: deal.id,
+      commodity: deal.commodity,
+      quantity: deal.quantity,
+      unit: deal.quantityUnit,
+      totalValue: deal.totalValue,
+      deliveryDate: deal.deliveryDate,
+      status: deal.status,
+      tokenCount: deal.tokenCount,
+      tokensRemaining,
+      traderName: deal.trader?.email || 'Unknown Trader',
+      description: `${deal.quantity} ${deal.quantityUnit} of ${deal.commodity} for delivery by ${new Date(deal.deliveryDate).toLocaleDateString()}`,
+    };
   }
 
   async updateDealStatus(

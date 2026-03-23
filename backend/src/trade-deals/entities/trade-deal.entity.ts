@@ -8,6 +8,7 @@ import {
 } from 'typeorm';
 import { User } from '../../auth/entities/user.entity';
 import { Document } from './document.entity';
+import { Investment } from '../../users/entities/investment.entity';
 
 export type DealStatus = 'draft' | 'open' | 'funded' | 'delivered' | 'completed' | 'failed';
 
@@ -76,4 +77,8 @@ export class TradeDeal {
 
   @OneToMany(() => Document, document => document.tradeDeal)
   documents: Document[];
+
+  @OneToMany(() => Investment, investment => investment.tradeDeal)
+  investments: Investment[];
+}
 }

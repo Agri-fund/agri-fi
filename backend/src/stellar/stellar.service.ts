@@ -307,6 +307,50 @@ export class StellarService {
   }
 
   /**
+   * Creates an unsigned XDR transaction for an investment.
+   * The investor will sign this transaction to fund the escrow account.
+   */
+  async createInvestmentTransaction(
+    investorWallet: string,
+    escrowPublicKey: string,
+    amountUSD: number,
+    assetCode: string,
+    tokenAmount: number,
+  ): Promise<string> {
+    const investorAccount = await this.server.loadAccount(investorWallet);
+
+    // In MVP, we use XLM as the payment asset (1 XLM ≈ $1 for testnet simplicity)
+    // Production would use USDC
+    const tx = new TransactionBuilder(investorAccount, {
+      fee: BASE_FEE,
+      networkPassphrase: this.networkPassphrase,
+    })
+      .addOperation(
+        Operation.payment({
+          destination: escrowPublicKey,
+          asset: Asset.native(),
+          amount: amountUSD.toString(),
+        }),
+      )
+      .addMemo(Memo.text(`invest:${assetCode}:${tokenAmount}`))
+      .setTimeout(300) // 5 minutes for user to sign
+      .build();
+
+    return tx.toXDR();
+  }
+
+  /**
+   * Submits a signed XDR transaction to the Stellar network.
+   */
+  async submitTransaction(signedXdr: string): Promise<any> {
+    const tx = TransactionBuilder.fromXDR(signedXdr, this.networkPassphrase);
+    const result = await this.server.submitTransaction(tx);
+    
+    this.logger.log(`Transaction submitted: ${(result as any).hash}`);
+    return result;
+  }
+
+  /**
    * Returns the status of a Stellar transaction.
    */
   async getTransactionStatus(
