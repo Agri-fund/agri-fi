@@ -1,159 +1,77 @@
 import {
   Injectable,
-  NotFoundException,
-  BadRequestException,
   ForbiddenException,
+  UnprocessableEntityException,
+  BadRequestException,
+  NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { Investment } from '../users/entities/investment.entity';
-import { TradeDeal } from '../users/entities/trade-deal.entity';
+import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
 import { User } from '../auth/entities/user.entity';
-import { StellarService } from '../stellar/stellar.service';
 import { CreateInvestmentDto } from './dto/create-investment.dto';
+
+const TOKEN_PRICE_USD = 100;
 
 @Injectable()
 export class InvestmentsService {
   constructor(
     @InjectRepository(Investment)
-    private readonly investmentRepository: Repository<Investment>,
+    private readonly investmentRepo: Repository<Investment>,
     @InjectRepository(TradeDeal)
-    private readonly tradeDealRepository: Repository<TradeDeal>,
-    @InjectRepository(User)
-    private readonly userRepository: Repository<User>,
-    private readonly stellarService: StellarService,
+    private readonly dealRepo: Repository<TradeDeal>,
+    private readonly dataSource: DataSource,
   ) {}
 
-  async createInvestment(userId: string, dto: CreateInvestmentDto) {
-    // Verify user exists and has wallet
-    const user = await this.userRepository.findOne({ where: { id: userId } });
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-    if (!user.walletAddress) {
-      throw new BadRequestException('User must have a linked wallet address');
-    }
-    if (user.role !== 'investor') {
-      throw new ForbiddenException('Only investors can create investments');
+  async create(dto: CreateInvestmentDto, investor: User): Promise<Investment> {
+    if (investor.role !== 'investor') {
+      throw new ForbiddenException('Only investors can fund trade deals.');
     }
 
-    // Verify trade deal exists and is open
-    const tradeDeal = await this.tradeDealRepository.findOne({
-      where: { id: dto.tradeDealId },
-      relations: ['investments'],
-    });
-    if (!tradeDeal) {
-      throw new NotFoundException('Trade deal not found');
-    }
-    if (tradeDeal.status !== 'open') {
-      throw new BadRequestException('Trade deal is not open for investment');
-    }
+    return this.dataSource.transaction(async (manager) => {
+      // Lock the deal row to prevent concurrent over-allocation
+      const deal = await manager
+        .getRepository(TradeDeal)
+        .createQueryBuilder('deal')
+        .setLock('pessimistic_write')
+        .where('deal.id = :id', { id: dto.trade_deal_id })
+        .getOne();
 
-    // Calculate remaining tokens
-    const totalInvested = tradeDeal.investments.reduce(
-      (sum, inv) => sum + (inv.status === 'confirmed' ? inv.tokenAmount : 0),
-      0,
-    );
-    const tokensRemaining = tradeDeal.tokenCount - totalInvested;
-
-    if (dto.tokenAmount > tokensRemaining) {
-      throw new BadRequestException(
-        `Only ${tokensRemaining} tokens remaining for this deal`,
-      );
-    }
-
-    // Calculate USD amount
-    const amountUsd = dto.tokenAmount * 100; // $100 per token
-
-    // Create pending investment record
-    const investment = this.investmentRepository.create({
-      tradeDealId: dto.tradeDealId,
-      investorId: userId,
-      tokenAmount: dto.tokenAmount,
-      amountUsd,
-      status: 'pending',
-    });
-
-    const savedInvestment = await this.investmentRepository.save(investment);
-
-    // Generate unsigned XDR for the investment transaction
-    const unsignedXdr = await this.stellarService.createInvestmentTransaction(
-      user.walletAddress,
-      tradeDeal.escrowAccount,
-      amountUsd,
-      tradeDeal.assetCode,
-      dto.tokenAmount,
-    );
-
-    return {
-      id: savedInvestment.id,
-      unsignedXdr,
-      tokenAmount: dto.tokenAmount,
-      amountUsd,
-    };
-  }
-
-  async submitTransaction(
-    investmentId: string,
-    userId: string,
-    signedXdr: string,
-  ) {
-    // Find the investment
-    const investment = await this.investmentRepository.findOne({
-      where: { id: investmentId, investorId: userId },
-      relations: ['tradeDeal'],
-    });
-
-    if (!investment) {
-      throw new NotFoundException('Investment not found');
-    }
-
-    if (investment.status !== 'pending') {
-      throw new BadRequestException('Investment is not in pending status');
-    }
-
-    try {
-      // Submit the signed transaction to Stellar network
-      const txResult = await this.stellarService.submitTransaction(signedXdr);
-
-      // Update investment with transaction ID and confirm status
-      investment.stellarTxId = txResult.hash;
-      investment.status = 'confirmed';
-      await this.investmentRepository.save(investment);
-
-      // Check if deal is now fully funded
-      const tradeDeal = await this.tradeDealRepository.findOne({
-        where: { id: investment.tradeDealId },
-        relations: ['investments'],
-      });
-
-      if (tradeDeal) {
-        const totalInvested = tradeDeal.investments.reduce(
-          (sum, inv) => sum + (inv.status === 'confirmed' ? inv.tokenAmount : 0),
-          0,
-        );
-
-        if (totalInvested >= tradeDeal.tokenCount) {
-          tradeDeal.status = 'funded';
-          await this.tradeDealRepository.save(tradeDeal);
-        }
+      if (!deal) {
+        throw new NotFoundException('Trade deal not found.');
       }
 
-      return {
-        id: investment.id,
-        status: investment.status,
-        stellarTxId: investment.stellarTxId,
-        tokenAmount: investment.tokenAmount,
-        amountUsd: investment.amountUsd,
-      };
-    } catch (error) {
-      // Mark investment as failed
-      investment.status = 'failed';
-      await this.investmentRepository.save(investment);
+      if (deal.status !== 'open') {
+        throw new UnprocessableEntityException('Trade deal is not open for investment.');
+      }
 
-      throw new BadRequestException(
-        `Transaction submission failed: ${error.message}`,
-      );
-    }
+      // Sum confirmed token allocations
+      const { confirmedTokens } = await manager
+        .getRepository(Investment)
+        .createQueryBuilder('inv')
+        .select('COALESCE(SUM(inv.tokenAmount), 0)', 'confirmedTokens')
+        .where('inv.tradeDealId = :id', { id: dto.trade_deal_id })
+        .andWhere("inv.status = 'confirmed'")
+        .getRawOne<{ confirmedTokens: string }>();
+
+      const available = deal.tokenCount - Number(confirmedTokens);
+
+      if (dto.token_amount > available) {
+        throw new BadRequestException(
+          `Only ${available} token(s) available for this deal.`,
+        );
+      }
+
+      const investment = manager.getRepository(Investment).create({
+        tradeDealId: dto.trade_deal_id,
+        investorId: investor.id,
+        tokenAmount: dto.token_amount,
+        amountUsd: dto.token_amount * TOKEN_PRICE_USD,
+        status: 'pending',
+      });
+
+      return manager.getRepository(Investment).save(investment);
+    });
   }
 }
