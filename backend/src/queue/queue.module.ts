@@ -2,6 +2,9 @@ import { Module, Global } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { QueueService } from './queue.service';
+import { QueueProcessor } from './queue.processor';
+import { TradeDealsModule } from '../trade-deals/trade-deals.module';
+import { StellarModule } from '../stellar/stellar.module';
 
 export const QUEUE_SERVICE = 'QUEUE_SERVICE';
 
@@ -23,8 +26,10 @@ export const QUEUE_SERVICE = 'QUEUE_SERVICE';
         inject: [ConfigService],
       },
     ]),
+    TradeDealsModule,
+    StellarModule,
   ],
-  providers: [QueueService],
+  providers: [QueueService, QueueProcessor],
   exports: [QueueService, ClientsModule],
 })
 export class QueueModule {}
