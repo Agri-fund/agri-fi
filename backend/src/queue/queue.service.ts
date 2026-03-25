@@ -24,4 +24,19 @@ export class QueueService {
   async enqueueDealDelivered(tradeDealId: string): Promise<void> {
     await this.emit('deal.delivered', { tradeDealId });
   }
+
+  /**
+   * Enqueue a deal.funded notification job to email all participating investors
+   */
+  async enqueueDealFunded(payload: {
+    tradeDealId: string;
+    commodity: string;
+    totalValue: number;
+    investors: { email: string; tokenAmount: number }[];
+  }): Promise<void> {
+    this.logger.log(
+      `Deal ${payload.tradeDealId} fully funded — notifying ${payload.investors.length} investor(s)`,
+    );
+    await this.emit('deal.funded', payload);
+  }
 }
