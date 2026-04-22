@@ -1,6 +1,6 @@
 # fix(auth): validate Stellar public key on wallet link
 
-Closes #<issue-number>
+Closes #61
 
 ## Problem
 
