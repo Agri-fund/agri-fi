@@ -26,12 +26,13 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
   onError,
 }) => {
   const { isConnected, publicKey, signTransaction } = useWallet();
-  const [tokenQuantity, setTokenQuantity] = useState<number>(1);
+  const [tokenQuantity, setTokenQuantity] = useState<number | ''>(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<any>(null);
 
-  const totalAmount = tokenQuantity * tokenPrice;
+  const safeQuantity = tokenQuantity === '' ? 0 : tokenQuantity;
+  const totalAmount = safeQuantity * tokenPrice;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,7 +42,7 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
       return;
     }
 
-    if (tokenQuantity < 1 || tokenQuantity > maxTokens) {
+    if (safeQuantity < 1 || safeQuantity > maxTokens) {
       setError(`Token quantity must be between 1 and ${maxTokens}`);
       return;
     }
@@ -65,7 +66,7 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
         },
         body: JSON.stringify({
           tradeDealId: dealId,
-          tokenAmount: tokenQuantity,
+          tokenAmount: safeQuantity,
         }),
       });
 
@@ -100,7 +101,7 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
       
       setSuccess({
         investmentAmount: totalAmount,
-        tokenCount: tokenQuantity,
+        tokenCount: safeQuantity,
         transactionId: finalResult.stellarTxId,
       });
       
@@ -173,8 +174,11 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
           id="tokenQuantity"
           min="1"
           max={maxTokens}
-          value={tokenQuantity}
-          onChange={(e) => setTokenQuantity(parseInt(e.target.value) || 1)}
+          value={tokenQuantity === '' ? '' : tokenQuantity}
+          onChange={(e) => {
+            const val = parseInt(e.target.value, 10);
+            setTokenQuantity(isNaN(val) ? '' : val);
+          }}
           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           disabled={isSubmitting}
         />
@@ -190,7 +194,7 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
         </div>
         <div className="flex justify-between text-sm">
           <span>Quantity:</span>
-          <span>{tokenQuantity}</span>
+          <span>{safeQuantity}</span>
         </div>
         <div className="flex justify-between font-semibold border-t pt-2 mt-2">
           <span>Total Investment:</span>
@@ -206,7 +210,7 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
 
       <button
         type="submit"
-        disabled={isSubmitting || tokenQuantity < 1 || tokenQuantity > maxTokens}
+        disabled={isSubmitting || safeQuantity < 1 || safeQuantity > maxTokens}
         className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white py-2 px-4 rounded-md font-medium transition-colors"
       >
         {isSubmitting ? 'Processing Investment...' : `Invest $${totalAmount.toLocaleString()}`}

@@ -24,8 +24,6 @@ import { User } from '../auth/entities/user.entity';
 import { KycGuard } from '../auth/kyc.guard';
 import { OptionalJwtGuard } from '../auth/optional-jwt.guard';
 import { CreateTradeDealDto } from './dto/create-trade-deal.dto';
-import { StellarService } from '../stellar/stellar.service';
-import { QueueService } from '../queue/queue.service';
 
 interface AuthRequest extends Request {
   user: User;
@@ -36,8 +34,6 @@ interface AuthRequest extends Request {
 export class TradeDealsController {
   constructor(
     private readonly tradeDealsService: TradeDealsService,
-    private readonly stellarService: StellarService,
-    private readonly queueService: QueueService,
   ) {}
 
   @Post()
@@ -76,24 +72,7 @@ export class TradeDealsController {
       });
     }
 
-    const deal = await this.tradeDealsService.publishDeal(id, req.user.id);
-
-    const { publicKey, secretKey } = await this.stellarService.createEscrowAccount(id);
-
-    await this.tradeDealsService.updateDealStatus(id, 'open');
-    await this.tradeDealsService.saveEscrowKeys(id, publicKey, secretKey);
-
-    await this.queueService.enqueueDealPublish({
-      dealId: id,
-      tokenSymbol: deal.tokenSymbol,
-      escrowPublicKey: publicKey,
-      escrowSecretKey: secretKey,
-      tokenCount: deal.tokenCount,
-    });
-
-    deal.status = 'open';
-    deal.escrowPublicKey = publicKey;
-    return deal;
+    return this.tradeDealsService.publishDeal(id, req.user.id);
   }
 
   @Get()

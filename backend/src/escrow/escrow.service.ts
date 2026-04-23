@@ -1,7 +1,8 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
+import { PinoLogger } from 'nestjs-pino';
 import { PaymentDistribution } from './entities/payment-distribution.entity';
 import { TradeDeal } from '../users/entities/trade-deal.entity';
 import { Investment } from '../users/entities/investment.entity';
@@ -15,8 +16,6 @@ interface DealDeliveredPayload {
 
 @Injectable()
 export class EscrowService {
-  private readonly logger = new Logger(EscrowService.name);
-
   constructor(
     @InjectRepository(PaymentDistribution)
     private readonly paymentDistributionRepo: Repository<PaymentDistribution>,
@@ -30,7 +29,10 @@ export class EscrowService {
     private readonly queueService: QueueService,
     private readonly config: ConfigService,
     private readonly dataSource: DataSource,
-  ) {}
+    private readonly logger: PinoLogger,
+  ) {
+    this.logger.setContext(EscrowService.name);
+  }
 
   async processDealDelivered(payload: DealDeliveredPayload): Promise<void> {
     const { tradeDealId } = payload;

@@ -149,6 +149,18 @@ npm run typeorm migration:generate -- -d src/database/data-source.ts src/databas
 
 Migration file naming convention: `{timestamp}-{PascalCaseName}.ts`
 
+### Index Review Guidelines
+
+**Important**: New query patterns require index review to prevent performance degradation as tables grow.
+
+- **Before adding new queries**: Consider if they need indexes, especially for `WHERE`, `JOIN`, and `ORDER BY` clauses
+- **Composite indexes**: Create for multi-column filters (e.g., `(trade_deal_id, status)` for investment availability queries)
+- **Foreign key indexes**: Ensure all foreign key columns have indexes for efficient joins
+- **Pessimistic locks**: Queries under `pessimistic_write` locks must use indexes to avoid full table scans
+- **Test with EXPLAIN ANALYZE**: Verify queries use index scans, not sequential scans
+
+When in doubt, add the index — PostgreSQL query planner will choose the most efficient execution path.
+
 ---
 
 ## Testing
@@ -187,6 +199,27 @@ npm run test:cov
 - Entities use TypeORM decorators; no raw SQL outside migrations.
 - Keep services free of HTTP concerns (`HttpException` is fine, but no `Request`/`Response` imports in services).
 - Stellar interactions go through `StellarService` only — never call the SDK directly from other services.
+
+### Logging Conventions
+
+The project uses structured logging with `nestjs-pino` for better observability and debugging:
+
+- **Use PinoLogger**: Inject `PinoLogger` instead of NestJS `Logger` in all services
+- **Set context**: Always call `this.logger.setContext(ServiceName.name)` in constructors
+- **Structured data**: Use objects for log data, strings for messages:
+  ```ts
+  // Good
+  this.logger.info({ userId, dealId, amount }, 'Investment created successfully');
+  
+  // Bad
+  this.logger.info(`Investment created for user ${userId} deal ${dealId} amount ${amount}`);
+  ```
+- **Log levels**:
+  - `info`: Normal operations (deal created, payment processed)
+  - `warn`: Recoverable issues (retry attempts, validation warnings)
+  - `error`: Failures that require attention (Stellar errors, database failures)
+- **Correlation IDs**: All logs automatically include correlation IDs for request tracing
+- **No console.log**: Never use `console.log` in service files — always use the injected logger
 
 Run the linter before committing:
 

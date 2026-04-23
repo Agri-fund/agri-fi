@@ -7,11 +7,13 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { PinoLogger } from 'nestjs-pino';
 import { TradeDeal, TradeDealStatus } from './entities/trade-deal.entity';
 import { Document, DocumentType } from './entities/document.entity';
 import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.entity';
 import { CreateTradeDealDto } from './dto/create-trade-deal.dto';
 import { User } from '../auth/entities/user.entity';
+import { StellarService } from '../stellar/stellar.service';
 
 const VALID_DOC_TYPES: DocumentType[] = [
   'purchase_agreement',
@@ -42,7 +44,11 @@ export class TradeDealsService {
     private readonly milestoneRepo: Repository<ShipmentMilestone>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
-  ) {}
+    private readonly stellarService: StellarService,
+    private readonly logger: PinoLogger,
+  ) {
+    this.logger.setContext(TradeDealsService.name);
+  }
 
   async updateDealStatus(
     dealId: string,
@@ -53,14 +59,6 @@ export class TradeDealsService {
       status,
       ...(stellarAssetTxId && { stellarAssetTxId }),
     });
-  }
-
-  async saveEscrowKeys(
-    dealId: string,
-    escrowPublicKey: string,
-    escrowSecretKey: string,
-  ): Promise<void> {
-    await this.tradeDealRepo.update(dealId, { escrowPublicKey, escrowSecretKey });
   }
 
   async createDeal(
@@ -256,7 +254,60 @@ export class TradeDealsService {
       });
     }
 
-    return deal;
+    try {
+      // Create escrow account
+      this.logger.info({ dealId }, 'Creating escrow account for deal');
+      const { publicKey: escrowPublicKey, secretKey: escrowSecretKey } = 
+        await this.stellarService.createEscrowAccount(dealId);
+
+      // Encrypt the escrow secret
+      const encryptedEscrowSecret = this.stellarService.encryptSecret(escrowSecretKey);
+
+      // Issue trade token
+      this.logger.info({ dealId, tokenSymbol: deal.tokenSymbol }, 'Issuing trade token for deal');
+      const { txId: stellarAssetTxId, issuerPublicKey } = 
+        await this.stellarService.issueTradeToken(
+          deal.tokenSymbol,
+          escrowPublicKey,
+          escrowSecretKey,
+          deal.tokenCount,
+        );
+
+      // Update deal with Stellar data
+      await this.tradeDealRepo.update(dealId, {
+        status: 'open',
+        escrowPublicKey,
+        escrowSecretKey: encryptedEscrowSecret,
+        issuerPublicKey,
+        stellarAssetTxId,
+      });
+
+      this.logger.info(
+        { dealId, txId: stellarAssetTxId, escrowPublicKey },
+        'Successfully published deal with Stellar integration'
+      );
+
+      // Return updated deal
+      return {
+        ...deal,
+        status: 'open',
+        escrowPublicKey,
+        escrowSecretKey: encryptedEscrowSecret,
+        issuerPublicKey,
+        stellarAssetTxId,
+      };
+    } catch (error) {
+      this.logger.error(
+        { dealId, error: error.message },
+        'Failed to publish deal - Stellar operations failed'
+      );
+      
+      // Deal remains in draft status on Stellar failure
+      throw new UnprocessableEntityException({
+        code: 'STELLAR_OPERATION_FAILED',
+        message: 'Failed to create escrow account or issue trade token. Please try again.',
+      });
+    }
   }
 
   async addDocument(dto: AddDocumentDto): Promise<Document> {

@@ -1,8 +1,13 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { ClientProxy } from '@nestjs/microservices';
+import { PinoLogger } from 'nestjs-pino';
 import { QUEUE_SERVICE } from './queue.constants';
 
-export interface InvestmentFundPayload {
+export interface BasePayload {
+  correlationId?: string;
+}
+
+export interface InvestmentFundPayload extends BasePayload {
   investmentId: string;
   signedXdr: string;
   escrowPublicKey: string;
@@ -13,63 +18,88 @@ export interface InvestmentFundPayload {
   amountUsd: number;
 }
 
-export interface DealFundedPayload {
+export interface DealFundedPayload extends BasePayload {
   tradeDealId: string;
   commodity: string;
   totalValue: number;
   investors: { email: string; tokenAmount: number }[];
 }
 
+export interface DealPublishPayload extends BasePayload {
+  dealId: string;
+  tokenSymbol: string;
+  escrowPublicKey: string;
+  escrowSecretKey: string;
+  tokenCount: number;
+}
+
+export interface DealDeliveredPayload extends BasePayload {
+  tradeDealId: string;
+}
+
 const EVENTS = {
   DEAL_DELIVERED: 'deal.delivered',
   INVESTMENT_FUND: 'investment.fund',
   DEAL_FUNDED: 'deal.funded',
+  DEAL_PUBLISH: 'deal.publish',
 } as const;
 
 @Injectable()
 export class QueueService {
-  private readonly logger = new Logger(QueueService.name);
-
-  constructor(@Inject(QUEUE_SERVICE) private readonly client: ClientProxy) {}
+  constructor(
+    @Inject(QUEUE_SERVICE) private readonly client: ClientProxy,
+    private readonly logger: PinoLogger,
+  ) {
+    this.logger.setContext(QueueService.name);
+  }
 
   private async emit(pattern: string, data: unknown): Promise<void> {
     try {
       this.client.emit(pattern, data);
-      this.logger.log(`Emitted event: ${pattern}`);
+      this.logger.info({ event: pattern }, `Emitted event: ${pattern}`);
     } catch (err) {
-      this.logger.error(`Failed to emit event ${pattern}`, err);
+      this.logger.error({ event: pattern, error: err }, `Failed to emit event ${pattern}`);
       throw err;
     }
+  }
+
+  private addCorrelationId<T extends BasePayload>(payload: T): T {
+    return {
+      ...payload,
+      correlationId: payload.correlationId || this.logger.logger.bindings()?.correlationId,
+    };
   }
 
   /**
    * Enqueue a deal.publish job to issue Trade_Token on Stellar
    */
-  async enqueueDealPublish(payload: {
-    dealId: string;
-    tokenSymbol: string;
-    escrowPublicKey: string;
-    escrowSecretKey: string;
-    tokenCount: number;
-  }): Promise<void> {
-    await this.emit('deal.publish', payload);
+  async enqueueDealPublish(payload: Omit<DealPublishPayload, 'correlationId'>): Promise<void> {
+    const enrichedPayload = this.addCorrelationId(payload);
+    await this.emit(EVENTS.DEAL_PUBLISH, enrichedPayload);
   }
 
   /**
    * Enqueue a deal.delivered job to trigger escrow release
    */
   async enqueueDealDelivered(tradeDealId: string): Promise<void> {
-    await this.emit(EVENTS.DEAL_DELIVERED, { tradeDealId });
+    const payload = this.addCorrelationId({ tradeDealId });
+    await this.emit(EVENTS.DEAL_DELIVERED, payload);
   }
 
-  async enqueueInvestmentFund(payload: InvestmentFundPayload): Promise<void> {
-    await this.emit(EVENTS.INVESTMENT_FUND, payload);
+  async enqueueInvestmentFund(payload: Omit<InvestmentFundPayload, 'correlationId'>): Promise<void> {
+    const enrichedPayload = this.addCorrelationId(payload);
+    await this.emit(EVENTS.INVESTMENT_FUND, enrichedPayload);
   }
 
-  async enqueueDealFunded(payload: DealFundedPayload): Promise<void> {
-    this.logger.log(
-      `Deal ${payload.tradeDealId} fully funded — notifying ${payload.investors.length} investor(s)`,
+  async enqueueDealFunded(payload: Omit<DealFundedPayload, 'correlationId'>): Promise<void> {
+    const enrichedPayload = this.addCorrelationId(payload);
+    this.logger.info(
+      { 
+        tradeDealId: enrichedPayload.tradeDealId, 
+        investorCount: enrichedPayload.investors.length 
+      },
+      `Deal ${enrichedPayload.tradeDealId} fully funded — notifying ${enrichedPayload.investors.length} investor(s)`,
     );
-    await this.emit(EVENTS.DEAL_FUNDED, payload);
+    await this.emit(EVENTS.DEAL_FUNDED, enrichedPayload);
   }
 }

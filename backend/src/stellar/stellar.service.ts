@@ -1,5 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { PinoLogger } from 'nestjs-pino';
 import {
   Horizon,
   Keypair,
@@ -20,12 +21,16 @@ export interface InvestorShare {
 
 @Injectable()
 export class StellarService {
-  private readonly logger = new Logger(StellarService.name);
   private readonly server: Horizon.Server;
   private readonly networkPassphrase: string;
   private readonly platformKeypair: Keypair;
 
-  constructor(private readonly config: ConfigService) {
+  constructor(
+    private readonly config: ConfigService,
+    private readonly logger: PinoLogger,
+  ) {
+    this.logger.setContext(StellarService.name);
+    
     const horizonUrl = config.get<string>(
       'STELLAR_HORIZON_URL',
       'https://horizon-testnet.stellar.org',
@@ -41,7 +46,7 @@ export class StellarService {
       ? Keypair.fromSecret(platformSecret)
       : Keypair.random();
 
-    this.logger.log(`StellarService initialized on ${network}`);
+    this.logger.info({ network, horizonUrl }, `StellarService initialized on ${network}`);
   }
 
   /**
@@ -75,8 +80,13 @@ export class StellarService {
 
     await this.server.submitTransaction(tx);
 
-    this.logger.log(
-      `Escrow account created: ${escrowKeypair.publicKey()} for deal ${tradeDealId}`,
+    this.logger.info(
+      { 
+        tradeDealId, 
+        escrowPublicKey: escrowKeypair.publicKey(),
+        memo: `escrow:${tradeDealId.slice(0, 20)}`
+      },
+      'Escrow account created successfully'
     );
 
     return {
@@ -167,8 +177,15 @@ export class StellarService {
     const mintResult = await this.server.submitTransaction(mintTx);
 
     const txId = (mintResult as any).hash as string;
-    this.logger.log(
-      `Trade token ${assetCode} issued. txId=${txId}, issuer=${issuerKeypair.publicKey()}`,
+    this.logger.info(
+      { 
+        assetCode, 
+        txId, 
+        issuerPublicKey: issuerKeypair.publicKey(),
+        escrowPublicKey,
+        tokenCount
+      },
+      'Trade token issued successfully'
     );
 
     return {
@@ -261,8 +278,14 @@ export class StellarService {
 
     const result = await this.server.submitTransaction(tx);
     const txId = (result as any).hash as string;
-    this.logger.log(
-      `Transferred ${tokenAmount} ${assetCode} tokens to ${investorWallet}. txId=${txId}`,
+    this.logger.info(
+      { 
+        tokenAmount, 
+        assetCode, 
+        investorWallet, 
+        txId 
+      },
+      `Transferred ${tokenAmount} ${assetCode} tokens to investor`
     );
     return txId;
   }
@@ -401,7 +424,7 @@ export class StellarService {
       const result = await this.server.submitTransaction(tx);
       const txId = (result as any).hash as string;
 
-      this.logger.log(`Escrow released for deal. txId=${txId}`);
+      this.logger.info({ txId }, 'Escrow released successfully');
       return [txId];
     } catch (err: any) {
       this.logger.error(`Escrow release failed: ${err.message}`, err.stack);
@@ -480,7 +503,7 @@ export class StellarService {
     const tx = TransactionBuilder.fromXDR(signedXdr, this.networkPassphrase);
     const result = await this.server.submitTransaction(tx);
 
-    this.logger.log(`Transaction submitted: ${(result as any).hash}`);
+    this.logger.info({ txId: (result as any).hash }, 'Transaction submitted successfully');
     return result;
   }
 

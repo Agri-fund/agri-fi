@@ -1,49 +1,44 @@
-import { Controller, Logger } from '@nestjs/common';
+import { Controller } from '@nestjs/common';
 import { Ctx, EventPattern, Payload, RmqContext } from '@nestjs/microservices';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { PinoLogger } from 'nestjs-pino';
 import { StellarService } from '../stellar/stellar.service';
 import { TradeDealsService } from '../trade-deals/trade-deals.service';
 import { Investment } from '../investments/entities/investment.entity';
-
-interface DealPublishPayload {
-  dealId: string;
-  tokenSymbol: string;
-  escrowPublicKey: string;
-  escrowSecretKey: string;
-  tokenCount: number;
-}
-
-interface InvestmentFundPayload {
-  investmentId: string;
-  signedXdr: string;
-  escrowPublicKey: string;
-  encryptedEscrowSecret: string;
-  assetCode: string;
-  tokenAmount: number;
-  investorWallet: string;
-  amountUsd: number;
-}
+import { 
+  DealPublishPayload, 
+  InvestmentFundPayload, 
+  BasePayload 
+} from './queue.service';
 
 const MAX_RETRIES = 3;
 
 @Controller()
 export class QueueProcessor {
-  private readonly logger = new Logger(QueueProcessor.name);
-
   constructor(
     private readonly stellarService: StellarService,
     private readonly tradeDealsService: TradeDealsService,
     @InjectRepository(Investment)
     private readonly investmentRepo: Repository<Investment>,
-  ) {}
+    private readonly logger: PinoLogger,
+  ) {
+    this.logger.setContext(QueueProcessor.name);
+  }
+
+  private setCorrelationId(payload: BasePayload): void {
+    if (payload.correlationId) {
+      this.logger.assign({ correlationId: payload.correlationId });
+    }
+  }
 
   @EventPattern('deal.publish')
   async handleDealPublish(
     @Payload() data: DealPublishPayload,
     @Ctx() context: RmqContext,
   ) {
-    this.logger.log(`Processing deal.publish for deal ${data.dealId}`);
+    this.setCorrelationId(data);
+    this.logger.info({ dealId: data.dealId }, `Processing deal.publish for deal ${data.dealId}`);
 
     try {
       // Call StellarService.issueTradeToken
@@ -61,13 +56,14 @@ export class QueueProcessor {
         result.txId,
       );
 
-      this.logger.log(
+      this.logger.info(
+        { dealId: data.dealId, txId: result.txId },
         `Successfully published deal ${data.dealId} with txId ${result.txId}`,
       );
     } catch (error) {
       this.logger.error(
+        { dealId: data.dealId, error: error.message },
         `Failed to publish deal ${data.dealId}: ${error.message}`,
-        error.stack,
       );
 
       // On Stellar failure: mark deal status = 'failed'
@@ -85,7 +81,9 @@ export class QueueProcessor {
     @Payload() data: InvestmentFundPayload,
     @Ctx() context: RmqContext,
   ) {
-    this.logger.log(
+    this.setCorrelationId(data);
+    this.logger.info(
+      { investmentId: data.investmentId },
       `Processing investment.fund for investment ${data.investmentId}`,
     );
 
@@ -118,7 +116,8 @@ export class QueueProcessor {
           stellarTxId,
         });
 
-        this.logger.log(
+        this.logger.info(
+          { investmentId: data.investmentId, txId: stellarTxId },
           `Successfully funded investment ${data.investmentId} with txId ${stellarTxId}`,
         );
 
@@ -129,6 +128,12 @@ export class QueueProcessor {
         attempt++;
         lastError = error;
         this.logger.warn(
+          { 
+            investmentId: data.investmentId, 
+            attempt, 
+            maxRetries: MAX_RETRIES, 
+            error: error.message 
+          },
           `investment.fund attempt ${attempt}/${MAX_RETRIES} failed for ${data.investmentId}: ${error.message}`,
         );
 
@@ -140,6 +145,11 @@ export class QueueProcessor {
 
     // All retries exhausted — mark investment as failed
     this.logger.error(
+      { 
+        investmentId: data.investmentId, 
+        maxRetries: MAX_RETRIES, 
+        error: lastError?.message 
+      },
       `investment.fund permanently failed for ${data.investmentId} after ${MAX_RETRIES} attempts: ${lastError?.message}`,
     );
     await this.investmentRepo.update(data.investmentId, {
