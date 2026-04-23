@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import {
   BadRequestException,
+  ForbiddenException,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
@@ -193,7 +194,7 @@ describe('TradeDealsService', () => {
       ).rejects.toThrow(NotFoundException);
     });
 
-    it('throws BadRequestException when caller is not the assigned trader', async () => {
+    it('throws ForbiddenException when caller is not the assigned trader', async () => {
       tradeDealRepo.findOne.mockResolvedValue({
         ...mockDeal(),
         documents: [{ id: 'doc-1' }],
@@ -201,7 +202,7 @@ describe('TradeDealsService', () => {
 
       await expect(
         service.publishDeal('deal-uuid', 'other-trader-uuid'),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toThrow(ForbiddenException);
     });
   });
 

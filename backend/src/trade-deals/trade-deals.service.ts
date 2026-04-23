@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   UnprocessableEntityException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -52,6 +53,14 @@ export class TradeDealsService {
       status,
       ...(stellarAssetTxId && { stellarAssetTxId }),
     });
+  }
+
+  async saveEscrowKeys(
+    dealId: string,
+    escrowPublicKey: string,
+    escrowSecretKey: string,
+  ): Promise<void> {
+    await this.tradeDealRepo.update(dealId, { escrowPublicKey, escrowSecretKey });
   }
 
   async createDeal(
@@ -227,7 +236,7 @@ export class TradeDealsService {
     }
 
     if (deal.traderId !== traderId) {
-      throw new BadRequestException({
+      throw new ForbiddenException({
         code: 'NOT_ASSIGNED_TRADER',
         message: 'Only the assigned trader can publish this deal.',
       });

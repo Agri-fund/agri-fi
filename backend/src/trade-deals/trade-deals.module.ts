@@ -7,6 +7,7 @@ import { Document } from './entities/document.entity';
 import { Investment } from '../investments/entities/investment.entity';
 import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.entity';
 import { User } from '../auth/entities/user.entity';
+import { QueueModule } from '../queue/queue.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { User } from '../auth/entities/user.entity';
       ShipmentMilestone,
       User,
     ]),
+    QueueModule,
   ],
   controllers: [TradeDealsController],
   providers: [TradeDealsService],

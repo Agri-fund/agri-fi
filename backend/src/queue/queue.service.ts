@@ -19,6 +19,19 @@ export class QueueService {
   }
 
   /**
+   * Enqueue a deal.publish job to issue Trade_Token on Stellar
+   */
+  async enqueueDealPublish(payload: {
+    dealId: string;
+    tokenSymbol: string;
+    escrowPublicKey: string;
+    escrowSecretKey: string;
+    tokenCount: number;
+  }): Promise<void> {
+    await this.emit('deal.publish', payload);
+  }
+
+  /**
    * Enqueue a deal.delivered job to trigger escrow release
    */
   async enqueueDealDelivered(tradeDealId: string): Promise<void> {
