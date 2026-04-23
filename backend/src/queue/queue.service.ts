@@ -2,13 +2,37 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ClientProxy } from '@nestjs/microservices';
 import { QUEUE_SERVICE } from './queue.constants';
 
+export interface InvestmentFundPayload {
+  investmentId: string;
+  signedXdr: string;
+  escrowPublicKey: string;
+  encryptedEscrowSecret: string;
+  assetCode: string;
+  tokenAmount: number;
+  investorWallet: string;
+  amountUsd: number;
+}
+
+export interface DealFundedPayload {
+  tradeDealId: string;
+  commodity: string;
+  totalValue: number;
+  investors: { email: string; tokenAmount: number }[];
+}
+
+const EVENTS = {
+  DEAL_DELIVERED: 'deal.delivered',
+  INVESTMENT_FUND: 'investment.fund',
+  DEAL_FUNDED: 'deal.funded',
+} as const;
+
 @Injectable()
 export class QueueService {
   private readonly logger = new Logger(QueueService.name);
 
   constructor(@Inject(QUEUE_SERVICE) private readonly client: ClientProxy) {}
 
-  async emit(pattern: string, data: unknown): Promise<void> {
+  private async emit(pattern: string, data: unknown): Promise<void> {
     try {
       this.client.emit(pattern, data);
       this.logger.log(`Emitted event: ${pattern}`);
@@ -18,41 +42,18 @@ export class QueueService {
     }
   }
 
-  /**
-   * Enqueue a deal.delivered job to trigger escrow release
-   */
   async enqueueDealDelivered(tradeDealId: string): Promise<void> {
-    await this.emit('deal.delivered', { tradeDealId });
+    await this.emit(EVENTS.DEAL_DELIVERED, { tradeDealId });
   }
 
-  /**
-   * Enqueue an investment.fund job to submit the signed XDR and confirm investment
-   */
-  async enqueueInvestmentFund(payload: {
-    investmentId: string;
-    signedXdr: string;
-    escrowPublicKey: string;
-    encryptedEscrowSecret: string;
-    assetCode: string;
-    tokenAmount: number;
-    investorWallet: string;
-    amountUsd: number;
-  }): Promise<void> {
-    await this.emit('investment.fund', payload);
+  async enqueueInvestmentFund(payload: InvestmentFundPayload): Promise<void> {
+    await this.emit(EVENTS.INVESTMENT_FUND, payload);
   }
 
-  /**
-   * Enqueue a deal.funded notification job to email all participating investors
-   */
-  async enqueueDealFunded(payload: {
-    tradeDealId: string;
-    commodity: string;
-    totalValue: number;
-    investors: { email: string; tokenAmount: number }[];
-  }): Promise<void> {
+  async enqueueDealFunded(payload: DealFundedPayload): Promise<void> {
     this.logger.log(
       `Deal ${payload.tradeDealId} fully funded — notifying ${payload.investors.length} investor(s)`,
     );
-    await this.emit('deal.funded', payload);
+    await this.emit(EVENTS.DEAL_FUNDED, payload);
   }
 }
