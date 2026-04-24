@@ -29,6 +29,7 @@ export class StellarService {
   private readonly server: Horizon.Server;
   private readonly networkPassphrase: string;
   private readonly platformKeypair: Keypair;
+  private readonly usdcAsset: Asset;
 
   constructor(
     private readonly config: ConfigService,
@@ -51,14 +52,21 @@ export class StellarService {
       ? Keypair.fromSecret(platformSecret)
       : Keypair.random();
 
+    const usdcAssetCode = config.get<string>('USDC_ASSET_CODE', 'USDC');
+    const usdcIssuer = config.get<string>('USDC_ISSUER', '');
+    this.usdcAsset = usdcIssuer
+      ? new Asset(usdcAssetCode, usdcIssuer)
+      : Asset.native(); // fallback to XLM only if issuer not configured
+
     this.logger.info(
-      { network, horizonUrl },
+      { network, horizonUrl, usdcAssetCode, usdcIssuer: usdcIssuer || 'NOT_SET' },
       `StellarService initialized on ${network}`,
     );
   }
 
   /**
    * Creates a new Stellar escrow account funded with minimum XLM balance.
+   * Also establishes a USDC trustline so the escrow can receive USDC.
    * Returns the keypair for the escrow account.
    */
   async createEscrowAccount(
@@ -70,6 +78,7 @@ export class StellarService {
       this.platformKeypair.publicKey(),
     );
 
+    // Fund escrow with enough XLM for base reserve + USDC trustline (2 XLM base + 0.5 per trustline)
     const tx = new TransactionBuilder(platformAccount, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
@@ -77,7 +86,7 @@ export class StellarService {
       .addOperation(
         Operation.createAccount({
           destination: escrowKeypair.publicKey(),
-          startingBalance: '2', // minimum XLM for account + trustline
+          startingBalance: '3', // 2 XLM base reserve + 0.5 for USDC trustline + buffer
         }),
       )
       .addMemo(Memo.text(`escrow:${tradeDealId.slice(0, 20)}`))
@@ -85,14 +94,35 @@ export class StellarService {
       .build();
 
     tx.sign(this.platformKeypair);
-
     await this.server.submitTransaction(tx);
+
+    // Establish USDC trustline on the escrow account (skip if USDC issuer not configured)
+    if (!this.usdcAsset.isNative()) {
+      const escrowAccount = await this.server.loadAccount(
+        escrowKeypair.publicKey(),
+      );
+      const trustlineTx = new TransactionBuilder(escrowAccount, {
+        fee: BASE_FEE,
+        networkPassphrase: this.networkPassphrase,
+      })
+        .addOperation(
+          Operation.changeTrust({
+            asset: this.usdcAsset,
+          }),
+        )
+        .setTimeout(30)
+        .build();
+
+      trustlineTx.sign(escrowKeypair);
+      await this.server.submitTransaction(trustlineTx);
+    }
 
     this.logger.info(
       {
         tradeDealId,
         escrowPublicKey: escrowKeypair.publicKey(),
         memo: `escrow:${tradeDealId.slice(0, 20)}`,
+        usdcTrustline: !this.usdcAsset.isNative(),
       },
       'Escrow account created successfully',
     );
@@ -204,7 +234,8 @@ export class StellarService {
   }
 
   /**
-   * Funds the escrow account from an investor wallet.
+   * Funds the escrow account from an investor wallet using USDC.
+   * The escrow account must already hold a USDC trustline.
    * Returns the Stellar transaction ID.
    */
   async fundEscrow(
@@ -215,8 +246,15 @@ export class StellarService {
     assetCode?: string,
     tokenAmount?: number,
   ): Promise<string> {
-    // In MVP, we use XLM as the payment asset (1 XLM ≈ $1 for testnet simplicity)
-    // Production would use USDC
+    // Verify the payment asset is USDC (not XLM)
+    const paymentAsset = this.usdcAsset;
+    if (paymentAsset.isNative()) {
+      this.logger.warn(
+        { escrowPublicKey },
+        'USDC_ISSUER not configured — falling back to XLM. Set USDC_ASSET_CODE and USDC_ISSUER in .env',
+      );
+    }
+
     const investorAccount = await this.server.loadAccount(investorWallet);
 
     const tx = new TransactionBuilder(investorAccount, {
@@ -226,7 +264,7 @@ export class StellarService {
       .addOperation(
         Operation.payment({
           destination: escrowPublicKey,
-          asset: Asset.native(),
+          asset: paymentAsset,
           amount: amountUSD,
         }),
       )
@@ -379,11 +417,11 @@ export class StellarService {
       networkPassphrase: this.networkPassphrase,
     });
 
-    // Farmer payment
+    // Farmer payment (USDC)
     txBuilder.addOperation(
       Operation.payment({
         destination: farmerWallet,
-        asset: Asset.native(),
+        asset: this.usdcAsset,
         amount: (farmerStroops / 1e7).toFixed(7),
       }),
     );
@@ -410,17 +448,17 @@ export class StellarService {
       txBuilder.addOperation(
         Operation.payment({
           destination: share.walletAddress,
-          asset: Asset.native(),
+          asset: this.usdcAsset,
           amount: (shareStroops / 1e7).toFixed(7),
         }),
       );
     });
 
-    // Platform fee
+    // Platform fee (USDC)
     txBuilder.addOperation(
       Operation.payment({
         destination: platformWallet,
-        asset: Asset.native(),
+        asset: this.usdcAsset,
         amount: (platformStroops / 1e7).toFixed(7),
       }),
     );
@@ -470,7 +508,7 @@ export class StellarService {
       .addOperation(
         Operation.payment({
           destination: signerKeypair.publicKey(), // self-payment as anchor
-          asset: Asset.native(),
+          asset: Asset.native(), // minimal XLM used only as anchor vehicle
           amount: '0.0000001',
         }),
       )
@@ -484,7 +522,7 @@ export class StellarService {
   }
 
   /**
-   * Creates an unsigned XDR transaction for an investment.
+   * Creates an unsigned XDR transaction for an investment using USDC.
    * The investor will sign this transaction to fund the escrow account.
    */
   async createInvestmentTransaction(
@@ -496,8 +534,7 @@ export class StellarService {
   ): Promise<string> {
     const investorAccount = await this.server.loadAccount(investorWallet);
 
-    // In MVP, we use XLM as the payment asset (1 XLM ≈ $1 for testnet simplicity)
-    // Production would use USDC
+    // Use USDC for stable USD-denominated payments
     const tx = new TransactionBuilder(investorAccount, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
@@ -505,8 +542,8 @@ export class StellarService {
       .addOperation(
         Operation.payment({
           destination: escrowPublicKey,
-          asset: Asset.native(),
-          amount: amountUSD.toString(),
+          asset: this.usdcAsset,
+          amount: amountUSD.toFixed(7),
         }),
       )
       .addMemo(Memo.text(`invest:${assetCode}:${tokenAmount}`))
@@ -514,6 +551,149 @@ export class StellarService {
       .build();
 
     return tx.toXDR();
+  }
+
+  /**
+   * Creates an unsigned XDR transaction for a bulk investment.
+   * Groups multiple USDC payment operations into a single transaction (max 100 ops).
+   * This lets institutional investors fund multiple deals in one network call.
+   */
+  async createBulkInvestmentTransaction(
+    investorWallet: string,
+    investments: Array<{
+      escrowPublicKey: string;
+      amountUSD: number;
+      assetCode: string;
+      tokenAmount: number;
+    }>,
+  ): Promise<string> {
+    const MAX_OPS = 100;
+    if (investments.length === 0) {
+      throw new Error('At least one investment is required');
+    }
+    if (investments.length > MAX_OPS) {
+      throw new Error(
+        `Bulk transaction cannot exceed ${MAX_OPS} operations. Received ${investments.length}.`,
+      );
+    }
+
+    const investorAccount = await this.server.loadAccount(investorWallet);
+
+    // Each operation costs BASE_FEE stroops; multiply by number of operations
+    const feePerOp = parseInt(BASE_FEE, 10);
+    const totalFee = (feePerOp * investments.length).toString();
+
+    const txBuilder = new TransactionBuilder(investorAccount, {
+      fee: totalFee,
+      networkPassphrase: this.networkPassphrase,
+    });
+
+    for (const inv of investments) {
+      txBuilder.addOperation(
+        Operation.payment({
+          destination: inv.escrowPublicKey,
+          asset: this.usdcAsset,
+          amount: inv.amountUSD.toFixed(7),
+        }),
+      );
+    }
+
+    // Build a single memo summarising the bulk (max 28 bytes)
+    txBuilder.addMemo(Memo.text(`bulk:${investments.length}deals`));
+    txBuilder.setTimeout(300); // 5 minutes for wallet signing
+
+    const tx = txBuilder.build();
+
+    this.logger.info(
+      {
+        investorWallet,
+        dealCount: investments.length,
+        totalUsd: investments.reduce((s, i) => s + i.amountUSD, 0),
+        totalFee,
+      },
+      'Bulk investment transaction built',
+    );
+
+    return tx.toXDR();
+  }
+
+  /**
+   * Creates a manageSellOffer transaction for a trade token on the Stellar DEX.
+   * Investors can use this to list their token shares for sale on the secondary market.
+   * Returns an unsigned XDR that the investor must sign with their wallet.
+   */
+  async createSellOfferTransaction(
+    sellerWallet: string,
+    tradeTokenCode: string,
+    tradeTokenIssuer: string,
+    tokenAmount: number,
+    pricePerToken: string,
+    offerId = 0, // 0 = new offer; non-zero = update/cancel existing offer
+  ): Promise<string> {
+    const sellerAccount = await this.server.loadAccount(sellerWallet);
+    const tradeAsset = new Asset(tradeTokenCode, tradeTokenIssuer);
+
+    const tx = new TransactionBuilder(sellerAccount, {
+      fee: BASE_FEE,
+      networkPassphrase: this.networkPassphrase,
+    })
+      .addOperation(
+        Operation.manageSellOffer({
+          selling: tradeAsset,
+          buying: this.usdcAsset,
+          amount: tokenAmount.toFixed(7),
+          price: pricePerToken,
+          offerId,
+        }),
+      )
+      .addMemo(Memo.text(`sell:${tradeTokenCode}`))
+      .setTimeout(300)
+      .build();
+
+    this.logger.info(
+      {
+        sellerWallet,
+        tradeTokenCode,
+        tradeTokenIssuer,
+        tokenAmount,
+        pricePerToken,
+        offerId,
+      },
+      'Sell offer transaction built',
+    );
+
+    return tx.toXDR();
+  }
+
+  /**
+   * Fetches active DEX sell offers for a given trade token.
+   * Used to display the order book on the deal details page.
+   */
+  async getActiveOffersForToken(
+    tradeTokenCode: string,
+    tradeTokenIssuer: string,
+  ): Promise<
+    Array<{
+      offerId: string;
+      seller: string;
+      amount: string;
+      price: string;
+    }>
+  > {
+    const tradeAsset = new Asset(tradeTokenCode, tradeTokenIssuer);
+
+    const offersPage = await this.server
+      .offers()
+      .selling(tradeAsset)
+      .limit(50)
+      .call();
+
+    return offersPage.records.map((offer: any) => ({
+      offerId: offer.id,
+      seller: offer.seller,
+      amount: offer.amount,
+      price: offer.price,
+    }));
   }
 
   /**
