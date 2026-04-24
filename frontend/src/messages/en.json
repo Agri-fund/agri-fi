@@ -1,0 +1,22 @@
+{
+  "nav": {
+    "title": "Agric-onchain Finance"
+  },
+  "home": {
+    "title": "Agric-onchain Finance",
+    "subtitle": "Blockchain-backed agricultural trade finance platform",
+    "description": "Connect farmers, traders, and investors through tokenized agricultural trade deals on Stellar blockchain.",
+    "viewMarketplace": "View Marketplace",
+    "instructions": {
+      "title": "Make sure to:",
+      "installWallet": "Install Freighter wallet extension",
+      "switchTestnet": "Switch to Stellar testnet",
+      "connectWallet": "Connect your wallet in the top navigation"
+    }
+  },
+  "common": {
+    "loading": "Loading...",
+    "error": "Error",
+    "success": "Success"
+  }
+}

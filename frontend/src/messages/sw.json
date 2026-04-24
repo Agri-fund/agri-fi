@@ -1,0 +1,22 @@
+{
+  "nav": {
+    "title": "Fedha za Kilimo za Agric-onchain"
+  },
+  "home": {
+    "title": "Fedha za Kilimo za Agric-onchain",
+    "subtitle": "Jukwaa la fedha za biashara ya kilimo linalotumia teknolojia ya blockchain",
+    "description": "Unganisha wakulima, wafanyabiashara, na wawekezaji kupitia mikataba ya biashara ya kilimo iliyotokeni kwenye blockchain ya Stellar.",
+    "viewMarketplace": "Tazama Soko",
+    "instructions": {
+      "title": "Hakikisha:",
+      "installWallet": "Sakinisha kiendelezi cha pochi ya Freighter",
+      "switchTestnet": "Badili kwenda Stellar testnet",
+      "connectWallet": "Unganisha pochi yako katika urambazaji wa juu"
+    }
+  },
+  "common": {
+    "loading": "Inapakia...",
+    "error": "Kosa",
+    "success": "Mafanikio"
+  }
+}

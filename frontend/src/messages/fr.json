@@ -1,0 +1,22 @@
+{
+  "nav": {
+    "title": "Finance Agricole Agric-onchain"
+  },
+  "home": {
+    "title": "Finance Agricole Agric-onchain",
+    "subtitle": "Plateforme de finance du commerce agricole basée sur la blockchain",
+    "description": "Connectez les agriculteurs, commerçants et investisseurs grâce à des contrats de commerce agricole tokenisés sur la blockchain Stellar.",
+    "viewMarketplace": "Voir le Marché",
+    "instructions": {
+      "title": "Assurez-vous de:",
+      "installWallet": "Installer l'extension de portefeuille Freighter",
+      "switchTestnet": "Passer au réseau de test Stellar",
+      "connectWallet": "Connecter votre portefeuille dans la navigation supérieure"
+    }
+  },
+  "common": {
+    "loading": "Chargement...",
+    "error": "Erreur",
+    "success": "Succès"
+  }
+}
