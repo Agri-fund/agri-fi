@@ -38,6 +38,7 @@ export class DocumentsService {
     const stellarTxId = await this.stellarService.recordMemo(
       memo,
       signerSecret,
+      'hash',
     );
 
     // 3. Persist using existing logic (VERY IMPORTANT)
@@ -49,13 +50,11 @@ export class DocumentsService {
       storageUrl: url,
       stellarTxId,
       fileSizeBytes: file.size,
+      memoText: memo,
     });
   }
 
   private buildMemo(tradeDealId: string, hash: string): string {
-    const shortDeal = tradeDealId.replace(/-/g, '').slice(0, 6);
-    const shortHash = hash.slice(0, 10);
-
-    return `AGRIC:DOC:${shortDeal}:${shortHash}`.slice(0, 28);
+    return `AGRIC:DOC:${tradeDealId}:${hash}`;
   }
 }

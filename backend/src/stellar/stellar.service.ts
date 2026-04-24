@@ -11,7 +11,7 @@ import {
   BASE_FEE,
   Memo,
 } from 'stellar-sdk';
-import { createDecipheriv, createCipheriv, randomBytes } from 'crypto';
+import { createDecipheriv, createCipheriv, randomBytes, createHash } from 'crypto';
 
 export interface InvestorShare {
   walletAddress: string;
@@ -436,12 +436,24 @@ export class StellarService {
    * Records an arbitrary memo on Stellar (used for milestone anchoring and document hashes).
    * Returns the transaction ID.
    */
-  async recordMemo(memo: string, signerSecret: string): Promise<string> {
+  async recordMemo(
+    memo: string,
+    signerSecret: string,
+    memoType: 'text' | 'hash' = 'text',
+  ): Promise<string> {
     const signerKeypair = Keypair.fromSecret(signerSecret);
     const account = await this.server.loadAccount(signerKeypair.publicKey());
 
-    // Stellar memo text is limited to 28 bytes; truncate if needed
-    const memoText = memo.slice(0, 28);
+    let stellarMemo: Memo;
+
+    if (memoType === 'hash') {
+      const hash = createHash('sha256').update(memo).digest();
+      stellarMemo = Memo.hash(hash.toString('hex'));
+    } else {
+      // Stellar memo text is limited to 28 bytes; truncate if needed
+      const memoText = memo.slice(0, 28);
+      stellarMemo = Memo.text(memoText);
+    }
 
     const tx = new TransactionBuilder(account, {
       fee: BASE_FEE,
@@ -454,7 +466,7 @@ export class StellarService {
           amount: '0.0000001',
         }),
       )
-      .addMemo(Memo.text(memoText))
+      .addMemo(stellarMemo)
       .setTimeout(30)
       .build();
 

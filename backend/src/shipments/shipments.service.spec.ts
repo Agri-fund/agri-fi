@@ -26,6 +26,7 @@ const mockMilestone = (): ShipmentMilestone => ({
   recordedBy: 'trader-1',
   notes: 'Goods received at farm',
   stellarTxId: 'stellar-tx-123',
+  memoText: 'AGRIC:MILESTONE:deal1:farm:1700000000',
   recordedAt: new Date(),
 });
 
@@ -116,6 +117,7 @@ describe('ShipmentsService', () => {
         recordedBy: 'trader-1',
         notes: 'Goods received at farm',
         stellarTxId: 'stellar-tx-123',
+        memoText: expect.stringMatching(/^AGRIC:MILESTONE:deal1:farm:\d+$/),
       });
 
       expect(result.milestone).toBe('farm');
@@ -185,6 +187,7 @@ describe('ShipmentsService', () => {
       expect(stellarService.recordMemo).toHaveBeenCalledWith(
         expect.stringContaining('AGRIC:MILESTONE:'),
         'escrow-secret',
+        'hash',
       );
     });
 
@@ -274,6 +277,7 @@ describe('ShipmentsService', () => {
       expect(stellarService.recordMemo).toHaveBeenCalledWith(
         expect.any(String),
         'platform-secret',
+        'hash',
       );
     });
 
@@ -298,6 +302,7 @@ describe('ShipmentsService', () => {
       expect(stellarService.recordMemo).toHaveBeenCalledWith(
         expect.stringMatching(/^AGRIC:MILESTONE:deal1:warehouse:\d+$/),
         'escrow-secret',
+        'hash',
       );
     });
   });

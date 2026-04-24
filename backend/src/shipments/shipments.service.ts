@@ -108,6 +108,7 @@ export class ShipmentsService {
       const stellarTxId = await this.stellarService.recordMemo(
         memoText,
         signerSecret,
+        'hash',
       );
 
       // Create and save the milestone
@@ -117,6 +118,7 @@ export class ShipmentsService {
         recordedBy: userId,
         notes: dto.notes ?? null,
         stellarTxId,
+        memoText,
       });
 
       const savedMilestone = await manager.save(milestone);
