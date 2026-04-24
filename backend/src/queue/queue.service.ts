@@ -58,7 +58,10 @@ export class QueueService {
       this.client.emit(pattern, data);
       this.logger.info({ event: pattern }, `Emitted event: ${pattern}`);
     } catch (err) {
-      this.logger.error({ event: pattern, error: err }, `Failed to emit event ${pattern}`);
+      this.logger.error(
+        { event: pattern, error: err },
+        `Failed to emit event ${pattern}`,
+      );
       throw err;
     }
   }
@@ -66,14 +69,17 @@ export class QueueService {
   private addCorrelationId<T extends BasePayload>(payload: T): T {
     return {
       ...payload,
-      correlationId: payload.correlationId || this.logger.logger.bindings()?.correlationId,
+      correlationId:
+        payload.correlationId || this.logger.logger.bindings()?.correlationId,
     };
   }
 
   /**
    * Enqueue a deal.publish job to issue Trade_Token on Stellar
    */
-  async enqueueDealPublish(payload: Omit<DealPublishPayload, 'correlationId'>): Promise<void> {
+  async enqueueDealPublish(
+    payload: Omit<DealPublishPayload, 'correlationId'>,
+  ): Promise<void> {
     const enrichedPayload = this.addCorrelationId(payload);
     await this.emit(EVENTS.DEAL_PUBLISH, enrichedPayload);
   }
@@ -86,17 +92,21 @@ export class QueueService {
     await this.emit(EVENTS.DEAL_DELIVERED, payload);
   }
 
-  async enqueueInvestmentFund(payload: Omit<InvestmentFundPayload, 'correlationId'>): Promise<void> {
+  async enqueueInvestmentFund(
+    payload: Omit<InvestmentFundPayload, 'correlationId'>,
+  ): Promise<void> {
     const enrichedPayload = this.addCorrelationId(payload);
     await this.emit(EVENTS.INVESTMENT_FUND, enrichedPayload);
   }
 
-  async enqueueDealFunded(payload: Omit<DealFundedPayload, 'correlationId'>): Promise<void> {
+  async enqueueDealFunded(
+    payload: Omit<DealFundedPayload, 'correlationId'>,
+  ): Promise<void> {
     const enrichedPayload = this.addCorrelationId(payload);
     this.logger.info(
-      { 
-        tradeDealId: enrichedPayload.tradeDealId, 
-        investorCount: enrichedPayload.investors.length 
+      {
+        tradeDealId: enrichedPayload.tradeDealId,
+        investorCount: enrichedPayload.investors.length,
       },
       `Deal ${enrichedPayload.tradeDealId} fully funded — notifying ${enrichedPayload.investors.length} investor(s)`,
     );

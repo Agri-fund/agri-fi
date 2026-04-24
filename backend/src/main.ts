@@ -29,7 +29,7 @@ function setupSwagger(app: any) {
 
   if (isProd) {
     // Protect Swagger UI with HTTP Basic Auth in production
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const basicAuth = require('express-basic-auth');
     const user = process.env.SWAGGER_USER ?? 'admin';
     const pass = process.env.SWAGGER_PASS ?? 'changeme';

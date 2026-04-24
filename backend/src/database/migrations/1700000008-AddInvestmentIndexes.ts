@@ -29,9 +29,17 @@ export class AddInvestmentIndexes1700000008 implements MigrationInterface {
 
   public async down(queryRunner: QueryRunner): Promise<void> {
     // Drop indexes in reverse order
-    await queryRunner.query(`DROP INDEX IF EXISTS "idx_payment_distributions_trade_deal_id"`);
-    await queryRunner.query(`DROP INDEX IF EXISTS "idx_shipment_milestones_trade_deal_id"`);
-    await queryRunner.query(`DROP INDEX IF EXISTS "idx_investments_investor_id"`);
-    await queryRunner.query(`DROP INDEX IF EXISTS "idx_investments_trade_deal_status"`);
+    await queryRunner.query(
+      `DROP INDEX IF EXISTS "idx_payment_distributions_trade_deal_id"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX IF EXISTS "idx_shipment_milestones_trade_deal_id"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX IF EXISTS "idx_investments_investor_id"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX IF EXISTS "idx_investments_trade_deal_status"`,
+    );
   }
 }

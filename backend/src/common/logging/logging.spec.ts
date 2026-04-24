@@ -27,18 +27,18 @@ describe('Logging Configuration', () => {
     expect(logger.logger.bindings()).toEqual(
       expect.objectContaining({
         service: 'agri-fi-backend',
-      })
+      }),
     );
   });
 
   it('should support structured logging', () => {
     const logSpy = jest.spyOn(logger.logger, 'info');
-    
+
     logger.info({ userId: 'test-123', action: 'test' }, 'Test message');
-    
+
     expect(logSpy).toHaveBeenCalledWith(
       { userId: 'test-123', action: 'test' },
-      'Test message'
+      'Test message',
     );
   });
 
@@ -47,6 +47,8 @@ describe('Logging Configuration', () => {
     // In actual usage, correlation IDs are set by the middleware in request scope
     expect(() => {
       logger.assign({ correlationId: 'test-123' });
-    }).toThrow('PinoLogger: unable to assign extra fields out of request scope');
+    }).toThrow(
+      'PinoLogger: unable to assign extra fields out of request scope',
+    );
   });
 });

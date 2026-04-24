@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 interface Milestone {
   id: string;
@@ -38,11 +38,7 @@ export const ShipmentTimeline: React.FC<ShipmentTimelineProps> = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchMilestones();
-  }, [tradeDealId]);
-
-  const fetchMilestones = async () => {
+  const fetchMilestones = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -69,7 +65,11 @@ export const ShipmentTimeline: React.FC<ShipmentTimelineProps> = ({
     } finally {
       setLoading(false);
     }
-  };
+  }, [tradeDealId]);
+
+  useEffect(() => {
+    fetchMilestones();
+  }, [fetchMilestones]);
 
   const getMilestoneStatus = (milestoneType: string) => {
     const milestone = milestones.find(m => m.milestone === milestoneType);

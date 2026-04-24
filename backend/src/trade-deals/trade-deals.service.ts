@@ -258,15 +258,19 @@ export class TradeDealsService {
     try {
       // Create escrow account
       this.logger.info({ dealId }, 'Creating escrow account for deal');
-      const { publicKey: escrowPublicKey, secretKey: escrowSecretKey } = 
+      const { publicKey: escrowPublicKey, secretKey: escrowSecretKey } =
         await this.stellarService.createEscrowAccount(dealId);
 
       // Encrypt the escrow secret
-      const encryptedEscrowSecret = this.stellarService.encryptSecret(escrowSecretKey);
+      const encryptedEscrowSecret =
+        this.stellarService.encryptSecret(escrowSecretKey);
 
       // Issue trade token
-      this.logger.info({ dealId, tokenSymbol: deal.tokenSymbol }, 'Issuing trade token for deal');
-      const { txId: stellarAssetTxId, issuerPublicKey } = 
+      this.logger.info(
+        { dealId, tokenSymbol: deal.tokenSymbol },
+        'Issuing trade token for deal',
+      );
+      const { txId: stellarAssetTxId, issuerPublicKey } =
         await this.stellarService.issueTradeToken(
           deal.tokenSymbol,
           escrowPublicKey,
@@ -285,7 +289,7 @@ export class TradeDealsService {
 
       this.logger.info(
         { dealId, txId: stellarAssetTxId, escrowPublicKey },
-        'Successfully published deal with Stellar integration'
+        'Successfully published deal with Stellar integration',
       );
 
       // Return updated deal
@@ -300,13 +304,14 @@ export class TradeDealsService {
     } catch (error) {
       this.logger.error(
         { dealId, error: error.message },
-        'Failed to publish deal - Stellar operations failed'
+        'Failed to publish deal - Stellar operations failed',
       );
-      
+
       // Deal remains in draft status on Stellar failure
       throw new UnprocessableEntityException({
         code: 'STELLAR_OPERATION_FAILED',
-        message: 'Failed to create escrow account or issue trade token. Please try again.',
+        message:
+          'Failed to create escrow account or issue trade token. Please try again.',
       });
     }
   }

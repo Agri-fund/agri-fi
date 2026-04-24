@@ -15,6 +15,7 @@ import { DocumentsModule } from './documents/documents.module';
 import { QueueProcessorModule } from './queue/queue-processor.module';
 import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
 import { loggingConfig } from './common/logging/logging.config';
+import { HealthModule } from './health/health.module';
 
 @Module({
   imports: [
@@ -37,12 +38,11 @@ import { loggingConfig } from './common/logging/logging.config';
     StorageModule,
     DocumentsModule,
     QueueProcessorModule,
+    HealthModule,
   ],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer
-      .apply(CorrelationIdMiddleware)
-      .forRoutes('*');
+    consumer.apply(CorrelationIdMiddleware).forRoutes('*');
   }
 }

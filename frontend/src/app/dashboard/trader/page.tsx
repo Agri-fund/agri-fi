@@ -13,8 +13,8 @@ export default function TraderDashboard() {
   const [showMilestoneForm, setShowMilestoneForm] = useState(false);
   const [selectedDealId, setSelectedDealId] = useState<string | null>(null);
   const [milestoneForm, setMilestoneForm] = useState({
-    title: '',
-    description: '',
+    milestone: 'warehouse',
+    notes: '',
   });
   const router = useRouter();
 
@@ -52,7 +52,7 @@ export default function TraderDashboard() {
   const handleRecordMilestone = async (dealId: string) => {
     setSelectedDealId(dealId);
     setShowMilestoneForm(true);
-    setMilestoneForm({ title: '', description: '' });
+    setMilestoneForm({ milestone: 'warehouse', notes: '' });
   };
 
   const handleMilestoneSubmit = async (e: React.FormEvent) => {
@@ -60,10 +60,13 @@ export default function TraderDashboard() {
     if (!selectedDealId) return;
 
     try {
-      await apiClient.recordMilestone(selectedDealId, milestoneForm);
+      await apiClient.recordMilestone(selectedDealId, {
+        milestone: milestoneForm.milestone as any,
+        notes: milestoneForm.notes,
+      });
       setShowMilestoneForm(false);
       setSelectedDealId(null);
-      setMilestoneForm({ title: '', description: '' });
+      setMilestoneForm({ milestone: 'warehouse', notes: '' });
       // Refresh deals to show new milestone
       fetchTraderDeals();
     } catch (err: any) {
@@ -170,7 +173,7 @@ export default function TraderDashboard() {
               </div>
               <h3 className="text-lg font-medium text-gray-900 mb-2">No deals found</h3>
               <p className="text-gray-600 mb-4">
-                You haven't created any trade deals yet. Get started by creating your first deal.
+                You haven&apos;t created any trade deals yet. Get started by creating your first deal.
               </p>
               <button className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 transition-colors">
                 Create Your First Deal
@@ -288,23 +291,26 @@ export default function TraderDashboard() {
                   <div className="space-y-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Milestone Title
+                        Milestone Typen
                       </label>
-                      <input
-                        type="text"
-                        value={milestoneForm.title}
-                        onChange={(e) => setMilestoneForm({ ...milestoneForm, title: e.target.value })}
+                      <select
+                        value={milestoneForm.milestone}
+                        onChange={(e) => setMilestoneForm({ ...milestoneForm, milestone: e.target.value })}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                         required
-                      />
+                      >
+                        <option value="warehouse">Warehouse Storage</option>
+                        <option value="port">Port Shipment</option>
+                        <option value="importer">Importer Receipt</option>
+                      </select>
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Description
+                        Notes
                       </label>
                       <textarea
-                        value={milestoneForm.description}
-                        onChange={(e) => setMilestoneForm({ ...milestoneForm, description: e.target.value })}
+                        value={milestoneForm.notes}
+                        onChange={(e) => setMilestoneForm({ ...milestoneForm, notes: e.target.value })}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                         rows={3}
                         required

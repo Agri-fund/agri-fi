@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddMemoTextToMilestonesAndDocuments1713910000000
-  implements MigrationInterface
-{
+export class AddMemoTextToMilestonesAndDocuments1713910000000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
       `ALTER TABLE "shipment_milestones" ADD COLUMN "memo_text" text`,
@@ -13,9 +11,7 @@ export class AddMemoTextToMilestonesAndDocuments1713910000000
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(
-      `ALTER TABLE "documents" DROP COLUMN "memo_text"`,
-    );
+    await queryRunner.query(`ALTER TABLE "documents" DROP COLUMN "memo_text"`);
     await queryRunner.query(
       `ALTER TABLE "shipment_milestones" DROP COLUMN "memo_text"`,
     );

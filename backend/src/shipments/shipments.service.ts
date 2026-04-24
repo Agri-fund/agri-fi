@@ -15,6 +15,7 @@ import { CreateMilestoneDto } from './dto/create-milestone.dto';
 import { StellarService } from '../stellar/stellar.service';
 import { QueueService } from '../queue/queue.service';
 import { ConfigService } from '@nestjs/config';
+import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
 
 const MILESTONE_SEQUENCE: MilestoneType[] = [
   'farm',
@@ -30,6 +31,8 @@ export class ShipmentsService {
   constructor(
     @InjectRepository(ShipmentMilestone)
     private readonly milestoneRepo: Repository<ShipmentMilestone>,
+    @InjectRepository(TradeDeal)
+    private readonly tradeDealRepo: Repository<TradeDeal>,
     private readonly stellarService: StellarService,
     private readonly queueService: QueueService,
     private readonly config: ConfigService,
@@ -42,22 +45,15 @@ export class ShipmentsService {
   ): Promise<ShipmentMilestone> {
     // Use a transaction to ensure atomicity
     return await this.dataSource.transaction(async (manager) => {
-      // Load the deal via raw query to avoid circular entity deps
-      const result = await manager.query(
-        `SELECT id, status, trader_id, escrow_secret_key FROM trade_deals WHERE id = $1`,
-        [dto.trade_deal_id],
-      );
+      // Load the deal via entity manager to avoid raw SQL
+      const deal = await manager.findOne(TradeDeal, {
+        where: { id: dto.trade_deal_id },
+        select: ['id', 'status', 'traderId', 'escrowSecretKey'],
+      });
 
-      if (!result.length) {
+      if (!deal) {
         throw new NotFoundException('Trade deal not found.');
       }
-
-      const deal = result[0] as {
-        id: string;
-        status: string;
-        trader_id: string;
-        escrow_secret_key: string;
-      };
 
       // 5.6 — only funded deals
       if (deal.status !== 'funded') {
@@ -68,7 +64,7 @@ export class ShipmentsService {
       }
 
       // 5.6 — only the assigned trader
-      if (deal.trader_id !== userId) {
+      if (deal.traderId !== userId) {
         throw new ForbiddenException({
           code: 'NOT_ASSIGNED_TRADER',
           message:
@@ -102,7 +98,7 @@ export class ShipmentsService {
       const memoText = `AGRIC:MILESTONE:${dealIdShort}:${dto.milestone}:${unixTs}`;
 
       const signerSecret =
-        deal.escrow_secret_key ||
+        deal.escrowSecretKey ||
         this.config.get<string>('STELLAR_PLATFORM_SECRET', '');
 
       const stellarTxId = await this.stellarService.recordMemo(
@@ -126,10 +122,9 @@ export class ShipmentsService {
       // 5.5 — Handle importer milestone: transition to delivered and enqueue job
       if (dto.milestone === 'importer') {
         // Update trade deal status to delivered
-        await manager.query(
-          `UPDATE trade_deals SET status = 'delivered' WHERE id = $1`,
-          [dto.trade_deal_id],
-        );
+        await manager.update(TradeDeal, dto.trade_deal_id, {
+          status: 'delivered',
+        });
 
         // Enqueue deal.delivered job for escrow release
         await this.queueService.enqueueDealDelivered(dto.trade_deal_id);
@@ -145,12 +140,12 @@ export class ShipmentsService {
 
   async findByDeal(tradeDealId: string): Promise<ShipmentMilestone[]> {
     // First verify the trade deal exists
-    const dealExists = await this.milestoneRepo.manager.query(
-      `SELECT id FROM trade_deals WHERE id = $1`,
-      [tradeDealId],
-    );
+    const deal = await this.tradeDealRepo.findOne({
+      where: { id: tradeDealId },
+      select: ['id'],
+    });
 
-    if (!dealExists.length) {
+    if (!deal) {
       throw new NotFoundException('Trade deal not found');
     }
 

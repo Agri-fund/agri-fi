@@ -6,10 +6,10 @@ import { PinoLogger } from 'nestjs-pino';
 import { StellarService } from '../stellar/stellar.service';
 import { TradeDealsService } from '../trade-deals/trade-deals.service';
 import { Investment } from '../investments/entities/investment.entity';
-import { 
-  DealPublishPayload, 
-  InvestmentFundPayload, 
-  BasePayload 
+import {
+  DealPublishPayload,
+  InvestmentFundPayload,
+  BasePayload,
 } from './queue.service';
 
 const MAX_RETRIES = 3;
@@ -38,7 +38,10 @@ export class QueueProcessor {
     @Ctx() context: RmqContext,
   ) {
     this.setCorrelationId(data);
-    this.logger.info({ dealId: data.dealId }, `Processing deal.publish for deal ${data.dealId}`);
+    this.logger.info(
+      { dealId: data.dealId },
+      `Processing deal.publish for deal ${data.dealId}`,
+    );
 
     try {
       // Call StellarService.issueTradeToken
@@ -98,16 +101,13 @@ export class QueueProcessor {
         );
         const stellarTxId: string = result.hash;
 
-        // Transfer Trade_Tokens from escrow to investor
-        const escrowSecret = this.stellarService.decryptSecret(
-          data.encryptedEscrowSecret,
-        );
-        await (this.stellarService as any).transferTokensToInvestor(
+        // 4. Transfer Trade_Tokens from escrow account to investor wallet
+        await this.stellarService.transferTradeTokens(
           escrowSecret,
-          data.escrowPublicKey,
-          data.investorWallet,
-          data.assetCode,
-          data.tokenAmount,
+          deal.escrowPublicKey,
+          investment.investorWallet,
+          deal.assetCode,
+          investment.tokenAmount,
         );
 
         // Confirm investment and increment total_invested
@@ -128,11 +128,11 @@ export class QueueProcessor {
         attempt++;
         lastError = error;
         this.logger.warn(
-          { 
-            investmentId: data.investmentId, 
-            attempt, 
-            maxRetries: MAX_RETRIES, 
-            error: error.message 
+          {
+            investmentId: data.investmentId,
+            attempt,
+            maxRetries: MAX_RETRIES,
+            error: error.message,
           },
           `investment.fund attempt ${attempt}/${MAX_RETRIES} failed for ${data.investmentId}: ${error.message}`,
         );
@@ -145,10 +145,10 @@ export class QueueProcessor {
 
     // All retries exhausted — mark investment as failed
     this.logger.error(
-      { 
-        investmentId: data.investmentId, 
-        maxRetries: MAX_RETRIES, 
-        error: lastError?.message 
+      {
+        investmentId: data.investmentId,
+        maxRetries: MAX_RETRIES,
+        error: lastError?.message,
       },
       `investment.fund permanently failed for ${data.investmentId} after ${MAX_RETRIES} attempts: ${lastError?.message}`,
     );

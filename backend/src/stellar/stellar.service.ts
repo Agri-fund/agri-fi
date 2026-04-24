@@ -11,7 +11,12 @@ import {
   BASE_FEE,
   Memo,
 } from 'stellar-sdk';
-import { createDecipheriv, createCipheriv, randomBytes, createHash } from 'crypto';
+import {
+  createDecipheriv,
+  createCipheriv,
+  randomBytes,
+  createHash,
+} from 'crypto';
 
 export interface InvestorShare {
   walletAddress: string;
@@ -30,7 +35,7 @@ export class StellarService {
     private readonly logger: PinoLogger,
   ) {
     this.logger.setContext(StellarService.name);
-    
+
     const horizonUrl = config.get<string>(
       'STELLAR_HORIZON_URL',
       'https://horizon-testnet.stellar.org',
@@ -46,7 +51,10 @@ export class StellarService {
       ? Keypair.fromSecret(platformSecret)
       : Keypair.random();
 
-    this.logger.info({ network, horizonUrl }, `StellarService initialized on ${network}`);
+    this.logger.info(
+      { network, horizonUrl },
+      `StellarService initialized on ${network}`,
+    );
   }
 
   /**
@@ -81,12 +89,12 @@ export class StellarService {
     await this.server.submitTransaction(tx);
 
     this.logger.info(
-      { 
-        tradeDealId, 
+      {
+        tradeDealId,
         escrowPublicKey: escrowKeypair.publicKey(),
-        memo: `escrow:${tradeDealId.slice(0, 20)}`
+        memo: `escrow:${tradeDealId.slice(0, 20)}`,
       },
-      'Escrow account created successfully'
+      'Escrow account created successfully',
     );
 
     return {
@@ -178,14 +186,14 @@ export class StellarService {
 
     const txId = (mintResult as any).hash as string;
     this.logger.info(
-      { 
-        assetCode, 
-        txId, 
+      {
+        assetCode,
+        txId,
         issuerPublicKey: issuerKeypair.publicKey(),
         escrowPublicKey,
-        tokenCount
+        tokenCount,
       },
-      'Trade token issued successfully'
+      'Trade token issued successfully',
     );
 
     return {
@@ -233,7 +241,7 @@ export class StellarService {
     // If escrow secret and asset info provided, transfer Trade_Tokens to investor
     if (encryptedEscrowSecret && assetCode && tokenAmount !== undefined) {
       const escrowSecret = this.decryptSecret(encryptedEscrowSecret);
-      await this.transferTokensToInvestor(
+      await this.transferTradeTokens(
         escrowSecret,
         escrowPublicKey,
         investorWallet,
@@ -248,7 +256,7 @@ export class StellarService {
   /**
    * Transfers Trade_Tokens from escrow account to investor wallet.
    */
-  private async transferTokensToInvestor(
+  public async transferTradeTokens(
     escrowSecret: string,
     escrowPublicKey: string,
     investorWallet: string,
@@ -279,13 +287,13 @@ export class StellarService {
     const result = await this.server.submitTransaction(tx);
     const txId = (result as any).hash as string;
     this.logger.info(
-      { 
-        tokenAmount, 
-        assetCode, 
-        investorWallet, 
-        txId 
+      {
+        tokenAmount,
+        assetCode,
+        investorWallet,
+        txId,
       },
-      `Transferred ${tokenAmount} ${assetCode} tokens to investor`
+      `Transferred ${tokenAmount} ${assetCode} tokens to investor`,
     );
     return txId;
   }
@@ -515,7 +523,10 @@ export class StellarService {
     const tx = TransactionBuilder.fromXDR(signedXdr, this.networkPassphrase);
     const result = await this.server.submitTransaction(tx);
 
-    this.logger.info({ txId: (result as any).hash }, 'Transaction submitted successfully');
+    this.logger.info(
+      { txId: (result as any).hash },
+      'Transaction submitted successfully',
+    );
     return result;
   }
 

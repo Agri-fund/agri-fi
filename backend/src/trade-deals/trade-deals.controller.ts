@@ -32,9 +32,7 @@ interface AuthRequest extends Request {
 @ApiTags('trade-deals')
 @Controller('trade-deals')
 export class TradeDealsController {
-  constructor(
-    private readonly tradeDealsService: TradeDealsService,
-  ) {}
+  constructor(private readonly tradeDealsService: TradeDealsService) {}
 
   @Post()
   @UseGuards(AuthGuard('jwt'), KycGuard)

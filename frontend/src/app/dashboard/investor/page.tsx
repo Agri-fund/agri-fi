@@ -194,7 +194,7 @@ export default function InvestorDashboard() {
               </div>
               <h3 className="text-lg font-medium text-gray-900 mb-2">No investments found</h3>
               <p className="text-gray-600 mb-4">
-                You haven't made any investments yet. Browse available deals to start investing in agricultural projects.
+                You haven&apos;t made any investments yet. Browse available deals to start investing in agricultural projects.
               </p>
               <button className="bg-purple-600 text-white px-6 py-2 rounded hover:bg-purple-700 transition-colors">
                 Browse Available Deals

@@ -22,11 +22,6 @@ export const useWallet = (): UseWalletReturn => {
     error: null,
   });
 
-  // Check wallet connection status on mount
-  useEffect(() => {
-    checkConnection();
-  }, []);
-
   const checkConnection = useCallback(async () => {
     try {
       setState(prev => ({ ...prev, isLoading: true, error: null }));
@@ -58,6 +53,11 @@ export const useWallet = (): UseWalletReturn => {
       }));
     }
   }, []);
+
+  // Check wallet connection status on mount
+  useEffect(() => {
+    checkConnection();
+  }, [checkConnection]);
 
   const connect = useCallback(async () => {
     try {

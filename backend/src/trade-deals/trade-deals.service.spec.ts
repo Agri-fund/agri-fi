@@ -205,8 +205,12 @@ describe('TradeDealsService', () => {
 
       const result = await service.publishDeal('deal-uuid', 'trader-uuid');
 
-      expect(stellarService.createEscrowAccount).toHaveBeenCalledWith('deal-uuid');
-      expect(stellarService.encryptSecret).toHaveBeenCalledWith(mockEscrowKeys.secretKey);
+      expect(stellarService.createEscrowAccount).toHaveBeenCalledWith(
+        'deal-uuid',
+      );
+      expect(stellarService.encryptSecret).toHaveBeenCalledWith(
+        mockEscrowKeys.secretKey,
+      );
       expect(stellarService.issueTradeToken).toHaveBeenCalledWith(
         deal.tokenSymbol,
         mockEscrowKeys.publicKey,
@@ -234,7 +238,9 @@ describe('TradeDealsService', () => {
 
       const result = await service.publishDeal('deal-uuid', 'trader-uuid');
 
-      expect(stellarService.encryptSecret).toHaveBeenCalledWith(mockEscrowKeys.secretKey);
+      expect(stellarService.encryptSecret).toHaveBeenCalledWith(
+        mockEscrowKeys.secretKey,
+      );
       expect(result.escrowSecretKey).toBe('encrypted-secret');
       expect(result.escrowSecretKey).not.toBe(mockEscrowKeys.secretKey);
     });
@@ -245,7 +251,9 @@ describe('TradeDealsService', () => {
         documents: [{ id: 'doc-1' }],
       };
       tradeDealRepo.findOne.mockResolvedValue(deal);
-      stellarService.createEscrowAccount.mockRejectedValue(new Error('Stellar network error'));
+      stellarService.createEscrowAccount.mockRejectedValue(
+        new Error('Stellar network error'),
+      );
 
       await expect(
         service.publishDeal('deal-uuid', 'trader-uuid'),
@@ -260,7 +268,9 @@ describe('TradeDealsService', () => {
         documents: [{ id: 'doc-1' }],
       };
       tradeDealRepo.findOne.mockResolvedValue(deal);
-      stellarService.issueTradeToken.mockRejectedValue(new Error('Token issuance failed'));
+      stellarService.issueTradeToken.mockRejectedValue(
+        new Error('Token issuance failed'),
+      );
 
       await expect(
         service.publishDeal('deal-uuid', 'trader-uuid'),
@@ -275,16 +285,21 @@ describe('TradeDealsService', () => {
         documents: [{ id: 'doc-1' }],
       };
       tradeDealRepo.findOne.mockResolvedValue(deal);
-      stellarService.createEscrowAccount.mockRejectedValue(new Error('Network error'));
+      stellarService.createEscrowAccount.mockRejectedValue(
+        new Error('Network error'),
+      );
 
       await expect(
         service.publishDeal('deal-uuid', 'trader-uuid'),
       ).rejects.toThrow(UnprocessableEntityException);
 
       // Verify deal status was not updated to 'open'
-      expect(tradeDealRepo.update).not.toHaveBeenCalledWith('deal-uuid', expect.objectContaining({
-        status: 'open',
-      }));
+      expect(tradeDealRepo.update).not.toHaveBeenCalledWith(
+        'deal-uuid',
+        expect.objectContaining({
+          status: 'open',
+        }),
+      );
     });
 
     it('throws UnprocessableEntityException when deal has no documents', async () => {

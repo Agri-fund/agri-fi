@@ -217,7 +217,7 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
       </button>
 
       <p className="text-xs text-gray-500 text-center">
-        This will open Freighter to sign the transaction. Make sure you're on Stellar testnet.
+        This will open Freighter to sign the transaction. Make sure you&apos;re on Stellar testnet.
       </p>
     </form>
   );
