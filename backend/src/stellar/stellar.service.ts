@@ -476,8 +476,24 @@ export class StellarService {
   }
 
   /**
+   * Checks whether an account already has a trustline for the given asset.
+   */
+  private async hasTrustline(
+    account: Horizon.AccountResponse,
+    asset: Asset,
+  ): Promise<boolean> {
+    return account.balances.some(
+      (b: any) =>
+        b.asset_type !== 'native' &&
+        b.asset_code === asset.getCode() &&
+        b.asset_issuer === asset.getIssuer(),
+    );
+  }
+
+  /**
    * Creates an unsigned XDR transaction for an investment.
-   * The investor will sign this transaction to fund the escrow account.
+   * Prepends a changeTrust operation when the investor lacks a trustline.
+   * Throws a descriptive error when the investor has insufficient XLM reserve.
    */
   async createInvestmentTransaction(
     investorWallet: string,
@@ -485,15 +501,40 @@ export class StellarService {
     amountUSD: number,
     assetCode: string,
     tokenAmount: number,
+    issuerPublicKey: string,
   ): Promise<string> {
     const investorAccount = await this.server.loadAccount(investorWallet);
+    const tradeAsset = new Asset(assetCode, issuerPublicKey);
 
-    // In MVP, we use XLM as the payment asset (1 XLM ≈ $1 for testnet simplicity)
-    // Production would use USDC
-    const tx = new TransactionBuilder(investorAccount, {
+    const needsTrustline = !(await this.hasTrustline(investorAccount, tradeAsset));
+
+    if (needsTrustline) {
+      // Each trustline requires 0.5 XLM base reserve; ensure the investor can cover it
+      const xlmBalance = parseFloat(
+        (investorAccount.balances.find((b: any) => b.asset_type === 'native') as any)?.balance ?? '0',
+      );
+      // Minimum spendable = existing subentries * 0.5 + 2 (base) + 0.5 (new trustline) + fee buffer
+      const minRequired = (investorAccount.subentry_count + 1) * 0.5 + 2 + 0.001;
+      if (xlmBalance < minRequired) {
+        throw new Error(
+          `Insufficient XLM balance for trustline base reserve. ` +
+          `Need at least ${minRequired.toFixed(3)} XLM, have ${xlmBalance} XLM.`,
+        );
+      }
+    }
+
+    const txBuilder = new TransactionBuilder(investorAccount, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
-    })
+    });
+
+    if (needsTrustline) {
+      txBuilder.addOperation(
+        Operation.changeTrust({ asset: tradeAsset }),
+      );
+    }
+
+    txBuilder
       .addOperation(
         Operation.payment({
           destination: escrowPublicKey,
@@ -502,10 +543,9 @@ export class StellarService {
         }),
       )
       .addMemo(Memo.text(`invest:${assetCode}:${tokenAmount}`))
-      .setTimeout(300) // 5 minutes for user to sign
-      .build();
+      .setTimeout(300);
 
-    return tx.toXDR();
+    return txBuilder.build().toXDR();
   }
 
   /**
