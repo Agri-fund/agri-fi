@@ -52,6 +52,61 @@ describe('StellarService', () => {
     expect(service).toBeInstanceOf(StellarService);
   });
 
+  describe('createInvestmentTransaction', () => {
+    const investorWallet = 'GINVESTOR';
+    const escrowPublicKey = 'GESCROW';
+    const assetCode = 'COCOA1';
+    const issuerPublicKey = 'GISSUER';
+
+    const makeAccount = (xlmBalance: string, subentryCount: number, hasTrustline: boolean) => ({
+      subentry_count: subentryCount,
+      balances: [
+        { asset_type: 'native', balance: xlmBalance },
+        ...(hasTrustline
+          ? [{ asset_type: 'credit_alphanum12', asset_code: assetCode, asset_issuer: issuerPublicKey, balance: '0' }]
+          : []),
+      ],
+      incrementSequenceNumber: jest.fn(),
+      sequenceNumber: jest.fn().mockReturnValue('100'),
+      accountId: jest.fn().mockReturnValue(investorWallet),
+    });
+
+    it('should build a single-op XDR when trustline already exists', async () => {
+      (service as any).server = {
+        loadAccount: jest.fn().mockResolvedValue(makeAccount('100', 1, true)),
+      };
+
+      const xdr = await service.createInvestmentTransaction(
+        investorWallet, escrowPublicKey, 100, assetCode, 1, issuerPublicKey,
+      );
+      expect(typeof xdr).toBe('string');
+      expect(xdr.length).toBeGreaterThan(0);
+    });
+
+    it('should prepend changeTrust op when trustline is missing', async () => {
+      (service as any).server = {
+        loadAccount: jest.fn().mockResolvedValue(makeAccount('10', 0, false)),
+      };
+
+      const xdr = await service.createInvestmentTransaction(
+        investorWallet, escrowPublicKey, 100, assetCode, 1, issuerPublicKey,
+      );
+      expect(typeof xdr).toBe('string');
+    });
+
+    it('should throw when XLM balance is insufficient for trustline reserve', async () => {
+      (service as any).server = {
+        loadAccount: jest.fn().mockResolvedValue(makeAccount('1', 0, false)),
+      };
+
+      await expect(
+        service.createInvestmentTransaction(
+          investorWallet, escrowPublicKey, 100, assetCode, 1, issuerPublicKey,
+        ),
+      ).rejects.toThrow('Insufficient XLM balance for trustline base reserve');
+    });
+  });
+
   describe('getTransactionStatus', () => {
     it('should return "pending" for a 404 response', async () => {
       // Mock the server's transactions call to simulate a 404
