@@ -48,6 +48,9 @@ export class StellarService {
       network === 'mainnet' ? Networks.PUBLIC : Networks.TESTNET;
 
     const platformSecret = config.get<string>('STELLAR_PLATFORM_SECRET', '');
+    if (!platformSecret && process.env.NODE_ENV !== 'test') {
+      throw new Error('STELLAR_PLATFORM_SECRET is required in production and development environments');
+    }
     this.platformKeypair = platformSecret
       ? Keypair.fromSecret(platformSecret)
       : Keypair.random();
