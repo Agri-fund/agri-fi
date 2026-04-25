@@ -6,6 +6,8 @@ import {
   IsNotEmpty,
   IsInt,
   Min,
+  IsObject,
+  IsOptional,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -36,4 +38,17 @@ export class CreateInvestmentDto {
   @IsNumber()
   @IsPositive()
   amountUsd: number;
+
+  @ApiProperty({
+    required: false,
+    description:
+      'Originator and beneficiary metadata for FATF Travel Rule readiness on large transfers.',
+    example: {
+      originator: { name: 'Ada Investor', walletAddress: 'GINVESTOR...' },
+      beneficiary: { name: 'Agri-Fi Escrow', walletAddress: 'GESCROW...' },
+    },
+  })
+  @IsOptional()
+  @IsObject()
+  complianceData?: Record<string, unknown>;
 }

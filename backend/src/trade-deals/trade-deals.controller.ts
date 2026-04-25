@@ -24,6 +24,8 @@ import { User } from '../auth/entities/user.entity';
 import { KycGuard } from '../auth/kyc.guard';
 import { OptionalJwtGuard } from '../auth/optional-jwt.guard';
 import { CreateTradeDealDto } from './dto/create-trade-deal.dto';
+import { PaginatedResult } from '../common/pagination';
+import { TradeDealAccessRequest, TradeDealsGuard } from './trade-deals.guard';
 
 interface AuthRequest extends Request {
   user: User;
@@ -83,7 +85,7 @@ export class TradeDealsController {
     @Query('commodity') commodity?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
-  ): Promise<any[]> {
+  ): Promise<PaginatedResult<any>> {
     return this.tradeDealsService.findOpen({
       commodity,
       page: page ? parseInt(page, 10) : undefined,
@@ -92,17 +94,18 @@ export class TradeDealsController {
   }
 
   @Get(':id')
-  @UseGuards(AuthGuard('jwt'))
-  @ApiBearerAuth('jwt')
+  @UseGuards(OptionalJwtGuard, TradeDealsGuard)
   @ApiOperation({
     summary: 'Get trade deal detail including documents and milestones',
   })
   @ApiParam({ name: 'id', description: 'Trade deal UUID' })
   @ApiResponse({ status: 200, description: 'Trade deal detail' })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
   @ApiResponse({ status: 404, description: 'Trade deal not found' })
-  @UseGuards(OptionalJwtGuard)
-  async findOne(@Param('id') id: string): Promise<any> {
-    return this.tradeDealsService.findOne(id);
+  async findOne(
+    @Param('id') id: string,
+    @Request() req: TradeDealAccessRequest,
+  ): Promise<any> {
+    return this.tradeDealsService.findOne(id, req.tradeDealAccess);
   }
 }

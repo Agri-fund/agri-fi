@@ -14,6 +14,11 @@ import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.enti
 import { CreateTradeDealDto } from './dto/create-trade-deal.dto';
 import { User } from '../auth/entities/user.entity';
 import { StellarService } from '../stellar/stellar.service';
+import {
+  normalizePagination,
+  PaginatedResult,
+  toPaginatedResult,
+} from '../common/pagination';
 
 const VALID_DOC_TYPES: DocumentType[] = [
   'purchase_agreement',
@@ -123,10 +128,8 @@ export class TradeDealsService {
     commodity?: string;
     page?: number;
     limit?: number;
-  }): Promise<any[]> {
-    const page = query.page ?? 1;
-    const limit = query.limit ?? 20;
-    const skip = (page - 1) * limit;
+  }): Promise<PaginatedResult<any>> {
+    const { page, limit, skip } = normalizePagination(query);
 
     const qb = this.tradeDealRepo
       .createQueryBuilder('deal')
@@ -153,9 +156,9 @@ export class TradeDealsService {
       });
     }
 
-    const deals = await qb.getMany();
+    const [deals, total] = await qb.getManyAndCount();
 
-    return deals.map((deal) => ({
+    const data = deals.map((deal) => ({
       id: deal.id,
       commodity: deal.commodity,
       quantity: deal.quantity,
@@ -169,9 +172,14 @@ export class TradeDealsService {
       trader_id: deal.traderId,
       remaining_funding: Number(deal.totalValue) - Number(deal.totalInvested),
     }));
+
+    return toPaginatedResult(data, total, page, limit);
   }
 
-  async findOne(id: string): Promise<any> {
+  async findOne(
+    id: string,
+    access?: { canViewSensitive?: boolean },
+  ): Promise<any> {
     const deal = await this.tradeDealRepo.findOne({
       where: { id },
       relations: ['farmer', 'trader', 'documents', 'investments'],
@@ -194,32 +202,56 @@ export class TradeDealsService {
     );
     const tokensRemaining = Number(deal.tokenCount) - tokensSold;
 
-    return {
+    const canViewSensitive = !!access?.canViewSensitive;
+    const publicDetail = {
       id: deal.id,
       commodity: deal.commodity,
       quantity: deal.quantity,
       unit: deal.quantityUnit,
+      quantity_unit: deal.quantityUnit,
       totalValue: deal.totalValue,
+      total_value: deal.totalValue,
       deliveryDate: deal.deliveryDate,
+      delivery_date: deal.deliveryDate,
       status: deal.status,
       tokenCount: deal.tokenCount,
+      token_count: deal.tokenCount,
       tokenSymbol: deal.tokenSymbol,
+      token_symbol: deal.tokenSymbol,
       totalInvested: deal.totalInvested,
-      farmerId: deal.farmerId,
-      traderId: deal.traderId,
+      total_invested: deal.totalInvested,
       tokensRemaining,
       traderName: deal.trader?.email || 'Unknown Trader',
       description: `${deal.quantity} ${deal.quantityUnit} of ${deal.commodity} for delivery by ${new Date(
         deal.deliveryDate,
       ).toLocaleDateString()}`,
+    };
+
+    if (!canViewSensitive) {
+      return publicDetail;
+    }
+
+    return {
+      ...publicDetail,
+      farmerId: deal.farmerId,
+      farmer_id: deal.farmerId,
+      traderId: deal.traderId,
+      trader_id: deal.traderId,
+      escrowPublicKey: deal.escrowPublicKey,
+      escrow_public_key: deal.escrowPublicKey,
+      issuerPublicKey: deal.issuerPublicKey,
+      issuer_public_key: deal.issuerPublicKey,
       documents: deal.documents ?? [],
       milestones: milestones.map((milestone) => ({
         id: milestone.id,
         milestone: milestone.milestone,
         notes: milestone.notes,
         stellarTxId: milestone.stellarTxId,
+        stellar_tx_id: milestone.stellarTxId,
         recordedBy: milestone.recordedBy,
+        recorded_by: milestone.recordedBy,
         recordedAt: milestone.recordedAt,
+        recorded_at: milestone.recordedAt,
       })),
     };
   }

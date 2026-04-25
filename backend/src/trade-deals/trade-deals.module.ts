@@ -8,6 +8,7 @@ import { Investment } from '../investments/entities/investment.entity';
 import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.entity';
 import { User } from '../auth/entities/user.entity';
 import { StellarModule } from '../stellar/stellar.module';
+import { TradeDealsGuard } from './trade-deals.guard';
 
 @Module({
   imports: [
@@ -21,7 +22,7 @@ import { StellarModule } from '../stellar/stellar.module';
     StellarModule,
   ],
   controllers: [TradeDealsController],
-  providers: [TradeDealsService],
+  providers: [TradeDealsService, TradeDealsGuard],
   exports: [TradeDealsService],
 })
 export class TradeDealsModule {}

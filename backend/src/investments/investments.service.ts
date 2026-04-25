@@ -13,6 +13,12 @@ import {
 } from '../trade-deals/entities/trade-deal.entity';
 import { StellarService } from '../stellar/stellar.service';
 import { QueueService } from '../queue/queue.service';
+import {
+  normalizePagination,
+  PaginatedResult,
+  PaginationQuery,
+  toPaginatedResult,
+} from '../common/pagination';
 
 @Injectable()
 export class InvestmentsService {
@@ -92,6 +98,7 @@ export class InvestmentsService {
       tokenAmount: dto.tokenAmount,
       amountUsd: dto.amountUsd,
       status: InvestmentStatus.PENDING,
+      complianceData: dto.complianceData ?? null,
     });
 
     return this.investmentRepo.save(investment);
@@ -258,19 +265,35 @@ export class InvestmentsService {
     }
   }
 
-  async getInvestmentsByTradeDeal(tradeDealId: string): Promise<Investment[]> {
-    return this.investmentRepo.find({
+  async getInvestmentsByTradeDeal(
+    tradeDealId: string,
+    query: PaginationQuery = {},
+  ): Promise<PaginatedResult<Investment>> {
+    const { page, limit, skip } = normalizePagination(query);
+    const [data, total] = await this.investmentRepo.findAndCount({
       where: { tradeDealId },
       relations: ['investor'],
       order: { createdAt: 'DESC' },
+      skip,
+      take: limit,
     });
+
+    return toPaginatedResult(data, total, page, limit);
   }
 
-  async getInvestmentsByInvestor(investorId: string): Promise<Investment[]> {
-    return this.investmentRepo.find({
+  async getInvestmentsByInvestor(
+    investorId: string,
+    query: PaginationQuery = {},
+  ): Promise<PaginatedResult<Investment>> {
+    const { page, limit, skip } = normalizePagination(query);
+    const [data, total] = await this.investmentRepo.findAndCount({
       where: { investorId },
       relations: ['tradeDeal'],
       order: { createdAt: 'DESC' },
+      skip,
+      take: limit,
     });
+
+    return toPaginatedResult(data, total, page, limit);
   }
 }

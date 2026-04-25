@@ -8,6 +8,7 @@ import {
   Request,
   HttpCode,
   HttpStatus,
+  Query,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -16,6 +17,7 @@ import {
   ApiBearerAuth,
   ApiParam,
   ApiBody,
+  ApiQuery,
 } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { InvestmentsService } from './investments.service';
@@ -23,6 +25,7 @@ import { CreateInvestmentDto } from './dto/create-investment.dto';
 import { KycGuard } from '../auth/kyc.guard';
 import { Roles, RolesGuard } from '../auth/roles.guard';
 import { StellarService } from '../stellar/stellar.service';
+import { PaginatedResult } from '../common/pagination';
 
 @ApiTags('investments')
 @ApiBearerAuth('jwt')
@@ -124,19 +127,37 @@ export class InvestmentsController {
   @Get('trade-deal/:tradeDealId')
   @ApiOperation({ summary: 'List all investments for a trade deal' })
   @ApiParam({ name: 'tradeDealId', description: 'Trade deal UUID' })
+  @ApiQuery({ name: 'page', required: false, example: 1 })
+  @ApiQuery({ name: 'limit', required: false, example: 20 })
   @ApiResponse({ status: 200, description: 'List of investments' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'Trade deal not found' })
-  async getInvestmentsByTradeDeal(@Param('tradeDealId') tradeDealId: string) {
-    return this.investmentsService.getInvestmentsByTradeDeal(tradeDealId);
+  async getInvestmentsByTradeDeal(
+    @Param('tradeDealId') tradeDealId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ): Promise<PaginatedResult<any>> {
+    return this.investmentsService.getInvestmentsByTradeDeal(tradeDealId, {
+      page: page ? parseInt(page, 10) : undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    });
   }
 
   @Get('my-investments')
   @ApiOperation({ summary: "List the authenticated investor's investments" })
+  @ApiQuery({ name: 'page', required: false, example: 1 })
+  @ApiQuery({ name: 'limit', required: false, example: 20 })
   @ApiResponse({ status: 200, description: 'List of investments' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  async getMyInvestments(@Request() req: { user: { id: string } }) {
-    return this.investmentsService.getInvestmentsByInvestor(req.user.id);
+  async getMyInvestments(
+    @Request() req: { user: { id: string } },
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ): Promise<PaginatedResult<any>> {
+    return this.investmentsService.getInvestmentsByInvestor(req.user.id, {
+      page: page ? parseInt(page, 10) : undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    });
   }
 
   /**
@@ -187,10 +208,11 @@ export class InvestmentsController {
       tokenAmount: number;
     }>,
   ) {
-    const unsignedXdr = await this.stellarService.createBulkInvestmentTransaction(
-      investorWalletAddress,
-      investments,
-    );
+    const unsignedXdr =
+      await this.stellarService.createBulkInvestmentTransaction(
+        investorWalletAddress,
+        investments,
+      );
     return { unsignedXdr };
   }
 
@@ -201,7 +223,8 @@ export class InvestmentsController {
   @Post('sell-offer')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Build a DEX sell offer transaction for trade tokens (secondary market)',
+    summary:
+      'Build a DEX sell offer transaction for trade tokens (secondary market)',
   })
   @ApiBody({
     schema: {
@@ -253,7 +276,10 @@ export class InvestmentsController {
     summary: 'Get active DEX sell offers for a trade token (order book)',
   })
   @ApiParam({ name: 'tokenCode', description: 'Trade token asset code' })
-  @ApiParam({ name: 'tokenIssuer', description: 'Trade token issuer public key' })
+  @ApiParam({
+    name: 'tokenIssuer',
+    description: 'Trade token issuer public key',
+  })
   @ApiResponse({ status: 200, description: 'List of active sell offers' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async getActiveOffers(

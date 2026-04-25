@@ -43,6 +43,9 @@ export class Investment {
   @Column({ name: 'stellar_tx_id', nullable: true })
   stellarTxId: string;
 
+  @Column({ name: 'compliance_data', type: 'jsonb', nullable: true })
+  complianceData: Record<string, unknown> | null;
+
   @Column({
     type: 'text',
     default: InvestmentStatus.PENDING,
