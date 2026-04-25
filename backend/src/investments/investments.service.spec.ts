@@ -43,6 +43,7 @@ const mockInvestment = (): Investment => ({
   tokenAmount: 100,
   amountUsd: 1000,
   stellarTxId: null,
+  complianceData: null,
   status: InvestmentStatus.PENDING,
   createdAt: new Date(),
   tradeDeal: null,
@@ -57,6 +58,7 @@ describe('InvestmentsService', () => {
     create: jest.Mock;
     save: jest.Mock;
     update: jest.Mock;
+    findAndCount: jest.Mock;
   };
   let tradeDealRepo: { findOne: jest.Mock; update: jest.Mock };
   let stellarService: { fundEscrow: jest.MockedFunction<any> };
@@ -69,6 +71,7 @@ describe('InvestmentsService', () => {
       create: jest.fn(),
       save: jest.fn(),
       update: jest.fn(),
+      findAndCount: jest.fn(),
     };
     tradeDealRepo = { findOne: jest.fn(), update: jest.fn() };
     stellarService = { fundEscrow: jest.fn() };
@@ -131,6 +134,7 @@ describe('InvestmentsService', () => {
         tokenAmount: dto.tokenAmount,
         amountUsd: dto.amountUsd,
         status: InvestmentStatus.PENDING,
+        complianceData: null,
       });
     });
 
@@ -393,32 +397,38 @@ describe('InvestmentsService', () => {
   describe('getInvestmentsByTradeDeal', () => {
     it('returns investments for a trade deal', async () => {
       const investments = [mockInvestment()];
-      investmentRepo.find.mockResolvedValue(investments);
+      investmentRepo.findAndCount.mockResolvedValue([investments, 1]);
 
       const result = await service.getInvestmentsByTradeDeal('deal-1');
 
-      expect(investmentRepo.find).toHaveBeenCalledWith({
+      expect(investmentRepo.findAndCount).toHaveBeenCalledWith({
         where: { tradeDealId: 'deal-1' },
         relations: ['investor'],
         order: { createdAt: 'DESC' },
+        skip: 0,
+        take: 20,
       });
-      expect(result).toEqual(investments);
+      expect(result.data).toEqual(investments);
+      expect(result.meta.total).toBe(1);
     });
   });
 
   describe('getInvestmentsByInvestor', () => {
     it('returns investments for an investor', async () => {
       const investments = [mockInvestment()];
-      investmentRepo.find.mockResolvedValue(investments);
+      investmentRepo.findAndCount.mockResolvedValue([investments, 1]);
 
       const result = await service.getInvestmentsByInvestor('investor-1');
 
-      expect(investmentRepo.find).toHaveBeenCalledWith({
+      expect(investmentRepo.findAndCount).toHaveBeenCalledWith({
         where: { investorId: 'investor-1' },
         relations: ['tradeDeal'],
         order: { createdAt: 'DESC' },
+        skip: 0,
+        take: 20,
       });
-      expect(result).toEqual(investments);
+      expect(result.data).toEqual(investments);
+      expect(result.meta.total).toBe(1);
     });
   });
 });

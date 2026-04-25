@@ -1,0 +1,130 @@
+name: Auto-Merge Bot
+
+on:
+  pull_request_review:
+    types: [submitted]
+  check_suite:
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    name: Auto-merge approved PRs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            // Resolve the PR number from the event
+            let prNumber;
+            if (context.eventName === 'pull_request_review') {
+              prNumber = context.payload.pull_request.number;
+            } else if (context.eventName === 'check_suite') {
+              const prs = context.payload.check_suite.pull_requests;
+              if (!prs || prs.length === 0) return;
+              prNumber = prs[0].number;
+            } else {
+              return;
+            }
+
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber,
+            });
+
+            // Guard: draft PRs are skipped
+            if (pr.draft) {
+              console.log('PR is a draft — skipping.');
+              return;
+            }
+
+            // Guard: no-auto-merge label prevents merge
+            const labelNames = pr.labels.map(l => l.name);
+            if (labelNames.includes('no-auto-merge')) {
+              console.log('no-auto-merge label present — skipping.');
+              return;
+            }
+
+            // Guard: must carry ready-for-review label
+            if (!labelNames.includes('ready-for-review')) {
+              console.log('ready-for-review label missing — skipping.');
+              return;
+            }
+
+            // Check reviews: need ≥1 approval and no requested changes
+            const { data: reviews } = await github.rest.pulls.listReviews({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber,
+            });
+
+            // Use the latest review per user
+            const latestByUser = {};
+            for (const r of reviews) {
+              latestByUser[r.user.login] = r.state;
+            }
+            const states = Object.values(latestByUser);
+            const approvals = states.filter(s => s === 'APPROVED');
+            const changesRequested = states.filter(s => s === 'CHANGES_REQUESTED');
+
+            if (approvals.length < 1) {
+              console.log('Not enough approvals — skipping.');
+              return;
+            }
+            if (changesRequested.length > 0) {
+              console.log('Changes requested — skipping.');
+              return;
+            }
+
+            // Check all required check runs are passing
+            const { data: checks } = await github.rest.checks.listForRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: pr.head.sha,
+            });
+
+            const incomplete = checks.check_runs.filter(
+              c => c.status !== 'completed' || c.conclusion === 'failure' || c.conclusion === 'cancelled'
+            );
+            if (incomplete.length > 0) {
+              console.log('Some checks are not passing — skipping.');
+              return;
+            }
+
+            // All conditions met — apply auto-merge label and merge
+            try {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                labels: ['auto-merge'],
+              });
+            } catch (_) {}
+
+            await github.rest.pulls.merge({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber,
+              merge_method: 'squash',
+            });
+
+            console.log(`PR #${prNumber} merged successfully.`);
+
+            // Delete the head branch unless it is main or develop
+            const branch = pr.head.ref;
+            if (branch !== 'main' && branch !== 'develop') {
+              try {
+                await github.rest.git.deleteRef({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  ref: `heads/${branch}`,
+                });
+                console.log(`Branch '${branch}' deleted.`);
+              } catch (e) {
+                console.log(`Could not delete branch '${branch}': ${e.message}`);
+              }
+            }

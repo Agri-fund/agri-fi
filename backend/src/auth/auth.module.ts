@@ -4,14 +4,16 @@ import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthController } from './auth.controller';
+import { AdminController } from './admin.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt.strategy';
 import { User } from './entities/user.entity';
+import { KycSubmission } from './entities/kyc-submission.entity';
 import { KycGuard } from './kyc.guard';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User]),
+    TypeOrmModule.forFeature([User, KycSubmission]),
     PassportModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
@@ -22,7 +24,7 @@ import { KycGuard } from './kyc.guard';
       }),
     }),
   ],
-  controllers: [AuthController],
+  controllers: [AuthController, AdminController],
   providers: [AuthService, JwtStrategy, KycGuard],
   exports: [AuthService, JwtModule, TypeOrmModule, KycGuard],
 })

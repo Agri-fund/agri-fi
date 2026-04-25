@@ -1,0 +1,261 @@
+name: PR Review Bot
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main, develop]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  detect-changes:
+    name: Detect changed areas
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+      backend: ${{ steps.filter.outputs.backend }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Filter changed paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            frontend:
+              - 'frontend/**'
+            backend:
+              - 'backend/**'
+
+  review-frontend:
+    name: Frontend checks
+    needs: detect-changes
+    if: needs.detect-changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      lint: ${{ steps.lint.outcome }}
+      typecheck: ${{ steps.typecheck.outcome }}
+      build: ${{ steps.build.outcome }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: frontend
+
+      - name: Frontend - Lint
+        id: lint
+        continue-on-error: true
+        run: pnpm run lint
+        working-directory: frontend
+
+      - name: Frontend - Type check
+        id: typecheck
+        continue-on-error: true
+        run: pnpm run build --noEmit || npx tsc --noEmit
+        working-directory: frontend
+
+      - name: Frontend - Build
+        id: build
+        continue-on-error: true
+        run: pnpm run build
+        working-directory: frontend
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:3001
+
+  review-backend:
+    name: Backend checks
+    needs: detect-changes
+    if: needs.detect-changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      lint: ${{ steps.lint.outcome }}
+      build: ${{ steps.build.outcome }}
+      tests: ${{ steps.tests.outcome }}
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: agri
+          POSTGRES_PASSWORD: agri
+          POSTGRES_DB: agri_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      rabbitmq:
+        image: rabbitmq:3-management
+        ports:
+          - 5672:5672
+        options: >-
+          --health-cmd "rabbitmq-diagnostics ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgres://agri:agri@localhost:5432/agri_test
+      JWT_SECRET: ci-test-secret
+      STELLAR_NETWORK: testnet
+      STELLAR_HORIZON_URL: https://horizon-testnet.stellar.org
+      STELLAR_PLATFORM_SECRET: ""
+      ENCRYPTION_KEY: ci-test-encryption-key-32chars!!
+      RABBITMQ_URL: amqp://localhost:5672
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: backend
+
+      - name: Backend - Lint
+        id: lint
+        continue-on-error: true
+        run: npm run lint -- --max-warnings=0
+        working-directory: backend
+
+      - name: Backend - Build
+        id: build
+        continue-on-error: true
+        run: npm run build
+        working-directory: backend
+
+      - name: Backend - Run tests
+        id: tests
+        continue-on-error: true
+        run: npm test -- --forceExit --passWithNoTests
+        working-directory: backend
+
+  post-review:
+    name: Post review comment and apply labels
+    needs: [detect-changes, review-frontend, review-backend]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply area labels
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const labels = [];
+            if ('${{ needs.detect-changes.outputs.frontend }}' === 'true') labels.push('frontend');
+            if ('${{ needs.detect-changes.outputs.backend }}' === 'true') labels.push('backend');
+            if (labels.length > 0) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                labels,
+              });
+            }
+
+      - name: Build and post review comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fe = '${{ needs.detect-changes.outputs.frontend }}' === 'true';
+            const be = '${{ needs.detect-changes.outputs.backend }}' === 'true';
+
+            const icon = (outcome) => outcome === 'success' ? '✅' : outcome === 'failure' ? '❌' : '⏭️';
+
+            let rows = '';
+            if (fe) {
+              rows += `| Frontend | Lint | ${icon('${{ needs.review-frontend.outputs.lint }}')} |\n`;
+              rows += `| Frontend | Type Check | ${icon('${{ needs.review-frontend.outputs.typecheck }}')} |\n`;
+              rows += `| Frontend | Build | ${icon('${{ needs.review-frontend.outputs.build }}')} |\n`;
+            }
+            if (be) {
+              rows += `| Backend | Lint | ${icon('${{ needs.review-backend.outputs.lint }}')} |\n`;
+              rows += `| Backend | Build | ${icon('${{ needs.review-backend.outputs.build }}')} |\n`;
+              rows += `| Backend | Tests | ${icon('${{ needs.review-backend.outputs.tests }}')} |\n`;
+            }
+
+            const allPassed = [
+              fe ? '${{ needs.review-frontend.outputs.lint }}' : null,
+              fe ? '${{ needs.review-frontend.outputs.typecheck }}' : null,
+              fe ? '${{ needs.review-frontend.outputs.build }}' : null,
+              be ? '${{ needs.review-backend.outputs.lint }}' : null,
+              be ? '${{ needs.review-backend.outputs.build }}' : null,
+              be ? '${{ needs.review-backend.outputs.tests }}' : null,
+            ].filter(Boolean).every(o => o === 'success');
+
+            const statusLabel = allPassed ? 'ready-for-review' : 'needs-work';
+            const statusIcon = allPassed ? '🟢' : '🔴';
+
+            const body = [
+              '## 🤖 Automated PR Review',
+              '',
+              `**Status:** ${statusIcon} ${allPassed ? 'All checks passed' : 'One or more checks failed'}`,
+              '',
+              '| Area | Check | Result |',
+              '|------|-------|--------|',
+              rows.trimEnd(),
+              '',
+              allPassed
+                ? '_This PR is ready for human review. Auto-merge will trigger once approved._'
+                : '_Please fix the failing checks and push again._',
+            ].join('\n');
+
+            // Remove previous bot comments to avoid clutter
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            for (const c of comments.data) {
+              if (c.user.login === 'github-actions[bot]' && c.body.includes('🤖 Automated PR Review')) {
+                await github.rest.issues.deleteComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: c.id,
+                });
+              }
+            }
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+
+            // Remove opposite label if present, then apply correct one
+            const opposite = allPassed ? 'needs-work' : 'ready-for-review';
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                name: opposite,
+              });
+            } catch (_) { /* label may not be present */ }
+
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: [statusLabel],
+            });

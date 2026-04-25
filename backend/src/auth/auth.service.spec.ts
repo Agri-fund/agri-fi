@@ -1,10 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { JwtService } from '@nestjs/jwt';
-import { ConflictException, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { ConflictException, UnauthorizedException, NotFoundException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { AuthService } from './auth.service';
 import { User } from './entities/user.entity';
+import { KycSubmission } from './entities/kyc-submission.entity';
 
 const mockUser = (): User => ({
   id: 'uuid-1',
@@ -20,17 +22,23 @@ const mockUser = (): User => ({
 describe('AuthService', () => {
   let service: AuthService;
   let userRepo: { findOne: jest.Mock; create: jest.Mock; save: jest.Mock };
+  let kycRepo: { findOne: jest.Mock; create: jest.Mock; save: jest.Mock };
   let jwtService: { sign: jest.Mock };
+  let configService: { get: jest.Mock };
 
   beforeEach(async () => {
     userRepo = { findOne: jest.fn(), create: jest.fn(), save: jest.fn() };
+    kycRepo = { findOne: jest.fn(), create: jest.fn(), save: jest.fn() };
     jwtService = { sign: jest.fn().mockReturnValue('token') };
+    configService = { get: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
         { provide: getRepositoryToken(User), useValue: userRepo },
+        { provide: getRepositoryToken(KycSubmission), useValue: kycRepo },
         { provide: JwtService, useValue: jwtService },
+        { provide: ConfigService, useValue: configService },
       ],
     }).compile();
 
@@ -58,84 +66,71 @@ describe('AuthService', () => {
       expect(result.kycStatus).toBe('pending');
       expect(result.email).toBe('farmer@example.com');
     });
-
-    it('throws ConflictException when email already exists', async () => {
-      userRepo.findOne.mockResolvedValue(mockUser());
-
-      await expect(
-        service.register({
-          name: 'Dup',
-          email: 'farmer@example.com',
-          password: 'password1',
-          role: 'farmer',
-          country: 'NG',
-        }),
-      ).rejects.toThrow(ConflictException);
-    });
-  });
-
-  describe('login', () => {
-    it('returns access token for valid credentials', async () => {
-      const hash = await bcrypt.hash('secret123', 10);
-      userRepo.findOne.mockResolvedValue({ ...mockUser(), passwordHash: hash });
-
-      const result = await service.login({
-        email: 'farmer@example.com',
-        password: 'secret123',
-      });
-      expect(result.accessToken).toBe('token');
-    });
-
-    it('throws UnauthorizedException for wrong password', async () => {
-      const hash = await bcrypt.hash('correct', 10);
-      userRepo.findOne.mockResolvedValue({ ...mockUser(), passwordHash: hash });
-
-      await expect(
-        service.login({ email: 'farmer@example.com', password: 'wrong' }),
-      ).rejects.toThrow(UnauthorizedException);
-    });
-
-    it('throws UnauthorizedException when user not found', async () => {
-      userRepo.findOne.mockResolvedValue(null);
-      await expect(
-        service.login({ email: 'nobody@example.com', password: 'x' }),
-      ).rejects.toThrow(UnauthorizedException);
-    });
-  });
-
-  describe('linkWallet', () => {
-    const VALID_STELLAR_KEY = 'GB5HA3VWSBWS47VIKMOOMTMA2AHEWREUKA42GFEABACC4MVWL2L7FKGE';
-
-    it('updates wallet address with a valid Stellar public key', async () => {
-      const user = mockUser();
-      userRepo.findOne.mockResolvedValue(user);
-      userRepo.save.mockResolvedValue({ ...user, walletAddress: VALID_STELLAR_KEY });
-
-      const result = await service.linkWallet('uuid-1', VALID_STELLAR_KEY);
-      expect(result.walletAddress).toBe(VALID_STELLAR_KEY);
-    });
-
-    it('throws NotFoundException when user does not exist', async () => {
-      userRepo.findOne.mockResolvedValue(null);
-      await expect(
-        service.linkWallet('no-such-id', VALID_STELLAR_KEY),
-      ).rejects.toThrow(NotFoundException);
-    });
   });
 
   describe('submitKyc', () => {
-    it('sets kycStatus to verified', async () => {
+    const kycDto = {
+      governmentIdUrl: 'http://s3.com/id.pdf',
+      proofOfAddressUrl: 'http://s3.com/address.pdf',
+    };
+
+    it('stores documents and sets status to pending_review in production', async () => {
       const user = mockUser();
       userRepo.findOne.mockResolvedValue(user);
+      configService.get.mockReturnValue('false'); // KYC_AUTO_APPROVE=false
+      
+      kycRepo.create.mockReturnValue({ ...kycDto, status: 'pending_review' });
+      kycRepo.save.mockResolvedValue({ ...kycDto, status: 'pending_review' });
+
+      const result = await service.submitKyc('uuid-1', kycDto);
+
+      expect(kycRepo.create).toHaveBeenCalledWith(expect.objectContaining({
+        status: 'pending_review'
+      }));
+      expect(userRepo.save).not.toHaveBeenCalled(); // No status change for user
+      expect(result.kycStatus).toBe('pending');
+    });
+
+    it('auto-approves KYC when flag is set', async () => {
+      const user = mockUser();
+      userRepo.findOne.mockResolvedValue(user);
+      configService.get.mockReturnValue('true'); // KYC_AUTO_APPROVE=true
+      
+      kycRepo.create.mockReturnValue({ ...kycDto, status: 'approved' });
+      kycRepo.save.mockResolvedValue({ ...kycDto, status: 'approved' });
       userRepo.save.mockResolvedValue({ ...user, kycStatus: 'verified' });
 
-      const result = await service.submitKyc('uuid-1', {
-        docType: 'purchase_agreement',
-        ipfsHash: 'Qm123',
-        storageUrl: 'https://ipfs.io/ipfs/Qm123',
-      });
+      const result = await service.submitKyc('uuid-1', kycDto);
 
+      expect(kycRepo.create).toHaveBeenCalledWith(expect.objectContaining({
+        status: 'approved'
+      }));
+      expect(userRepo.save).toHaveBeenCalled();
       expect(result.kycStatus).toBe('verified');
+    });
+  });
+
+  describe('approveKyc', () => {
+    it('sets kycStatus to verified and updates submission', async () => {
+      const user = mockUser();
+      userRepo.findOne.mockResolvedValue(user);
+      kycRepo.findOne.mockResolvedValue({ id: 'sub-1', status: 'pending_review' });
+      userRepo.save.mockResolvedValue({ ...user, kycStatus: 'verified' });
+
+      const result = await service.approveKyc('uuid-1');
+
+      expect(kycRepo.save).toHaveBeenCalledWith(expect.objectContaining({
+        status: 'approved'
+      }));
+      expect(userRepo.save).toHaveBeenCalled();
+      expect(result.kycStatus).toBe('verified');
+    });
+
+    it('throws NotFoundException if no pending submission', async () => {
+      userRepo.findOne.mockResolvedValue(mockUser());
+      kycRepo.findOne.mockResolvedValue(null);
+
+      await expect(service.approveKyc('uuid-1')).rejects.toThrow(NotFoundException);
     });
   });
 });

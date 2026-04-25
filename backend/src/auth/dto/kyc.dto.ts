@@ -1,19 +1,46 @@
-import { IsIn, IsNotEmpty, IsString } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsBoolean, IsNotEmpty, IsOptional, IsString, IsUrl } from 'class-validator';
 
 export class KycDto {
-  @IsIn([
-    'purchase_agreement',
-    'bill_of_lading',
-    'export_certificate',
-    'warehouse_receipt',
-  ])
-  docType: string;
-
+  @ApiPropertyOptional({
+    example: 'https://s3.amazonaws.com/bucket/gov-id.pdf',
+    description: 'URL of the uploaded government ID document',
+  })
   @IsString()
-  @IsNotEmpty()
-  ipfsHash: string;
+  @IsOptional()
+  @IsUrl()
+  governmentIdUrl?: string;
 
+  @ApiPropertyOptional({
+    example: 'https://s3.amazonaws.com/bucket/proof-of-address.pdf',
+    description: 'URL of the uploaded proof of address document',
+  })
   @IsString()
-  @IsNotEmpty()
-  storageUrl: string;
+  @IsOptional()
+  @IsUrl()
+  proofOfAddressUrl?: string;
+
+  @ApiProperty({ example: false, description: 'Whether this is a corporate KYC' })
+  @IsBoolean()
+  @IsOptional()
+  isCorporate?: boolean;
+
+  @ApiPropertyOptional({ example: 'AgriCorp Ltd', description: 'Company Name' })
+  @IsString()
+  @IsOptional()
+  companyName?: string;
+
+  @ApiPropertyOptional({ example: '12345678', description: 'Company Registration Number' })
+  @IsString()
+  @IsOptional()
+  registrationNumber?: string;
+
+  @ApiPropertyOptional({
+    example: 'https://s3.amazonaws.com/bucket/license.pdf',
+    description: 'Business License URL',
+  })
+  @IsString()
+  @IsOptional()
+  @IsUrl()
+  businessLicenseUrl?: string;
 }

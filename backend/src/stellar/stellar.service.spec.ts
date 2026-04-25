@@ -84,4 +84,33 @@ describe('StellarService', () => {
       expect(status).toBe('failed');
     });
   });
+
+  describe('transferTradeTokens', () => {
+    it('should build and submit a payment transaction', async () => {
+      const mockTxResult = { hash: 'mock-tx-hash' };
+      const mockAccount = {
+        sequenceNumber: () => '1',
+        incrementSequenceNumber: jest.fn(),
+      };
+
+      (service as any).server = {
+        loadAccount: jest.fn().mockResolvedValue(mockAccount),
+        submitTransaction: jest.fn().mockResolvedValue(mockTxResult),
+      };
+
+      const secret =
+        'SBTBBMK2NRE6B6L7P6BOMJ6M2NRE6B6L7P6BOMJ6M2NRE6B6L7P6BOMJ6';
+      const result = await service.transferTradeTokens(
+        secret,
+        'GB...',
+        'GC...',
+        'TOKEN',
+        100,
+      );
+
+      expect(result).toBe('mock-tx-hash');
+      expect((service as any).server.loadAccount).toHaveBeenCalledWith('GB...');
+      expect((service as any).server.submitTransaction).toHaveBeenCalled();
+    });
+  });
 });

@@ -5,6 +5,7 @@ import { UserRole } from '../auth/entities/user.entity';
 import { TradeDeal } from './entities/trade-deal.entity';
 import { Investment } from './entities/investment.entity';
 import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.entity';
+import { Document } from '../trade-deals/entities/document.entity';
 
 @Injectable()
 export class UsersService {
@@ -15,6 +16,8 @@ export class UsersService {
     private readonly investmentRepository: Repository<Investment>,
     @InjectRepository(ShipmentMilestone)
     private readonly milestoneRepository: Repository<ShipmentMilestone>,
+    @InjectRepository(Document)
+    private readonly documentRepository: Repository<Document>,
   ) {}
 
   async getUserDeals(userId: string, userRole: UserRole): Promise<any[]> {
@@ -30,7 +33,21 @@ export class UsersService {
       relations: ['farmer', 'trader', 'milestones'],
     });
 
-    // Get document count for each deal (placeholder - would need documents entity)
+    if (deals.length === 0) return [];
+
+    // Single GROUP BY query — no N+1
+    const dealIds = deals.map((d) => d.id);
+    const counts: { trade_deal_id: string; count: string }[] =
+      await this.documentRepository
+        .createQueryBuilder('doc')
+        .select('doc.trade_deal_id', 'trade_deal_id')
+        .addSelect('COUNT(doc.id)', 'count')
+        .where('doc.trade_deal_id IN (:...dealIds)', { dealIds })
+        .groupBy('doc.trade_deal_id')
+        .getRawMany();
+
+    const countMap = new Map(counts.map((r) => [r.trade_deal_id, Number(r.count)]));
+
     const dealsWithCounts = await Promise.all(
       deals.map(async (deal) => {
         const latestMilestone = await this.milestoneRepository.findOne({
@@ -47,7 +64,7 @@ export class UsersService {
           status: deal.status,
           delivery_date: deal.deliveryDate,
           latest_milestone: latestMilestone || null,
-          document_count: 0, // TODO: Implement when documents entity is available
+          document_count: countMap.get(deal.id) ?? 0,
         };
       }),
     );

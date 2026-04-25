@@ -37,6 +37,9 @@ export class Document {
   @Column({ name: 'stellar_tx_id', nullable: true })
   stellarTxId: string | null;
 
+  @Column({ name: 'memo_text', nullable: true })
+  memoText: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

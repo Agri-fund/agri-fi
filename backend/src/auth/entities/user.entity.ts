@@ -5,7 +5,7 @@ import {
   CreateDateColumn,
 } from 'typeorm';
 
-export type UserRole = 'farmer' | 'trader' | 'investor';
+export type UserRole = 'farmer' | 'trader' | 'investor' | 'admin';
 export type KycStatus = 'pending' | 'verified' | 'rejected';
 
 @Entity('users')
