@@ -43,4 +43,13 @@ export class KycDto {
   @IsOptional()
   @IsUrl()
   businessLicenseUrl?: string;
+
+  @ApiPropertyOptional({
+    example: 'https://s3.amazonaws.com/bucket/articles.pdf',
+    description: 'Articles of Incorporation URL',
+  })
+  @IsString()
+  @IsOptional()
+  @IsUrl()
+  articlesOfIncorporationUrl?: string;
 }

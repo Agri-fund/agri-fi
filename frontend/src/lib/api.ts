@@ -5,10 +5,16 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 export interface User {
   id: string;
   email: string;
-  role: "farmer" | "trader" | "investor";
+  role: "farmer" | "trader" | "investor" | "company_admin" | "admin";
   name?: string;
   kycStatus?: string;
   walletAddress?: string | null;
+  isCompany?: boolean;
+  companyDetails?: {
+    companyName?: string;
+    registrationNumber?: string;
+    articlesOfIncorporationUrl?: string;
+  } | null;
 }
 
 export interface Document {
@@ -194,6 +200,22 @@ export const apiClient = {
     return apiFetch("/shipments/milestones", {
       method: "POST",
       body: JSON.stringify({ trade_deal_id: dealId, ...data }),
+    });
+  },
+
+  // POST /auth/kyc
+  async submitKyc(data: {
+    governmentIdUrl?: string;
+    proofOfAddressUrl?: string;
+    isCorporate?: boolean;
+    companyName?: string;
+    registrationNumber?: string;
+    businessLicenseUrl?: string;
+    articlesOfIncorporationUrl?: string;
+  }): Promise<{ kycStatus: string }> {
+    return apiFetch("/auth/kyc", {
+      method: "POST",
+      body: JSON.stringify(data),
     });
   },
 };

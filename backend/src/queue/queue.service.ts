@@ -29,7 +29,7 @@ export interface DealPublishPayload extends BasePayload {
   dealId: string;
   tokenSymbol: string;
   escrowPublicKey: string;
-  escrowSecretKey: string;
+  encryptedEscrowSecret: string;
   tokenCount: number;
 }
 

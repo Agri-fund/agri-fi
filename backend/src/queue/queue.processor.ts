@@ -45,10 +45,13 @@ export class QueueProcessor {
 
     try {
       // Call StellarService.issueTradeToken
+      const escrowSecretKey = this.stellarService.decryptSecret(
+        data.encryptedEscrowSecret,
+      );
       const result = await this.stellarService.issueTradeToken(
         data.tokenSymbol,
         data.escrowPublicKey,
-        data.escrowSecretKey,
+        escrowSecretKey,
         data.tokenCount,
       );
 

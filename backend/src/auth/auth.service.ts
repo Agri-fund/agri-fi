@@ -67,6 +67,7 @@ export class AuthService {
       sub: user.id,
       email: user.email,
       role: user.role,
+      tokenVersion: user.tokenVersion ?? 0,
     });
     return { accessToken: token };
   }
@@ -118,10 +119,21 @@ export class AuthService {
       companyName: dto.companyName,
       registrationNumber: dto.registrationNumber,
       businessLicenseUrl: dto.businessLicenseUrl,
+      articlesOfIncorporationUrl: dto.articlesOfIncorporationUrl,
       status: automatedApproval ? 'approved' : 'pending_review',
     });
 
     await this.kycRepo.save(submission);
+
+    if (dto.isCorporate) {
+      user.isCompany = true;
+      user.companyDetails = {
+        companyName: dto.companyName,
+        registrationNumber: dto.registrationNumber,
+        articlesOfIncorporationUrl: dto.articlesOfIncorporationUrl,
+      };
+      await this.userRepo.save(user);
+    }
 
     if (automatedApproval) {
       user.kycStatus = 'verified';
@@ -167,6 +179,16 @@ export class AuthService {
     submission.status = 'approved';
     await this.kycRepo.save(submission);
 
+    if (submission.isCorporate) {
+      user.isCompany = true;
+      user.companyDetails = {
+        companyName: submission.companyName ?? undefined,
+        registrationNumber: submission.registrationNumber ?? undefined,
+        articlesOfIncorporationUrl:
+          submission.articlesOfIncorporationUrl ?? undefined,
+      };
+    }
+
     user.kycStatus = 'verified';
     await this.userRepo.save(user);
 
@@ -174,5 +196,18 @@ export class AuthService {
     console.log(`KYC manually verified for user ${user.email} — notification queued.`);
 
     return { kycStatus: user.kycStatus };
+  }
+
+  async updateUserRole(
+    userId: string,
+    role: User['role'],
+  ): Promise<{ id: string; role: string }> {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found.');
+
+    user.role = role;
+    user.tokenVersion = (user.tokenVersion ?? 0) + 1;
+    const saved = await this.userRepo.save(user);
+    return { id: saved.id, role: saved.role };
   }
 }
