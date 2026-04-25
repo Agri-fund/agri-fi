@@ -383,7 +383,7 @@ export class TradeDealsService {
   async cancelDeal(dealId: string, traderId: string): Promise<TradeDeal> {
     const deal = await this.tradeDealRepo.findOne({
       where: { id: dealId },
-      relations: ['investments'],
+      relations: ['investments', 'investments.investor'],
     });
 
     if (!deal) {
@@ -408,10 +408,12 @@ export class TradeDealsService {
 
       // Create shares array representing wallets holding the tokens
       const investorShares: { walletAddress: string; tokenAmount: number }[] =
-        confirmedInvestments.map((inv) => ({
-          walletAddress: inv.investorWallet,
-          tokenAmount: Number(inv.tokenAmount),
-        }));
+        confirmedInvestments
+          .filter((inv) => inv.investor?.walletAddress)
+          .map((inv) => ({
+            walletAddress: inv.investor.walletAddress!,
+            tokenAmount: Number(inv.tokenAmount),
+          }));
 
       const tokensSold = investorShares.reduce(
         (acc, curr) => acc + curr.tokenAmount,

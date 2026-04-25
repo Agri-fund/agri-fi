@@ -175,7 +175,7 @@ export class StellarService {
       .addOperation(
         Operation.setOptions({
           source: issuerKeypair.publicKey(),
-          setFlags: 10, // AuthRevocableFlag (2) | AuthClawbackEnabledFlag (8)
+          setFlags: 10 as any,
         }),
       )
       .setTimeout(30)
@@ -493,6 +493,93 @@ export class StellarService {
   }
 
   /**
+   * Merges an empty escrow or issuer account back to the platform account.
+   * Zeroes out any remaining custom tokens (burns them by sending to issuer)
+   * and USDC (sends to platform), then removes trustlines before merging.
+   */
+  async closeAccount(
+    publicKey: string,
+    secretKey: string,
+    destination: string,
+  ): Promise<string> {
+    const keypair = Keypair.fromSecret(secretKey);
+    const account = await this.server.loadAccount(publicKey);
+
+    const txBuilder = new TransactionBuilder(account, {
+      fee: BASE_FEE,
+      networkPassphrase: this.networkPassphrase,
+    });
+
+    let operationsAdded = 0;
+
+    for (const balance of account.balances) {
+      if (balance.asset_type !== 'native') {
+        const asset =
+          balance.asset_type === 'credit_alphanum4' ||
+          balance.asset_type === 'credit_alphanum12'
+            ? new Asset(balance.asset_code, balance.asset_issuer)
+            : undefined;
+
+        if (asset) {
+          const balanceAmount = parseFloat(balance.balance);
+          if (balanceAmount > 0) {
+            // Send USDC back to destination (platform); burn custom tokens by sending to issuer
+            const target =
+              asset.getCode() === this.usdcAsset.getCode() &&
+              asset.getIssuer() === this.usdcAsset.getIssuer()
+                ? destination
+                : asset.getIssuer();
+
+            txBuilder.addOperation(
+              Operation.payment({
+                destination: target,
+                asset,
+                amount: balance.balance,
+              }),
+            );
+            operationsAdded++;
+          }
+
+          // Remove trustline
+          txBuilder.addOperation(
+            Operation.changeTrust({
+              asset,
+              limit: '0',
+            }),
+          );
+          operationsAdded++;
+        }
+      }
+    }
+
+    txBuilder.addOperation(
+      Operation.accountMerge({
+        destination,
+      }),
+    );
+    operationsAdded++;
+
+    const tx = txBuilder.setTimeout(30).build();
+    tx.sign(keypair);
+
+    try {
+      const result = await this.server.submitTransaction(tx);
+      const txId = (result as any).hash as string;
+      this.logger.info(
+        { publicKey, destination, txId },
+        'Account closed and merged successfully',
+      );
+      return txId;
+    } catch (err: any) {
+      this.logger.error(
+        `Account merge failed for ${publicKey}: ${err.message}`,
+        err.stack,
+      );
+      throw new Error(`Account merge failed: ${err.message}`);
+    }
+  }
+
+  /**
    * Records an arbitrary memo on Stellar (used for milestone anchoring and document hashes).
    * Returns the transaction ID.
    */
@@ -586,7 +673,6 @@ export class StellarService {
       }
     }
 
-    const txBuilder = new TransactionBuilder(investorAccount, {
     // Use USDC for stable USD-denominated payments
     const txBuilder = new TransactionBuilder(investorAccount, {
       fee: BASE_FEE,
@@ -609,11 +695,8 @@ export class StellarService {
       )
       .addMemo(Memo.text(`invest:${assetCode}:${tokenAmount}`))
       .setTimeout(300);
-      .addMemo(Memo.text(`invest:${assetCode}:${tokenAmount}`));
 
     this.addComplianceDataOperations(txBuilder, complianceData);
-
-    const tx = txBuilder.setTimeout(300).build();
 
     return txBuilder.build().toXDR();
   }

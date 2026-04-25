@@ -37,11 +37,16 @@ export interface DealDeliveredPayload extends BasePayload {
   tradeDealId: string;
 }
 
+export interface DealCleanupPayload extends BasePayload {
+  tradeDealId: string;
+}
+
 const EVENTS = {
   DEAL_DELIVERED: 'deal.delivered',
   INVESTMENT_FUND: 'investment.fund',
   DEAL_FUNDED: 'deal.funded',
   DEAL_PUBLISH: 'deal.publish',
+  DEAL_CLEANUP: 'deal.cleanup',
 } as const;
 
 @Injectable()
@@ -90,6 +95,14 @@ export class QueueService {
   async enqueueDealDelivered(tradeDealId: string): Promise<void> {
     const payload = this.addCorrelationId({ tradeDealId });
     await this.emit(EVENTS.DEAL_DELIVERED, payload);
+  }
+
+  /**
+   * Enqueue a deal.cleanup job to merge escrow and issuer accounts
+   */
+  async enqueueDealCleanup(tradeDealId: string): Promise<void> {
+    const payload = this.addCorrelationId({ tradeDealId });
+    await this.emit(EVENTS.DEAL_CLEANUP, payload);
   }
 
   async enqueueInvestmentFund(
