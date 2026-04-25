@@ -5,6 +5,7 @@ import {
   UseGuards,
   ForbiddenException,
   Request,
+  Body,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -15,6 +16,13 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { User } from './entities/user.entity';
+import { ApiBody } from '@nestjs/swagger';
+import { IsIn } from 'class-validator';
+
+class UpdateUserRoleDto {
+  @IsIn(['farmer', 'trader', 'investor', 'company_admin', 'admin'])
+  role: 'farmer' | 'trader' | 'investor' | 'company_admin' | 'admin';
+}
 
 interface AuthRequest extends Request {
   user: User;
@@ -37,5 +45,19 @@ export class AdminController {
       throw new ForbiddenException('Admin role required');
     }
     return this.authService.approveKyc(userId);
+  }
+
+  @Post('users/:userId/role')
+  @ApiOperation({ summary: 'Update a user role and invalidate old tokens' })
+  @ApiBody({ type: UpdateUserRoleDto })
+  async updateUserRole(
+    @Request() req: AuthRequest,
+    @Param('userId') userId: string,
+    @Body() dto: UpdateUserRoleDto,
+  ) {
+    if (req.user.role !== 'admin') {
+      throw new ForbiddenException('Admin role required');
+    }
+    return this.authService.updateUserRole(userId, dto.role);
   }
 }

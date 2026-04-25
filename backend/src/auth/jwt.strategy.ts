@@ -10,6 +10,7 @@ export interface JwtPayload {
   sub: string;
   email: string;
   role: string;
+  tokenVersion?: number;
 }
 
 @Injectable()
@@ -28,6 +29,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   async validate(payload: JwtPayload): Promise<User> {
     const user = await this.userRepo.findOne({ where: { id: payload.sub } });
     if (!user) throw new UnauthorizedException();
+    if ((payload.tokenVersion ?? 0) !== (user.tokenVersion ?? 0)) {
+      throw new UnauthorizedException('Token no longer valid.');
+    }
     return user;
   }
 }

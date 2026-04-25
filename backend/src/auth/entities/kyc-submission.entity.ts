@@ -40,6 +40,9 @@ export class KycSubmission {
   @Column({ name: 'business_license_url', nullable: true })
   businessLicenseUrl: string;
 
+  @Column({ name: 'articles_of_incorporation_url', nullable: true })
+  articlesOfIncorporationUrl: string;
+
   @Column({ default: 'pending_review' })
   status: KycSubmissionStatus;
 
