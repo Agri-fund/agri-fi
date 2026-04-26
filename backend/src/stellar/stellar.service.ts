@@ -1,6 +1,9 @@
 import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { PinoLogger } from 'nestjs-pino';
+import { TransactionLog, TxStatus } from './entities/transaction-log.entity';
 import {
   Horizon,
   Keypair,
@@ -34,6 +37,8 @@ export class StellarService {
   constructor(
     private readonly config: ConfigService,
     private readonly logger: PinoLogger,
+    @InjectRepository(TransactionLog)
+    private readonly txLogRepo: Repository<TransactionLog>,
   ) {
     this.logger.setContext(StellarService.name);
 
@@ -72,6 +77,24 @@ export class StellarService {
       },
       `StellarService initialized on ${network}`,
     );
+  }
+
+  /**
+   * Persists a transaction audit record. Never throws — failures are logged only.
+   */
+  async saveLog(entry: {
+    userId?: string;
+    dealId?: string;
+    txHash?: string;
+    xdrBody?: string;
+    status: TxStatus;
+    errorCode?: string;
+  }): Promise<void> {
+    try {
+      await this.txLogRepo.save(this.txLogRepo.create(entry));
+    } catch (err: any) {
+      this.logger.error({ err }, 'Failed to persist transaction log');
+    }
   }
 
   /**
@@ -825,13 +848,18 @@ export class StellarService {
    */
   async submitTransaction(signedXdr: string): Promise<any> {
     const tx = TransactionBuilder.fromXDR(signedXdr, this.networkPassphrase);
-    const result = await this.server.submitTransaction(tx);
-
-    this.logger.info(
-      { txId: (result as any).hash },
-      'Transaction submitted successfully',
-    );
-    return result;
+    try {
+      const result = await this.server.submitTransaction(tx);
+      const txHash = (result as any).hash as string;
+      this.logger.info({ txId: txHash }, 'Transaction submitted successfully');
+      await this.saveLog({ txHash, xdrBody: signedXdr, status: TxStatus.SUCCESS });
+      return result;
+    } catch (err: any) {
+      const errorCode: string =
+        err?.response?.data?.extras?.result_codes?.transaction ?? err.message;
+      await this.saveLog({ xdrBody: signedXdr, status: TxStatus.FAILED, errorCode });
+      throw err;
+    }
   }
 
   /**
