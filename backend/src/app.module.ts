@@ -17,9 +17,11 @@ import { CorrelationIdMiddleware } from './common/middleware/correlation-id.midd
 import { loggingConfig } from './common/logging/logging.config';
 import { HealthModule } from './health/health.module';
 import { TerminusModule } from '@nestjs/terminus';
+import { ThrottlerModule } from '@nestjs/throttler';
 
 @Module({
   imports: [
+    ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
     LoggerModule.forRoot(loggingConfig),
     ConfigModule.forRoot({
       isGlobal: true,

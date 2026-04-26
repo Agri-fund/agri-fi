@@ -12,6 +12,10 @@ import { TradeDeal } from './entities/trade-deal.entity';
 import { Document } from './entities/document.entity';
 import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.entity';
 import { User } from '../auth/entities/user.entity';
+import {
+  Investment,
+  InvestmentStatus,
+} from '../investments/entities/investment.entity';
 import { StellarService } from '../stellar/stellar.service';
 
 const mockFarmer = (): User => ({
@@ -21,7 +25,10 @@ const mockFarmer = (): User => ({
   role: 'farmer',
   country: 'NG',
   kycStatus: 'verified',
+  tokenVersion: 0,
   walletAddress: 'GFARMER123',
+  isCompany: false,
+  companyDetails: null,
   createdAt: new Date(),
 });
 
@@ -41,6 +48,7 @@ const mockDeal = (): TradeDeal => ({
   escrowPublicKey: null,
   escrowSecretKey: null,
   issuerPublicKey: null,
+  issuerSecretKey: null,
   totalInvested: 0,
   deliveryDate: new Date('2026-12-01'),
   stellarAssetTxId: null,
@@ -60,10 +68,13 @@ describe('TradeDealsService', () => {
   let documentRepo: { findOne: jest.Mock; create: jest.Mock; save: jest.Mock };
   let milestoneRepo: { find: jest.Mock };
   let userRepo: { findOne: jest.Mock };
+  let investmentRepo: { update: jest.Mock };
   let stellarService: {
     createEscrowAccount: jest.Mock;
     encryptSecret: jest.Mock;
+    decryptSecret: jest.Mock;
     issueTradeToken: jest.Mock;
+    clawbackTokens: jest.Mock;
   };
   let logger: {
     setContext: jest.Mock;
@@ -81,10 +92,13 @@ describe('TradeDealsService', () => {
     documentRepo = { findOne: jest.fn(), create: jest.fn(), save: jest.fn() };
     milestoneRepo = { find: jest.fn() };
     userRepo = { findOne: jest.fn() };
+    investmentRepo = { update: jest.fn().mockResolvedValue({ affected: 1 }) };
     stellarService = {
       createEscrowAccount: jest.fn(),
       encryptSecret: jest.fn(),
+      decryptSecret: jest.fn(),
       issueTradeToken: jest.fn(),
+      clawbackTokens: jest.fn().mockResolvedValue(undefined),
     };
     logger = {
       setContext: jest.fn(),
@@ -102,6 +116,7 @@ describe('TradeDealsService', () => {
           useValue: milestoneRepo,
         },
         { provide: getRepositoryToken(User), useValue: userRepo },
+        { provide: getRepositoryToken(Investment), useValue: investmentRepo },
         { provide: StellarService, useValue: stellarService },
         { provide: PinoLogger, useValue: logger },
       ],
@@ -222,6 +237,7 @@ describe('TradeDealsService', () => {
         escrowPublicKey: mockEscrowKeys.publicKey,
         escrowSecretKey: 'encrypted-secret',
         issuerPublicKey: mockTokenResult.issuerPublicKey,
+        issuerSecretKey: 'encrypted-secret',
         stellarAssetTxId: mockTokenResult.txId,
       });
       expect(result.status).toBe('open');
@@ -466,6 +482,133 @@ describe('TradeDealsService', () => {
           service.addDocument({ ...baseDto, docType }),
         ).resolves.toBeDefined();
       }
+    });
+  });
+
+  // ─── cancelDeal ───────────────────────────────────────────────────────────
+
+  describe('cancelDeal', () => {
+    it('throws NotFoundException when deal does not exist', async () => {
+      tradeDealRepo.findOne.mockResolvedValue(null);
+
+      await expect(
+        service.cancelDeal('missing-uuid', 'trader-uuid'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws ForbiddenException when caller is not the assigned trader', async () => {
+      tradeDealRepo.findOne.mockResolvedValue({
+        ...mockDeal(),
+        traderId: 'other-trader',
+      });
+
+      await expect(
+        service.cancelDeal('deal-uuid', 'trader-uuid'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('returns the deal unchanged when already canceled', async () => {
+      const canceled = { ...mockDeal(), status: 'canceled' as const };
+      tradeDealRepo.findOne.mockResolvedValue(canceled);
+
+      const result = await service.cancelDeal('deal-uuid', 'trader-uuid');
+
+      expect(result).toBe(canceled);
+      expect(tradeDealRepo.save).not.toHaveBeenCalled();
+    });
+
+    it.each(['delivered', 'completed', 'failed', 'funded'] as const)(
+      'throws UnprocessableEntityException when deal is %s',
+      async (status) => {
+        tradeDealRepo.findOne.mockResolvedValue({ ...mockDeal(), status });
+
+        await expect(
+          service.cancelDeal('deal-uuid', 'trader-uuid'),
+        ).rejects.toThrow(UnprocessableEntityException);
+      },
+    );
+
+    it('cancels a draft deal without invoking Stellar clawback', async () => {
+      const deal = { ...mockDeal(), status: 'draft' as const };
+      tradeDealRepo.findOne.mockResolvedValue(deal);
+      tradeDealRepo.save.mockImplementation(async (d) => d);
+
+      const result = await service.cancelDeal('deal-uuid', 'trader-uuid');
+
+      expect(result.status).toBe('canceled');
+      expect(stellarService.clawbackTokens).not.toHaveBeenCalled();
+      expect(investmentRepo.update).not.toHaveBeenCalled();
+    });
+
+    it('cancels an open deal, claws back tokens, and refunds confirmed investments', async () => {
+      const investments = [
+        {
+          id: 'inv-1',
+          status: InvestmentStatus.CONFIRMED,
+          tokenAmount: 10,
+          investor: { walletAddress: 'GINVESTOR1' },
+        },
+        {
+          id: 'inv-2',
+          status: InvestmentStatus.CONFIRMED,
+          tokenAmount: 5,
+          investor: { walletAddress: 'GINVESTOR2' },
+        },
+        {
+          id: 'inv-3',
+          status: InvestmentStatus.PENDING,
+          tokenAmount: 3,
+          investor: { walletAddress: 'GINVESTOR3' },
+        },
+      ];
+      const deal = {
+        ...mockDeal(),
+        status: 'open' as const,
+        tokenCount: 50,
+        escrowPublicKey: 'GESCROW',
+        escrowSecretKey: 'enc-escrow',
+        issuerPublicKey: 'GISSUER',
+        issuerSecretKey: 'enc-issuer',
+        stellarAssetTxId: 'tx-1',
+        investments,
+      };
+      tradeDealRepo.findOne.mockResolvedValue(deal);
+      tradeDealRepo.save.mockImplementation(async (d) => d);
+      stellarService.decryptSecret.mockReturnValue('plain-issuer-secret');
+
+      const result = await service.cancelDeal('deal-uuid', 'trader-uuid');
+
+      expect(result.status).toBe('canceled');
+      expect(stellarService.clawbackTokens).toHaveBeenCalledWith(
+        'COCOAdeal',
+        'GISSUER',
+        'plain-issuer-secret',
+        expect.arrayContaining([
+          { walletAddress: 'GINVESTOR1', tokenAmount: 10 },
+          { walletAddress: 'GINVESTOR2', tokenAmount: 5 },
+          { walletAddress: 'GESCROW', tokenAmount: 35 },
+        ]),
+      );
+      expect(investmentRepo.update).toHaveBeenCalledWith(['inv-1', 'inv-2'], {
+        status: InvestmentStatus.REFUNDED,
+      });
+    });
+
+    it('skips clawback for an open deal that has not yet issued tokens', async () => {
+      const deal = {
+        ...mockDeal(),
+        status: 'open' as const,
+        issuerPublicKey: null,
+        issuerSecretKey: null,
+        stellarAssetTxId: null,
+      };
+      tradeDealRepo.findOne.mockResolvedValue(deal);
+      tradeDealRepo.save.mockImplementation(async (d) => d);
+
+      const result = await service.cancelDeal('deal-uuid', 'trader-uuid');
+
+      expect(result.status).toBe('canceled');
+      expect(stellarService.clawbackTokens).not.toHaveBeenCalled();
     });
   });
 });

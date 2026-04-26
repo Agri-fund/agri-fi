@@ -3,6 +3,7 @@ import { StorageService } from '../storage/storage.service';
 import { StellarService } from '../stellar/stellar.service';
 import { TradeDealsService } from '../trade-deals/trade-deals.service';
 import { ConfigService } from '@nestjs/config';
+import { createHash } from 'crypto';
 
 @Injectable()
 export class DocumentsService {
@@ -30,15 +31,15 @@ export class DocumentsService {
       file.mimetype,
     );
 
-    // 2. Build Stellar memo (28 bytes safe)
-    const memo = this.buildMemo(tradeDealId, hash);
+    // 2. Calculate SHA-256 of the file for Stellar Anchoring
+    const fileHash = createHash('sha256').update(file.buffer).digest('hex');
+    const memo = this.buildMemo(tradeDealId, fileHash);
 
     const signerSecret = this.config.get<string>('STELLAR_PLATFORM_SECRET', '');
 
-    const stellarTxId = await this.stellarService.recordMemo(
-      memo,
-      signerSecret,
-      'hash',
+    const stellarTxId = await this.stellarService.recordDocumentHash(
+      fileHash,
+      signerSecret
     );
 
     // 3. Persist using existing logic (VERY IMPORTANT)

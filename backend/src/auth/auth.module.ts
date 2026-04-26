@@ -10,6 +10,7 @@ import { JwtStrategy } from './jwt.strategy';
 import { User } from './entities/user.entity';
 import { KycSubmission } from './entities/kyc-submission.entity';
 import { KycGuard } from './kyc.guard';
+import { RolesGuard } from './roles.guard';
 
 @Module({
   imports: [
@@ -25,7 +26,7 @@ import { KycGuard } from './kyc.guard';
     }),
   ],
   controllers: [AuthController, AdminController],
-  providers: [AuthService, JwtStrategy, KycGuard],
-  exports: [AuthService, JwtModule, TypeOrmModule, KycGuard],
+  providers: [AuthService, JwtStrategy, KycGuard, RolesGuard],
+  exports: [AuthService, JwtModule, TypeOrmModule, KycGuard, RolesGuard],
 })
 export class AuthModule {}

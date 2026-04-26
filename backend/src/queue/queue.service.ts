@@ -70,7 +70,8 @@ export class QueueService {
     return {
       ...payload,
       correlationId:
-        (payload as any).correlationId || this.logger.logger.bindings()?.correlationId,
+        (payload as any).correlationId ||
+        this.logger.logger.bindings()?.correlationId,
     } as T & BasePayload;
   }
 

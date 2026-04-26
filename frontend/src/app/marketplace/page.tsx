@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { getOpenDeals, Deal } from '@/lib/api';
 import FundingProgressBar from '@/components/FundingProgressBar';
+import FilterSidebar from '@/components/marketplace/FilterSidebar';
 
 const LIMIT = 12;
 
@@ -28,7 +29,7 @@ export default function MarketplacePage() {
 
   return (
     <main className="min-h-screen bg-green-50 px-4 py-10">
-      <div className="max-w-6xl mx-auto">
+      <div className="max-w-7xl mx-auto">
         <h1 className="text-3xl font-bold text-green-800 mb-2">Trade Deal Marketplace</h1>
         <p className="text-green-600 mb-8">Browse open agricultural trade deals available for investment.</p>
 

@@ -95,7 +95,6 @@ describe('ShipmentsService', () => {
   });
 
   describe('recordMilestone', () => {
-
     it('records first milestone (farm) for funded deal', async () => {
       const dto: CreateMilestoneDto = {
         trade_deal_id: 'deal-1',

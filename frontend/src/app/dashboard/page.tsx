@@ -9,15 +9,29 @@ export default function DashboardPage() {
   const router = useRouter();
 
   useEffect(() => {
-    // Check authentication and redirect to appropriate dashboard
-    const currentUser = apiClient.getCurrentUser();
-    if (!currentUser) {
-      router.push('/login');
-      return;
-    }
+    let cancelled = false;
 
-    // Redirect to role-specific dashboard
-    router.push(`/dashboard/${currentUser.role}`);
+    (async () => {
+      const cached = apiClient.getCurrentUser();
+      if (!cached) {
+        router.push('/login');
+        return;
+      }
+
+      try {
+        const fresh = await apiClient.refreshCurrentUser();
+        if (cancelled) return;
+        const role = fresh?.role ?? cached.role;
+        router.push(`/dashboard/${role}`);
+      } catch {
+        if (cancelled) return;
+        router.push(`/dashboard/${cached.role}`);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   return (

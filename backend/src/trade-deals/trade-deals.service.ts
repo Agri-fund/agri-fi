@@ -13,6 +13,10 @@ import { Document, DocumentType } from './entities/document.entity';
 import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.entity';
 import { CreateTradeDealDto } from './dto/create-trade-deal.dto';
 import { User } from '../auth/entities/user.entity';
+import {
+  Investment,
+  InvestmentStatus,
+} from '../investments/entities/investment.entity';
 import { StellarService } from '../stellar/stellar.service';
 import {
   normalizePagination,
@@ -50,6 +54,8 @@ export class TradeDealsService {
     private readonly milestoneRepo: Repository<ShipmentMilestone>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    @InjectRepository(Investment)
+    private readonly investmentRepo: Repository<Investment>,
     private readonly stellarService: StellarService,
     private readonly logger: PinoLogger,
   ) {
@@ -295,13 +301,16 @@ export class TradeDealsService {
         { dealId, tokenSymbol: deal.tokenSymbol },
         'Issuing trade token for deal',
       );
-      const { txId: stellarAssetTxId, issuerPublicKey, issuerSecret } =
-        await this.stellarService.issueTradeToken(
-          deal.tokenSymbol,
-          escrowPublicKey,
-          escrowSecretKey,
-          deal.tokenCount,
-        );
+      const {
+        txId: stellarAssetTxId,
+        issuerPublicKey,
+        issuerSecret,
+      } = await this.stellarService.issueTradeToken(
+        deal.tokenSymbol,
+        escrowPublicKey,
+        escrowSecretKey,
+        deal.tokenCount,
+      );
 
       // Encrypt the issuer secret
       const encryptedIssuerSecret =
@@ -388,7 +397,7 @@ export class TradeDealsService {
   async cancelDeal(dealId: string, traderId: string): Promise<TradeDeal> {
     const deal = await this.tradeDealRepo.findOne({
       where: { id: dealId },
-      relations: ['investments'],
+      relations: ['investments', 'investments.investor'],
     });
 
     if (!deal) {
@@ -402,21 +411,36 @@ export class TradeDealsService {
       });
     }
 
-    if (deal.status === 'canceled' as TradeDealStatus) {
-      return deal; // already canceled
+    if (deal.status === 'canceled') {
+      return deal;
     }
 
-    if (deal.issuerPublicKey && deal.issuerSecretKey && deal.stellarAssetTxId) {
-      // Find all confirmed investments to gather token amounts
-      const confirmedInvestments =
-        deal.investments?.filter((inv) => inv.status === 'confirmed') || [];
+    const cancellableStatuses: TradeDealStatus[] = ['draft', 'open'];
+    if (!cancellableStatuses.includes(deal.status)) {
+      throw new UnprocessableEntityException({
+        code: 'DEAL_NOT_CANCELABLE',
+        message: `Cannot cancel a deal in "${deal.status}" status. Only draft or open deals can be canceled.`,
+      });
+    }
 
-      // Create shares array representing wallets holding the tokens
+    const confirmedInvestments =
+      deal.investments?.filter(
+        (inv) => inv.status === InvestmentStatus.CONFIRMED,
+      ) || [];
+
+    if (
+      deal.status === 'open' &&
+      deal.issuerPublicKey &&
+      deal.issuerSecretKey &&
+      deal.stellarAssetTxId
+    ) {
       const investorShares: { walletAddress: string; tokenAmount: number }[] =
-        confirmedInvestments.map((inv) => ({
-          walletAddress: inv.investorWallet,
-          tokenAmount: Number(inv.tokenAmount),
-        }));
+        confirmedInvestments
+          .filter((inv) => inv.investor?.walletAddress)
+          .map((inv) => ({
+            walletAddress: inv.investor.walletAddress as string,
+            tokenAmount: Number(inv.tokenAmount),
+          }));
 
       const tokensSold = investorShares.reduce(
         (acc, curr) => acc + curr.tokenAmount,
@@ -424,7 +448,6 @@ export class TradeDealsService {
       );
       const unsoldTokens = Number(deal.tokenCount) - tokensSold;
 
-      // Include escrow account if it holds unsold tokens
       if (unsoldTokens > 0 && deal.escrowPublicKey) {
         investorShares.push({
           walletAddress: deal.escrowPublicKey,
@@ -438,7 +461,11 @@ export class TradeDealsService {
         );
 
         this.logger.info(
-          { dealId, tokenCount: deal.tokenCount, holders: investorShares.length },
+          {
+            dealId,
+            tokenCount: deal.tokenCount,
+            holders: investorShares.length,
+          },
           'Initiating clawback for canceled deal',
         );
 
@@ -451,7 +478,18 @@ export class TradeDealsService {
       }
     }
 
-    deal.status = 'canceled' as TradeDealStatus;
+    if (confirmedInvestments.length > 0) {
+      await this.investmentRepo.update(
+        confirmedInvestments.map((inv) => inv.id),
+        { status: InvestmentStatus.REFUNDED },
+      );
+      this.logger.info(
+        { dealId, refundedCount: confirmedInvestments.length },
+        'Refunded confirmed investments for canceled deal',
+      );
+    }
+
+    deal.status = 'canceled';
     return this.tradeDealRepo.save(deal);
   }
 

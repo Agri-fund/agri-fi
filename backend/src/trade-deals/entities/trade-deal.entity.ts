@@ -17,7 +17,8 @@ export type TradeDealStatus =
   | 'funded'
   | 'delivered'
   | 'completed'
-  | 'failed';
+  | 'failed'
+  | 'canceled';
 
 @Entity('trade_deals')
 export class TradeDeal {

@@ -307,6 +307,9 @@ export class InvestmentsController {
     @Param('tokenCode') tokenCode: string,
     @Param('tokenIssuer') tokenIssuer: string,
   ) {
-    return this.stellarService.getActiveBuyOrdersForToken(tokenCode, tokenIssuer);
+    return this.stellarService.getActiveBuyOrdersForToken(
+      tokenCode,
+      tokenIssuer,
+    );
   }
 }

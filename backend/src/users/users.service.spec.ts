@@ -1,6 +1,6 @@
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { ForbiddenException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { TradeDeal } from './entities/trade-deal.entity';
 import { Investment } from './entities/investment.entity';
@@ -32,6 +32,46 @@ describe('UsersService.getUserInvestments', () => {
   let service: UsersService;
   let investmentRepo: { find: jest.Mock };
   let paymentDistRepo: { findOne: jest.Mock };
+import { Document } from '../trade-deals/entities/document.entity';
+import { User } from '../auth/entities/user.entity';
+
+const mockDeal = (id: string, overrides = {}): TradeDeal =>
+  ({
+    id,
+    commodity: 'cocoa',
+    quantity: 100,
+    totalValue: 10000,
+    totalInvested: 0,
+    status: 'open',
+    deliveryDate: new Date('2026-12-01'),
+    farmerId: 'farmer-1',
+    traderId: 'trader-1',
+    ...overrides,
+  }) as TradeDeal;
+
+describe('UsersService', () => {
+  let service: UsersService;
+
+  const userRepo = { findOne: jest.fn() };
+  const tradeDealRepo = { find: jest.fn() };
+  const investmentRepo = { find: jest.fn() };
+  const milestoneRepo = { findOne: jest.fn() };
+  const documentRepo = { createQueryBuilder: jest.fn() };
+
+  // Helper to mock the GROUP BY query chain
+  const mockDocumentCounts = (
+    rows: { trade_deal_id: string; count: string }[],
+  ) => {
+    const qb = {
+      select: jest.fn().mockReturnThis(),
+      addSelect: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      groupBy: jest.fn().mockReturnThis(),
+      getRawMany: jest.fn().mockResolvedValue(rows),
+    };
+    documentRepo.createQueryBuilder.mockReturnValue(qb);
+    return qb;
+  };
 
   beforeEach(async () => {
     investmentRepo = { find: jest.fn() };

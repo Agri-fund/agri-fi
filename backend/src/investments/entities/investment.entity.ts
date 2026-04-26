@@ -13,6 +13,7 @@ export enum InvestmentStatus {
   PENDING = 'pending',
   CONFIRMED = 'confirmed',
   FAILED = 'failed',
+  REFUNDED = 'refunded',
 }
 
 @Entity('investments')

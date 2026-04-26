@@ -36,4 +36,7 @@ jobs:
         run: pnpm run build
         working-directory: frontend
         env:
-          NEXT_PUBLIC_API_URL: http://localhost:3001
+          # Stub URL for the build. Marketplace pages are force-dynamic, so the
+          # build does not contact this URL — it is only baked into the client
+          # bundle as a fallback default.
+          NEXT_PUBLIC_API_URL: https://api.example.invalid

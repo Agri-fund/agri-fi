@@ -104,13 +104,20 @@ export class QueueProcessor {
         );
         const stellarTxId: string = result.hash;
 
-        // 4. Transfer Trade_Tokens from escrow account to investor wallet
+        // 4. Transfer Trade_Tokens from escrow account to investor wallet.
+        // Decrypt the escrow secret from the payload and use the typed
+        // InvestmentFundPayload fields directly — the previously referenced
+        // variables (escrowSecret, deal, investment) were never declared in
+        // this method and would cause a ReferenceError at runtime.
+        const escrowSecret = this.stellarService.decryptSecret(
+          data.encryptedEscrowSecret,
+        );
         await this.stellarService.transferTradeTokens(
           escrowSecret,
-          deal.escrowPublicKey,
-          investment.investorWallet,
-          deal.assetCode,
-          investment.tokenAmount,
+          data.escrowPublicKey,
+          data.investorWallet,
+          data.assetCode,
+          data.tokenAmount,
         );
 
         // Confirm investment and increment total_invested

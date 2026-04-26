@@ -26,6 +26,18 @@ interface AuthRequest extends Request {
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
+  @Get('me')
+  @ApiOperation({ summary: "Get the authenticated user's profile" })
+  @ApiResponse({
+    status: 200,
+    description: 'Current user profile',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'User not found' })
+  async getCurrentUser(@Request() req: AuthRequest) {
+    return this.usersService.getProfile(req.user.id);
+  }
+
   @Get('me/deals')
   @ApiOperation({ summary: "Get the authenticated farmer/trader's deals" })
   @ApiResponse({

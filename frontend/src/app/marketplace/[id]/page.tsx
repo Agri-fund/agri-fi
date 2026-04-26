@@ -6,10 +6,19 @@ import StatusBadge from '@/components/StatusBadge';
 import { ShipmentTimeline } from '@/components/ShipmentTimeline';
 import ErrorBoundary from '@/components/ErrorBoundary';
 
+// Render this route on demand. Avoids build-time fetches against a backend
+// that is not reachable from the CI build environment.
+export const dynamic = 'force-dynamic';
 export const revalidate = 60;
 
 export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
-  const deal = await getDealById(params.id);
+  let deal: Awaited<ReturnType<typeof getDealById>> = null;
+  try {
+    deal = await getDealById(params.id);
+  } catch {
+    // Backend unreachable (e.g. during CI build) — fall back to a generic title.
+    return { title: 'Trade Deal | Agri-Fi' };
+  }
   if (!deal) return { title: 'Deal Not Found' };
 
   const title = `${deal.commodity.charAt(0).toUpperCase() + deal.commodity.slice(1)} Trade Deal | Agri-Fi`;
@@ -43,7 +52,13 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
 const MILESTONE_ORDER = ['farm', 'warehouse', 'port', 'importer'];
 
 export default async function DealDetailPage({ params }: { params: { id: string } }) {
-  const deal = await getDealById(params.id);
+  let deal: Awaited<ReturnType<typeof getDealById>> = null;
+  try {
+    deal = await getDealById(params.id);
+  } catch {
+    // Backend unreachable — render the not-found page rather than crashing the build.
+    notFound();
+  }
   if (!deal) notFound();
 
   const milestones = [...(deal.milestones ?? [])].sort(

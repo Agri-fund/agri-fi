@@ -113,7 +113,8 @@ export class TradeDealsController {
   @UseGuards(AuthGuard('jwt'), KycGuard)
   @ApiBearerAuth('jwt')
   @ApiOperation({
-    summary: 'Cancel a trade deal and trigger clawbacks (trader only, KYC required)',
+    summary:
+      'Cancel a trade deal and trigger clawbacks (trader only, KYC required)',
   })
   @ApiResponse({ status: 200, description: 'Trade deal canceled successfully' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })

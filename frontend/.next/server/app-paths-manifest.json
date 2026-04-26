@@ -1,4 +1,16 @@
 {
+  "/_not-found/page": "app/_not-found/page.js",
+  "/api/auth/wallet/route": "app/api/auth/wallet/route.js",
+  "/api/investments/route": "app/api/investments/route.js",
+  "/api/investments/[id]/submit-tx/route": "app/api/investments/[id]/submit-tx/route.js",
+  "/api/shipments/[trade_deal_id]/route": "app/api/shipments/[trade_deal_id]/route.js",
+  "/api/trade-deals/[id]/route": "app/api/trade-deals/[id]/route.js",
+  "/dashboard/farmer/page": "app/dashboard/farmer/page.js",
+  "/dashboard/investor/page": "app/dashboard/investor/page.js",
+  "/dashboard/page": "app/dashboard/page.js",
+  "/dashboard/trader/page": "app/dashboard/trader/page.js",
+  "/login/page": "app/login/page.js",
   "/page": "app/page.js",
+  "/marketplace/[id]/page": "app/marketplace/[id]/page.js",
   "/marketplace/page": "app/marketplace/page.js"
 }

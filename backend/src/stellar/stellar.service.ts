@@ -1,6 +1,9 @@
 import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { PinoLogger } from 'nestjs-pino';
+import { TransactionLog, TxStatus } from './entities/transaction-log.entity';
 import {
   Horizon,
   Keypair,
@@ -34,6 +37,8 @@ export class StellarService {
   constructor(
     private readonly config: ConfigService,
     private readonly logger: PinoLogger,
+    @InjectRepository(TransactionLog)
+    private readonly txLogRepo: Repository<TransactionLog>,
   ) {
     this.logger.setContext(StellarService.name);
 
@@ -49,7 +54,9 @@ export class StellarService {
 
     const platformSecret = config.get<string>('STELLAR_PLATFORM_SECRET', '');
     if (!platformSecret && process.env.NODE_ENV !== 'test') {
-      throw new Error('STELLAR_PLATFORM_SECRET is required in production and development environments');
+      throw new Error(
+        'STELLAR_PLATFORM_SECRET is required in production and development environments',
+      );
     }
     this.platformKeypair = platformSecret
       ? Keypair.fromSecret(platformSecret)
@@ -70,6 +77,24 @@ export class StellarService {
       },
       `StellarService initialized on ${network}`,
     );
+  }
+
+  /**
+   * Persists a transaction audit record. Never throws — failures are logged only.
+   */
+  async saveLog(entry: {
+    userId?: string;
+    dealId?: string;
+    txHash?: string;
+    xdrBody?: string;
+    status: TxStatus;
+    errorCode?: string;
+  }): Promise<void> {
+    try {
+      await this.txLogRepo.save(this.txLogRepo.create(entry));
+    } catch (err: any) {
+      this.logger.error({ err }, 'Failed to persist transaction log');
+    }
   }
 
   /**
@@ -175,7 +200,8 @@ export class StellarService {
       .addOperation(
         Operation.setOptions({
           source: issuerKeypair.publicKey(),
-          setFlags: 10, // AuthRevocableFlag (2) | AuthClawbackEnabledFlag (8)
+          // AuthRevocableFlag (2) | AuthClawbackEnabledFlag (8)
+          setFlags: 10 as any,
         }),
       )
       .setTimeout(30)
@@ -493,6 +519,41 @@ export class StellarService {
   }
 
   /**
+   * Records a document's SHA-256 hash on the Stellar ledger using Memo.Hash.
+   * This serves as a tamper-proof "Proof of Existence".
+   */
+  async recordDocumentHash(
+    docHashHex: string,
+    signerSecret: string,
+  ): Promise<string> {
+    const signerKeypair = Keypair.fromSecret(signerSecret);
+    const account = await this.server.loadAccount(signerKeypair.publicKey());
+
+    // Create a transaction with the document hash in the Memo
+    // We use a minimal self-payment as the carrier for the memo
+    const tx = new TransactionBuilder(account, {
+      fee: BASE_FEE,
+      networkPassphrase: this.networkPassphrase,
+    })
+      .addOperation(
+        Operation.payment({
+          destination: signerKeypair.publicKey(),
+          asset: Asset.native(),
+          amount: '0.000001',
+        }),
+      )
+      .addMemo(Memo.hash(docHashHex))
+      .setTimeout(30)
+      .build();
+
+    tx.sign(signerKeypair);
+    const result = await this.server.submitTransaction(tx);
+    
+    const txId = (result as any).hash as string;
+    return txId;
+  }
+
+  /**
    * Records an arbitrary memo on Stellar (used for milestone anchoring and document hashes).
    * Returns the transaction ID.
    */
@@ -569,34 +630,38 @@ export class StellarService {
     const investorAccount = await this.server.loadAccount(investorWallet);
     const tradeAsset = new Asset(assetCode, issuerPublicKey);
 
-    const needsTrustline = !(await this.hasTrustline(investorAccount, tradeAsset));
+    const needsTrustline = !(await this.hasTrustline(
+      investorAccount,
+      tradeAsset,
+    ));
 
     if (needsTrustline) {
       // Each trustline requires 0.5 XLM base reserve; ensure the investor can cover it
       const xlmBalance = parseFloat(
-        (investorAccount.balances.find((b: any) => b.asset_type === 'native') as any)?.balance ?? '0',
+        (
+          investorAccount.balances.find(
+            (b: any) => b.asset_type === 'native',
+          ) as any
+        )?.balance ?? '0',
       );
       // Minimum spendable = existing subentries * 0.5 + 2 (base) + 0.5 (new trustline) + fee buffer
-      const minRequired = (investorAccount.subentry_count + 1) * 0.5 + 2 + 0.001;
+      const minRequired =
+        (investorAccount.subentry_count + 1) * 0.5 + 2 + 0.001;
       if (xlmBalance < minRequired) {
         throw new Error(
           `Insufficient XLM balance for trustline base reserve. ` +
-          `Need at least ${minRequired.toFixed(3)} XLM, have ${xlmBalance} XLM.`,
+            `Need at least ${minRequired.toFixed(3)} XLM, have ${xlmBalance} XLM.`,
         );
       }
     }
 
-    const txBuilder = new TransactionBuilder(investorAccount, {
-    // Use USDC for stable USD-denominated payments
     const txBuilder = new TransactionBuilder(investorAccount, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
     });
 
     if (needsTrustline) {
-      txBuilder.addOperation(
-        Operation.changeTrust({ asset: tradeAsset }),
-      );
+      txBuilder.addOperation(Operation.changeTrust({ asset: tradeAsset }));
     }
 
     txBuilder
@@ -609,11 +674,8 @@ export class StellarService {
       )
       .addMemo(Memo.text(`invest:${assetCode}:${tokenAmount}`))
       .setTimeout(300);
-      .addMemo(Memo.text(`invest:${assetCode}:${tokenAmount}`));
 
     this.addComplianceDataOperations(txBuilder, complianceData);
-
-    const tx = txBuilder.setTimeout(300).build();
 
     return txBuilder.build().toXDR();
   }
@@ -821,13 +883,18 @@ export class StellarService {
    */
   async submitTransaction(signedXdr: string): Promise<any> {
     const tx = TransactionBuilder.fromXDR(signedXdr, this.networkPassphrase);
-    const result = await this.server.submitTransaction(tx);
-
-    this.logger.info(
-      { txId: (result as any).hash },
-      'Transaction submitted successfully',
-    );
-    return result;
+    try {
+      const result = await this.server.submitTransaction(tx);
+      const txHash = (result as any).hash as string;
+      this.logger.info({ txId: txHash }, 'Transaction submitted successfully');
+      await this.saveLog({ txHash, xdrBody: signedXdr, status: TxStatus.SUCCESS });
+      return result;
+    } catch (err: any) {
+      const errorCode: string =
+        err?.response?.data?.extras?.result_codes?.transaction ?? err.message;
+      await this.saveLog({ xdrBody: signedXdr, status: TxStatus.FAILED, errorCode });
+      throw err;
+    }
   }
 
   /**

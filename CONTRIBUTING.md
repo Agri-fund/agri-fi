@@ -130,6 +130,14 @@ Copy `backend/.env.example` to `backend/.env` and update the values:
 
 For Stellar work, generate a testnet keypair at https://laboratory.stellar.org and fund it via [Friendbot](https://friendbot.stellar.org).
 
+### Frontend env vars
+
+| Variable | Description | Required |
+|---|---|---|
+| `NEXT_PUBLIC_API_URL` | Base URL of the backend the frontend talks to (e.g. `http://localhost:3001` for local dev). Baked into the client bundle at `next build` time. | yes for `next build` |
+
+The marketplace pages (`src/app/marketplace/**`) are rendered on demand (`export const dynamic = 'force-dynamic'`) so `pnpm run build` does not require a reachable backend. If you add new server components that fetch from the API, either mark them `force-dynamic` or wrap the fetch in `try/catch` so the build can continue on transient failures.
+
 ---
 
 ## Database Migrations

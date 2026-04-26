@@ -161,6 +161,26 @@ async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
 // ── Stateful API client (used by dashboard / login pages) ────────────────────
 
 export const apiClient = {
+  /** Call POST /auth/login, store the returned JWT, and return the token. */
+  async login(email: string, password: string): Promise<string> {
+    const { accessToken } = await apiFetch<{ accessToken: string }>(
+      "/auth/login",
+      {
+        method: "POST",
+        body: JSON.stringify({ email, password }),
+      },
+    );
+    localStorage.setItem("auth_token", accessToken);
+    return accessToken;
+  },
+
+  /** Fetch the authenticated user's profile from GET /users/me. */
+  async getMe(): Promise<User> {
+    const user = await apiFetch<User>("/users/me");
+    localStorage.setItem("auth_user", JSON.stringify(user));
+    return user;
+  },
+
   setAuth(token: string, user: User) {
     localStorage.setItem("auth_token", token);
     localStorage.setItem("auth_user", JSON.stringify(user));
@@ -175,6 +195,24 @@ export const apiClient = {
     if (typeof window === "undefined") return null;
     const raw = localStorage.getItem("auth_user");
     return raw ? (JSON.parse(raw) as User) : null;
+  },
+
+  // GET /users/me — fetch the up-to-date profile from the server and refresh
+  // the cached copy in localStorage so KYC, wallet, and role changes made by
+  // an admin are picked up without forcing a logout.
+  async refreshCurrentUser(): Promise<User | null> {
+    if (typeof window === "undefined") return null;
+    if (!getStoredToken()) return null;
+    try {
+      const fresh = await apiFetch<User>("/users/me");
+      localStorage.setItem("auth_user", JSON.stringify(fresh));
+      return fresh;
+    } catch (err: any) {
+      if (err?.response?.status === 401) {
+        this.clearAuth();
+      }
+      throw err;
+    }
   },
 
   // GET /users/me/deals

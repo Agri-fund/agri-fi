@@ -1,15 +1,33 @@
-import { Injectable, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { UserRole } from '../auth/entities/user.entity';
+import { User, UserRole } from '../auth/entities/user.entity';
 import { TradeDeal } from './entities/trade-deal.entity';
 import { Investment } from './entities/investment.entity';
 import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.entity';
 import { PaymentDistribution } from '../escrow/entities/payment-distribution.entity';
 
+export interface CurrentUserProfile {
+  id: string;
+  email: string;
+  role: UserRole;
+  kycStatus: User['kycStatus'];
+  walletAddress: string | null;
+  isCompany: boolean;
+  companyDetails: User['companyDetails'];
+  country: string;
+  createdAt: Date;
+}
+
 @Injectable()
 export class UsersService {
   constructor(
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
     @InjectRepository(TradeDeal)
     private readonly tradeDealRepository: Repository<TradeDeal>,
     @InjectRepository(Investment)
@@ -19,6 +37,26 @@ export class UsersService {
     @InjectRepository(PaymentDistribution)
     private readonly paymentDistributionRepository: Repository<PaymentDistribution>,
   ) {}
+
+  async getProfile(userId: string): Promise<CurrentUserProfile> {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+
+    if (!user) {
+      throw new NotFoundException('User not found.');
+    }
+
+    return {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      kycStatus: user.kycStatus,
+      walletAddress: user.walletAddress,
+      isCompany: user.isCompany,
+      companyDetails: user.companyDetails,
+      country: user.country,
+      createdAt: user.createdAt,
+    };
+  }
 
   async getUserDeals(userId: string, userRole: UserRole): Promise<any[]> {
     if (userRole === 'investor') {

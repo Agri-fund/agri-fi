@@ -3,7 +3,6 @@ import {
   Post,
   Param,
   UseGuards,
-  ForbiddenException,
   Request,
   Body,
 } from '@nestjs/common';
@@ -18,6 +17,7 @@ import { AuthService } from './auth.service';
 import { User } from './entities/user.entity';
 import { ApiBody } from '@nestjs/swagger';
 import { IsIn } from 'class-validator';
+import { Roles, RolesGuard } from './roles.guard';
 
 class UpdateUserRoleDto {
   @IsIn(['farmer', 'trader', 'investor', 'company_admin', 'admin'])
@@ -30,7 +30,8 @@ interface AuthRequest extends Request {
 
 @ApiTags('admin')
 @Controller('admin')
-@UseGuards(AuthGuard('jwt'))
+@UseGuards(AuthGuard('jwt'), RolesGuard)
+@Roles('admin')
 @ApiBearerAuth('jwt')
 export class AdminController {
   constructor(private readonly authService: AuthService) {}
@@ -40,10 +41,10 @@ export class AdminController {
   @ApiResponse({ status: 200, description: 'KYC approved' })
   @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
   @ApiResponse({ status: 404, description: 'User or submission not found' })
-  async approveKyc(@Request() req: AuthRequest, @Param('userId') userId: string) {
-    if (req.user.role !== 'admin') {
-      throw new ForbiddenException('Admin role required');
-    }
+  async approveKyc(
+    @Request() req: AuthRequest,
+    @Param('userId') userId: string,
+  ) {
     return this.authService.approveKyc(userId);
   }
 
@@ -56,9 +57,6 @@ export class AdminController {
     @Request() req: AuthRequest,
     @Param('id') id: string,
   ) {
-    if (req.user.role !== 'admin') {
-      throw new ForbiddenException('Admin role required');
-    }
     return this.authService.approveCorporateKycSubmission(id);
   }
 
@@ -70,9 +68,6 @@ export class AdminController {
     @Param('userId') userId: string,
     @Body() dto: UpdateUserRoleDto,
   ) {
-    if (req.user.role !== 'admin') {
-      throw new ForbiddenException('Admin role required');
-    }
     return this.authService.updateUserRole(userId, dto.role);
   }
 }

@@ -84,10 +84,7 @@ export class AuthService {
     return { walletAddress };
   }
 
-  async submitKyc(
-    userId: string,
-    dto: KycDto,
-  ): Promise<{ kycStatus: string }> {
+  async submitKyc(userId: string, dto: KycDto): Promise<{ kycStatus: string }> {
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found.');
 
@@ -125,7 +122,9 @@ export class AuthService {
     if (automatedApproval) {
       user.kycStatus = 'verified';
       await this.userRepo.save(user);
-      console.log(`KYC auto-verified for user ${user.email} (Method: ${dto.isCorporate ? 'Automated Corporate' : 'System Config'}).`);
+      console.log(
+        `KYC auto-verified for user ${user.email} (Method: ${dto.isCorporate ? 'Automated Corporate' : 'System Config'}).`,
+      );
     } else {
       console.log(`KYC submission pending review for user ${user.email}.`);
     }
@@ -181,7 +180,9 @@ export class AuthService {
     });
 
     if (!submission) {
-      throw new NotFoundException('No pending KYC submission found for this user.');
+      throw new NotFoundException(
+        'No pending KYC submission found for this user.',
+      );
     }
 
     submission.status = 'approved';
@@ -201,7 +202,9 @@ export class AuthService {
     await this.userRepo.save(user);
 
     // Email notification would be triggered here
-    console.log(`KYC manually verified for user ${user.email} — notification queued.`);
+    console.log(
+      `KYC manually verified for user ${user.email} — notification queued.`,
+    );
 
     return { kycStatus: user.kycStatus };
   }
