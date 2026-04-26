@@ -39,7 +39,7 @@ export class DocumentsService {
 
     const stellarTxId = await this.stellarService.recordDocumentHash(
       fileHash,
-      signerSecret
+      signerSecret,
     );
 
     // 3. Persist using existing logic (VERY IMPORTANT)

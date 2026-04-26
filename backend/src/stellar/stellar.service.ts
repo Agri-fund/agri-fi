@@ -548,7 +548,7 @@ export class StellarService {
 
     tx.sign(signerKeypair);
     const result = await this.server.submitTransaction(tx);
-    
+
     const txId = (result as any).hash as string;
     return txId;
   }
@@ -887,12 +887,20 @@ export class StellarService {
       const result = await this.server.submitTransaction(tx);
       const txHash = (result as any).hash as string;
       this.logger.info({ txId: txHash }, 'Transaction submitted successfully');
-      await this.saveLog({ txHash, xdrBody: signedXdr, status: TxStatus.SUCCESS });
+      await this.saveLog({
+        txHash,
+        xdrBody: signedXdr,
+        status: TxStatus.SUCCESS,
+      });
       return result;
     } catch (err: any) {
       const errorCode: string =
         err?.response?.data?.extras?.result_codes?.transaction ?? err.message;
-      await this.saveLog({ xdrBody: signedXdr, status: TxStatus.FAILED, errorCode });
+      await this.saveLog({
+        xdrBody: signedXdr,
+        status: TxStatus.FAILED,
+        errorCode,
+      });
       throw err;
     }
   }

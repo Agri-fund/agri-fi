@@ -12,6 +12,7 @@ import { InvestmentsModule } from './investments/investments.module';
 import { EscrowModule } from './escrow/escrow.module';
 import { StorageModule } from './storage/storage.module';
 import { DocumentsModule } from './documents/documents.module';
+import { NotificationsModule } from './notifications/notifications.module';
 import { QueueProcessorModule } from './queue/queue-processor.module';
 import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
 import { loggingConfig } from './common/logging/logging.config';
@@ -40,6 +41,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
     EscrowModule,
     StorageModule,
     DocumentsModule,
+    NotificationsModule,
     QueueProcessorModule,
     HealthModule,
     TerminusModule,

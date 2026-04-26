@@ -14,6 +14,7 @@ import { KycSubmission } from './entities/kyc-submission.entity';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { KycDto } from './dto/kyc.dto';
+import { QueueService } from '../queue/queue.service';
 
 @Injectable()
 export class AuthService {
@@ -23,6 +24,7 @@ export class AuthService {
     private readonly kycRepo: Repository<KycSubmission>,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly queueService: QueueService,
   ) {}
 
   async register(
@@ -125,6 +127,11 @@ export class AuthService {
       console.log(
         `KYC auto-verified for user ${user.email} (Method: ${dto.isCorporate ? 'Automated Corporate' : 'System Config'}).`,
       );
+      this.queueService.emit('email.notification', {
+        type: 'kyc_verified',
+        email: user.email,
+        userId: user.id,
+      });
     } else {
       console.log(`KYC submission pending review for user ${user.email}.`);
     }
@@ -205,6 +212,11 @@ export class AuthService {
     console.log(
       `KYC manually verified for user ${user.email} — notification queued.`,
     );
+    this.queueService.emit('email.notification', {
+      type: 'kyc_verified',
+      email: user.email,
+      userId: user.id,
+    });
 
     return { kycStatus: user.kycStatus };
   }

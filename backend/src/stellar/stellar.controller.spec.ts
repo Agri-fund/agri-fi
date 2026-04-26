@@ -10,7 +10,6 @@ import {
   TransactionBuilder,
   Networks,
   Operation,
-  Asset,
   Account,
 } from 'stellar-sdk';
 
@@ -57,7 +56,10 @@ describe('StellarController', () => {
   });
   it('should throw 400 for invalid XDR', async () => {
     await expect(
-      controller.submitTransaction('not-valid-xdr', mockRequest('GXXXXXX') as any),
+      controller.submitTransaction(
+        'not-valid-xdr',
+        mockRequest('GXXXXXX') as any,
+      ),
     ).rejects.toThrow(
       new HttpException(
         'Invalid XDR: transaction could not be decoded',

@@ -33,7 +33,10 @@ export class StellarController {
     private readonly stellarService: StellarService,
     private readonly configService: ConfigService,
   ) {
-    const network = this.configService.get<string>('STELLAR_NETWORK', 'testnet');
+    const network = this.configService.get<string>(
+      'STELLAR_NETWORK',
+      'testnet',
+    );
     this.networkPassphrase =
       network === 'mainnet' ? Networks.PUBLIC : Networks.TESTNET;
   }
@@ -79,9 +82,10 @@ export class StellarController {
         signedXdr,
         this.networkPassphrase,
       );
-      sourceAccount = transaction instanceof FeeBumpTransaction
-        ? transaction.feeSource
-        : transaction.source;
+      sourceAccount =
+        transaction instanceof FeeBumpTransaction
+          ? transaction.feeSource
+          : transaction.source;
     } catch {
       throw new HttpException(
         'Invalid XDR: transaction could not be decoded',

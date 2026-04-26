@@ -127,6 +127,12 @@ Copy `backend/.env.example` to `backend/.env` and update the values:
 | `AWS_ACCESS_KEY_ID` | S3 access key | optional |
 | `AWS_SECRET_ACCESS_KEY` | S3 secret key | optional |
 | `AWS_S3_BUCKET` | S3 bucket name | optional |
+| `NOTIFICATIONS_ENABLED` | Set to false to disable sending emails | optional |
+| `SMTP_HOST` | SMTP server host for sending emails | optional |
+| `SMTP_PORT` | SMTP server port | optional |
+| `SMTP_USER` | SMTP authentication user | optional |
+| `SMTP_PASS` | SMTP authentication password | optional |
+| `EMAIL_FROM` | Sender address for emails | optional |
 
 For Stellar work, generate a testnet keypair at https://laboratory.stellar.org and fund it via [Friendbot](https://friendbot.stellar.org).
 

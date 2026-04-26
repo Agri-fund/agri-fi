@@ -11,10 +11,12 @@ import { User } from './entities/user.entity';
 import { KycSubmission } from './entities/kyc-submission.entity';
 import { KycGuard } from './kyc.guard';
 import { RolesGuard } from './roles.guard';
+import { QueueModule } from '../queue/queue.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([User, KycSubmission]),
+    QueueModule,
     PassportModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],

@@ -6,9 +6,12 @@ import { PinoLogger } from 'nestjs-pino';
 import { StellarService } from '../stellar/stellar.service';
 import { TradeDealsService } from '../trade-deals/trade-deals.service';
 import { Investment } from '../investments/entities/investment.entity';
+import { User } from '../auth/entities/user.entity';
+import { NotificationsService } from '../notifications/notifications.service';
 import {
   DealPublishPayload,
   InvestmentFundPayload,
+  DealFundedPayload,
   BasePayload,
 } from './queue.service';
 
@@ -21,6 +24,9 @@ export class QueueProcessor {
     private readonly tradeDealsService: TradeDealsService,
     @InjectRepository(Investment)
     private readonly investmentRepo: Repository<Investment>,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
+    private readonly notificationsService: NotificationsService,
     private readonly logger: PinoLogger,
   ) {
     this.logger.setContext(QueueProcessor.name);
@@ -165,6 +171,106 @@ export class QueueProcessor {
     await this.investmentRepo.update(data.investmentId, {
       status: 'failed' as any,
     });
+
+    channel.ack(context.getMessage());
+  }
+
+  @EventPattern('deal.funded')
+  async handleDealFunded(
+    @Payload() data: DealFundedPayload,
+    @Ctx() context: RmqContext,
+  ) {
+    this.setCorrelationId(data);
+    this.logger.info(
+      { tradeDealId: data.tradeDealId },
+      `Processing deal.funded for deal ${data.tradeDealId}`,
+    );
+
+    try {
+      for (const investor of data.investors) {
+        await this.notificationsService.sendEmail(
+          investor.email,
+          `Deal Fully Funded: ${data.commodity}`,
+          `Good news! The deal for ${data.commodity} you invested in (Deal ID: ${data.tradeDealId}) is now fully funded. You invested ${investor.tokenAmount} tokens.`,
+          `<h3>Deal Fully Funded</h3><p>Good news! The deal for <strong>${data.commodity}</strong> you invested in (Deal ID: ${data.tradeDealId}) is now fully funded.</p><p>You invested ${investor.tokenAmount} tokens.</p>`,
+        );
+      }
+    } catch (e: any) {
+      this.logger.error(
+        { error: e.message },
+        `Failed to send deal.funded notifications: ${e.message}`,
+      );
+    }
+
+    const channel = context.getChannelRef();
+    channel.ack(context.getMessage());
+  }
+
+  @EventPattern('email.notification')
+  async handleEmailNotification(
+    @Payload() data: any,
+    @Ctx() context: RmqContext,
+  ) {
+    this.setCorrelationId(data);
+    this.logger.info(
+      { type: data.type },
+      `Processing email.notification of type ${data.type}`,
+    );
+
+    try {
+      let emailAddress = data.email;
+      if (!emailAddress && data.userId) {
+        const user = await this.userRepo.findOne({
+          where: { id: data.userId },
+        });
+        if (user) {
+          emailAddress = user.email;
+        }
+      }
+
+      if (emailAddress) {
+        let subject = '';
+        let text = '';
+        let html = '';
+
+        if (data.type === 'kyc_verified') {
+          subject = 'KYC Verification Approved';
+          text = `Your KYC verification has been approved. You can now participate in investments.`;
+          html = `<h3>KYC Approved</h3><p>Your KYC verification has been approved. You can now participate in investments.</p>`;
+        } else if (data.type === 'deal_completed') {
+          subject = `Deal Completed: ${data.dealDetails?.commodity}`;
+          text = `The deal you participated in (${data.dealDetails?.commodity}) has been completed.`;
+          html = `<h3>Deal Completed</h3><p>The deal you participated in (<strong>${data.dealDetails?.commodity}</strong>) has been completed.</p>`;
+
+          if (data.recipient === 'investor') {
+            text += `\nYour return: $${data.dealDetails?.returnAmount?.toFixed(2)}`;
+            html += `<p>Your return: $${data.dealDetails?.returnAmount?.toFixed(2)}</p>`;
+          } else if (data.recipient === 'farmer') {
+            text += `\nYour payout: $${data.dealDetails?.farmerAmount?.toFixed(2)}`;
+            html += `<p>Your payout: $${data.dealDetails?.farmerAmount?.toFixed(2)}</p>`;
+          }
+        }
+
+        if (subject) {
+          await this.notificationsService.sendEmail(
+            emailAddress,
+            subject,
+            text,
+            html,
+          );
+        }
+      } else {
+        this.logger.warn(
+          { userId: data.userId },
+          'No email address found for user notification',
+        );
+      }
+    } catch (e: any) {
+      this.logger.error(
+        { error: e.message },
+        `Failed to send email.notification: ${e.message}`,
+      );
+    }
 
     const channel = context.getChannelRef();
     channel.ack(context.getMessage());
