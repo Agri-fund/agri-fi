@@ -45,6 +45,7 @@ jobs:
       STELLAR_PLATFORM_SECRET: ""
       ENCRYPTION_KEY: ci-test-encryption-key-32chars!!
       RABBITMQ_URL: amqp://localhost:5672
+      NOTIFICATIONS_ENABLED: "false"
 
     steps:
       - uses: actions/checkout@v4
