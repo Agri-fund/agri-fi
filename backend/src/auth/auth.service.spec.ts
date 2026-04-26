@@ -7,6 +7,7 @@ import * as bcrypt from 'bcrypt';
 import { AuthService } from './auth.service';
 import { User } from './entities/user.entity';
 import { KycSubmission } from './entities/kyc-submission.entity';
+import { QueueService } from '../queue/queue.service';
 
 const mockUser = (): User => ({
   id: 'uuid-1',
@@ -15,7 +16,10 @@ const mockUser = (): User => ({
   role: 'farmer',
   country: 'NG',
   kycStatus: 'pending',
+  tokenVersion: 0,
   walletAddress: null,
+  isCompany: false,
+  companyDetails: null,
   createdAt: new Date(),
 });
 
@@ -39,6 +43,7 @@ describe('AuthService', () => {
         { provide: getRepositoryToken(KycSubmission), useValue: kycRepo },
         { provide: JwtService, useValue: jwtService },
         { provide: ConfigService, useValue: configService },
+        { provide: QueueService, useValue: { emit: jest.fn() } },
       ],
     }).compile();
 

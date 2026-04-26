@@ -42,7 +42,8 @@ jobs:
       JWT_SECRET: ci-test-secret
       STELLAR_NETWORK: testnet
       STELLAR_HORIZON_URL: https://horizon-testnet.stellar.org
-      STELLAR_PLATFORM_SECRET: ""
+      STELLAR_PLATFORM_SECRET: ${{ secrets.STELLAR_PLATFORM_SECRET_TESTNET }}
+      STELLAR_INTEGRATION_TESTS: ${{ secrets.STELLAR_PLATFORM_SECRET_TESTNET != '' && 'true' || 'false' }}
       ENCRYPTION_KEY: ci-test-encryption-key-32chars!!
       RABBITMQ_URL: amqp://localhost:5672
       NOTIFICATIONS_ENABLED: "false"
@@ -55,6 +56,18 @@ jobs:
           node-version: 20
           cache: npm
           cache-dependency-path: backend/package-lock.json
+
+      - name: Check Stellar testnet secret
+        run: |
+          if [ -z "${STELLAR_PLATFORM_SECRET}" ]; then
+            echo "::notice title=Stellar integration tests disabled::STELLAR_PLATFORM_SECRET_TESTNET is not configured. Tests that require Stellar testnet access should skip when STELLAR_INTEGRATION_TESTS=false."
+          else
+            echo "Stellar testnet keypair configured for CI."
+          fi
+
+      - name: Verify lockfile
+        run: npm ci --dry-run
+        working-directory: backend
 
       - name: Install dependencies
         run: npm ci

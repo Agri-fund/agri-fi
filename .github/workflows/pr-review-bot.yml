@@ -52,6 +52,10 @@ jobs:
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
 
+      - name: Check ESLint config exists
+        run: test -f .eslintrc.json || test -f eslint.config.mjs
+        working-directory: frontend
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
         working-directory: frontend
@@ -67,6 +71,9 @@ jobs:
         continue-on-error: true
         run: pnpm run build --noEmit || npx tsc --noEmit
         working-directory: frontend
+        env:
+          NEXT_PUBLIC_API_URL: https://api.example.invalid
+          BACKEND_URL: https://api.example.invalid
 
       - name: Frontend - Build
         id: build
@@ -74,7 +81,8 @@ jobs:
         run: pnpm run build
         working-directory: frontend
         env:
-          NEXT_PUBLIC_API_URL: http://localhost:3001
+          NEXT_PUBLIC_API_URL: https://api.example.invalid
+          BACKEND_URL: https://api.example.invalid
 
   review-backend:
     name: Backend checks
@@ -114,9 +122,11 @@ jobs:
       JWT_SECRET: ci-test-secret
       STELLAR_NETWORK: testnet
       STELLAR_HORIZON_URL: https://horizon-testnet.stellar.org
-      STELLAR_PLATFORM_SECRET: ""
+      STELLAR_PLATFORM_SECRET: ${{ secrets.STELLAR_PLATFORM_SECRET_TESTNET }}
+      STELLAR_INTEGRATION_TESTS: ${{ secrets.STELLAR_PLATFORM_SECRET_TESTNET != '' && 'true' || 'false' }}
       ENCRYPTION_KEY: ci-test-encryption-key-32chars!!
       RABBITMQ_URL: amqp://localhost:5672
+      NOTIFICATIONS_ENABLED: "false"
     steps:
       - uses: actions/checkout@v4
 
@@ -125,6 +135,18 @@ jobs:
           node-version: 20
           cache: npm
           cache-dependency-path: backend/package-lock.json
+
+      - name: Check Stellar testnet secret
+        run: |
+          if [ -z "${STELLAR_PLATFORM_SECRET}" ]; then
+            echo "::notice title=Stellar integration tests disabled::STELLAR_PLATFORM_SECRET_TESTNET is not configured. Tests that require Stellar testnet access should skip when STELLAR_INTEGRATION_TESTS=false."
+          else
+            echo "Stellar testnet keypair configured for CI."
+          fi
+
+      - name: Verify lockfile
+        run: npm ci --dry-run
+        working-directory: backend
 
       - name: Install dependencies
         run: npm ci
@@ -160,6 +182,12 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
+            const issueNumber = context.issue?.number;
+            if (!issueNumber) {
+              console.log('No issue number available — skipping area labels.');
+              return;
+            }
+
             const labels = [];
             if ('${{ needs.detect-changes.outputs.frontend }}' === 'true') labels.push('frontend');
             if ('${{ needs.detect-changes.outputs.backend }}' === 'true') labels.push('backend');
@@ -167,7 +195,7 @@ jobs:
               await github.rest.issues.addLabels({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                issue_number: context.issue.number,
+                issue_number: issueNumber,
                 labels,
               });
             }
@@ -176,6 +204,12 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
+            const issueNumber = context.issue?.number;
+            if (!issueNumber) {
+              console.log('No issue number available — skipping review comment.');
+              return;
+            }
+
             const fe = '${{ needs.detect-changes.outputs.frontend }}' === 'true';
             const be = '${{ needs.detect-changes.outputs.backend }}' === 'true';
 
@@ -223,7 +257,7 @@ jobs:
             const comments = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: context.issue.number,
+              issue_number: issueNumber,
             });
             for (const c of comments.data) {
               if (c.user.login === 'github-actions[bot]' && c.body.includes('🤖 Automated PR Review')) {
@@ -238,7 +272,7 @@ jobs:
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: context.issue.number,
+              issue_number: issueNumber,
               body,
             });
 
@@ -248,7 +282,7 @@ jobs:
               await github.rest.issues.removeLabel({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                issue_number: context.issue.number,
+                issue_number: issueNumber,
                 name: opposite,
               });
             } catch (_) { /* label may not be present */ }
@@ -256,6 +290,6 @@ jobs:
             await github.rest.issues.addLabels({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: context.issue.number,
+              issue_number: issueNumber,
               labels: [statusLabel],
             });

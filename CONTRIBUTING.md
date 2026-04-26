@@ -136,6 +136,12 @@ Copy `backend/.env.example` to `backend/.env` and update the values:
 
 For Stellar work, generate a testnet keypair at https://laboratory.stellar.org and fund it via [Friendbot](https://friendbot.stellar.org).
 
+### Stellar CI testnet key
+
+Repository CI expects a funded Stellar testnet secret named `STELLAR_PLATFORM_SECRET_TESTNET` in GitHub Actions secrets. Use a dedicated testnet-only keypair and keep it funded with Friendbot so Stellar-dependent integration tests can create escrow accounts and submit transactions without falling back to an unfunded random account.
+
+When the secret is not configured, CI sets `STELLAR_INTEGRATION_TESTS=false` and logs a notice. Any test that requires Stellar testnet access should check that flag and skip itself when the flag is false. Unit tests that mock Stellar behavior still run normally.
+
 ### Frontend env vars
 
 | Variable | Description | Required |

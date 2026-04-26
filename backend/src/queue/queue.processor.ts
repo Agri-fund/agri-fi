@@ -101,6 +101,8 @@ export class QueueProcessor {
 
     let attempt = 0;
     let lastError: Error | null = null;
+    const channel = context.getChannelRef();
+    const originalMsg = context.getMessage();
 
     while (attempt < MAX_RETRIES) {
       try {
@@ -137,8 +139,7 @@ export class QueueProcessor {
           `Successfully funded investment ${data.investmentId} with txId ${stellarTxId}`,
         );
 
-        const channel = context.getChannelRef();
-        channel.ack(context.getMessage());
+        channel.ack(originalMsg);
         return;
       } catch (error) {
         attempt++;
@@ -172,7 +173,7 @@ export class QueueProcessor {
       status: 'failed' as any,
     });
 
-    channel.ack(context.getMessage());
+    channel.ack(originalMsg);
   }
 
   @EventPattern('deal.funded')
