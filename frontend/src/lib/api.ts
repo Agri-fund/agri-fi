@@ -25,9 +25,18 @@ export interface Document {
   created_at: string;
 }
 
+export type MilestoneType = "farm" | "warehouse" | "port" | "importer";
+
+export const MILESTONE_LABELS: Record<MilestoneType, string> = {
+  farm: "Farm",
+  warehouse: "Warehouse",
+  port: "Port",
+  importer: "Importer",
+};
+
 export interface Milestone {
   id: string;
-  milestone: "farm" | "warehouse" | "port" | "importer";
+  milestone: MilestoneType;
   notes: string | null;
   recorded_at: string;
   created_at: string;
@@ -259,6 +268,18 @@ export const apiClient = {
       method: "POST",
       body: JSON.stringify(data),
     });
+  },
+
+  // POST /auth/logout — invalidate the current JWT by incrementing tokenVersion
+  async logout(): Promise<{ message: string }> {
+    try {
+      return await apiFetch("/auth/logout", {
+        method: "POST",
+      });
+    } finally {
+      // Always clear local auth state, even if logout request fails
+      this.clearAuth();
+    }
   },
 };
 

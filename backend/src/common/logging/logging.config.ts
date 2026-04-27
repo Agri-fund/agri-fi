@@ -1,10 +1,24 @@
 import { Params } from 'nestjs-pino';
 
+/**
+ * Safely check if pino-pretty is available.
+ * This prevents crashes when pino-pretty is not installed
+ * (e.g., after npm ci --omit=dev in staging environments).
+ */
+function hasPinoPretty(): boolean {
+  try {
+    require.resolve('pino-pretty');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export const loggingConfig: Params = {
   pinoHttp: {
     level: process.env.LOG_LEVEL || 'info',
     transport:
-      process.env.NODE_ENV !== 'production'
+      process.env.LOG_PRETTY === 'true' && hasPinoPretty()
         ? {
             target: 'pino-pretty',
             options: {

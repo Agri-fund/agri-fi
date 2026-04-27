@@ -5,6 +5,7 @@ import { Repository } from 'typeorm';
 import { PinoLogger } from 'nestjs-pino';
 import { StellarService } from '../stellar/stellar.service';
 import { TradeDealsService } from '../trade-deals/trade-deals.service';
+import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
 import { Investment } from '../investments/entities/investment.entity';
 import { User } from '../auth/entities/user.entity';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -22,6 +23,8 @@ export class QueueProcessor {
   constructor(
     private readonly stellarService: StellarService,
     private readonly tradeDealsService: TradeDealsService,
+    @InjectRepository(TradeDeal)
+    private readonly tradeDealRepo: Repository<TradeDeal>,
     @InjectRepository(Investment)
     private readonly investmentRepo: Repository<Investment>,
     @InjectRepository(User)
@@ -61,12 +64,17 @@ export class QueueProcessor {
         data.tokenCount,
       );
 
-      // Update deal status to open and store stellar_asset_tx_id
-      await this.tradeDealsService.updateDealStatus(
-        data.dealId,
-        'open',
-        result.txId,
-      );
+      // Encrypt the issuer secret
+      const encryptedIssuerSecret =
+        this.stellarService.encryptSecret(result.issuerSecret);
+
+      // Update deal with issuer keys and status to open
+      await this.tradeDealRepo.update(data.dealId, {
+        status: 'open',
+        stellarAssetTxId: result.txId,
+        issuerPublicKey: result.issuerPublicKey,
+        issuerSecretKey: encryptedIssuerSecret,
+      });
 
       this.logger.info(
         { dealId: data.dealId, txId: result.txId },
@@ -79,7 +87,7 @@ export class QueueProcessor {
       );
 
       // On Stellar failure: mark deal status = 'failed'
-      await this.tradeDealsService.updateDealStatus(data.dealId, 'failed');
+      await this.tradeDealRepo.update(data.dealId, { status: 'failed' });
     }
 
     // Acknowledge the message

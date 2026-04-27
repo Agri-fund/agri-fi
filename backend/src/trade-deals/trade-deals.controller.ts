@@ -8,6 +8,7 @@ import {
   UseGuards,
   Request,
   ForbiddenException,
+  HttpCode,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -60,7 +61,18 @@ export class TradeDealsController {
   }
 
   @Post(':id/publish')
+  @HttpCode(202)
   @UseGuards(AuthGuard('jwt'), KycGuard)
+  @ApiBearerAuth('jwt')
+  @ApiOperation({
+    summary: 'Publish a draft trade deal (async token issuance)',
+  })
+  @ApiResponse({ status: 202, description: 'Deal publish request accepted, token issuance in progress' })
+  @ApiResponse({ status: 400, description: 'Validation error' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Role or KYC requirement not met' })
+  @ApiResponse({ status: 404, description: 'Trade deal not found' })
+  @ApiResponse({ status: 422, description: 'Deal not in draft status or missing documents' })
   async publishDeal(
     @Param('id') id: string,
     @Request() req: AuthRequest,
