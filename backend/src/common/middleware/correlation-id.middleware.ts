@@ -2,6 +2,7 @@ import { Injectable, NestMiddleware } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { PinoLogger } from 'nestjs-pino';
+import { ClsService } from 'nestjs-cls'; // Added for context tracking
 
 export interface RequestWithCorrelationId extends Request {
   correlationId: string;
@@ -9,7 +10,11 @@ export interface RequestWithCorrelationId extends Request {
 
 @Injectable()
 export class CorrelationIdMiddleware implements NestMiddleware {
-  constructor(private readonly logger: PinoLogger) {}
+  // Inject ClsService alongside the logger
+  constructor(
+    private readonly logger: PinoLogger,
+    private readonly cls: ClsService,
+  ) {}
 
   use(req: RequestWithCorrelationId, res: Response, next: NextFunction) {
     // Generate or extract correlation ID
@@ -18,13 +23,17 @@ export class CorrelationIdMiddleware implements NestMiddleware {
       (req.headers['correlation-id'] as string) ||
       uuidv4();
 
-    // Attach to request
+    // 1. Attach to request object (for legacy support)
     req.correlationId = correlationId;
 
-    // Set response header for client tracking
+    // 2. Store in AsyncLocalStorage via ClsService
+    // This is what QueueService uses to grab the ID
+    this.cls.set('correlationId', correlationId);
+
+    // 3. Set response header for client tracking
     res.setHeader('x-correlation-id', correlationId);
 
-    // Set correlation ID in logger context
+    // 4. Set correlation ID in logger context
     this.logger.assign({ correlationId });
 
     next();

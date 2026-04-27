@@ -2,6 +2,7 @@ import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { LoggerModule } from 'nestjs-pino';
+import { ClsModule } from 'nestjs-cls'; // 1. Import ClsModule
 import { DatabaseConfig } from './database/database.config';
 import { AuthModule } from './auth/auth.module';
 import { StellarModule } from './stellar/stellar.module';
@@ -22,6 +23,11 @@ import { ThrottlerModule } from '@nestjs/throttler';
 
 @Module({
   imports: [
+    // 2. Register ClsModule globally
+    ClsModule.forRoot({
+      global: true,
+      middleware: { mount: true }, // Automatically sets up the async context
+    }),
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
     LoggerModule.forRoot(loggingConfig),
     ConfigModule.forRoot({

@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { ClientProxy } from '@nestjs/microservices';
 import { PinoLogger } from 'nestjs-pino';
+import { ClsService } from 'nestjs-cls'; // Added for safe context access
 import { QUEUE_SERVICE } from './queue.constants';
 
 export interface BasePayload {
@@ -49,6 +50,7 @@ export class QueueService {
   constructor(
     @Inject(QUEUE_SERVICE) private readonly client: ClientProxy,
     private readonly logger: PinoLogger,
+    private readonly cls: ClsService, // Inject ClsService to access AsyncLocalStorage
   ) {
     this.logger.setContext(QueueService.name);
   }
@@ -66,12 +68,16 @@ export class QueueService {
     }
   }
 
+  /**
+   * REFACTORED: Now uses ClsService instead of private Pino bindings.
+   * This ensures the correlationId is pulled from the active request context.
+   */
   private addCorrelationId<T>(payload: T): T & BasePayload {
+    const correlationId = (payload as any).correlationId || this.cls.get('correlationId');
+
     return {
       ...payload,
-      correlationId:
-        (payload as any).correlationId ||
-        this.logger.logger.bindings()?.correlationId,
+      correlationId,
     } as T & BasePayload;
   }
 
