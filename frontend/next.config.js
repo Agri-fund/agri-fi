@@ -1,7 +1,3 @@
-const createNextIntlPlugin = require("next-intl/plugin");
-
-const withNextIntl = createNextIntlPlugin();
-
 // Validate BACKEND_URL in production
 if (!process.env.BACKEND_URL && process.env.NODE_ENV === 'production') {
   throw new Error(
@@ -19,4 +15,4 @@ const nextConfig = {
   },
 };
 
-module.exports = withNextIntl(nextConfig);
+module.exports = nextConfig;
