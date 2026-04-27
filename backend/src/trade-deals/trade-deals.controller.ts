@@ -79,13 +79,13 @@ export class TradeDealsController {
   @ApiOperation({ summary: 'List open trade deals (marketplace)' })
   @ApiQuery({ name: 'commodity', required: false, example: 'Cocoa' })
   @ApiQuery({ name: 'page', required: false, example: 1 })
-  @ApiQuery({ name: 'limit', required: false, example: 20 })
+  @ApiQuery({ name: 'limit', required: false, example: 12 })
   @ApiResponse({ status: 200, description: 'Paginated list of open deals' })
   async findOpen(
     @Query('commodity') commodity?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
-  ): Promise<PaginatedResult<any>> {
+  ): Promise<{ data: any[]; total: number; page: number; limit: number }> {
     return this.tradeDealsService.findOpen({
       commodity,
       page: page ? parseInt(page, 10) : undefined,

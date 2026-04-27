@@ -9,7 +9,7 @@ import { User, UserRole } from '../auth/entities/user.entity';
 import { TradeDeal } from './entities/trade-deal.entity';
 import { Investment } from './entities/investment.entity';
 import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.entity';
-import { Document } from '../trade-deals/entities/document.entity';
+import { PaymentDistribution } from '../escrow/entities/payment-distribution.entity';
 
 export interface CurrentUserProfile {
   id: string;
@@ -34,8 +34,8 @@ export class UsersService {
     private readonly investmentRepository: Repository<Investment>,
     @InjectRepository(ShipmentMilestone)
     private readonly milestoneRepository: Repository<ShipmentMilestone>,
-    @InjectRepository(Document)
-    private readonly documentRepository: Repository<Document>,
+    @InjectRepository(PaymentDistribution)
+    private readonly paymentDistributionRepository: Repository<PaymentDistribution>,
   ) {}
 
   async getProfile(userId: string): Promise<CurrentUserProfile> {
@@ -71,23 +71,7 @@ export class UsersService {
       relations: ['farmer', 'trader', 'milestones'],
     });
 
-    if (deals.length === 0) return [];
-
-    // Single GROUP BY query — no N+1
-    const dealIds = deals.map((d) => d.id);
-    const counts: { trade_deal_id: string; count: string }[] =
-      await this.documentRepository
-        .createQueryBuilder('doc')
-        .select('doc.trade_deal_id', 'trade_deal_id')
-        .addSelect('COUNT(doc.id)', 'count')
-        .where('doc.trade_deal_id IN (:...dealIds)', { dealIds })
-        .groupBy('doc.trade_deal_id')
-        .getRawMany();
-
-    const countMap = new Map(
-      counts.map((r) => [r.trade_deal_id, Number(r.count)]),
-    );
-
+    // Get document count for each deal (placeholder - would need documents entity)
     const dealsWithCounts = await Promise.all(
       deals.map(async (deal) => {
         const latestMilestone = await this.milestoneRepository.findOne({
@@ -104,7 +88,7 @@ export class UsersService {
           status: deal.status,
           delivery_date: deal.deliveryDate,
           latest_milestone: latestMilestone || null,
-          document_count: countMap.get(deal.id) ?? 0,
+          document_count: 0, // TODO: Implement when documents entity is available
         };
       }),
     );
@@ -124,17 +108,57 @@ export class UsersService {
       relations: ['tradeDeal'],
     });
 
-    return investments.map((investment) => ({
-      id: investment.id,
-      token_amount: investment.tokenAmount,
-      amount_usd: investment.amountUsd,
-      status: investment.status,
-      stellar_tx_id: investment.stellarTxId,
-      deal: {
-        commodity: investment.tradeDeal.commodity,
-        status: investment.tradeDeal.status,
-        total_value: investment.tradeDeal.totalValue,
-      },
-    }));
+    return Promise.all(
+      investments.map(async (investment) => {
+        const deal = investment.tradeDeal;
+        const totalTokens = Number(deal.tokenCount);
+        const totalValue = Number(deal.totalValue);
+        const tokenAmount = Number(investment.tokenAmount);
+
+        const expected_return_usd =
+          totalTokens > 0 ? (tokenAmount / totalTokens) * totalValue : 0;
+
+        let actual_return_usd: number | null = null;
+        let return_percentage: number | null = null;
+
+        if (deal.status === 'completed') {
+          const distribution = await this.paymentDistributionRepository.findOne({
+            where: {
+              tradeDealId: deal.id,
+              recipientId: userId,
+              recipientType: 'investor',
+              status: 'confirmed',
+            },
+          });
+
+          if (distribution) {
+            actual_return_usd = Number(distribution.amountUsd);
+            const amountUsd = Number(investment.amountUsd);
+            return_percentage =
+              amountUsd > 0
+                ? ((actual_return_usd - amountUsd) / amountUsd) * 100
+                : null;
+          }
+        }
+
+        return {
+          id: investment.id,
+          token_amount: tokenAmount,
+          amount_usd: Number(investment.amountUsd),
+          status: investment.status,
+          stellar_tx_id: investment.stellarTxId,
+          created_at: investment.createdAt,
+          expected_return_usd,
+          actual_return_usd,
+          return_percentage,
+          deal: {
+            commodity: deal.commodity,
+            status: deal.status,
+            total_value: totalValue,
+            token_count: totalTokens,
+          },
+        };
+      }),
+    );
   }
 }

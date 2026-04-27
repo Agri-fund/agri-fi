@@ -64,6 +64,9 @@ export interface Investment {
   token_holdings: number;
   status: "pending" | "confirmed" | "failed";
   created_at: string;
+  expected_return_usd: number;
+  actual_return_usd: number | null;
+  return_percentage: number | null;
   deal: Deal;
 }
 
@@ -263,10 +266,17 @@ export const apiClient = {
 
 // ── Public marketplace helpers ────────────────────────────────────────────────
 
-export async function getOpenDeals(): Promise<Deal[]> {
-  const res = await fetch(`${API_BASE}/trade-deals`, { cache: "no-store" });
-  if (!res.ok) throw new Error("Failed to fetch deals");
-  return unwrapPaginated(await res.json());
+export interface PaginatedDeals {
+  data: Deal[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export async function getOpenDeals(page = 1, limit = 12): Promise<PaginatedDeals> {
+  const res = await fetch(`${API_BASE}/trade-deals?page=${page}&limit=${limit}`, { cache: 'no-store' });
+  if (!res.ok) throw new Error('Failed to fetch deals');
+  return res.json();
 }
 
 export async function getDealById(id: string): Promise<Deal | null> {
