@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
+import { User } from '../auth/entities/user.entity'; // Corrected Path
 import { TradeDeal } from './entities/trade-deal.entity';
 import { Investment } from './entities/investment.entity';
 import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.entity';
@@ -9,7 +10,13 @@ import { PaymentDistribution } from '../escrow/entities/payment-distribution.ent
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([TradeDeal, Investment, ShipmentMilestone, PaymentDistribution]),
+    TypeOrmModule.forFeature([
+      User, 
+      TradeDeal, 
+      Investment, 
+      ShipmentMilestone, 
+      PaymentDistribution
+    ]),
   ],
   controllers: [UsersController],
   providers: [UsersService],
