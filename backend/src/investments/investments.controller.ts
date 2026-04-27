@@ -57,9 +57,6 @@ export class InvestmentsController {
     @Request() req: { user: { id: string; role: string } },
     @Body() createInvestmentDto: CreateInvestmentDto,
   ) {
-    if (req.user.role !== 'investor') {
-      throw new Error('Only investors can create investments.');
-    }
     return this.investmentsService.createInvestment(
       req.user.id,
       createInvestmentDto,
