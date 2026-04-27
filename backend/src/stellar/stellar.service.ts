@@ -67,6 +67,15 @@ export class StellarService {
       ? Keypair.fromSecret(platformSecret)
       : Keypair.random();
 
+    // Validate ENCRYPTION_KEY presence (except in test environment)
+    const encryptionKey = config.get<string>('ENCRYPTION_KEY', '');
+    if (!encryptionKey && process.env.NODE_ENV !== 'test') {
+      throw new Error('ENCRYPTION_KEY is required in production and development environments');
+    }
+    if (!encryptionKey && process.env.NODE_ENV === 'test') {
+      this.logger.warn('ENCRYPTION_KEY is not set; using empty key for tests');
+    }
+
     const usdcAssetCode = config.get<string>('USDC_ASSET_CODE', 'USDC');
     const usdcIssuer = config.get<string>('USDC_ISSUER', '');
     this.usdcAsset = usdcIssuer
@@ -386,10 +395,14 @@ export class StellarService {
    */
   encryptSecret(secret: string): string {
     const key = Buffer.from(
-      this.config
-        .get<string>('ENCRYPTION_KEY', '')
-        .padEnd(32, '0')
-        .slice(0, 32),
+      (() => {
+        const rawKey = this.config.get<string>('ENCRYPTION_KEY', '');
+        if (!rawKey) {
+          throw new Error('ENCRYPTION_KEY is not set');
+        }
+        // Expect a 64‑character hex string (32 bytes)
+        return Buffer.from(rawKey, 'hex');
+      })(),
     );
     const iv = randomBytes(16);
     const cipher = createCipheriv('aes-256-cbc', key, iv);
@@ -405,10 +418,13 @@ export class StellarService {
    */
   decryptSecret(encryptedSecret: string): string {
     const key = Buffer.from(
-      this.config
-        .get<string>('ENCRYPTION_KEY', '')
-        .padEnd(32, '0')
-        .slice(0, 32),
+      (() => {
+        const rawKey = this.config.get<string>('ENCRYPTION_KEY', '');
+        if (!rawKey) {
+          throw new Error('ENCRYPTION_KEY is not set');
+        }
+        return Buffer.from(rawKey, 'hex');
+      })(),
     );
     const [ivHex, encryptedHex] = encryptedSecret.split(':');
     const iv = Buffer.from(ivHex, 'hex');
