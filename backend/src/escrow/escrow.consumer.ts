@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { EventPattern, Payload } from '@nestjs/microservices';
+import { Ctx, EventPattern, Payload, RmqContext } from '@nestjs/microservices';
 import { EscrowService } from './escrow.service';
 
 interface DealDeliveredPayload {
@@ -16,6 +16,7 @@ export class EscrowConsumer {
   @EventPattern('deal.delivered')
   async handleDealDelivered(
     @Payload() payload: DealDeliveredPayload,
+    @Ctx() context: RmqContext,
   ): Promise<void> {
     const { tradeDealId } = payload;
 
@@ -23,6 +24,8 @@ export class EscrowConsumer {
 
     let attempt = 0;
     let lastError: Error | null = null;
+    const channel = context.getChannelRef();
+    const originalMsg = context.getMessage();
 
     while (attempt < this.maxRetries) {
       attempt++;
@@ -32,6 +35,7 @@ export class EscrowConsumer {
         this.logger.log(
           `Successfully processed deal.delivered for deal ${tradeDealId} on attempt ${attempt}`,
         );
+        channel.ack(originalMsg);
         return;
       } catch (error) {
         lastError = error as Error;
@@ -66,6 +70,7 @@ export class EscrowConsumer {
 
     // The error handling (admin alerts, etc.) is already done in EscrowService
     // We don't re-throw here to prevent the message from being requeued indefinitely
+    channel.nack(originalMsg, false, false);
   }
 
   private isTransientError(error: any): boolean {

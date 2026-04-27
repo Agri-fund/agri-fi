@@ -3,6 +3,7 @@ import {
   WalletProvider,
   detectAvailableWallets,
   connectWallet,
+  getPublicKeyWithWallet,
   signTransactionWithWallet,
 } from '../lib/stellar-wallet';
 
@@ -50,22 +51,69 @@ export const useWallet = (): UseWalletReturn => {
   useEffect(() => {
     const saved = sessionStorage.getItem('stellar_wallet');
     if (!saved) return;
-    try {
-      const { publicKey, provider } = JSON.parse(saved) as {
-        publicKey: string;
-        provider: WalletProvider;
-      };
-      if (publicKey && provider) {
+    let isActive = true;
+
+    (async () => {
+      try {
+        const { publicKey, provider } = JSON.parse(saved) as {
+          publicKey: string;
+          provider: WalletProvider;
+        };
+
+        if (!publicKey || !provider) {
+          sessionStorage.removeItem('stellar_wallet');
+          if (!isActive) return;
+          setState((prev) => ({
+            ...prev,
+            isConnected: false,
+            publicKey: null,
+            provider: null,
+          }));
+          return;
+        }
+
+        if (!isActive) return;
+        setState((prev) => ({ ...prev, isLoading: true, error: null }));
+
+        const actualPublicKey = await getPublicKeyWithWallet(provider);
+        const matches = actualPublicKey === publicKey;
+
+        if (!isActive) return;
+        if (!matches) {
+          sessionStorage.removeItem('stellar_wallet');
+          setState((prev) => ({
+            ...prev,
+            isConnected: false,
+            publicKey: null,
+            provider: null,
+            isLoading: false,
+          }));
+          return;
+        }
+
         setState((prev) => ({
           ...prev,
           isConnected: true,
           publicKey,
           provider,
+          isLoading: false,
+        }));
+      } catch {
+        sessionStorage.removeItem('stellar_wallet');
+        if (!isActive) return;
+        setState((prev) => ({
+          ...prev,
+          isConnected: false,
+          publicKey: null,
+          provider: null,
+          isLoading: false,
         }));
       }
-    } catch {
-      sessionStorage.removeItem('stellar_wallet');
-    }
+    })();
+
+    return () => {
+      isActive = false;
+    };
   }, []);
 
   const connect = useCallback(async (provider: WalletProvider): Promise<string> => {
