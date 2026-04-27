@@ -63,4 +63,14 @@ export class AuthController {
   submitKyc(@Request() req: AuthRequest, @Body() dto: KycDto) {
     return this.authService.submitKyc(req.user.id, dto);
   }
+
+  @Post('logout')
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth('jwt')
+  @ApiOperation({ summary: 'Logout and invalidate the current JWT token' })
+  @ApiResponse({ status: 200, description: 'Logged out successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  logout(@Request() req: AuthRequest) {
+    return this.authService.logout(req.user.id);
+  }
 }

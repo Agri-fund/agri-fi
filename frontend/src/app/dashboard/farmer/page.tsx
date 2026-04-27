@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiClient, Deal, User } from '@/lib/api';
+import { apiClient, Deal, User, MILESTONE_LABELS } from '@/lib/api';
 import ErrorBoundary from '@/components/ErrorBoundary';
 
 export default function FarmerDashboard() {
@@ -142,8 +142,14 @@ export default function FarmerDashboard() {
                   Welcome, {user?.name || user?.email}
                 </span>
                 <button
-                  onClick={() => {
-                    apiClient.clearAuth();
+                  onClick={async () => {
+                    try {
+                      await apiClient.logout();
+                    } catch (err) {
+                      console.error('Logout failed:', err);
+                      // Still clear auth and redirect even if logout fails
+                      apiClient.clearAuth();
+                    }
                     router.push('/login');
                   }}
                   className="bg-red-600 text-white px-4 py-2 rounded text-sm hover:bg-red-700 transition-colors"
@@ -232,7 +238,7 @@ export default function FarmerDashboard() {
                           {/* Latest Milestone */}
                           {latestMilestone && (() => {
                             const milestoneStatus = latestMilestone.milestone === 'importer' ? 'completed' : 'active';
-                            const milestoneLabel = latestMilestone.milestone.charAt(0).toUpperCase() + latestMilestone.milestone.slice(1);
+                            const milestoneLabel = MILESTONE_LABELS[latestMilestone.milestone];
                             return (
                               <div className="border-t pt-3">
                                 <div className="flex justify-between items-start">

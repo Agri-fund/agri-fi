@@ -233,4 +233,13 @@ export class AuthService {
     const saved = await this.userRepo.save(user);
     return { id: saved.id, role: saved.role };
   }
+
+  async logout(userId: string): Promise<{ message: string }> {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found.');
+
+    user.tokenVersion = (user.tokenVersion ?? 0) + 1;
+    await this.userRepo.save(user);
+    return { message: 'Logged out successfully.' };
+  }
 }

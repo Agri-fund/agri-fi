@@ -18,6 +18,7 @@ import {
   InvestmentStatus,
 } from '../investments/entities/investment.entity';
 import { StellarService } from '../stellar/stellar.service';
+import { QueueService } from '../queue/queue.service';
 import {
   normalizePagination,
   PaginatedResult,
@@ -57,6 +58,7 @@ export class TradeDealsService {
     @InjectRepository(Investment)
     private readonly investmentRepo: Repository<Investment>,
     private readonly stellarService: StellarService,
+    private readonly queueService: QueueService,
     private readonly logger: PinoLogger,
   ) {
     this.logger.setContext(TradeDealsService.name);
@@ -287,7 +289,7 @@ export class TradeDealsService {
     }
 
     try {
-      // Create escrow account
+      // Create escrow account synchronously (fast operation)
       this.logger.info({ dealId }, 'Creating escrow account for deal');
       const { publicKey: escrowPublicKey, secretKey: escrowSecretKey } =
         await this.stellarService.createEscrowAccount(dealId);
@@ -296,62 +298,43 @@ export class TradeDealsService {
       const encryptedEscrowSecret =
         this.stellarService.encryptSecret(escrowSecretKey);
 
-      // Issue trade token
-      this.logger.info(
-        { dealId, tokenSymbol: deal.tokenSymbol },
-        'Issuing trade token for deal',
-      );
-      const {
-        txId: stellarAssetTxId,
-        issuerPublicKey,
-        issuerSecret,
-      } = await this.stellarService.issueTradeToken(
-        deal.tokenSymbol,
-        escrowPublicKey,
-        escrowSecretKey,
-        deal.tokenCount,
-      );
-
-      // Encrypt the issuer secret
-      const encryptedIssuerSecret =
-        this.stellarService.encryptSecret(issuerSecret);
-
-      // Update deal with Stellar data
+      // Update deal with escrow data
       await this.tradeDealRepo.update(dealId, {
-        status: 'open',
         escrowPublicKey,
         escrowSecretKey: encryptedEscrowSecret,
-        issuerPublicKey,
-        issuerSecretKey: encryptedIssuerSecret,
-        stellarAssetTxId,
       });
 
       this.logger.info(
-        { dealId, txId: stellarAssetTxId, escrowPublicKey },
-        'Successfully published deal with Stellar integration',
+        { dealId, escrowPublicKey },
+        'Escrow account created, enqueuing token issuance',
       );
 
-      // Return updated deal
+      // Enqueue the token issuance job
+      await this.queueService.enqueueDealPublish({
+        dealId,
+        tokenSymbol: deal.tokenSymbol,
+        escrowPublicKey,
+        encryptedEscrowSecret,
+        tokenCount: deal.tokenCount,
+      });
+
+      // Return deal with escrow data (status still draft, will be updated by queue processor)
       return {
         ...deal,
-        status: 'open',
         escrowPublicKey,
         escrowSecretKey: encryptedEscrowSecret,
-        issuerPublicKey,
-        issuerSecretKey: encryptedIssuerSecret,
-        stellarAssetTxId,
       };
     } catch (error) {
       this.logger.error(
         { dealId, error: error.message },
-        'Failed to publish deal - Stellar operations failed',
+        'Failed to publish deal - escrow account creation failed',
       );
 
       // Deal remains in draft status on Stellar failure
       throw new UnprocessableEntityException({
         code: 'STELLAR_OPERATION_FAILED',
         message:
-          'Failed to create escrow account or issue trade token. Please try again.',
+          'Failed to create escrow account. Please try again.',
       });
     }
   }
