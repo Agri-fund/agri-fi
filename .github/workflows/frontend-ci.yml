@@ -24,6 +24,10 @@ jobs:
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
 
+      - name: Check ESLint config exists
+        run: test -f .eslintrc.json || test -f eslint.config.mjs
+        working-directory: frontend
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
         working-directory: frontend
@@ -40,3 +44,4 @@ jobs:
           # build does not contact this URL — it is only baked into the client
           # bundle as a fallback default.
           NEXT_PUBLIC_API_URL: https://api.example.invalid
+          BACKEND_URL: https://api.example.invalid

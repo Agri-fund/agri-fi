@@ -58,6 +58,11 @@ export class StellarService {
         'STELLAR_PLATFORM_SECRET is required in production and development environments',
       );
     }
+    if (!platformSecret && process.env.NODE_ENV === 'test') {
+      this.logger.warn(
+        'STELLAR_PLATFORM_SECRET is not set; using a random in-memory platform keypair. Network-dependent Stellar tests should be skipped unless a funded testnet secret is configured.',
+      );
+    }
     this.platformKeypair = platformSecret
       ? Keypair.fromSecret(platformSecret)
       : Keypair.random();

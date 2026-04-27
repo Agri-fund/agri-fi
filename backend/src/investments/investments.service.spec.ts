@@ -26,6 +26,7 @@ const mockTradeDeal = (): TradeDeal => ({
   escrowPublicKey: 'escrow-pub-key',
   escrowSecretKey: 'escrow-secret',
   issuerPublicKey: 'issuer-pub',
+  issuerSecretKey: null,
   totalInvested: 0,
   deliveryDate: new Date(),
   stellarAssetTxId: null,
@@ -91,6 +92,12 @@ describe('InvestmentsService', () => {
           useValue: {
             transaction: jest.fn((cb) =>
               cb({
+                findOne: jest.fn((entity, opts) => {
+                  if (entity === TradeDeal) {
+                    return tradeDealRepo.findOne(opts);
+                  }
+                  return investmentRepo.findOne(opts);
+                }),
                 update: jest.fn((entity, criteria, values) => {
                   // Route calls through the existing repo mocks so tests can assert on them
                   if (entity === Investment) {
@@ -99,8 +106,13 @@ describe('InvestmentsService', () => {
                   return tradeDealRepo.update(criteria, values);
                 }),
                 find: jest.fn((entity, opts) => investmentRepo.find(opts)),
-                create: jest.fn(),
-                save: jest.fn(),
+                create: jest.fn((entity, values) => {
+                  if (entity === Investment) {
+                    return investmentRepo.create(values);
+                  }
+                  return values;
+                }),
+                save: jest.fn((value) => investmentRepo.save(value)),
               }),
             ),
           },

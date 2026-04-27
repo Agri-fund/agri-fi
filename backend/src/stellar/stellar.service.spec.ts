@@ -2,6 +2,9 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { StellarService } from './stellar.service';
 import { PinoLogger } from 'nestjs-pino';
+import { getRepositoryToken } from '@nestjs/typeorm';
+import { TransactionLog } from './entities/transaction-log.entity';
+import { Keypair } from 'stellar-sdk';
 
 /**
  * Unit tests for StellarService — pure logic that doesn't require network calls.
@@ -37,6 +40,13 @@ describe('StellarService', () => {
             error: jest.fn(),
           },
         },
+        {
+          provide: getRepositoryToken(TransactionLog),
+          useValue: {
+            create: jest.fn((entry) => entry),
+            save: jest.fn(),
+          },
+        },
       ],
     }).compile();
 
@@ -53,10 +63,10 @@ describe('StellarService', () => {
   });
 
   describe('createInvestmentTransaction', () => {
-    const investorWallet = 'GINVESTOR';
-    const escrowPublicKey = 'GESCROW';
+    const investorWallet = Keypair.random().publicKey();
+    const escrowPublicKey = Keypair.random().publicKey();
     const assetCode = 'COCOA1';
-    const issuerPublicKey = 'GISSUER';
+    const issuerPublicKey = Keypair.random().publicKey();
 
     const makeAccount = (
       xlmBalance: string,

@@ -35,6 +35,8 @@ const mockMilestone = (): ShipmentMilestone => ({
   notes: 'Goods received at farm',
   stellarTxId: 'stellar-tx-123',
   memoText: 'AGRIC:MILESTONE:deal1:farm:1700000000',
+  latitude: null,
+  longitude: null,
   recordedAt: new Date(),
 });
 
@@ -125,6 +127,8 @@ describe('ShipmentsService', () => {
         notes: 'Goods received at farm',
         stellarTxId: 'stellar-tx-123',
         memoText: expect.stringMatching(/^AGRIC:MILESTONE:deal1:farm:\d+$/),
+        latitude: null,
+        longitude: null,
       });
 
       expect(result.milestone).toBe('farm');
