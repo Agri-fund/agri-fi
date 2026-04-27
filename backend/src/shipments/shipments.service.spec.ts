@@ -5,6 +5,7 @@ import {
   ForbiddenException,
   UnprocessableEntityException,
 } from '@nestjs/common';
+import { PinoLogger } from 'nestjs-pino';
 import { ShipmentsService } from './shipments.service';
 import {
   ShipmentMilestone,
@@ -78,6 +79,15 @@ describe('ShipmentsService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ShipmentsService,
+        {
+          provide: PinoLogger,
+          useValue: {
+            setContext: jest.fn(),
+            info: jest.fn(),
+            warn: jest.fn(),
+            error: jest.fn(),
+          },
+        },
         {
           provide: getRepositoryToken(ShipmentMilestone),
           useValue: milestoneRepo,

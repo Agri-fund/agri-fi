@@ -448,9 +448,6 @@ export class StellarService {
     totalValue: number,
   ): Promise<string[]> {
     const escrowKeypair = Keypair.fromSecret(escrowSecret);
-    const escrowAccount = await this.server.loadAccount(
-      escrowKeypair.publicKey(),
-    );
 
     // Convert to stroops (1 XLM = 10^7 stroops)
     const totalStroops = Math.round(totalValue * 1e7);
@@ -473,70 +470,85 @@ export class StellarService {
       throw new Error('Invalid investor token distribution');
     }
 
-    const txBuilder = new TransactionBuilder(escrowAccount, {
-      fee: BASE_FEE,
-      networkPassphrase: this.networkPassphrase,
-    });
-
-    // Farmer payment (USDC)
-    txBuilder.addOperation(
-      Operation.payment({
-        destination: farmerWallet,
-        asset: this.usdcAsset,
-        amount: (farmerStroops / 1e7).toFixed(7),
-      }),
-    );
-
-    // Investors
+    const BATCH_SIZE = 98;
+    const txIds: string[] = [];
     let distributedToInvestors = 0;
+    const batchCount = Math.max(1, Math.ceil(investorShares.length / BATCH_SIZE));
 
-    investorShares.forEach((share, index) => {
-      let shareStroops = Math.floor(
-        (share.tokenAmount / totalTokens) * totalStroops,
+    for (let batchIdx = 0; batchIdx < batchCount; batchIdx++) {
+      const batchStart = batchIdx * BATCH_SIZE;
+      const batch = investorShares.slice(batchStart, batchStart + BATCH_SIZE);
+
+      const batchAccount = await this.server.loadAccount(
+        escrowKeypair.publicKey(),
       );
+      const txBuilder = new TransactionBuilder(batchAccount, {
+        fee: BASE_FEE,
+        networkPassphrase: this.networkPassphrase,
+      });
 
-      // Fix rounding remainder on last investor
-      if (index === investorShares.length - 1) {
-        shareStroops =
-          totalStroops -
-          farmerStroops -
-          platformStroops -
-          distributedToInvestors;
+      if (batchIdx === 0) {
+        txBuilder.addOperation(
+          Operation.payment({
+            destination: farmerWallet,
+            asset: this.usdcAsset,
+            amount: (farmerStroops / 1e7).toFixed(7),
+          }),
+        );
       }
 
-      distributedToInvestors += shareStroops;
+      batch.forEach((share, localIdx) => {
+        const globalIdx = batchStart + localIdx;
+        let shareStroops = Math.floor(
+          (share.tokenAmount / totalTokens) * totalStroops,
+        );
 
-      txBuilder.addOperation(
-        Operation.payment({
-          destination: share.walletAddress,
-          asset: this.usdcAsset,
-          amount: (shareStroops / 1e7).toFixed(7),
-        }),
-      );
-    });
+        if (globalIdx === investorShares.length - 1) {
+          shareStroops =
+            totalStroops -
+            farmerStroops -
+            platformStroops -
+            distributedToInvestors;
+        }
 
-    // Platform fee (USDC)
-    txBuilder.addOperation(
-      Operation.payment({
-        destination: platformWallet,
-        asset: this.usdcAsset,
-        amount: (platformStroops / 1e7).toFixed(7),
-      }),
-    );
+        distributedToInvestors += shareStroops;
 
-    const tx = txBuilder.setTimeout(30).build();
-    tx.sign(escrowKeypair);
+        txBuilder.addOperation(
+          Operation.payment({
+            destination: share.walletAddress,
+            asset: this.usdcAsset,
+            amount: (shareStroops / 1e7).toFixed(7),
+          }),
+        );
+      });
 
-    try {
-      const result = await this.server.submitTransaction(tx);
-      const txId = (result as any).hash as string;
+      if (batchIdx === batchCount - 1) {
+        txBuilder.addOperation(
+          Operation.payment({
+            destination: platformWallet,
+            asset: this.usdcAsset,
+            amount: (platformStroops / 1e7).toFixed(7),
+          }),
+        );
+      }
 
-      this.logger.info({ txId }, 'Escrow released successfully');
-      return [txId];
-    } catch (err: any) {
-      this.logger.error(`Escrow release failed: ${err.message}`, err.stack);
-      throw new Error(`Escrow release failed: ${err.message}`);
+      const tx = txBuilder.setTimeout(30).build();
+      tx.sign(escrowKeypair);
+
+      try {
+        const result = await this.server.submitTransaction(tx);
+        txIds.push((result as any).hash as string);
+      } catch (err: any) {
+        this.logger.error(
+          { batchIdx, totalBatches: batchCount },
+          `Escrow release failed at batch ${batchIdx}: ${err.message}`,
+        );
+        throw new Error(`Escrow release failed: ${err.message}`);
+      }
     }
+
+    this.logger.info({ txIds }, 'Escrow released successfully');
+    return txIds;
   }
 
   /**

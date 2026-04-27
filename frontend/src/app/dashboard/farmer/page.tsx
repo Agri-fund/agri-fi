@@ -230,22 +230,26 @@ export default function FarmerDashboard() {
                           </div>
 
                           {/* Latest Milestone */}
-                          {latestMilestone && (
-                            <div className="border-t pt-3">
-                              <div className="flex justify-between items-start">
-                                <div className="flex-1">
-                                  <p className="text-sm font-medium text-gray-900">Latest Milestone</p>
-                                  <p className="text-sm text-gray-600">{latestMilestone.title}</p>
-                                  <p className="text-xs text-gray-500 mt-1">
-                                    {formatDate(latestMilestone.created_at)}
-                                  </p>
+                          {latestMilestone && (() => {
+                            const milestoneStatus = latestMilestone.milestone === 'importer' ? 'completed' : 'active';
+                            const milestoneLabel = latestMilestone.milestone.charAt(0).toUpperCase() + latestMilestone.milestone.slice(1);
+                            return (
+                              <div className="border-t pt-3">
+                                <div className="flex justify-between items-start">
+                                  <div className="flex-1">
+                                    <p className="text-sm font-medium text-gray-900">Latest Milestone</p>
+                                    <p className="text-sm text-gray-600">{milestoneLabel}</p>
+                                    <p className="text-xs text-gray-500 mt-1">
+                                      {formatDate(latestMilestone.created_at)}
+                                    </p>
+                                  </div>
+                                  <span className={`px-2 py-1 rounded text-xs font-medium ${getStatusColor(milestoneStatus)}`}>
+                                    {milestoneStatus}
+                                  </span>
                                 </div>
-                                <span className={`px-2 py-1 rounded text-xs font-medium ${getStatusColor(latestMilestone.status)}`}>
-                                  {latestMilestone.status}
-                                </span>
                               </div>
-                            </div>
-                          )}
+                            );
+                          })()}
 
                           {/* Created Date */}
                           <div className="border-t pt-3">
