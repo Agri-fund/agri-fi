@@ -6,7 +6,7 @@ import {
   ManyToOne,
   JoinColumn,
 } from 'typeorm';
-import { TradeDeal } from '../../users/entities/trade-deal.entity';
+import { TradeDeal } from '../../trade-deals/entities/trade-deal.entity';
 
 export type RecipientType = 'farmer' | 'investor' | 'platform';
 export type PaymentStatus = 'confirmed' | 'failed';

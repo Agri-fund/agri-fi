@@ -6,8 +6,8 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User, UserRole } from '../auth/entities/user.entity';
-import { TradeDeal } from './entities/trade-deal.entity';
-import { Investment } from './entities/investment.entity';
+import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
+import { Investment } from '../investments/entities/investment.entity';
 import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.entity';
 import { PaymentDistribution } from '../escrow/entities/payment-distribution.entity';
 

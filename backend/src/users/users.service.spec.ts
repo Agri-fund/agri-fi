@@ -2,8 +2,8 @@ import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { UsersService } from './users.service';
-import { TradeDeal } from './entities/trade-deal.entity';
-import { Investment } from './entities/investment.entity';
+import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
+import { Investment } from '../investments/entities/investment.entity';
 import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.entity';
 import { PaymentDistribution } from '../escrow/entities/payment-distribution.entity';
 
