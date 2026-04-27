@@ -27,9 +27,7 @@ export interface Document {
 
 export interface Milestone {
   id: string;
-  milestone?: "farm" | "warehouse" | "port" | "importer";
-  title?: string;
-  status?: string;
+  milestone: "farm" | "warehouse" | "port" | "importer";
   notes: string | null;
   recorded_at: string;
   created_at: string;
