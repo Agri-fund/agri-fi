@@ -315,8 +315,14 @@ export class InvestmentsController {
 
   /**
    * Issue #112 — Secondary Market: Fetch active buy orders (bids) for a trade token.
+   *
+   * Security: explicit AuthGuard at the method level ensures this endpoint always
+   * requires a valid JWT, even if the class-level guard is ever refactored away.
+   * Exposing the token issuer public key to unauthenticated callers would allow
+   * anyone to query the Stellar DEX for deal data without authentication.
    */
   @Get('buy-orders/:tokenCode/:tokenIssuer')
+  @UseGuards(AuthGuard('jwt'))
   @ApiOperation({
     summary: 'Get active DEX buy offers for a trade token (buy order book)',
   })
@@ -326,7 +332,10 @@ export class InvestmentsController {
     description: 'Trade token issuer public key',
   })
   @ApiResponse({ status: 200, description: 'List of active buy offers' })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized – valid JWT required to access the order book',
+  })
   async getActiveBuyOrders(
     @Param('tokenCode') tokenCode: string,
     @Param('tokenIssuer') tokenIssuer: string,
