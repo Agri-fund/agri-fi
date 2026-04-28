@@ -82,7 +82,18 @@ export class InvestmentsController {
       },
     },
   })
-  @ApiResponse({ status: 200, description: 'Escrow funding initiated' })
+  @ApiResponse({
+    status: 200,
+    description: 'Escrow funding initiated',
+    schema: {
+      type: 'object',
+      properties: {
+        status: { type: 'string', enum: ['queued', 'confirmed'] },
+        investmentId: { type: 'string' },
+        stellarTxId: { type: 'string' },
+      },
+    },
+  })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({
     status: 403,
@@ -95,11 +106,12 @@ export class InvestmentsController {
     @Request() req: { user: { id: string; role: string } },
     @Param('id') id: string,
     @Body('investorWalletAddress') investorWalletAddress: string,
+    @Body('signedXdr') signedXdr?: string,
   ) {
     if (req.user.role !== 'investor') {
       throw new Error('Only investors can fund investments.');
     }
-    return this.investmentsService.fundEscrow(id, investorWalletAddress);
+    return this.investmentsService.fundEscrow(id, investorWalletAddress, signedXdr);
   }
 
   @Post(':id/confirm')
@@ -190,6 +202,7 @@ export class InvestmentsController {
               amountUSD: { type: 'number' },
               assetCode: { type: 'string' },
               tokenAmount: { type: 'number' },
+              issuerPublicKey: { type: 'string' },
             },
           },
         },
@@ -212,6 +225,7 @@ export class InvestmentsController {
       amountUSD: number;
       assetCode: string;
       tokenAmount: number;
+      issuerPublicKey: string;
     }>,
   ) {
     const unsignedXdr =

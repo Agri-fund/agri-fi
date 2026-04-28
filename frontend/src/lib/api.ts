@@ -1,4 +1,4 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+const API_BASE = ""; // Use relative URLs to hit Next.js API proxy routes
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -307,9 +307,7 @@ export interface PaginatedDeals {
 }
 
 export async function getOpenDeals(page = 1, limit = 12): Promise<PaginatedDeals> {
-  const res = await fetch(`${API_BASE}/trade-deals?page=${page}&limit=${limit}`, { cache: 'no-store' });
-  if (!res.ok) throw new Error('Failed to fetch deals');
-  return res.json();
+  return apiFetch<PaginatedDeals>(`/trade-deals?page=${page}&limit=${limit}`);
 }
 
 export async function getDealById(id: string): Promise<Deal | null> {

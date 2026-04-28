@@ -182,7 +182,7 @@ export class InvestmentsService {
     investmentId: string,
     investorWalletAddress: string,
     signedXdr?: string,
-  ): Promise<{ stellarTxId: string }> {
+  ): Promise<{ status: 'queued' | 'confirmed'; investmentId: string; stellarTxId?: string }> {
     const investment = await this.investmentRepo.findOne({
       where: { id: investmentId },
       relations: ['tradeDeal'],
@@ -220,8 +220,8 @@ export class InvestmentsService {
         investorWallet: investorWalletAddress,
         amountUsd: Number(investment.amountUsd),
       });
-      // Return a placeholder — actual txId will be set when job completes
-      return { stellarTxId: 'queued' };
+      // Return queued status — actual txId will be set when job completes
+      return { status: 'queued', investmentId };
     }
 
     // Synchronous path (backend-signed, used in tests / MVP fallback)
@@ -236,7 +236,7 @@ export class InvestmentsService {
 
     await this.confirmInvestment(investmentId, stellarTxId);
 
-    return { stellarTxId };
+    return { status: 'confirmed', investmentId, stellarTxId };
   }
 
   private async sendFundedNotification(tradeDeal: TradeDeal): Promise<void> {

@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchBackend } from '@/config/backend';
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(request: NextRequest) {
   try {
-    const id = params.id;
+    const { searchParams } = new URL(request.url);
+    const page = searchParams.get('page') || '1';
+    const limit = searchParams.get('limit') || '12';
 
-    const response = await fetchBackend(`/trade-deals/${id}`, {
+    const response = await fetchBackend(`/trade-deals?page=${page}&limit=${limit}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
