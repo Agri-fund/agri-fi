@@ -4,11 +4,15 @@ import { Repository, DataSource } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { PinoLogger } from 'nestjs-pino';
 import { PaymentDistribution } from './entities/payment-distribution.entity';
-import { TradeDeal } from '../users/entities/trade-deal.entity';
-import { Investment } from '../users/entities/investment.entity';
+import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
+import {
+  Investment,
+  InvestmentStatus,
+} from '../investments/entities/investment.entity';
 import { User } from '../auth/entities/user.entity';
 import { StellarService, InvestorShare } from '../stellar/stellar.service';
 import { QueueService } from '../queue/queue.service';
+import { Keypair } from 'stellar-sdk';
 
 interface DealDeliveredPayload {
   tradeDealId: string;
@@ -60,7 +64,7 @@ export class EscrowService {
 
         // Load confirmed investments with investor details
         const investments = await manager.find(Investment, {
-          where: { tradeDealId, status: 'confirmed' },
+          where: { tradeDealId, status: InvestmentStatus.CONFIRMED },
           relations: ['investor'],
         });
 
@@ -99,18 +103,42 @@ export class EscrowService {
         }));
 
         // Get platform wallet address
-        const platformWallet = this.config.get<string>(
-          'STELLAR_PLATFORM_WALLET',
-          this.config.get<string>('STELLAR_PLATFORM_SECRET', ''),
-        );
+        let platformWallet = this.config.get<string>('STELLAR_PLATFORM_WALLET');
 
         if (!platformWallet) {
-          throw new Error('Platform wallet address not configured');
+          const platformSecret = this.config.get<string>(
+            'STELLAR_PLATFORM_SECRET',
+          );
+          if (!platformSecret) {
+            throw new Error(
+              'Neither STELLAR_PLATFORM_WALLET nor STELLAR_PLATFORM_SECRET are configured.',
+            );
+          }
+          try {
+            platformWallet = Keypair.fromSecret(platformSecret).publicKey();
+          } catch (e) {
+            throw new Error(
+              'Invalid STELLAR_PLATFORM_SECRET provided for deriving platform wallet.',
+            );
+          }
+        }
+
+        if (!platformWallet) {
+          throw new Error(
+            'Platform wallet address not configured or derivable',
+          );
         }
 
         // Release escrow funds via Stellar
+        if (!deal.escrowSecretKey) {
+          throw new Error(`Escrow secret key missing for deal ${tradeDealId}`);
+        }
+
+        const escrowSecret = this.stellarService.decryptSecret(
+          deal.escrowSecretKey,
+        );
         const stellarTxIds = await this.stellarService.releaseEscrow(
-          deal.escrowSecretKey!,
+          escrowSecret,
           deal.farmer.walletAddress,
           investorShares,
           platformWallet,

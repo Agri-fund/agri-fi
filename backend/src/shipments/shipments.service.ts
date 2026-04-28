@@ -3,8 +3,8 @@ import {
   NotFoundException,
   ForbiddenException,
   UnprocessableEntityException,
-  Logger,
 } from '@nestjs/common';
+import { PinoLogger } from 'nestjs-pino';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import {
@@ -26,9 +26,8 @@ const MILESTONE_SEQUENCE: MilestoneType[] = [
 
 @Injectable()
 export class ShipmentsService {
-  private readonly logger = new Logger(ShipmentsService.name);
-
   constructor(
+    private readonly logger: PinoLogger,
     @InjectRepository(ShipmentMilestone)
     private readonly milestoneRepo: Repository<ShipmentMilestone>,
     @InjectRepository(TradeDeal)
@@ -37,7 +36,9 @@ export class ShipmentsService {
     private readonly queueService: QueueService,
     private readonly config: ConfigService,
     private readonly dataSource: DataSource,
-  ) {}
+  ) {
+    this.logger.setContext(ShipmentsService.name);
+  }
 
   async recordMilestone(
     userId: string,
@@ -97,9 +98,10 @@ export class ShipmentsService {
       const unixTs = Math.floor(Date.now() / 1000);
       const memoText = `AGRIC:MILESTONE:${dealIdShort}:${dto.milestone}:${unixTs}`;
 
-      const signerSecret =
-        deal.escrowSecretKey ||
-        this.config.get<string>('STELLAR_PLATFORM_SECRET', '');
+      let signerSecret = this.config.get<string>('STELLAR_PLATFORM_SECRET', '');
+      if (deal.escrowSecretKey) {
+        signerSecret = this.stellarService.decryptSecret(deal.escrowSecretKey);
+      }
 
       const stellarTxId = await this.stellarService.recordMemo(
         memoText,
@@ -131,8 +133,9 @@ export class ShipmentsService {
         // Enqueue deal.delivered job for escrow release
         await this.queueService.enqueueDealDelivered(dto.trade_deal_id);
 
-        this.logger.log(
-          `Deal ${dto.trade_deal_id} transitioned to delivered — escrow release job enqueued`,
+        this.logger.info(
+          { dealId: dto.trade_deal_id },
+          'Deal transitioned to delivered — escrow release job enqueued',
         );
       }
 

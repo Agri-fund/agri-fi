@@ -20,6 +20,7 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
+import { Throttle } from '@nestjs/throttler';
 import { InvestmentsService } from './investments.service';
 import { CreateInvestmentDto } from './dto/create-investment.dto';
 import { KycGuard } from '../auth/kyc.guard';
@@ -38,6 +39,7 @@ export class InvestmentsController {
   ) {}
 
   @Post()
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @ApiOperation({ summary: 'Create an investment (investor only)' })
   @ApiResponse({
     status: 201,
@@ -51,15 +53,13 @@ export class InvestmentsController {
   })
   @ApiResponse({ status: 404, description: 'Trade deal not found' })
   @ApiResponse({ status: 409, description: 'Deal already fully funded' })
+  @ApiResponse({ status: 429, description: 'Too Many Requests' })
   @UseGuards(KycGuard, RolesGuard)
   @Roles('investor')
   async createInvestment(
     @Request() req: { user: { id: string; role: string } },
     @Body() createInvestmentDto: CreateInvestmentDto,
   ) {
-    if (req.user.role !== 'investor') {
-      throw new Error('Only investors can create investments.');
-    }
     return this.investmentsService.createInvestment(
       req.user.id,
       createInvestmentDto,
@@ -82,7 +82,18 @@ export class InvestmentsController {
       },
     },
   })
-  @ApiResponse({ status: 200, description: 'Escrow funding initiated' })
+  @ApiResponse({
+    status: 200,
+    description: 'Escrow funding initiated',
+    schema: {
+      type: 'object',
+      properties: {
+        status: { type: 'string', enum: ['queued', 'confirmed'] },
+        investmentId: { type: 'string' },
+        stellarTxId: { type: 'string' },
+      },
+    },
+  })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({
     status: 403,
@@ -95,11 +106,16 @@ export class InvestmentsController {
     @Request() req: { user: { id: string; role: string } },
     @Param('id') id: string,
     @Body('investorWalletAddress') investorWalletAddress: string,
+    @Body('signedXdr') signedXdr?: string,
   ) {
     if (req.user.role !== 'investor') {
       throw new Error('Only investors can fund investments.');
     }
-    return this.investmentsService.fundEscrow(id, investorWalletAddress);
+    return this.investmentsService.fundEscrow(
+      id,
+      investorWalletAddress,
+      signedXdr,
+    );
   }
 
   @Post(':id/confirm')
@@ -149,6 +165,12 @@ export class InvestmentsController {
   @ApiQuery({ name: 'limit', required: false, example: 20 })
   @ApiResponse({ status: 200, description: 'List of investments' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({
+    status: 403,
+    description: 'Only investors can access this endpoint',
+  })
+  @UseGuards(KycGuard, RolesGuard)
+  @Roles('investor')
   async getMyInvestments(
     @Request() req: { user: { id: string } },
     @Query('page') page?: string,
@@ -184,6 +206,7 @@ export class InvestmentsController {
               amountUSD: { type: 'number' },
               assetCode: { type: 'string' },
               tokenAmount: { type: 'number' },
+              issuerPublicKey: { type: 'string' },
             },
           },
         },
@@ -206,6 +229,7 @@ export class InvestmentsController {
       amountUSD: number;
       assetCode: string;
       tokenAmount: number;
+      issuerPublicKey: string;
     }>,
   ) {
     const unsignedXdr =
@@ -307,6 +331,9 @@ export class InvestmentsController {
     @Param('tokenCode') tokenCode: string,
     @Param('tokenIssuer') tokenIssuer: string,
   ) {
-    return this.stellarService.getActiveBuyOrdersForToken(tokenCode, tokenIssuer);
+    return this.stellarService.getActiveBuyOrdersForToken(
+      tokenCode,
+      tokenIssuer,
+    );
   }
 }

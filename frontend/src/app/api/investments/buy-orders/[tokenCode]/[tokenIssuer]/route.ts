@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-const BACKEND = process.env.BACKEND_URL ?? 'http://localhost:3001';
+import { fetchBackend } from '@/config/backend';
 
 /**
  * GET /api/investments/buy-orders/[tokenCode]/[tokenIssuer]
@@ -15,8 +14,8 @@ export async function GET(
     const authHeader = request.headers.get('authorization');
     const { tokenCode, tokenIssuer } = params;
 
-    const response = await fetch(
-      `${BACKEND}/investments/buy-orders/${encodeURIComponent(tokenCode)}/${encodeURIComponent(tokenIssuer)}`,
+    const response = await fetchBackend(
+      `/investments/buy-orders/${encodeURIComponent(tokenCode)}/${encodeURIComponent(tokenIssuer)}`,
       {
         headers: {
           Authorization: authHeader ?? '',
@@ -26,10 +25,16 @@ export async function GET(
 
     const data = await response.json();
     return NextResponse.json(data, { status: response.status });
-  } catch {
+  } catch (error: any) {
+    if (error?.isBackendUnreachable) {
+      return NextResponse.json(
+        { message: 'Backend service is unavailable' },
+        { status: 503 }
+      );
+    }
     return NextResponse.json(
       { message: 'Internal server error' },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

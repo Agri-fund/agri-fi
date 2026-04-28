@@ -24,6 +24,15 @@ export interface WalletSignResult {
 
 // ── Freighter helpers ─────────────────────────────────────────────────────────
 
+async function getFreighterPublicKey(): Promise<string> {
+  const { getPublicKey } = await import('@stellar/freighter-api');
+  const result = await getPublicKey();
+  // v2 API returns { publicKey } or plain string
+  const publicKey = typeof result === 'object' ? (result as any).publicKey : result;
+  if (!publicKey) throw new Error('Freighter did not return a public key.');
+  return publicKey;
+}
+
 async function freighterIsAvailable(): Promise<boolean> {
   try {
     const { isConnected } = await import('@stellar/freighter-api');
@@ -36,11 +45,7 @@ async function freighterIsAvailable(): Promise<boolean> {
 }
 
 async function connectFreighter(): Promise<WalletConnectResult> {
-  const { getPublicKey } = await import('@stellar/freighter-api');
-  const result = await getPublicKey();
-  // v2 API returns { publicKey } or plain string
-  const publicKey = typeof result === 'object' ? (result as any).publicKey : result;
-  if (!publicKey) throw new Error('Freighter did not return a public key.');
+  const publicKey = await getFreighterPublicKey();
   return { publicKey, provider: 'freighter' };
 }
 
@@ -96,6 +101,13 @@ async function connectAlbedo(): Promise<WalletConnectResult> {
   return { publicKey: result.pubkey, provider: 'albedo' };
 }
 
+async function getAlbedoPublicKey(): Promise<string> {
+  const albedo = await loadAlbedo();
+  const result = await albedo.publicKey({});
+  if (!result?.pubkey) throw new Error('Albedo did not return a public key.');
+  return result.pubkey;
+}
+
 async function signWithAlbedo(
   xdr: string,
   networkPassphrase: string,
@@ -132,6 +144,23 @@ export async function connectWallet(
       return connectFreighter();
     case 'albedo':
       return connectAlbedo();
+    default:
+      throw new Error(`Unknown wallet provider: ${provider}`);
+  }
+}
+
+/**
+ * Fetches the currently-selected wallet public key without mutating app state.
+ * Useful for re-validating a stored session on mount.
+ */
+export async function getPublicKeyWithWallet(
+  provider: WalletProvider,
+): Promise<string> {
+  switch (provider) {
+    case 'freighter':
+      return getFreighterPublicKey();
+    case 'albedo':
+      return getAlbedoPublicKey();
     default:
       throw new Error(`Unknown wallet provider: ${provider}`);
   }

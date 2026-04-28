@@ -8,6 +8,7 @@ import {
   UseGuards,
   Request,
   ForbiddenException,
+  HttpCode,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -24,7 +25,7 @@ import { User } from '../auth/entities/user.entity';
 import { KycGuard } from '../auth/kyc.guard';
 import { OptionalJwtGuard } from '../auth/optional-jwt.guard';
 import { CreateTradeDealDto } from './dto/create-trade-deal.dto';
-import { PaginatedResult } from '../common/pagination';
+
 import { TradeDealAccessRequest, TradeDealsGuard } from './trade-deals.guard';
 
 interface AuthRequest extends Request {
@@ -60,7 +61,24 @@ export class TradeDealsController {
   }
 
   @Post(':id/publish')
+  @HttpCode(202)
   @UseGuards(AuthGuard('jwt'), KycGuard)
+  @ApiBearerAuth('jwt')
+  @ApiOperation({
+    summary: 'Publish a draft trade deal (async token issuance)',
+  })
+  @ApiResponse({
+    status: 202,
+    description: 'Deal publish request accepted, token issuance in progress',
+  })
+  @ApiResponse({ status: 400, description: 'Validation error' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Role or KYC requirement not met' })
+  @ApiResponse({ status: 404, description: 'Trade deal not found' })
+  @ApiResponse({
+    status: 422,
+    description: 'Deal not in draft status or missing documents',
+  })
   async publishDeal(
     @Param('id') id: string,
     @Request() req: AuthRequest,
@@ -79,13 +97,13 @@ export class TradeDealsController {
   @ApiOperation({ summary: 'List open trade deals (marketplace)' })
   @ApiQuery({ name: 'commodity', required: false, example: 'Cocoa' })
   @ApiQuery({ name: 'page', required: false, example: 1 })
-  @ApiQuery({ name: 'limit', required: false, example: 20 })
+  @ApiQuery({ name: 'limit', required: false, example: 12 })
   @ApiResponse({ status: 200, description: 'Paginated list of open deals' })
   async findOpen(
     @Query('commodity') commodity?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
-  ): Promise<PaginatedResult<any>> {
+  ): Promise<{ data: any[]; total: number; page: number; limit: number }> {
     return this.tradeDealsService.findOpen({
       commodity,
       page: page ? parseInt(page, 10) : undefined,
@@ -113,7 +131,8 @@ export class TradeDealsController {
   @UseGuards(AuthGuard('jwt'), KycGuard)
   @ApiBearerAuth('jwt')
   @ApiOperation({
-    summary: 'Cancel a trade deal and trigger clawbacks (trader only, KYC required)',
+    summary:
+      'Cancel a trade deal and trigger clawbacks (trader only, KYC required)',
   })
   @ApiResponse({ status: 200, description: 'Trade deal canceled successfully' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })

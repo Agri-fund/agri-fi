@@ -36,72 +36,72 @@ export class InvestmentsService {
     investorId: string,
     dto: CreateInvestmentDto,
   ): Promise<Investment> {
-    // Load the trade deal
-    const tradeDeal = await this.tradeDealRepo.findOne({
-      where: { id: dto.tradeDealId },
-    });
-
-    if (!tradeDeal) {
-      throw new NotFoundException('Trade deal not found.');
-    }
-
-    // Only open deals can be invested in
-    if (tradeDeal.status !== 'open') {
-      throw new UnprocessableEntityException({
-        code: 'DEAL_NOT_OPEN',
-        message: 'Only open deals can be invested in.',
+    return this.dataSource.transaction(async (manager) => {
+      // Load and lock the trade deal
+      const tradeDeal = await manager.findOne(TradeDeal, {
+        where: { id: dto.tradeDealId },
+        lock: { mode: 'pessimistic_write' },
       });
-    }
 
-    // Check if investor has KYC verified (assuming this is stored in user entity)
-    // This would need to be implemented based on the user verification system
+      if (!tradeDeal) {
+        throw new NotFoundException('Trade deal not found.');
+      }
 
-    // Check token availability
-    const currentInvestments = await this.investmentRepo.find({
-      where: {
+      // Only open deals can be invested in
+      if (tradeDeal.status !== 'open') {
+        throw new UnprocessableEntityException({
+          code: 'DEAL_NOT_OPEN',
+          message: 'Only open deals can be invested in.',
+        });
+      }
+
+      // Check token availability (within transaction lock)
+      const currentInvestments = await manager.find(Investment, {
+        where: {
+          tradeDealId: dto.tradeDealId,
+          status: InvestmentStatus.CONFIRMED,
+        },
+      });
+
+      const totalTokensInvested = currentInvestments.reduce(
+        (sum, inv) => sum + inv.tokenAmount,
+        0,
+      );
+
+      const availableTokens = tradeDeal.tokenCount - totalTokensInvested;
+
+      if (dto.tokenAmount > availableTokens) {
+        throw new UnprocessableEntityException({
+          code: 'INSUFFICIENT_TOKENS',
+          message: `Only ${availableTokens} tokens available for investment.`,
+        });
+      }
+
+      // Check for over-funding
+      const totalInvested = currentInvestments.reduce(
+        (sum, inv) => sum + Number(inv.amountUsd),
+        0,
+      );
+
+      if (totalInvested + dto.amountUsd > Number(tradeDeal.totalValue)) {
+        throw new UnprocessableEntityException({
+          code: 'OVER_FUNDING',
+          message: 'Investment would exceed the total deal value.',
+        });
+      }
+
+      // Create pending investment within the locked transaction
+      const investment = manager.create(Investment, {
         tradeDealId: dto.tradeDealId,
-        status: InvestmentStatus.CONFIRMED,
-      },
-    });
-
-    const totalTokensInvested = currentInvestments.reduce(
-      (sum, inv) => sum + inv.tokenAmount,
-      0,
-    );
-
-    const availableTokens = tradeDeal.tokenCount - totalTokensInvested;
-
-    if (dto.tokenAmount > availableTokens) {
-      throw new UnprocessableEntityException({
-        code: 'INSUFFICIENT_TOKENS',
-        message: `Only ${availableTokens} tokens available for investment.`,
+        investorId,
+        tokenAmount: dto.tokenAmount,
+        amountUsd: dto.amountUsd,
+        status: InvestmentStatus.PENDING,
+        complianceData: dto.complianceData ?? null,
       });
-    }
 
-    // Check for over-funding
-    const totalInvested = currentInvestments.reduce(
-      (sum, inv) => sum + Number(inv.amountUsd),
-      0,
-    );
-
-    if (totalInvested + dto.amountUsd > Number(tradeDeal.totalValue)) {
-      throw new UnprocessableEntityException({
-        code: 'OVER_FUNDING',
-        message: 'Investment would exceed the total deal value.',
-      });
-    }
-
-    // Create pending investment
-    const investment = this.investmentRepo.create({
-      tradeDealId: dto.tradeDealId,
-      investorId,
-      tokenAmount: dto.tokenAmount,
-      amountUsd: dto.amountUsd,
-      status: InvestmentStatus.PENDING,
-      complianceData: dto.complianceData ?? null,
+      return manager.save(investment);
     });
-
-    return this.investmentRepo.save(investment);
   }
 
   async confirmInvestment(
@@ -124,17 +124,12 @@ export class InvestmentsService {
       });
     }
 
-    // Update investment status
-    investment.status = InvestmentStatus.CONFIRMED;
-    investment.stellarTxId = stellarTxId;
-
-    await this.investmentRepo.save(investment);
-
     // Update total invested on the trade deal using confirmed investments sum
     const tradeDeal = investment.tradeDeal;
     let becameFunded = false;
 
     await this.dataSource.transaction(async (manager) => {
+      // Update investment status inside the transaction
       await manager.update(Investment, investmentId, {
         status: InvestmentStatus.CONFIRMED,
         stellarTxId,
@@ -170,9 +165,11 @@ export class InvestmentsService {
       this.sendFundedNotification(tradeDeal).catch(() => {});
     }
 
-    investment.status = InvestmentStatus.CONFIRMED;
-    investment.stellarTxId = stellarTxId;
-    return investment;
+    // Return the updated investment by fetching it from the database
+    const updatedInvestment = await this.investmentRepo.findOne({
+      where: { id: investmentId },
+    });
+    return updatedInvestment!;
   }
 
   async markInvestmentFailed(investmentId: string): Promise<void> {
@@ -185,7 +182,11 @@ export class InvestmentsService {
     investmentId: string,
     investorWalletAddress: string,
     signedXdr?: string,
-  ): Promise<{ stellarTxId: string }> {
+  ): Promise<{
+    status: 'queued' | 'confirmed';
+    investmentId: string;
+    stellarTxId?: string;
+  }> {
     const investment = await this.investmentRepo.findOne({
       where: { id: investmentId },
       relations: ['tradeDeal'],
@@ -223,8 +224,8 @@ export class InvestmentsService {
         investorWallet: investorWalletAddress,
         amountUsd: Number(investment.amountUsd),
       });
-      // Return a placeholder — actual txId will be set when job completes
-      return { stellarTxId: 'queued' };
+      // Return queued status — actual txId will be set when job completes
+      return { status: 'queued', investmentId };
     }
 
     // Synchronous path (backend-signed, used in tests / MVP fallback)
@@ -239,7 +240,7 @@ export class InvestmentsService {
 
     await this.confirmInvestment(investmentId, stellarTxId);
 
-    return { stellarTxId };
+    return { status: 'confirmed', investmentId, stellarTxId };
   }
 
   private async sendFundedNotification(tradeDeal: TradeDeal): Promise<void> {

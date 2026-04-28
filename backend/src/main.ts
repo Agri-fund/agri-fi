@@ -13,8 +13,11 @@ async function bootstrap() {
       forbidNonWhitelisted: true,
       transform: true,
       exceptionFactory: (errors) => {
-        const walletError = errors.find((e) => e.property === 'walletAddress' &&
-          e.constraints?.['isStellarPublicKey']);
+        const walletError = errors.find(
+          (e) =>
+            e.property === 'walletAddress' &&
+            e.constraints?.['isStellarPublicKey'],
+        );
         if (walletError) {
           throw new BadRequestException({
             code: 'INVALID_WALLET_ADDRESS',
@@ -28,18 +31,22 @@ async function bootstrap() {
 
   app.enableCors();
 
-  const config = new DocumentBuilder()
-    .setTitle('Agric-onchain Finance API')
-    .setVersion('0.1.0')
-    .addBearerAuth()
-    .build();
-  SwaggerModule.setup('api/docs', app, SwaggerModule.createDocument(app, config));
+  // Use the fully-configured setupSwagger (includes production Basic-Auth guard)
+  // instead of the previous inline setup that had no authentication.
+  setupSwagger(app);
 
   const port = process.env.PORT ?? 3001;
   await app.listen(port);
   console.log(`Agric-onchain backend running on port ${port}`);
 }
 
+/**
+ * Configure Swagger UI with production Basic-Auth protection.
+ *
+ * Required env vars when NODE_ENV=production:
+ *   SWAGGER_USER  — HTTP Basic Auth username (default: admin)
+ *   SWAGGER_PASS  — HTTP Basic Auth password (no default; required in prod)
+ */
 function setupSwagger(app: any) {
   const isProd = process.env.NODE_ENV === 'production';
 
@@ -48,7 +55,12 @@ function setupSwagger(app: any) {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const basicAuth = require('express-basic-auth');
     const user = process.env.SWAGGER_USER ?? 'admin';
-    const pass = process.env.SWAGGER_PASS ?? 'changeme';
+    const pass = process.env.SWAGGER_PASS;
+    if (!pass) {
+      throw new Error(
+        'SWAGGER_PASS must be set in production to protect the API docs.',
+      );
+    }
     app.use(
       '/api/docs',
       basicAuth({ users: { [user]: pass }, challenge: true }),

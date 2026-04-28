@@ -7,9 +7,11 @@ import {
   MemoryHealthIndicator,
   DiskHealthIndicator,
 } from '@nestjs/terminus';
+import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { Transport } from '@nestjs/microservices';
 import { ConfigService } from '@nestjs/config';
 
+@ApiTags('health')
 @Controller('health')
 export class HealthController {
   constructor(
@@ -23,6 +25,11 @@ export class HealthController {
 
   @Get()
   @HealthCheck()
+  @ApiOperation({
+    summary: 'Health check for database, queue, and system resources',
+  })
+  @ApiResponse({ status: 200, description: 'All services healthy' })
+  @ApiResponse({ status: 503, description: 'Service unavailable' })
   async check() {
     const rabbitmqUrl = this.config.get<string>(
       'RABBITMQ_URL',

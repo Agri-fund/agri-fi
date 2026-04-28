@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiClient, Deal, User } from '@/lib/api';
+import { apiClient, Deal, User, MILESTONE_LABELS } from '@/lib/api';
 import ErrorBoundary from '@/components/ErrorBoundary';
 
 export default function FarmerDashboard() {
@@ -13,21 +13,37 @@ export default function FarmerDashboard() {
   const router = useRouter();
 
   useEffect(() => {
-    // Check authentication and role
-    const currentUser = apiClient.getCurrentUser();
-    if (!currentUser) {
-      router.push('/login');
-      return;
-    }
+    let cancelled = false;
 
-    if (currentUser.role !== 'farmer') {
-      // Redirect to correct dashboard based on role
-      router.push(`/dashboard/${currentUser.role}`);
-      return;
-    }
+    (async () => {
+      const cached = apiClient.getCurrentUser();
+      if (!cached) {
+        router.push('/login');
+        return;
+      }
 
-    setUser(currentUser);
-    fetchFarmerDeals();
+      let current: User = cached;
+      try {
+        const fresh = await apiClient.refreshCurrentUser();
+        if (fresh) current = fresh;
+      } catch {
+        // Fall back to cached profile if the refresh call fails.
+      }
+
+      if (cancelled) return;
+
+      if (current.role !== 'farmer') {
+        router.push(`/dashboard/${current.role}`);
+        return;
+      }
+
+      setUser(current);
+      fetchFarmerDeals();
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   const fetchFarmerDeals = async () => {
@@ -126,8 +142,14 @@ export default function FarmerDashboard() {
                   Welcome, {user?.name || user?.email}
                 </span>
                 <button
-                  onClick={() => {
-                    apiClient.clearAuth();
+                  onClick={async () => {
+                    try {
+                      await apiClient.logout();
+                    } catch (err) {
+                      console.error('Logout failed:', err);
+                      // Still clear auth and redirect even if logout fails
+                      apiClient.clearAuth();
+                    }
                     router.push('/login');
                   }}
                   className="bg-red-600 text-white px-4 py-2 rounded text-sm hover:bg-red-700 transition-colors"
@@ -214,22 +236,26 @@ export default function FarmerDashboard() {
                           </div>
 
                           {/* Latest Milestone */}
-                          {latestMilestone && (
-                            <div className="border-t pt-3">
-                              <div className="flex justify-between items-start">
-                                <div className="flex-1">
-                                  <p className="text-sm font-medium text-gray-900">Latest Milestone</p>
-                                  <p className="text-sm text-gray-600">{latestMilestone.title}</p>
-                                  <p className="text-xs text-gray-500 mt-1">
-                                    {formatDate(latestMilestone.created_at)}
-                                  </p>
+                          {latestMilestone && (() => {
+                            const milestoneStatus = latestMilestone.milestone === 'importer' ? 'completed' : 'active';
+                            const milestoneLabel = MILESTONE_LABELS[latestMilestone.milestone];
+                            return (
+                              <div className="border-t pt-3">
+                                <div className="flex justify-between items-start">
+                                  <div className="flex-1">
+                                    <p className="text-sm font-medium text-gray-900">Latest Milestone</p>
+                                    <p className="text-sm text-gray-600">{milestoneLabel}</p>
+                                    <p className="text-xs text-gray-500 mt-1">
+                                      {formatDate(latestMilestone.created_at)}
+                                    </p>
+                                  </div>
+                                  <span className={`px-2 py-1 rounded text-xs font-medium ${getStatusColor(milestoneStatus)}`}>
+                                    {milestoneStatus}
+                                  </span>
                                 </div>
-                                <span className={`px-2 py-1 rounded text-xs font-medium ${getStatusColor(latestMilestone.status)}`}>
-                                  {latestMilestone.status}
-                                </span>
                               </div>
-                            </div>
-                          )}
+                            );
+                          })()}
 
                           {/* Created Date */}
                           <div className="border-t pt-3">

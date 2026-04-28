@@ -3,6 +3,8 @@ import {
   Get,
   UseGuards,
   Request,
+  Query,
+  BadRequestException,
   ForbiddenException,
 } from '@nestjs/common';
 import {
@@ -13,6 +15,7 @@ import {
 } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { UsersService } from './users.service';
+import { TradeDealsService } from '../trade-deals/trade-deals.service';
 import { User } from '../auth/entities/user.entity';
 
 interface AuthRequest extends Request {
@@ -24,7 +27,22 @@ interface AuthRequest extends Request {
 @UseGuards(AuthGuard('jwt'))
 @Controller('users')
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly tradeDealsService: TradeDealsService,
+  ) {}
+
+  @Get('me')
+  @ApiOperation({ summary: "Get the authenticated user's profile" })
+  @ApiResponse({
+    status: 200,
+    description: 'Current user profile',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'User not found' })
+  async getCurrentUser(@Request() req: AuthRequest) {
+    return this.usersService.getProfile(req.user.id);
+  }
 
   @Get('me/deals')
   @ApiOperation({ summary: "Get the authenticated farmer/trader's deals" })
@@ -37,12 +55,33 @@ export class UsersController {
     status: 403,
     description: 'Investors cannot access this endpoint',
   })
-  async getUserDeals(@Request() req: AuthRequest) {
-    const { id, role } = req.user;
-    if (role === 'investor') {
-      throw new ForbiddenException('Investors cannot access deals endpoint');
+  async getUserDeals(
+    @Request() req: AuthRequest,
+    @Query('role') requestedRole?: string,
+  ) {
+    const { id: userId, role } = req.user;
+
+    if (role !== 'farmer' && role !== 'trader') {
+      throw new ForbiddenException(
+        'Only farmers and traders can access deals endpoint',
+      );
     }
-    return this.usersService.getUserDeals(id, role);
+
+    if (
+      requestedRole &&
+      requestedRole !== 'farmer' &&
+      requestedRole !== 'trader'
+    ) {
+      throw new BadRequestException('role must be either farmer or trader');
+    }
+
+    if (requestedRole && requestedRole !== role) {
+      throw new ForbiddenException(
+        'Requested role does not match authenticated user role',
+      );
+    }
+
+    return this.tradeDealsService.findByUser(userId, role);
   }
 
   @Get('me/investments')

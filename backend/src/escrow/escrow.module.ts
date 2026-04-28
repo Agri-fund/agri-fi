@@ -1,16 +1,20 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { ConfigModule } from '@nestjs/config';
 import { EscrowService } from './escrow.service';
 import { EscrowConsumer } from './escrow.consumer';
 import { PaymentDistribution } from './entities/payment-distribution.entity';
-import { TradeDeal } from '../users/entities/trade-deal.entity';
-import { Investment } from '../users/entities/investment.entity';
+import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
+import { Investment } from '../investments/entities/investment.entity';
 import { User } from '../auth/entities/user.entity';
 import { StellarModule } from '../stellar/stellar.module';
-import { QueueModule } from '../queue/queue.module';
 
 @Module({
   imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: '.env',
+    }),
     TypeOrmModule.forFeature([
       PaymentDistribution,
       TradeDeal,
@@ -18,9 +22,9 @@ import { QueueModule } from '../queue/queue.module';
       User,
     ]),
     StellarModule,
-    QueueModule,
   ],
-  providers: [EscrowService, EscrowConsumer],
+  controllers: [EscrowConsumer],
+  providers: [EscrowService],
   exports: [EscrowService],
 })
 export class EscrowModule {}

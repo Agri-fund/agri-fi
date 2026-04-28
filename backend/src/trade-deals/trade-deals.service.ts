@@ -13,12 +13,12 @@ import { Document, DocumentType } from './entities/document.entity';
 import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.entity';
 import { CreateTradeDealDto } from './dto/create-trade-deal.dto';
 import { User } from '../auth/entities/user.entity';
-import { StellarService } from '../stellar/stellar.service';
 import {
-  normalizePagination,
-  PaginatedResult,
-  toPaginatedResult,
-} from '../common/pagination';
+  Investment,
+  InvestmentStatus,
+} from '../investments/entities/investment.entity';
+import { StellarService } from '../stellar/stellar.service';
+import { QueueService } from '../queue/queue.service';
 
 const VALID_DOC_TYPES: DocumentType[] = [
   'purchase_agreement',
@@ -50,7 +50,10 @@ export class TradeDealsService {
     private readonly milestoneRepo: Repository<ShipmentMilestone>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    @InjectRepository(Investment)
+    private readonly investmentRepo: Repository<Investment>,
     private readonly stellarService: StellarService,
+    private readonly queueService: QueueService,
     private readonly logger: PinoLogger,
   ) {
     this.logger.setContext(TradeDealsService.name);
@@ -129,8 +132,10 @@ export class TradeDealsService {
     commodity?: string;
     page?: number;
     limit?: number;
-  }): Promise<PaginatedResult<any>> {
-    const { page, limit, skip } = normalizePagination(query);
+  }): Promise<{ data: any[]; total: number; page: number; limit: number }> {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 12;
+    const skip = (page - 1) * limit;
 
     const qb = this.tradeDealRepo
       .createQueryBuilder('deal')
@@ -159,22 +164,26 @@ export class TradeDealsService {
 
     const [deals, total] = await qb.getManyAndCount();
 
-    const data = deals.map((deal) => ({
-      id: deal.id,
-      commodity: deal.commodity,
-      quantity: deal.quantity,
-      quantity_unit: deal.quantityUnit,
-      total_value: deal.totalValue,
-      total_invested: deal.totalInvested,
-      token_count: deal.tokenCount,
-      token_symbol: deal.tokenSymbol,
-      delivery_date: deal.deliveryDate,
-      farmer_id: deal.farmerId,
-      trader_id: deal.traderId,
-      remaining_funding: Number(deal.totalValue) - Number(deal.totalInvested),
-    }));
-
-    return toPaginatedResult(data, total, page, limit);
+    return {
+      data: deals.map((deal) => ({
+        id: deal.id,
+        commodity: deal.commodity,
+        quantity: deal.quantity,
+        quantity_unit: deal.quantityUnit,
+        total_value: deal.totalValue,
+        total_invested: deal.totalInvested,
+        funded_amount: deal.totalInvested,
+        token_count: deal.tokenCount,
+        token_symbol: deal.tokenSymbol,
+        delivery_date: deal.deliveryDate,
+        farmer_id: deal.farmerId,
+        trader_id: deal.traderId,
+        remaining_funding: Number(deal.totalValue) - Number(deal.totalInvested),
+      })),
+      total,
+      page,
+      limit,
+    };
   }
 
   async findOne(
@@ -215,6 +224,7 @@ export class TradeDealsService {
       token_count: deal.tokenCount,
       token_symbol: deal.tokenSymbol,
       total_invested: deal.totalInvested,
+      funded_amount: deal.totalInvested,
       tokens_remaining: tokensRemaining,
       trader_name: deal.trader?.email || 'Unknown Trader',
       description: `${deal.quantity} ${deal.quantityUnit} of ${deal.commodity} for delivery by ${new Date(
@@ -276,7 +286,7 @@ export class TradeDealsService {
     }
 
     try {
-      // Create escrow account
+      // Create escrow account synchronously (fast operation)
       this.logger.info({ dealId }, 'Creating escrow account for deal');
       const { publicKey: escrowPublicKey, secretKey: escrowSecretKey } =
         await this.stellarService.createEscrowAccount(dealId);
@@ -285,59 +295,42 @@ export class TradeDealsService {
       const encryptedEscrowSecret =
         this.stellarService.encryptSecret(escrowSecretKey);
 
-      // Issue trade token
-      this.logger.info(
-        { dealId, tokenSymbol: deal.tokenSymbol },
-        'Issuing trade token for deal',
-      );
-      const { txId: stellarAssetTxId, issuerPublicKey, issuerSecret } =
-        await this.stellarService.issueTradeToken(
-          deal.tokenSymbol,
-          escrowPublicKey,
-          escrowSecretKey,
-          deal.tokenCount,
-        );
-
-      // Encrypt the issuer secret
-      const encryptedIssuerSecret =
-        this.stellarService.encryptSecret(issuerSecret);
-
-      // Update deal with Stellar data
+      // Update deal with escrow data
       await this.tradeDealRepo.update(dealId, {
-        status: 'open',
         escrowPublicKey,
         escrowSecretKey: encryptedEscrowSecret,
-        issuerPublicKey,
-        issuerSecretKey: encryptedIssuerSecret,
-        stellarAssetTxId,
       });
 
       this.logger.info(
-        { dealId, txId: stellarAssetTxId, escrowPublicKey },
-        'Successfully published deal with Stellar integration',
+        { dealId, escrowPublicKey },
+        'Escrow account created, enqueuing token issuance',
       );
 
-      // Return updated deal
+      // Enqueue the token issuance job
+      await this.queueService.enqueueDealPublish({
+        dealId,
+        tokenSymbol: deal.tokenSymbol,
+        escrowPublicKey,
+        encryptedEscrowSecret,
+        tokenCount: deal.tokenCount,
+      });
+
+      // Return deal with escrow data (status still draft, will be updated by queue processor)
       return {
         ...deal,
-        status: 'open',
         escrowPublicKey,
         escrowSecretKey: encryptedEscrowSecret,
-        issuerPublicKey,
-        issuerSecretKey: encryptedIssuerSecret,
-        stellarAssetTxId,
       };
     } catch (error) {
       this.logger.error(
         { dealId, error: error.message },
-        'Failed to publish deal - Stellar operations failed',
+        'Failed to publish deal - escrow account creation failed',
       );
 
       // Deal remains in draft status on Stellar failure
       throw new UnprocessableEntityException({
         code: 'STELLAR_OPERATION_FAILED',
-        message:
-          'Failed to create escrow account or issue trade token. Please try again.',
+        message: 'Failed to create escrow account. Please try again.',
       });
     }
   }
@@ -397,21 +390,34 @@ export class TradeDealsService {
       });
     }
 
-    if (deal.status === 'canceled' as TradeDealStatus) {
-      return deal; // already canceled
+    if (deal.status === 'canceled') {
+      return deal;
     }
 
-    if (deal.issuerPublicKey && deal.issuerSecretKey && deal.stellarAssetTxId) {
-      // Find all confirmed investments to gather token amounts
-      const confirmedInvestments =
-        deal.investments?.filter((inv) => inv.status === 'confirmed') || [];
+    const cancellableStatuses: TradeDealStatus[] = ['draft', 'open'];
+    if (!cancellableStatuses.includes(deal.status)) {
+      throw new UnprocessableEntityException({
+        code: 'DEAL_NOT_CANCELABLE',
+        message: `Cannot cancel a deal in "${deal.status}" status. Only draft or open deals can be canceled.`,
+      });
+    }
 
-      // Create shares array representing wallets holding the tokens
+    const confirmedInvestments =
+      deal.investments?.filter(
+        (inv) => inv.status === InvestmentStatus.CONFIRMED,
+      ) || [];
+
+    if (
+      deal.status === 'open' &&
+      deal.issuerPublicKey &&
+      deal.issuerSecretKey &&
+      deal.stellarAssetTxId
+    ) {
       const investorShares: { walletAddress: string; tokenAmount: number }[] =
         confirmedInvestments
           .filter((inv) => inv.investor?.walletAddress)
           .map((inv) => ({
-            walletAddress: inv.investor.walletAddress!,
+            walletAddress: inv.investor.walletAddress as string,
             tokenAmount: Number(inv.tokenAmount),
           }));
 
@@ -421,7 +427,6 @@ export class TradeDealsService {
       );
       const unsoldTokens = Number(deal.tokenCount) - tokensSold;
 
-      // Include escrow account if it holds unsold tokens
       if (unsoldTokens > 0 && deal.escrowPublicKey) {
         investorShares.push({
           walletAddress: deal.escrowPublicKey,
@@ -435,7 +440,11 @@ export class TradeDealsService {
         );
 
         this.logger.info(
-          { dealId, tokenCount: deal.tokenCount, holders: investorShares.length },
+          {
+            dealId,
+            tokenCount: deal.tokenCount,
+            holders: investorShares.length,
+          },
           'Initiating clawback for canceled deal',
         );
 
@@ -448,8 +457,58 @@ export class TradeDealsService {
       }
     }
 
-    deal.status = 'canceled' as TradeDealStatus;
+    if (confirmedInvestments.length > 0) {
+      await this.investmentRepo.update(
+        confirmedInvestments.map((inv) => inv.id),
+        { status: InvestmentStatus.REFUNDED },
+      );
+      this.logger.info(
+        { dealId, refundedCount: confirmedInvestments.length },
+        'Refunded confirmed investments for canceled deal',
+      );
+    }
+
+    deal.status = 'canceled';
     return this.tradeDealRepo.save(deal);
+  }
+
+  async findByUser(userId: string, role: string): Promise<any[]> {
+    if (role !== 'farmer' && role !== 'trader') {
+      return [];
+    }
+
+    const whereCondition =
+      role === 'farmer' ? { farmerId: userId } : { traderId: userId };
+
+    const deals = await this.tradeDealRepo.find({
+      where: whereCondition,
+      relations: ['farmer', 'trader', 'milestones'],
+    });
+
+    // Get document count for each deal (placeholder - would need documents entity)
+    const dealsWithCounts = await Promise.all(
+      deals.map(async (deal) => {
+        const latestMilestone = await this.milestoneRepo.findOne({
+          where: { tradeDealId: deal.id },
+          order: { recordedAt: 'DESC' },
+        });
+
+        return {
+          id: deal.id,
+          commodity: deal.commodity,
+          quantity: deal.quantity,
+          total_value: deal.totalValue,
+          total_invested: deal.totalInvested,
+          funded_amount: deal.totalInvested,
+          status: deal.status,
+          delivery_date: deal.deliveryDate,
+          latest_milestone: latestMilestone || null,
+          document_count: 0, // TODO: Implement when documents entity is available
+        };
+      }),
+    );
+
+    return dealsWithCounts;
   }
 
   private generateTokenSymbol(commodity: string, dealId: string): string {
