@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Controller, Logger } from '@nestjs/common';
 import { Ctx, EventPattern, Payload, RmqContext } from '@nestjs/microservices';
 import { EscrowService } from './escrow.service';
 
@@ -6,7 +6,7 @@ interface DealDeliveredPayload {
   tradeDealId: string;
 }
 
-@Injectable()
+@Controller()
 export class EscrowConsumer {
   private readonly logger = new Logger(EscrowConsumer.name);
   private readonly maxRetries = 3;
