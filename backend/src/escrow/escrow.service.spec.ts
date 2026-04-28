@@ -49,6 +49,7 @@ describe('EscrowService', () => {
 
     mockStellarService = {
       releaseEscrow: jest.fn(),
+      decryptSecret: jest.fn(),
     } as any;
 
     mockQueueService = {
@@ -156,13 +157,19 @@ describe('EscrowService', () => {
         (cb: (m: typeof mockManager) => Promise<unknown>) => cb(mockManager),
       );
       mockConfigService.get.mockReturnValue('platform-wallet');
+      mockStellarService.decryptSecret.mockReturnValue('decrypted-escrow-secret');
       mockStellarService.releaseEscrow.mockResolvedValue(['stellar-tx-123']);
 
       await service.processDealDelivered(payload);
 
-      // Verify Stellar escrow release was called
-      expect(mockStellarService.releaseEscrow).toHaveBeenCalledWith(
+      // Verify Stellar secret was decrypted
+      expect(mockStellarService.decryptSecret).toHaveBeenCalledWith(
         'escrow-secret',
+      );
+
+      // Verify Stellar escrow release was called with decrypted secret
+      expect(mockStellarService.releaseEscrow).toHaveBeenCalledWith(
+        'decrypted-escrow-secret',
         'farmer-wallet',
         [
           {
