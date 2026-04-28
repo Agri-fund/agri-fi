@@ -20,7 +20,7 @@ describe('InvestmentsController', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
-    
+
     // Create a test module with throttler to verify it's applied
     const { Test } = await import('@nestjs/testing');
     const module = await Test.createTestingModule({

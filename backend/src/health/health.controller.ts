@@ -25,7 +25,9 @@ export class HealthController {
 
   @Get()
   @HealthCheck()
-  @ApiOperation({ summary: 'Health check for database, queue, and system resources' })
+  @ApiOperation({
+    summary: 'Health check for database, queue, and system resources',
+  })
   @ApiResponse({ status: 200, description: 'All services healthy' })
   @ApiResponse({ status: 503, description: 'Service unavailable' })
   async check() {

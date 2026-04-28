@@ -12,7 +12,9 @@ describe('UsersController', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    controller = new UsersController(usersServiceMock as unknown as UsersService);
+    controller = new UsersController(
+      usersServiceMock as unknown as UsersService,
+    );
   });
 
   describe('getUserDeals', () => {
@@ -56,18 +58,18 @@ describe('UsersController', () => {
     it('rejects invalid role query values', async () => {
       const req = { user: { id: 'farmer-1', role: 'farmer' } };
 
-      await expect(controller.getUserDeals(req as any, 'admin')).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(
+        controller.getUserDeals(req as any, 'admin'),
+      ).rejects.toThrow(BadRequestException);
       expect(usersServiceMock.getUserDeals).not.toHaveBeenCalled();
     });
 
     it('rejects role query when it does not match authenticated role', async () => {
       const req = { user: { id: 'farmer-1', role: 'farmer' } };
 
-      await expect(controller.getUserDeals(req as any, 'trader')).rejects.toThrow(
-        ForbiddenException,
-      );
+      await expect(
+        controller.getUserDeals(req as any, 'trader'),
+      ).rejects.toThrow(ForbiddenException);
       expect(usersServiceMock.getUserDeals).not.toHaveBeenCalled();
     });
   });

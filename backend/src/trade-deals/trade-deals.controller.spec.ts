@@ -6,13 +6,11 @@ import { OptionalJwtGuard } from '../auth/optional-jwt.guard';
 import { TradeDealsGuard } from './trade-deals.guard';
 
 const mockDeal = { id: 'deal-uuid', commodity: 'Cocoa', status: 'open' };
-const paginatedDeal = {
-  data: [mockDeal],
-  meta: { total: 1, page: 1, limit: 20, totalPages: 1 },
-};
 
 const mockService = {
-  findOpen: jest.fn().mockResolvedValue({ data: [mockDeal], total: 1, page: 1, limit: 12 }),
+  findOpen: jest
+    .fn()
+    .mockResolvedValue({ data: [mockDeal], total: 1, page: 1, limit: 12 }),
   findOne: jest.fn().mockResolvedValue(mockDeal),
 };
 
@@ -42,7 +40,12 @@ describe('TradeDealsController (public access)', () => {
   describe('GET /trade-deals', () => {
     it('returns deals without authentication', async () => {
       const result = await controller.findOpen();
-      expect(result).toEqual({ data: [mockDeal], total: 1, page: 1, limit: 12 });
+      expect(result).toEqual({
+        data: [mockDeal],
+        total: 1,
+        page: 1,
+        limit: 12,
+      });
     });
   });
 

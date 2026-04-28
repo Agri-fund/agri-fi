@@ -111,7 +111,11 @@ export class InvestmentsController {
     if (req.user.role !== 'investor') {
       throw new Error('Only investors can fund investments.');
     }
-    return this.investmentsService.fundEscrow(id, investorWalletAddress, signedXdr);
+    return this.investmentsService.fundEscrow(
+      id,
+      investorWalletAddress,
+      signedXdr,
+    );
   }
 
   @Post(':id/confirm')

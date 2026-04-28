@@ -148,6 +148,34 @@ function normalizeInvestment(investment: any): Investment {
   };
 }
 
+/**
+ * Normalise a raw deal object returned by the backend, ensuring that
+ * `funded_amount` is always populated regardless of whether the server sends
+ * the field as `funded_amount` or `total_invested`.
+ */
+function normalizeDeal(raw: any): Deal {
+  return {
+    id: raw.id,
+    commodity: raw.commodity,
+    quantity: Number(raw.quantity ?? 0),
+    quantity_unit: raw.quantity_unit ?? raw.quantityUnit ?? "units",
+    total_value: Number(raw.total_value ?? raw.totalValue ?? 0),
+    funded_amount: Number(
+      raw.funded_amount ?? raw.total_invested ?? raw.totalInvested ?? 0,
+    ),
+    total_invested: Number(raw.total_invested ?? raw.totalInvested ?? 0),
+    token_count: Number(raw.token_count ?? raw.tokenCount ?? 0),
+    tokens_remaining: Number(raw.tokens_remaining ?? raw.tokensRemaining ?? 0),
+    token_symbol: raw.token_symbol ?? raw.tokenSymbol ?? "",
+    issuer_public_key: raw.issuer_public_key ?? raw.issuerPublicKey ?? null,
+    status: raw.status ?? "draft",
+    delivery_date: raw.delivery_date ?? raw.deliveryDate ?? "",
+    created_at: raw.created_at ?? raw.createdAt ?? "",
+    documents: raw.documents,
+    milestones: raw.milestones,
+  };
+}
+
 // ── Auth-aware fetch helper ───────────────────────────────────────────────────
 
 export function getStoredToken(): string | null {
@@ -307,12 +335,21 @@ export interface PaginatedDeals {
 }
 
 export async function getOpenDeals(page = 1, limit = 12): Promise<PaginatedDeals> {
-  return apiFetch<PaginatedDeals>(`/trade-deals?page=${page}&limit=${limit}`);
+  const raw = await apiFetch<{ data: any[]; total: number; page: number; limit: number }>(
+    `/trade-deals?page=${page}&limit=${limit}`,
+  );
+  return {
+    data: raw.data.map(normalizeDeal),
+    total: raw.total,
+    page: raw.page,
+    limit: raw.limit,
+  };
 }
 
 export async function getDealById(id: string): Promise<Deal | null> {
   try {
-    return await apiFetch<Deal>(`/trade-deals/${id}`);
+    const raw = await apiFetch<any>(`/trade-deals/${id}`);
+    return normalizeDeal(raw);
   } catch (err: any) {
     if (err?.response?.status === 404) return null;
     throw err;

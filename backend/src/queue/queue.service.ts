@@ -73,7 +73,8 @@ export class QueueService {
    * This ensures the correlationId is pulled from the active request context.
    */
   private addCorrelationId<T>(payload: T): T & BasePayload {
-    const correlationId = (payload as any).correlationId || this.cls.get('correlationId');
+    const correlationId =
+      (payload as any).correlationId || this.cls.get('correlationId');
 
     return {
       ...payload,
