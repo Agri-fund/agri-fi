@@ -3,6 +3,8 @@ import {
   Get,
   UseGuards,
   Request,
+  Query,
+  BadRequestException,
   ForbiddenException,
 } from '@nestjs/common';
 import {
@@ -49,11 +51,32 @@ export class UsersController {
     status: 403,
     description: 'Investors cannot access this endpoint',
   })
-  async getUserDeals(@Request() req: AuthRequest) {
+  async getUserDeals(
+    @Request() req: AuthRequest,
+    @Query('role') requestedRole?: string,
+  ) {
     const { id, role } = req.user;
-    if (role === 'investor') {
-      throw new ForbiddenException('Investors cannot access deals endpoint');
+
+    if (role !== 'farmer' && role !== 'trader') {
+      throw new ForbiddenException(
+        'Only farmers and traders can access deals endpoint',
+      );
     }
+
+    if (
+      requestedRole &&
+      requestedRole !== 'farmer' &&
+      requestedRole !== 'trader'
+    ) {
+      throw new BadRequestException('role must be either farmer or trader');
+    }
+
+    if (requestedRole && requestedRole !== role) {
+      throw new ForbiddenException(
+        'Requested role does not match authenticated user role',
+      );
+    }
+
     return this.usersService.getUserDeals(id, role);
   }
 

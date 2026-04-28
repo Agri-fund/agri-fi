@@ -5,7 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { PinoLogger } from 'nestjs-pino';
 import { PaymentDistribution } from './entities/payment-distribution.entity';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
-import { Investment } from '../investments/entities/investment.entity';
+import { Investment, InvestmentStatus } from '../investments/entities/investment.entity';
 import { User } from '../auth/entities/user.entity';
 import { StellarService, InvestorShare } from '../stellar/stellar.service';
 import { QueueService } from '../queue/queue.service';
@@ -60,7 +60,7 @@ export class EscrowService {
 
         // Load confirmed investments with investor details
         const investments = await manager.find(Investment, {
-          where: { tradeDealId, status: 'confirmed' },
+          where: { tradeDealId, status: InvestmentStatus.CONFIRMED },
           relations: ['investor'],
         });
 
