@@ -157,7 +157,9 @@ describe('EscrowService', () => {
         (cb: (m: typeof mockManager) => Promise<unknown>) => cb(mockManager),
       );
       mockConfigService.get.mockReturnValue('platform-wallet');
-      mockStellarService.decryptSecret.mockReturnValue('decrypted-escrow-secret');
+      mockStellarService.decryptSecret.mockReturnValue(
+        'decrypted-escrow-secret',
+      );
       mockStellarService.releaseEscrow.mockResolvedValue(['stellar-tx-123']);
 
       await service.processDealDelivered(payload);

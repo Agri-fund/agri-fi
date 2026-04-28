@@ -65,8 +65,9 @@ export class QueueProcessor {
       );
 
       // Encrypt the issuer secret
-      const encryptedIssuerSecret =
-        this.stellarService.encryptSecret(result.issuerSecret);
+      const encryptedIssuerSecret = this.stellarService.encryptSecret(
+        result.issuerSecret,
+      );
       if (encryptedIssuerSecret === result.issuerSecret) {
         throw new Error('Issuer secret encryption failed');
       }

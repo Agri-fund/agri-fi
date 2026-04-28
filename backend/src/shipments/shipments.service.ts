@@ -98,10 +98,7 @@ export class ShipmentsService {
       const unixTs = Math.floor(Date.now() / 1000);
       const memoText = `AGRIC:MILESTONE:${dealIdShort}:${dto.milestone}:${unixTs}`;
 
-      let signerSecret = this.config.get<string>(
-        'STELLAR_PLATFORM_SECRET',
-        '',
-      );
+      let signerSecret = this.config.get<string>('STELLAR_PLATFORM_SECRET', '');
       if (deal.escrowSecretKey) {
         signerSecret = this.stellarService.decryptSecret(deal.escrowSecretKey);
       }

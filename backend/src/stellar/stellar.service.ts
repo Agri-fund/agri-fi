@@ -70,7 +70,9 @@ export class StellarService {
     // Validate ENCRYPTION_KEY presence (except in test environment)
     const encryptionKey = config.get<string>('ENCRYPTION_KEY', '');
     if (!encryptionKey && process.env.NODE_ENV !== 'test') {
-      throw new Error('ENCRYPTION_KEY is required in production and development environments');
+      throw new Error(
+        'ENCRYPTION_KEY is required in production and development environments',
+      );
     }
     if (!encryptionKey && process.env.NODE_ENV === 'test') {
       this.logger.warn('ENCRYPTION_KEY is not set; using empty key for tests');
@@ -473,7 +475,10 @@ export class StellarService {
     const BATCH_SIZE = 98;
     const txIds: string[] = [];
     let distributedToInvestors = 0;
-    const batchCount = Math.max(1, Math.ceil(investorShares.length / BATCH_SIZE));
+    const batchCount = Math.max(
+      1,
+      Math.ceil(investorShares.length / BATCH_SIZE),
+    );
 
     for (let batchIdx = 0; batchIdx < batchCount; batchIdx++) {
       const batchStart = batchIdx * BATCH_SIZE;

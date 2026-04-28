@@ -45,7 +45,10 @@ describe('AuthController', () => {
         country: 'NG',
       };
 
-      mockAuthService.register.mockResolvedValue({ id: '1', email: 'test@example.com' });
+      mockAuthService.register.mockResolvedValue({
+        id: '1',
+        email: 'test@example.com',
+      });
 
       await controller.register(registerDto);
 

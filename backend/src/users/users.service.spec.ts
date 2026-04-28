@@ -59,7 +59,10 @@ describe('UsersService', () => {
       providers: [
         UsersService,
         { provide: getRepositoryToken(User), useValue: userRepository },
-        { provide: getRepositoryToken(TradeDeal), useValue: tradeDealRepository },
+        {
+          provide: getRepositoryToken(TradeDeal),
+          useValue: tradeDealRepository,
+        },
         {
           provide: getRepositoryToken(Investment),
           useValue: investmentRepository,
@@ -180,9 +183,9 @@ describe('UsersService', () => {
 
   describe('getUserInvestments', () => {
     it('throws ForbiddenException for non-investor role', async () => {
-      await expect(service.getUserInvestments('user-1', 'farmer')).rejects.toThrow(
-        ForbiddenException,
-      );
+      await expect(
+        service.getUserInvestments('user-1', 'farmer'),
+      ).rejects.toThrow(ForbiddenException);
     });
 
     it('calculates expected and actual returns for completed deals', async () => {
@@ -196,9 +199,14 @@ describe('UsersService', () => {
           }),
         }),
       ]);
-      paymentDistributionRepository.findOne.mockResolvedValue({ amountUsd: 1200 });
+      paymentDistributionRepository.findOne.mockResolvedValue({
+        amountUsd: 1200,
+      });
 
-      const [result] = await service.getUserInvestments('investor-1', 'investor');
+      const [result] = await service.getUserInvestments(
+        'investor-1',
+        'investor',
+      );
 
       expect(result.expected_return_usd).toBe(1000);
       expect(result.actual_return_usd).toBe(1200);

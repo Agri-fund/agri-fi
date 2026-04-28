@@ -79,7 +79,15 @@ export class TradeDeal {
   })
   @ApiProperty({
     description: 'Current deal status',
-    enum: ['draft', 'open', 'funded', 'delivered', 'completed', 'failed', 'canceled'],
+    enum: [
+      'draft',
+      'open',
+      'funded',
+      'delivered',
+      'completed',
+      'failed',
+      'canceled',
+    ],
     example: 'open',
   })
   status: TradeDealStatus;

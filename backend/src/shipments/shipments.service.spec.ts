@@ -142,7 +142,9 @@ describe('ShipmentsService', () => {
         longitude: null,
       });
 
-      expect(stellarService.decryptSecret).toHaveBeenCalledWith('escrow-secret');
+      expect(stellarService.decryptSecret).toHaveBeenCalledWith(
+        'escrow-secret',
+      );
       expect(stellarService.recordMemo).toHaveBeenCalledWith(
         expect.any(String),
         'decrypted-escrow-secret',
@@ -237,7 +239,9 @@ describe('ShipmentsService', () => {
       const result = await service.recordMilestone('trader-1', dto);
 
       expect(result.milestone).toBe('importer');
-      expect(stellarService.decryptSecret).toHaveBeenCalledWith('escrow-secret');
+      expect(stellarService.decryptSecret).toHaveBeenCalledWith(
+        'escrow-secret',
+      );
       expect(stellarService.recordMemo).toHaveBeenCalledWith(
         expect.stringContaining('AGRIC:MILESTONE:'),
         'decrypted-escrow-secret',
@@ -402,7 +406,9 @@ describe('ShipmentsService', () => {
 
       await service.recordMilestone('trader-1', dto);
 
-      expect(stellarService.decryptSecret).toHaveBeenCalledWith('escrow-secret');
+      expect(stellarService.decryptSecret).toHaveBeenCalledWith(
+        'escrow-secret',
+      );
       expect(stellarService.recordMemo).toHaveBeenCalledWith(
         expect.stringMatching(/^AGRIC:MILESTONE:deal1:warehouse:\d+$/),
         'decrypted-escrow-secret',

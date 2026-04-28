@@ -19,11 +19,6 @@ import {
 } from '../investments/entities/investment.entity';
 import { StellarService } from '../stellar/stellar.service';
 import { QueueService } from '../queue/queue.service';
-import {
-  normalizePagination,
-  PaginatedResult,
-  toPaginatedResult,
-} from '../common/pagination';
 
 const VALID_DOC_TYPES: DocumentType[] = [
   'purchase_agreement',
@@ -177,6 +172,7 @@ export class TradeDealsService {
         quantity_unit: deal.quantityUnit,
         total_value: deal.totalValue,
         total_invested: deal.totalInvested,
+        funded_amount: deal.totalInvested,
         token_count: deal.tokenCount,
         token_symbol: deal.tokenSymbol,
         delivery_date: deal.deliveryDate,
@@ -228,6 +224,7 @@ export class TradeDealsService {
       token_count: deal.tokenCount,
       token_symbol: deal.tokenSymbol,
       total_invested: deal.totalInvested,
+      funded_amount: deal.totalInvested,
       tokens_remaining: tokensRemaining,
       trader_name: deal.trader?.email || 'Unknown Trader',
       description: `${deal.quantity} ${deal.quantityUnit} of ${deal.commodity} for delivery by ${new Date(
@@ -333,8 +330,7 @@ export class TradeDealsService {
       // Deal remains in draft status on Stellar failure
       throw new UnprocessableEntityException({
         code: 'STELLAR_OPERATION_FAILED',
-        message:
-          'Failed to create escrow account. Please try again.',
+        message: 'Failed to create escrow account. Please try again.',
       });
     }
   }
@@ -394,7 +390,7 @@ export class TradeDealsService {
       });
     }
 
-    if (deal.status === 'cancelled') {
+    if (deal.status === 'canceled') {
       return deal;
     }
 
@@ -472,7 +468,7 @@ export class TradeDealsService {
       );
     }
 
-    deal.status = 'cancelled';
+    deal.status = 'canceled';
     return this.tradeDealRepo.save(deal);
   }
 
@@ -503,6 +499,7 @@ export class TradeDealsService {
           quantity: deal.quantity,
           total_value: deal.totalValue,
           total_invested: deal.totalInvested,
+          funded_amount: deal.totalInvested,
           status: deal.status,
           delivery_date: deal.deliveryDate,
           latest_milestone: latestMilestone || null,

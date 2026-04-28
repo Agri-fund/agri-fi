@@ -87,10 +87,18 @@ export class NotificationsService {
   private sanitiseErrorMessage(message: string): string {
     if (!message) return '';
     // Redact SMTP authentication commands and potential tokens
-    return message
-      .replace(/AUTH\s+(?:LOGIN|PLAIN|CRAM-MD5|DIGEST-MD5|XOAUTH2)\s+[a-zA-Z0-9+/=]+/gi, 'AUTH *** [REDACTED]')
-      .replace(/AUTH\s+(?:LOGIN|PLAIN|CRAM-MD5|DIGEST-MD5|XOAUTH2)/gi, 'AUTH ***')
-      // Redact potential base64 credentials (long alphanumeric strings that look like tokens)
-      .replace(/[a-zA-Z0-9+/]{20,}=*/g, '***');
+    return (
+      message
+        .replace(
+          /AUTH\s+(?:LOGIN|PLAIN|CRAM-MD5|DIGEST-MD5|XOAUTH2)\s+[a-zA-Z0-9+/=]+/gi,
+          'AUTH *** [REDACTED]',
+        )
+        .replace(
+          /AUTH\s+(?:LOGIN|PLAIN|CRAM-MD5|DIGEST-MD5|XOAUTH2)/gi,
+          'AUTH ***',
+        )
+        // Redact potential base64 credentials (long alphanumeric strings that look like tokens)
+        .replace(/[a-zA-Z0-9+/]{20,}=*/g, '***')
+    );
   }
 }
