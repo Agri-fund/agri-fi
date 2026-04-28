@@ -127,8 +127,28 @@ Copy `backend/.env.example` to `backend/.env` and update the values:
 | `AWS_ACCESS_KEY_ID` | S3 access key | optional |
 | `AWS_SECRET_ACCESS_KEY` | S3 secret key | optional |
 | `AWS_S3_BUCKET` | S3 bucket name | optional |
+| `NOTIFICATIONS_ENABLED` | Set to false to disable sending emails | optional |
+| `SMTP_HOST` | SMTP server host for sending emails | optional |
+| `SMTP_PORT` | SMTP server port | optional |
+| `SMTP_USER` | SMTP authentication user | optional |
+| `SMTP_PASS` | SMTP authentication password | optional |
+| `EMAIL_FROM` | Sender address for emails | optional |
 
 For Stellar work, generate a testnet keypair at https://laboratory.stellar.org and fund it via [Friendbot](https://friendbot.stellar.org).
+
+### Stellar CI testnet key
+
+Repository CI expects a funded Stellar testnet secret named `STELLAR_PLATFORM_SECRET_TESTNET` in GitHub Actions secrets. Use a dedicated testnet-only keypair and keep it funded with Friendbot so Stellar-dependent integration tests can create escrow accounts and submit transactions without falling back to an unfunded random account.
+
+When the secret is not configured, CI sets `STELLAR_INTEGRATION_TESTS=false` and logs a notice. Any test that requires Stellar testnet access should check that flag and skip itself when the flag is false. Unit tests that mock Stellar behavior still run normally.
+
+### Frontend env vars
+
+| Variable | Description | Required |
+|---|---|---|
+| `NEXT_PUBLIC_API_URL` | Base URL of the backend the frontend talks to (e.g. `http://localhost:3001` for local dev). Baked into the client bundle at `next build` time. | yes for `next build` |
+
+The marketplace pages (`src/app/marketplace/**`) are rendered on demand (`export const dynamic = 'force-dynamic'`) so `pnpm run build` does not require a reachable backend. If you add new server components that fetch from the API, either mark them `force-dynamic` or wrap the fetch in `try/catch` so the build can continue on transient failures.
 
 ---
 

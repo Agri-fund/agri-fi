@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsNotEmpty, IsOptional, IsString, IsUrl } from 'class-validator';
+import { IsBoolean, IsOptional, IsString, IsUrl } from 'class-validator';
 
 export class KycDto {
   @ApiPropertyOptional({
@@ -20,7 +20,10 @@ export class KycDto {
   @IsUrl()
   proofOfAddressUrl?: string;
 
-  @ApiProperty({ example: false, description: 'Whether this is a corporate KYC' })
+  @ApiProperty({
+    example: false,
+    description: 'Whether this is a corporate KYC',
+  })
   @IsBoolean()
   @IsOptional()
   isCorporate?: boolean;
@@ -30,7 +33,10 @@ export class KycDto {
   @IsOptional()
   companyName?: string;
 
-  @ApiPropertyOptional({ example: '12345678', description: 'Company Registration Number' })
+  @ApiPropertyOptional({
+    example: '12345678',
+    description: 'Company Registration Number',
+  })
   @IsString()
   @IsOptional()
   registrationNumber?: string;

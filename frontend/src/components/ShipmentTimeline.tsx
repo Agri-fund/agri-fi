@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 
 interface Milestone {
   id: string;
-  milestone: 'farm' | 'warehouse' | 'port' | 'importer';
+  milestone: 'farm' | 'warehouse' | 'port' | 'importer' | string;
   notes: string | null;
   stellarTxId: string | null;
   recordedBy: string;
@@ -13,29 +13,44 @@ interface Milestone {
 
 interface ShipmentTimelineProps {
   tradeDealId: string;
+  initialMilestones?: any[];
   className?: string;
 }
 
-const MILESTONE_LABELS = {
+const MILESTONE_LABELS: Record<string, string> = {
   farm: 'Farm Collection',
   warehouse: 'Warehouse Storage',
   port: 'Port Shipment',
   importer: 'Importer Receipt',
 };
 
-const MILESTONE_ICONS = {
+const MILESTONE_ICONS: Record<string, string> = {
   farm: '🚜',
   warehouse: '🏭',
   port: '🚢',
   importer: '📦',
 };
 
+const normalizeMilestones = (data: any[]): Milestone[] => {
+  return data.map(m => ({
+    id: m.id,
+    milestone: m.milestone,
+    notes: m.notes,
+    stellarTxId: m.stellar_tx_id ?? m.stellarTxId,
+    recordedBy: m.recorded_by ?? m.recordedBy,
+    recordedAt: m.recorded_at ?? m.recordedAt,
+  }));
+};
+
 export const ShipmentTimeline: React.FC<ShipmentTimelineProps> = ({
   tradeDealId,
+  initialMilestones,
   className = '',
 }) => {
-  const [milestones, setMilestones] = useState<Milestone[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [milestones, setMilestones] = useState<Milestone[]>(
+    initialMilestones ? normalizeMilestones(initialMilestones) : []
+  );
+  const [loading, setLoading] = useState(!initialMilestones);
   const [error, setError] = useState<string | null>(null);
 
   const fetchMilestones = useCallback(async () => {
@@ -59,7 +74,7 @@ export const ShipmentTimeline: React.FC<ShipmentTimelineProps> = ({
       }
 
       const data = await response.json();
-      setMilestones(data);
+      setMilestones(normalizeMilestones(data));
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Failed to load milestones');
     } finally {
@@ -68,8 +83,10 @@ export const ShipmentTimeline: React.FC<ShipmentTimelineProps> = ({
   }, [tradeDealId]);
 
   useEffect(() => {
-    fetchMilestones();
-  }, [fetchMilestones]);
+    if (!initialMilestones) {
+      fetchMilestones();
+    }
+  }, [fetchMilestones, initialMilestones]);
 
   const getMilestoneStatus = (milestoneType: string) => {
     const milestone = milestones.find(m => m.milestone === milestoneType);
@@ -137,6 +154,7 @@ export const ShipmentTimeline: React.FC<ShipmentTimelineProps> = ({
         <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-gray-200"></div>
         
         <div className="space-y-6">
+          {/* Main sequence milestones */}
           {Object.entries(MILESTONE_LABELS).map(([milestoneType, label], index) => {
             const status = getMilestoneStatus(milestoneType);
             const milestone = milestones.find(m => m.milestone === milestoneType);
@@ -158,7 +176,7 @@ export const ShipmentTimeline: React.FC<ShipmentTimelineProps> = ({
                       <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                     </svg>
                   ) : (
-                    MILESTONE_ICONS[milestoneType as keyof typeof MILESTONE_ICONS]
+                    MILESTONE_ICONS[milestoneType]
                   )}
                 </div>
                 
@@ -200,6 +218,45 @@ export const ShipmentTimeline: React.FC<ShipmentTimelineProps> = ({
               </div>
             );
           })}
+
+          {/* Unknown milestones at the end */}
+          {milestones
+            .filter(m => !MILESTONE_LABELS[m.milestone as string])
+            .map((milestone) => (
+              <div key={milestone.id} className="relative flex items-start space-x-4">
+                {/* Timeline dot */}
+                <div className="relative z-10 flex items-center justify-center w-8 h-8 rounded-full text-sm bg-gray-200 text-gray-500">
+                  ❓
+                </div>
+                
+                {/* Content */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-medium text-gray-900 capitalize">
+                      {(milestone.milestone || 'Unknown').replace(/_/g, ' ')}
+                    </h4>
+                    <span className="text-xs text-gray-500">
+                      {formatDate(milestone.recordedAt)}
+                    </span>
+                  </div>
+                  
+                  <div className="mt-1 space-y-1">
+                    {milestone.notes && (
+                      <p className="text-sm text-gray-600">{milestone.notes}</p>
+                    )}
+                    {milestone.stellarTxId && (
+                      <div className="text-xs text-gray-500">
+                        <span className="font-medium">Stellar TX:</span>
+                        <span className="font-mono ml-1 break-all">
+                          {milestone.stellarTxId.slice(0, 16)}...
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))
+          }
         </div>
       </div>
       

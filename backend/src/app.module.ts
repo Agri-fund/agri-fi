@@ -2,6 +2,7 @@ import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { LoggerModule } from 'nestjs-pino';
+import { ClsModule } from 'nestjs-cls'; // 1. Import ClsModule
 import { DatabaseConfig } from './database/database.config';
 import { AuthModule } from './auth/auth.module';
 import { StellarModule } from './stellar/stellar.module';
@@ -12,14 +13,27 @@ import { InvestmentsModule } from './investments/investments.module';
 import { EscrowModule } from './escrow/escrow.module';
 import { StorageModule } from './storage/storage.module';
 import { DocumentsModule } from './documents/documents.module';
+import { NotificationsModule } from './notifications/notifications.module';
 import { QueueProcessorModule } from './queue/queue-processor.module';
 import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
 import { loggingConfig } from './common/logging/logging.config';
 import { HealthModule } from './health/health.module';
 import { TerminusModule } from '@nestjs/terminus';
+import { ThrottlerModule } from '@nestjs/throttler';
 
 @Module({
   imports: [
+    // 2. Register ClsModule globally
+    ClsModule.forRoot({
+      global: true,
+      middleware: { mount: true }, // Automatically sets up the async context
+    }),
+    ThrottlerModule.forRoot([
+      { 
+        ttl: parseInt(process.env.RATE_LIMIT_TTL || '60000'), 
+        limit: parseInt(process.env.RATE_LIMIT_GLOBAL || '100') 
+      }
+    ]),
     LoggerModule.forRoot(loggingConfig),
     ConfigModule.forRoot({
       isGlobal: true,
@@ -38,6 +52,7 @@ import { TerminusModule } from '@nestjs/terminus';
     EscrowModule,
     StorageModule,
     DocumentsModule,
+    NotificationsModule,
     QueueProcessorModule,
     HealthModule,
     TerminusModule,

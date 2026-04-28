@@ -9,6 +9,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  checks: read
 
 jobs:
   auto-merge:
@@ -21,12 +22,21 @@ jobs:
             // Resolve the PR number from the event
             let prNumber;
             if (context.eventName === 'pull_request_review') {
-              prNumber = context.payload.pull_request.number;
+              prNumber = context.payload.pull_request?.number;
             } else if (context.eventName === 'check_suite') {
-              const prs = context.payload.check_suite.pull_requests;
-              if (!prs || prs.length === 0) return;
+              const prs = context.payload.check_suite?.pull_requests;
+              if (!prs || prs.length === 0) {
+                console.log('No pull request associated with this check suite — skipping.');
+                return;
+              }
               prNumber = prs[0].number;
             } else {
+              console.log(`Unsupported event ${context.eventName} — skipping.`);
+              return;
+            }
+
+            if (!prNumber) {
+              console.log('No pull request number available — skipping auto-merge.');
               return;
             }
 

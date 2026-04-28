@@ -2,6 +2,9 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { StellarService } from './stellar.service';
 import { PinoLogger } from 'nestjs-pino';
+import { getRepositoryToken } from '@nestjs/typeorm';
+import { TransactionLog } from './entities/transaction-log.entity';
+import { Keypair } from 'stellar-sdk';
 
 /**
  * Unit tests for StellarService — pure logic that doesn't require network calls.
@@ -37,6 +40,13 @@ describe('StellarService', () => {
             error: jest.fn(),
           },
         },
+        {
+          provide: getRepositoryToken(TransactionLog),
+          useValue: {
+            create: jest.fn((entry) => entry),
+            save: jest.fn(),
+          },
+        },
       ],
     }).compile();
 
@@ -53,17 +63,28 @@ describe('StellarService', () => {
   });
 
   describe('createInvestmentTransaction', () => {
-    const investorWallet = 'GINVESTOR';
-    const escrowPublicKey = 'GESCROW';
+    const investorWallet = Keypair.random().publicKey();
+    const escrowPublicKey = Keypair.random().publicKey();
     const assetCode = 'COCOA1';
-    const issuerPublicKey = 'GISSUER';
+    const issuerPublicKey = Keypair.random().publicKey();
 
-    const makeAccount = (xlmBalance: string, subentryCount: number, hasTrustline: boolean) => ({
+    const makeAccount = (
+      xlmBalance: string,
+      subentryCount: number,
+      hasTrustline: boolean,
+    ) => ({
       subentry_count: subentryCount,
       balances: [
         { asset_type: 'native', balance: xlmBalance },
         ...(hasTrustline
-          ? [{ asset_type: 'credit_alphanum12', asset_code: assetCode, asset_issuer: issuerPublicKey, balance: '0' }]
+          ? [
+              {
+                asset_type: 'credit_alphanum12',
+                asset_code: assetCode,
+                asset_issuer: issuerPublicKey,
+                balance: '0',
+              },
+            ]
           : []),
       ],
       incrementSequenceNumber: jest.fn(),
@@ -77,7 +98,12 @@ describe('StellarService', () => {
       };
 
       const xdr = await service.createInvestmentTransaction(
-        investorWallet, escrowPublicKey, 100, assetCode, 1, issuerPublicKey,
+        investorWallet,
+        escrowPublicKey,
+        100,
+        assetCode,
+        1,
+        issuerPublicKey,
       );
       expect(typeof xdr).toBe('string');
       expect(xdr.length).toBeGreaterThan(0);
@@ -89,7 +115,12 @@ describe('StellarService', () => {
       };
 
       const xdr = await service.createInvestmentTransaction(
-        investorWallet, escrowPublicKey, 100, assetCode, 1, issuerPublicKey,
+        investorWallet,
+        escrowPublicKey,
+        100,
+        assetCode,
+        1,
+        issuerPublicKey,
       );
       expect(typeof xdr).toBe('string');
     });
@@ -101,7 +132,12 @@ describe('StellarService', () => {
 
       await expect(
         service.createInvestmentTransaction(
-          investorWallet, escrowPublicKey, 100, assetCode, 1, issuerPublicKey,
+          investorWallet,
+          escrowPublicKey,
+          100,
+          assetCode,
+          1,
+          issuerPublicKey,
         ),
       ).rejects.toThrow('Insufficient XLM balance for trustline base reserve');
     });
@@ -165,8 +201,7 @@ describe('StellarService', () => {
         submitTransaction: jest.fn().mockResolvedValue(mockTxResult),
       };
 
-      const secret =
-        'SCM3CKKHLKTXOMML76C77C4OTVNE74CPUJJL32KNO3JAYZFVO544ENRP';
+      const secret = 'SCM3CKKHLKTXOMML76C77C4OTVNE74CPUJJL32KNO3JAYZFVO544ENRP';
       const result = await service.transferTradeTokens(
         secret,
         'GDBLLCURMIMOM2YIQHHL7KVDDG4VUNXPRVVGTRS6GMJA47FLCX5NGSME',

@@ -6,6 +6,7 @@ import {
   ApiBearerAuth,
 } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
+import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -23,18 +24,22 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('register')
+  @Throttle({ default: { limit: parseInt(process.env.RATE_LIMIT_REGISTER || '3'), ttl: parseInt(process.env.RATE_LIMIT_TTL || '60000') } })
   @ApiOperation({ summary: 'Register a new user' })
   @ApiResponse({ status: 201, description: 'User created successfully' })
   @ApiResponse({ status: 400, description: 'Validation error' })
   @ApiResponse({ status: 409, description: 'Email already in use' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
   register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
   }
 
   @Post('login')
+  @Throttle({ default: { limit: parseInt(process.env.RATE_LIMIT_LOGIN || '5'), ttl: parseInt(process.env.RATE_LIMIT_TTL || '60000') } })
   @ApiOperation({ summary: 'Authenticate and receive a JWT' })
   @ApiResponse({ status: 200, description: 'Returns access_token JWT' })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
   }
@@ -62,5 +67,15 @@ export class AuthController {
   @ApiResponse({ status: 422, description: 'Unsupported document type' })
   submitKyc(@Request() req: AuthRequest, @Body() dto: KycDto) {
     return this.authService.submitKyc(req.user.id, dto);
+  }
+
+  @Post('logout')
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth('jwt')
+  @ApiOperation({ summary: 'Logout and invalidate the current JWT token' })
+  @ApiResponse({ status: 200, description: 'Logged out successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  logout(@Request() req: AuthRequest) {
+    return this.authService.logout(req.user.id);
   }
 }

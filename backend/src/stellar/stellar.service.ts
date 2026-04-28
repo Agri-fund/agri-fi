@@ -1,6 +1,9 @@
 import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { PinoLogger } from 'nestjs-pino';
+import { TransactionLog, TxStatus } from './entities/transaction-log.entity';
 import {
   Horizon,
   Keypair,
@@ -34,6 +37,8 @@ export class StellarService {
   constructor(
     private readonly config: ConfigService,
     private readonly logger: PinoLogger,
+    @InjectRepository(TransactionLog)
+    private readonly txLogRepo: Repository<TransactionLog>,
   ) {
     this.logger.setContext(StellarService.name);
 
@@ -49,11 +54,27 @@ export class StellarService {
 
     const platformSecret = config.get<string>('STELLAR_PLATFORM_SECRET', '');
     if (!platformSecret && process.env.NODE_ENV !== 'test') {
-      throw new Error('STELLAR_PLATFORM_SECRET is required in production and development environments');
+      throw new Error(
+        'STELLAR_PLATFORM_SECRET is required in production and development environments',
+      );
+    }
+    if (!platformSecret && process.env.NODE_ENV === 'test') {
+      this.logger.warn(
+        'STELLAR_PLATFORM_SECRET is not set; using a random in-memory platform keypair. Network-dependent Stellar tests should be skipped unless a funded testnet secret is configured.',
+      );
     }
     this.platformKeypair = platformSecret
       ? Keypair.fromSecret(platformSecret)
       : Keypair.random();
+
+    // Validate ENCRYPTION_KEY presence (except in test environment)
+    const encryptionKey = config.get<string>('ENCRYPTION_KEY', '');
+    if (!encryptionKey && process.env.NODE_ENV !== 'test') {
+      throw new Error('ENCRYPTION_KEY is required in production and development environments');
+    }
+    if (!encryptionKey && process.env.NODE_ENV === 'test') {
+      this.logger.warn('ENCRYPTION_KEY is not set; using empty key for tests');
+    }
 
     const usdcAssetCode = config.get<string>('USDC_ASSET_CODE', 'USDC');
     const usdcIssuer = config.get<string>('USDC_ISSUER', '');
@@ -70,6 +91,24 @@ export class StellarService {
       },
       `StellarService initialized on ${network}`,
     );
+  }
+
+  /**
+   * Persists a transaction audit record. Never throws — failures are logged only.
+   */
+  async saveLog(entry: {
+    userId?: string;
+    dealId?: string;
+    txHash?: string;
+    xdrBody?: string;
+    status: TxStatus;
+    errorCode?: string;
+  }): Promise<void> {
+    try {
+      await this.txLogRepo.save(this.txLogRepo.create(entry));
+    } catch (err: any) {
+      this.logger.error({ err }, 'Failed to persist transaction log');
+    }
   }
 
   /**
@@ -175,7 +214,8 @@ export class StellarService {
       .addOperation(
         Operation.setOptions({
           source: issuerKeypair.publicKey(),
-          setFlags: 10, // AuthRevocableFlag (2) | AuthClawbackEnabledFlag (8)
+          // AuthRevocableFlag (2) | AuthClawbackEnabledFlag (8)
+          setFlags: 10 as any,
         }),
       )
       .setTimeout(30)
@@ -355,10 +395,14 @@ export class StellarService {
    */
   encryptSecret(secret: string): string {
     const key = Buffer.from(
-      this.config
-        .get<string>('ENCRYPTION_KEY', '')
-        .padEnd(32, '0')
-        .slice(0, 32),
+      (() => {
+        const rawKey = this.config.get<string>('ENCRYPTION_KEY', '');
+        if (!rawKey) {
+          throw new Error('ENCRYPTION_KEY is not set');
+        }
+        // Expect a 64‑character hex string (32 bytes)
+        return Buffer.from(rawKey, 'hex');
+      })(),
     );
     const iv = randomBytes(16);
     const cipher = createCipheriv('aes-256-cbc', key, iv);
@@ -374,10 +418,13 @@ export class StellarService {
    */
   decryptSecret(encryptedSecret: string): string {
     const key = Buffer.from(
-      this.config
-        .get<string>('ENCRYPTION_KEY', '')
-        .padEnd(32, '0')
-        .slice(0, 32),
+      (() => {
+        const rawKey = this.config.get<string>('ENCRYPTION_KEY', '');
+        if (!rawKey) {
+          throw new Error('ENCRYPTION_KEY is not set');
+        }
+        return Buffer.from(rawKey, 'hex');
+      })(),
     );
     const [ivHex, encryptedHex] = encryptedSecret.split(':');
     const iv = Buffer.from(ivHex, 'hex');
@@ -401,9 +448,6 @@ export class StellarService {
     totalValue: number,
   ): Promise<string[]> {
     const escrowKeypair = Keypair.fromSecret(escrowSecret);
-    const escrowAccount = await this.server.loadAccount(
-      escrowKeypair.publicKey(),
-    );
 
     // Convert to stroops (1 XLM = 10^7 stroops)
     const totalStroops = Math.round(totalValue * 1e7);
@@ -426,70 +470,120 @@ export class StellarService {
       throw new Error('Invalid investor token distribution');
     }
 
-    const txBuilder = new TransactionBuilder(escrowAccount, {
-      fee: BASE_FEE,
-      networkPassphrase: this.networkPassphrase,
-    });
-
-    // Farmer payment (USDC)
-    txBuilder.addOperation(
-      Operation.payment({
-        destination: farmerWallet,
-        asset: this.usdcAsset,
-        amount: (farmerStroops / 1e7).toFixed(7),
-      }),
-    );
-
-    // Investors
+    const BATCH_SIZE = 98;
+    const txIds: string[] = [];
     let distributedToInvestors = 0;
+    const batchCount = Math.max(1, Math.ceil(investorShares.length / BATCH_SIZE));
 
-    investorShares.forEach((share, index) => {
-      let shareStroops = Math.floor(
-        (share.tokenAmount / totalTokens) * totalStroops,
+    for (let batchIdx = 0; batchIdx < batchCount; batchIdx++) {
+      const batchStart = batchIdx * BATCH_SIZE;
+      const batch = investorShares.slice(batchStart, batchStart + BATCH_SIZE);
+
+      const batchAccount = await this.server.loadAccount(
+        escrowKeypair.publicKey(),
       );
+      const txBuilder = new TransactionBuilder(batchAccount, {
+        fee: BASE_FEE,
+        networkPassphrase: this.networkPassphrase,
+      });
 
-      // Fix rounding remainder on last investor
-      if (index === investorShares.length - 1) {
-        shareStroops =
-          totalStroops -
-          farmerStroops -
-          platformStroops -
-          distributedToInvestors;
+      if (batchIdx === 0) {
+        txBuilder.addOperation(
+          Operation.payment({
+            destination: farmerWallet,
+            asset: this.usdcAsset,
+            amount: (farmerStroops / 1e7).toFixed(7),
+          }),
+        );
       }
 
-      distributedToInvestors += shareStroops;
+      batch.forEach((share, localIdx) => {
+        const globalIdx = batchStart + localIdx;
+        let shareStroops = Math.floor(
+          (share.tokenAmount / totalTokens) * totalStroops,
+        );
 
-      txBuilder.addOperation(
-        Operation.payment({
-          destination: share.walletAddress,
-          asset: this.usdcAsset,
-          amount: (shareStroops / 1e7).toFixed(7),
-        }),
-      );
-    });
+        if (globalIdx === investorShares.length - 1) {
+          shareStroops =
+            totalStroops -
+            farmerStroops -
+            platformStroops -
+            distributedToInvestors;
+        }
 
-    // Platform fee (USDC)
-    txBuilder.addOperation(
-      Operation.payment({
-        destination: platformWallet,
-        asset: this.usdcAsset,
-        amount: (platformStroops / 1e7).toFixed(7),
-      }),
-    );
+        distributedToInvestors += shareStroops;
 
-    const tx = txBuilder.setTimeout(30).build();
-    tx.sign(escrowKeypair);
+        txBuilder.addOperation(
+          Operation.payment({
+            destination: share.walletAddress,
+            asset: this.usdcAsset,
+            amount: (shareStroops / 1e7).toFixed(7),
+          }),
+        );
+      });
 
-    try {
-      const result = await this.server.submitTransaction(tx);
-      const txId = (result as any).hash as string;
+      if (batchIdx === batchCount - 1) {
+        txBuilder.addOperation(
+          Operation.payment({
+            destination: platformWallet,
+            asset: this.usdcAsset,
+            amount: (platformStroops / 1e7).toFixed(7),
+          }),
+        );
+      }
 
-      this.logger.info({ txId }, 'Escrow released successfully');
-      return [txId];
-    } catch (err: any) {
-      this.logger.error(`Escrow release failed: ${err.message}`, err.stack);
-      throw new Error(`Escrow release failed: ${err.message}`);
+      const tx = txBuilder.setTimeout(30).build();
+      tx.sign(escrowKeypair);
+
+      try {
+        const result = await this.server.submitTransaction(tx);
+        txIds.push((result as any).hash as string);
+      } catch (err: any) {
+        this.logger.error(
+          { batchIdx, totalBatches: batchCount },
+          `Escrow release failed at batch ${batchIdx}: ${err.message}`,
+        );
+        throw new Error(`Escrow release failed: ${err.message}`);
+      }
     }
+
+    this.logger.info({ txIds }, 'Escrow released successfully');
+    return txIds;
+  }
+
+  /**
+   * Records a document's SHA-256 hash on the Stellar ledger using Memo.Hash.
+   * This serves as a tamper-proof "Proof of Existence".
+   */
+  async recordDocumentHash(
+    docHashHex: string,
+    signerSecret: string,
+  ): Promise<string> {
+    const signerKeypair = Keypair.fromSecret(signerSecret);
+    const account = await this.server.loadAccount(signerKeypair.publicKey());
+
+    // Create a transaction with the document hash in the Memo
+    // We use a minimal self-payment as the carrier for the memo
+    const tx = new TransactionBuilder(account, {
+      fee: BASE_FEE,
+      networkPassphrase: this.networkPassphrase,
+    })
+      .addOperation(
+        Operation.payment({
+          destination: signerKeypair.publicKey(),
+          asset: Asset.native(),
+          amount: '0.000001',
+        }),
+      )
+      .addMemo(Memo.hash(docHashHex))
+      .setTimeout(30)
+      .build();
+
+    tx.sign(signerKeypair);
+    const result = await this.server.submitTransaction(tx);
+
+    const txId = (result as any).hash as string;
+    return txId;
   }
 
   /**
@@ -569,34 +663,38 @@ export class StellarService {
     const investorAccount = await this.server.loadAccount(investorWallet);
     const tradeAsset = new Asset(assetCode, issuerPublicKey);
 
-    const needsTrustline = !(await this.hasTrustline(investorAccount, tradeAsset));
+    const needsTrustline = !(await this.hasTrustline(
+      investorAccount,
+      tradeAsset,
+    ));
 
     if (needsTrustline) {
       // Each trustline requires 0.5 XLM base reserve; ensure the investor can cover it
       const xlmBalance = parseFloat(
-        (investorAccount.balances.find((b: any) => b.asset_type === 'native') as any)?.balance ?? '0',
+        (
+          investorAccount.balances.find(
+            (b: any) => b.asset_type === 'native',
+          ) as any
+        )?.balance ?? '0',
       );
       // Minimum spendable = existing subentries * 0.5 + 2 (base) + 0.5 (new trustline) + fee buffer
-      const minRequired = (investorAccount.subentry_count + 1) * 0.5 + 2 + 0.001;
+      const minRequired =
+        (investorAccount.subentry_count + 1) * 0.5 + 2 + 0.001;
       if (xlmBalance < minRequired) {
         throw new Error(
           `Insufficient XLM balance for trustline base reserve. ` +
-          `Need at least ${minRequired.toFixed(3)} XLM, have ${xlmBalance} XLM.`,
+            `Need at least ${minRequired.toFixed(3)} XLM, have ${xlmBalance} XLM.`,
         );
       }
     }
 
-    const txBuilder = new TransactionBuilder(investorAccount, {
-    // Use USDC for stable USD-denominated payments
     const txBuilder = new TransactionBuilder(investorAccount, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
     });
 
     if (needsTrustline) {
-      txBuilder.addOperation(
-        Operation.changeTrust({ asset: tradeAsset }),
-      );
+      txBuilder.addOperation(Operation.changeTrust({ asset: tradeAsset }));
     }
 
     txBuilder
@@ -609,11 +707,8 @@ export class StellarService {
       )
       .addMemo(Memo.text(`invest:${assetCode}:${tokenAmount}`))
       .setTimeout(300);
-      .addMemo(Memo.text(`invest:${assetCode}:${tokenAmount}`));
 
     this.addComplianceDataOperations(txBuilder, complianceData);
-
-    const tx = txBuilder.setTimeout(300).build();
 
     return txBuilder.build().toXDR();
   }
@@ -821,13 +916,26 @@ export class StellarService {
    */
   async submitTransaction(signedXdr: string): Promise<any> {
     const tx = TransactionBuilder.fromXDR(signedXdr, this.networkPassphrase);
-    const result = await this.server.submitTransaction(tx);
-
-    this.logger.info(
-      { txId: (result as any).hash },
-      'Transaction submitted successfully',
-    );
-    return result;
+    try {
+      const result = await this.server.submitTransaction(tx);
+      const txHash = (result as any).hash as string;
+      this.logger.info({ txId: txHash }, 'Transaction submitted successfully');
+      await this.saveLog({
+        txHash,
+        xdrBody: signedXdr,
+        status: TxStatus.SUCCESS,
+      });
+      return result;
+    } catch (err: any) {
+      const errorCode: string =
+        err?.response?.data?.extras?.result_codes?.transaction ?? err.message;
+      await this.saveLog({
+        xdrBody: signedXdr,
+        status: TxStatus.FAILED,
+        errorCode,
+      });
+      throw err;
+    }
   }
 
   /**

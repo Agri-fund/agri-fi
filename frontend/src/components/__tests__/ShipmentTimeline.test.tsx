@@ -160,4 +160,33 @@ describe('ShipmentTimeline', () => {
       });
     });
   });
+
+  it('renders unknown milestone types at the end', async () => {
+    const milestonesWithUnknown = [
+      ...mockMilestones,
+      {
+        id: '3',
+        milestone: 'custom_step',
+        notes: 'A custom processing step',
+        stellarTxId: 'stellar-tx-789',
+        recordedBy: 'trader-1',
+        recordedAt: '2026-04-22T09:00:00Z',
+      },
+    ];
+
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      json: async () => milestonesWithUnknown,
+    });
+
+    render(<ShipmentTimeline tradeDealId="deal-123" />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Custom step')).toBeInTheDocument();
+      expect(screen.getByText('❓')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText('A custom processing step')).toBeInTheDocument();
+    expect(screen.getByText('stellar-tx-789...')).toBeInTheDocument();
+  });
 });

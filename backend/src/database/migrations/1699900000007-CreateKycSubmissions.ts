@@ -5,12 +5,12 @@ export class CreateKycSubmissions1699900000007 implements MigrationInterface {
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     // Update users role check to include 'admin'
-    // First, we drop the existing check constraint. Since it was likely automatically named, 
+    // First, we drop the existing check constraint. Since it was likely automatically named,
     // we'll try to drop it if it exists or just use a raw alter if possible.
     // In many cases with TypeORM migrations like the one seen, it might be easier to just add the table
-    // and assume the 'admin' role addition to the type is enough for the app, 
+    // and assume the 'admin' role addition to the type is enough for the app,
     // but the DB check will fail.
-    
+
     // Attempting to update the check constraint for 'role'
     await queryRunner.query(`
       ALTER TABLE "users" DROP CONSTRAINT IF EXISTS "users_role_check";
@@ -32,7 +32,7 @@ export class CreateKycSubmissions1699900000007 implements MigrationInterface {
 
   public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`DROP TABLE "kyc_submissions"`);
-    
+
     // Revert role check
     await queryRunner.query(`
       ALTER TABLE "users" DROP CONSTRAINT IF EXISTS "users_role_check";

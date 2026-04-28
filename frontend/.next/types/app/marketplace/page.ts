@@ -1,4 +1,4 @@
-// File: /media/john-danlami/Backup/Projects/drips/michael/agri-fi/frontend/src/app/marketplace/page.tsx
+// File: C:\Users\USER\Desktop\Drip wave 4\agri-fi\frontend\src\app\marketplace\page.tsx
 import * as entry from '../../../../src/app/marketplace/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 

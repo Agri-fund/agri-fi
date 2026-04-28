@@ -25,14 +25,22 @@ export interface Document {
   created_at: string;
 }
 
+export type MilestoneType = "farm" | "warehouse" | "port" | "importer";
+
+export const MILESTONE_LABELS: Record<MilestoneType, string> = {
+  farm: "Farm",
+  warehouse: "Warehouse",
+  port: "Port",
+  importer: "Importer",
+};
+
 export interface Milestone {
   id: string;
-  milestone?: "farm" | "warehouse" | "port" | "importer";
-  title?: string;
-  status?: string;
+  milestone: MilestoneType;
   notes: string | null;
   recorded_at: string;
-  created_at: string;
+  stellar_tx_id?: string | null;
+  recorded_by?: string;
 }
 
 export interface Deal {
@@ -43,6 +51,8 @@ export interface Deal {
   total_value: number;
   funded_amount: number;
   total_invested: number;
+  token_count: number;
+  tokens_remaining: number;
   token_symbol: string;
   issuer_public_key?: string | null;
   status: "draft" | "open" | "funded" | "delivered" | "completed" | "failed";
@@ -64,6 +74,9 @@ export interface Investment {
   token_holdings: number;
   status: "pending" | "confirmed" | "failed";
   created_at: string;
+  expected_return_usd: number;
+  actual_return_usd: number | null;
+  return_percentage: number | null;
   deal: Deal;
 }
 
@@ -96,6 +109,13 @@ function normalizeInvestment(investment: any): Investment {
     token_holdings: Number(investment.token_holdings ?? tokens),
     status: investment.status,
     created_at: investment.created_at ?? investment.createdAt,
+    expected_return_usd: Number(
+      investment.expected_return_usd ?? investment.expectedReturnUsd ?? 0,
+    ),
+    actual_return_usd:
+      investment.actual_return_usd ?? investment.actualReturnUsd ?? null,
+    return_percentage:
+      investment.return_percentage ?? investment.returnPercentage ?? null,
     deal: {
       id: tradeDeal.id ?? investment.trade_deal_id ?? investment.tradeDealId,
       commodity: tradeDeal.commodity ?? "Unknown",
@@ -111,6 +131,10 @@ function normalizeInvestment(investment: any): Investment {
       ),
       total_invested: Number(
         tradeDeal.total_invested ?? tradeDeal.totalInvested ?? 0,
+      ),
+      token_count: Number(tradeDeal.token_count ?? tradeDeal.tokenCount ?? 0),
+      tokens_remaining: Number(
+        tradeDeal.tokens_remaining ?? tradeDeal.tokensRemaining ?? 0,
       ),
       token_symbol: tradeDeal.token_symbol ?? tradeDeal.tokenSymbol ?? "",
       issuer_public_key:
@@ -158,6 +182,26 @@ async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
 // ── Stateful API client (used by dashboard / login pages) ────────────────────
 
 export const apiClient = {
+  /** Call POST /auth/login, store the returned JWT, and return the token. */
+  async login(email: string, password: string): Promise<string> {
+    const { accessToken } = await apiFetch<{ accessToken: string }>(
+      "/auth/login",
+      {
+        method: "POST",
+        body: JSON.stringify({ email, password }),
+      },
+    );
+    localStorage.setItem("auth_token", accessToken);
+    return accessToken;
+  },
+
+  /** Fetch the authenticated user's profile from GET /users/me. */
+  async getMe(): Promise<User> {
+    const user = await apiFetch<User>("/users/me");
+    localStorage.setItem("auth_user", JSON.stringify(user));
+    return user;
+  },
+
   setAuth(token: string, user: User) {
     localStorage.setItem("auth_token", token);
     localStorage.setItem("auth_user", JSON.stringify(user));
@@ -174,14 +218,32 @@ export const apiClient = {
     return raw ? (JSON.parse(raw) as User) : null;
   },
 
+  // GET /users/me — fetch the up-to-date profile from the server and refresh
+  // the cached copy in localStorage so KYC, wallet, and role changes made by
+  // an admin are picked up without forcing a logout.
+  async refreshCurrentUser(): Promise<User | null> {
+    if (typeof window === "undefined") return null;
+    if (!getStoredToken()) return null;
+    try {
+      const fresh = await apiFetch<User>("/users/me");
+      localStorage.setItem("auth_user", JSON.stringify(fresh));
+      return fresh;
+    } catch (err: any) {
+      if (err?.response?.status === 401) {
+        this.clearAuth();
+      }
+      throw err;
+    }
+  },
+
   // GET /users/me/deals
   async getFarmerDeals(): Promise<Deal[]> {
-    return apiFetch<Deal[]>("/users/me/deals");
+    return apiFetch<Deal[]>("/users/me/deals?role=farmer");
   },
 
   // GET /users/me/deals
   async getTraderDeals(): Promise<Deal[]> {
-    return apiFetch<Deal[]>("/users/me/deals");
+    return apiFetch<Deal[]>("/users/me/deals?role=trader");
   },
 
   // GET /investments/my-investments
@@ -221,14 +283,33 @@ export const apiClient = {
       body: JSON.stringify(data),
     });
   },
+
+  // POST /auth/logout — invalidate the current JWT by incrementing tokenVersion
+  async logout(): Promise<{ message: string }> {
+    try {
+      return await apiFetch("/auth/logout", {
+        method: "POST",
+      });
+    } finally {
+      // Always clear local auth state, even if logout request fails
+      this.clearAuth();
+    }
+  },
 };
 
 // ── Public marketplace helpers ────────────────────────────────────────────────
 
-export async function getOpenDeals(): Promise<Deal[]> {
-  const res = await fetch(`${API_BASE}/trade-deals`, { cache: "no-store" });
-  if (!res.ok) throw new Error("Failed to fetch deals");
-  return unwrapPaginated(await res.json());
+export interface PaginatedDeals {
+  data: Deal[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export async function getOpenDeals(page = 1, limit = 12): Promise<PaginatedDeals> {
+  const res = await fetch(`${API_BASE}/trade-deals?page=${page}&limit=${limit}`, { cache: 'no-store' });
+  if (!res.ok) throw new Error('Failed to fetch deals');
+  return res.json();
 }
 
 export async function getDealById(id: string): Promise<Deal | null> {

@@ -5,6 +5,7 @@ import {
   ForbiddenException,
   UnprocessableEntityException,
 } from '@nestjs/common';
+import { PinoLogger } from 'nestjs-pino';
 import { ShipmentsService } from './shipments.service';
 import {
   ShipmentMilestone,
@@ -35,6 +36,8 @@ const mockMilestone = (): ShipmentMilestone => ({
   notes: 'Goods received at farm',
   stellarTxId: 'stellar-tx-123',
   memoText: 'AGRIC:MILESTONE:deal1:farm:1700000000',
+  latitude: null,
+  longitude: null,
   recordedAt: new Date(),
 });
 
@@ -46,7 +49,7 @@ describe('ShipmentsService', () => {
     save: jest.Mock;
     manager: { query: jest.Mock };
   };
-  let stellarService: { recordMemo: jest.Mock };
+  let stellarService: { recordMemo: jest.Mock; decryptSecret: jest.Mock };
   let config: { get: jest.Mock };
 
   beforeEach(async () => {
@@ -56,7 +59,7 @@ describe('ShipmentsService', () => {
       save: jest.fn(),
       manager: { query: jest.fn() },
     };
-    stellarService = { recordMemo: jest.fn() };
+    stellarService = { recordMemo: jest.fn(), decryptSecret: jest.fn() };
     config = { get: jest.fn() };
 
     queueService = { enqueueDealDelivered: jest.fn() };
@@ -77,6 +80,15 @@ describe('ShipmentsService', () => {
       providers: [
         ShipmentsService,
         {
+          provide: PinoLogger,
+          useValue: {
+            setContext: jest.fn(),
+            info: jest.fn(),
+            warn: jest.fn(),
+            error: jest.fn(),
+          },
+        },
+        {
           provide: getRepositoryToken(ShipmentMilestone),
           useValue: milestoneRepo,
         },
@@ -95,7 +107,6 @@ describe('ShipmentsService', () => {
   });
 
   describe('recordMilestone', () => {
-
     it('records first milestone (farm) for funded deal', async () => {
       const dto: CreateMilestoneDto = {
         trade_deal_id: 'deal-1',
@@ -116,6 +127,7 @@ describe('ShipmentsService', () => {
       milestoneRepo.create.mockReturnValue(mockMilestone());
       milestoneRepo.save.mockResolvedValue(mockMilestone());
       stellarService.recordMemo.mockResolvedValue('stellar-tx-123');
+      stellarService.decryptSecret.mockReturnValue('decrypted-escrow-secret');
 
       const result = await service.recordMilestone('trader-1', dto);
 
@@ -126,8 +138,16 @@ describe('ShipmentsService', () => {
         notes: 'Goods received at farm',
         stellarTxId: 'stellar-tx-123',
         memoText: expect.stringMatching(/^AGRIC:MILESTONE:deal1:farm:\d+$/),
+        latitude: null,
+        longitude: null,
       });
 
+      expect(stellarService.decryptSecret).toHaveBeenCalledWith('escrow-secret');
+      expect(stellarService.recordMemo).toHaveBeenCalledWith(
+        expect.any(String),
+        'decrypted-escrow-secret',
+        'hash',
+      );
       expect(result.milestone).toBe('farm');
     });
 
@@ -212,13 +232,15 @@ describe('ShipmentsService', () => {
       milestoneRepo.create.mockReturnValue(importerMilestone);
       milestoneRepo.save.mockResolvedValue(importerMilestone);
       stellarService.recordMemo.mockResolvedValue('stellar-tx-final');
+      stellarService.decryptSecret.mockReturnValue('decrypted-escrow-secret');
 
       const result = await service.recordMilestone('trader-1', dto);
 
       expect(result.milestone).toBe('importer');
+      expect(stellarService.decryptSecret).toHaveBeenCalledWith('escrow-secret');
       expect(stellarService.recordMemo).toHaveBeenCalledWith(
         expect.stringContaining('AGRIC:MILESTONE:'),
-        'escrow-secret',
+        'decrypted-escrow-secret',
         'hash',
       );
     });
@@ -376,12 +398,14 @@ describe('ShipmentsService', () => {
       milestoneRepo.create.mockReturnValue(warehouseMilestone);
       milestoneRepo.save.mockResolvedValue(warehouseMilestone);
       stellarService.recordMemo.mockResolvedValue('stellar-tx-456');
+      stellarService.decryptSecret.mockReturnValue('decrypted-escrow-secret');
 
       await service.recordMilestone('trader-1', dto);
 
+      expect(stellarService.decryptSecret).toHaveBeenCalledWith('escrow-secret');
       expect(stellarService.recordMemo).toHaveBeenCalledWith(
         expect.stringMatching(/^AGRIC:MILESTONE:deal1:warehouse:\d+$/),
-        'escrow-secret',
+        'decrypted-escrow-secret',
         'hash',
       );
     });

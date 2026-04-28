@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiClient, User } from '@/lib/api';
+import { apiClient } from '@/lib/api';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -17,27 +17,20 @@ export default function LoginPage() {
     setError(null);
 
     try {
-      // Mock login for development - replace with actual API call
-      const mockUsers: User[] = [
-        { id: '1', email: 'farmer@test.com', role: 'farmer', name: 'John Farmer' },
-        { id: '2', email: 'trader@test.com', role: 'trader', name: 'Sarah Trader' },
-        { id: '3', email: 'investor@test.com', role: 'investor', name: 'Mike Investor' },
-      ];
+      // Call the real auth API and obtain a JWT.
+      await apiClient.login(email, password);
 
-      const user = mockUsers.find(u => u.email === email);
-      
-      if (!user || password !== 'password') {
-        setError('Invalid email or password');
-        return;
-      }
+      // Fetch the authenticated user's profile to determine their role.
+      const profile = await apiClient.getMe();
 
-      // Set mock token and user
-      apiClient.setAuth('mock-jwt-token', user);
-      
-      // Redirect to appropriate dashboard
-      router.push(`/dashboard/${user.role}`);
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Login failed');
+      // Redirect to the role-specific dashboard.
+      router.push(`/dashboard/${profile.role}`);
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : 'Login failed. Please check your credentials.';
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -107,35 +100,6 @@ export default function LoginPage() {
               </button>
             </div>
           </form>
-
-          <div className="mt-6">
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-300" />
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-white text-gray-500">Demo Accounts</span>
-              </div>
-            </div>
-
-            <div className="mt-6 grid grid-cols-1 gap-3">
-              <div className="bg-gray-50 p-3 rounded-md">
-                <p className="text-sm font-medium text-gray-900">Farmer Account</p>
-                <p className="text-xs text-gray-600">Email: farmer@test.com</p>
-                <p className="text-xs text-gray-600">Password: password</p>
-              </div>
-              <div className="bg-gray-50 p-3 rounded-md">
-                <p className="text-sm font-medium text-gray-900">Trader Account</p>
-                <p className="text-xs text-gray-600">Email: trader@test.com</p>
-                <p className="text-xs text-gray-600">Password: password</p>
-              </div>
-              <div className="bg-gray-50 p-3 rounded-md">
-                <p className="text-sm font-medium text-gray-900">Investor Account</p>
-                <p className="text-xs text-gray-600">Email: investor@test.com</p>
-                <p className="text-xs text-gray-600">Password: password</p>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>

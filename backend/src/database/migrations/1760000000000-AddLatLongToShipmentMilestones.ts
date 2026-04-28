@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddLatLongToShipmentMilestones1760000000000
-  implements MigrationInterface
-{
+export class AddLatLongToShipmentMilestones1760000000000 implements MigrationInterface {
   name = 'AddLatLongToShipmentMilestones1760000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {

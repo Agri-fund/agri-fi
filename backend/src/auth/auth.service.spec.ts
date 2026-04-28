@@ -2,11 +2,12 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { ConflictException, UnauthorizedException, NotFoundException } from '@nestjs/common';
+import { NotFoundException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { AuthService } from './auth.service';
 import { User } from './entities/user.entity';
 import { KycSubmission } from './entities/kyc-submission.entity';
+import { QueueService } from '../queue/queue.service';
 
 const mockUser = (): User => ({
   id: 'uuid-1',
@@ -15,7 +16,10 @@ const mockUser = (): User => ({
   role: 'farmer',
   country: 'NG',
   kycStatus: 'pending',
+  tokenVersion: 0,
   walletAddress: null,
+  isCompany: false,
+  companyDetails: null,
   createdAt: new Date(),
 });
 
@@ -39,6 +43,7 @@ describe('AuthService', () => {
         { provide: getRepositoryToken(KycSubmission), useValue: kycRepo },
         { provide: JwtService, useValue: jwtService },
         { provide: ConfigService, useValue: configService },
+        { provide: QueueService, useValue: { emit: jest.fn() } },
       ],
     }).compile();
 
@@ -78,15 +83,17 @@ describe('AuthService', () => {
       const user = mockUser();
       userRepo.findOne.mockResolvedValue(user);
       configService.get.mockReturnValue('false'); // KYC_AUTO_APPROVE=false
-      
+
       kycRepo.create.mockReturnValue({ ...kycDto, status: 'pending_review' });
       kycRepo.save.mockResolvedValue({ ...kycDto, status: 'pending_review' });
 
       const result = await service.submitKyc('uuid-1', kycDto);
 
-      expect(kycRepo.create).toHaveBeenCalledWith(expect.objectContaining({
-        status: 'pending_review'
-      }));
+      expect(kycRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'pending_review',
+        }),
+      );
       expect(userRepo.save).not.toHaveBeenCalled(); // No status change for user
       expect(result.kycStatus).toBe('pending');
     });
@@ -95,16 +102,18 @@ describe('AuthService', () => {
       const user = mockUser();
       userRepo.findOne.mockResolvedValue(user);
       configService.get.mockReturnValue('true'); // KYC_AUTO_APPROVE=true
-      
+
       kycRepo.create.mockReturnValue({ ...kycDto, status: 'approved' });
       kycRepo.save.mockResolvedValue({ ...kycDto, status: 'approved' });
       userRepo.save.mockResolvedValue({ ...user, kycStatus: 'verified' });
 
       const result = await service.submitKyc('uuid-1', kycDto);
 
-      expect(kycRepo.create).toHaveBeenCalledWith(expect.objectContaining({
-        status: 'approved'
-      }));
+      expect(kycRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'approved',
+        }),
+      );
       expect(userRepo.save).toHaveBeenCalled();
       expect(result.kycStatus).toBe('verified');
     });
@@ -114,14 +123,19 @@ describe('AuthService', () => {
     it('sets kycStatus to verified and updates submission', async () => {
       const user = mockUser();
       userRepo.findOne.mockResolvedValue(user);
-      kycRepo.findOne.mockResolvedValue({ id: 'sub-1', status: 'pending_review' });
+      kycRepo.findOne.mockResolvedValue({
+        id: 'sub-1',
+        status: 'pending_review',
+      });
       userRepo.save.mockResolvedValue({ ...user, kycStatus: 'verified' });
 
       const result = await service.approveKyc('uuid-1');
 
-      expect(kycRepo.save).toHaveBeenCalledWith(expect.objectContaining({
-        status: 'approved'
-      }));
+      expect(kycRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'approved',
+        }),
+      );
       expect(userRepo.save).toHaveBeenCalled();
       expect(result.kycStatus).toBe('verified');
     });
@@ -130,7 +144,9 @@ describe('AuthService', () => {
       userRepo.findOne.mockResolvedValue(mockUser());
       kycRepo.findOne.mockResolvedValue(null);
 
-      await expect(service.approveKyc('uuid-1')).rejects.toThrow(NotFoundException);
+      await expect(service.approveKyc('uuid-1')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 });

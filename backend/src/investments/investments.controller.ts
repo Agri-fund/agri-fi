@@ -20,6 +20,7 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
+import { Throttle } from '@nestjs/throttler';
 import { InvestmentsService } from './investments.service';
 import { CreateInvestmentDto } from './dto/create-investment.dto';
 import { KycGuard } from '../auth/kyc.guard';
@@ -38,6 +39,7 @@ export class InvestmentsController {
   ) {}
 
   @Post()
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @ApiOperation({ summary: 'Create an investment (investor only)' })
   @ApiResponse({
     status: 201,
@@ -51,15 +53,13 @@ export class InvestmentsController {
   })
   @ApiResponse({ status: 404, description: 'Trade deal not found' })
   @ApiResponse({ status: 409, description: 'Deal already fully funded' })
+  @ApiResponse({ status: 429, description: 'Too Many Requests' })
   @UseGuards(KycGuard, RolesGuard)
   @Roles('investor')
   async createInvestment(
     @Request() req: { user: { id: string; role: string } },
     @Body() createInvestmentDto: CreateInvestmentDto,
   ) {
-    if (req.user.role !== 'investor') {
-      throw new Error('Only investors can create investments.');
-    }
     return this.investmentsService.createInvestment(
       req.user.id,
       createInvestmentDto,
@@ -149,6 +149,12 @@ export class InvestmentsController {
   @ApiQuery({ name: 'limit', required: false, example: 20 })
   @ApiResponse({ status: 200, description: 'List of investments' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({
+    status: 403,
+    description: 'Only investors can access this endpoint',
+  })
+  @UseGuards(KycGuard, RolesGuard)
+  @Roles('investor')
   async getMyInvestments(
     @Request() req: { user: { id: string } },
     @Query('page') page?: string,
@@ -307,6 +313,9 @@ export class InvestmentsController {
     @Param('tokenCode') tokenCode: string,
     @Param('tokenIssuer') tokenIssuer: string,
   ) {
-    return this.stellarService.getActiveBuyOrdersForToken(tokenCode, tokenIssuer);
+    return this.stellarService.getActiveBuyOrdersForToken(
+      tokenCode,
+      tokenIssuer,
+    );
   }
 }
