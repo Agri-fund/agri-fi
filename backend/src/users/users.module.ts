@@ -12,11 +12,11 @@ import { TradeDealsModule } from '../trade-deals/trade-deals.module';
 @Module({
   imports: [
     TypeOrmModule.forFeature([
-      User, 
-      TradeDeal, 
-      Investment, 
-      ShipmentMilestone, 
-      PaymentDistribution
+      User,
+      TradeDeal,
+      Investment,
+      ShipmentMilestone,
+      PaymentDistribution,
     ]),
     TradeDealsModule,
   ],

@@ -182,7 +182,11 @@ export class InvestmentsService {
     investmentId: string,
     investorWalletAddress: string,
     signedXdr?: string,
-  ): Promise<{ status: 'queued' | 'confirmed'; investmentId: string; stellarTxId?: string }> {
+  ): Promise<{
+    status: 'queued' | 'confirmed';
+    investmentId: string;
+    stellarTxId?: string;
+  }> {
     const investment = await this.investmentRepo.findOne({
       where: { id: investmentId },
       relations: ['tradeDeal'],

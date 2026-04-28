@@ -60,7 +60,10 @@ export class UsersService {
     };
   }
 
-  async getUserDeals(userId: string, userRole: DashboardDealRole): Promise<any[]> {
+  async getUserDeals(
+    userId: string,
+    userRole: DashboardDealRole,
+  ): Promise<any[]> {
     if (userRole !== 'farmer' && userRole !== 'trader') {
       throw new ForbiddenException(
         'Only farmers and traders can access deals endpoint',
@@ -126,14 +129,16 @@ export class UsersService {
         let return_percentage: number | null = null;
 
         if (deal.status === 'completed') {
-          const distribution = await this.paymentDistributionRepository.findOne({
-            where: {
-              tradeDealId: deal.id,
-              recipientId: userId,
-              recipientType: 'investor',
-              status: 'confirmed',
+          const distribution = await this.paymentDistributionRepository.findOne(
+            {
+              where: {
+                tradeDealId: deal.id,
+                recipientId: userId,
+                recipientType: 'investor',
+                status: 'confirmed',
+              },
             },
-          });
+          );
 
           if (distribution) {
             actual_return_usd = Number(distribution.amountUsd);

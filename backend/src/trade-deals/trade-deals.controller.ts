@@ -25,7 +25,7 @@ import { User } from '../auth/entities/user.entity';
 import { KycGuard } from '../auth/kyc.guard';
 import { OptionalJwtGuard } from '../auth/optional-jwt.guard';
 import { CreateTradeDealDto } from './dto/create-trade-deal.dto';
-import { PaginatedResult } from '../common/pagination';
+
 import { TradeDealAccessRequest, TradeDealsGuard } from './trade-deals.guard';
 
 interface AuthRequest extends Request {
@@ -67,12 +67,18 @@ export class TradeDealsController {
   @ApiOperation({
     summary: 'Publish a draft trade deal (async token issuance)',
   })
-  @ApiResponse({ status: 202, description: 'Deal publish request accepted, token issuance in progress' })
+  @ApiResponse({
+    status: 202,
+    description: 'Deal publish request accepted, token issuance in progress',
+  })
   @ApiResponse({ status: 400, description: 'Validation error' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 403, description: 'Role or KYC requirement not met' })
   @ApiResponse({ status: 404, description: 'Trade deal not found' })
-  @ApiResponse({ status: 422, description: 'Deal not in draft status or missing documents' })
+  @ApiResponse({
+    status: 422,
+    description: 'Deal not in draft status or missing documents',
+  })
   async publishDeal(
     @Param('id') id: string,
     @Request() req: AuthRequest,

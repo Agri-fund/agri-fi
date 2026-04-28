@@ -5,7 +5,10 @@ import { ConfigService } from '@nestjs/config';
 import { PinoLogger } from 'nestjs-pino';
 import { PaymentDistribution } from './entities/payment-distribution.entity';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
-import { Investment, InvestmentStatus } from '../investments/entities/investment.entity';
+import {
+  Investment,
+  InvestmentStatus,
+} from '../investments/entities/investment.entity';
 import { User } from '../auth/entities/user.entity';
 import { StellarService, InvestorShare } from '../stellar/stellar.service';
 import { QueueService } from '../queue/queue.service';
@@ -101,21 +104,29 @@ export class EscrowService {
 
         // Get platform wallet address
         let platformWallet = this.config.get<string>('STELLAR_PLATFORM_WALLET');
-        
+
         if (!platformWallet) {
-          const platformSecret = this.config.get<string>('STELLAR_PLATFORM_SECRET');
+          const platformSecret = this.config.get<string>(
+            'STELLAR_PLATFORM_SECRET',
+          );
           if (!platformSecret) {
-             throw new Error('Neither STELLAR_PLATFORM_WALLET nor STELLAR_PLATFORM_SECRET are configured.');
+            throw new Error(
+              'Neither STELLAR_PLATFORM_WALLET nor STELLAR_PLATFORM_SECRET are configured.',
+            );
           }
           try {
-              platformWallet = Keypair.fromSecret(platformSecret).publicKey();
-          } catch(e) {
-              throw new Error('Invalid STELLAR_PLATFORM_SECRET provided for deriving platform wallet.');
+            platformWallet = Keypair.fromSecret(platformSecret).publicKey();
+          } catch (e) {
+            throw new Error(
+              'Invalid STELLAR_PLATFORM_SECRET provided for deriving platform wallet.',
+            );
           }
         }
 
         if (!platformWallet) {
-          throw new Error('Platform wallet address not configured or derivable');
+          throw new Error(
+            'Platform wallet address not configured or derivable',
+          );
         }
 
         // Release escrow funds via Stellar
