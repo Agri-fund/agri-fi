@@ -23,6 +23,8 @@ export interface CurrentUserProfile {
   createdAt: Date;
 }
 
+export type DashboardDealRole = 'farmer' | 'trader';
+
 @Injectable()
 export class UsersService {
   constructor(
@@ -58,9 +60,11 @@ export class UsersService {
     };
   }
 
-  async getUserDeals(userId: string, userRole: UserRole): Promise<any[]> {
-    if (userRole === 'investor') {
-      throw new ForbiddenException('Investors cannot access deals endpoint');
+  async getUserDeals(userId: string, userRole: DashboardDealRole): Promise<any[]> {
+    if (userRole !== 'farmer' && userRole !== 'trader') {
+      throw new ForbiddenException(
+        'Only farmers and traders can access deals endpoint',
+      );
     }
 
     const whereCondition =

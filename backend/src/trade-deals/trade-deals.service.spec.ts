@@ -17,6 +17,7 @@ import {
   InvestmentStatus,
 } from '../investments/entities/investment.entity';
 import { StellarService } from '../stellar/stellar.service';
+import { QueueService } from '../queue/queue.service';
 
 const mockFarmer = (): User => ({
   id: 'farmer-uuid',
@@ -81,6 +82,9 @@ describe('TradeDealsService', () => {
     info: jest.Mock;
     error: jest.Mock;
   };
+  let queueService: {
+    enqueueDealPublish: jest.Mock;
+  };
 
   beforeEach(async () => {
     tradeDealRepo = {
@@ -105,6 +109,9 @@ describe('TradeDealsService', () => {
       info: jest.fn(),
       error: jest.fn(),
     };
+    queueService = {
+      enqueueDealPublish: jest.fn().mockResolvedValue(undefined),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -118,6 +125,7 @@ describe('TradeDealsService', () => {
         { provide: getRepositoryToken(User), useValue: userRepo },
         { provide: getRepositoryToken(Investment), useValue: investmentRepo },
         { provide: StellarService, useValue: stellarService },
+        { provide: QueueService, useValue: queueService },
         { provide: PinoLogger, useValue: logger },
       ],
     }).compile();
@@ -198,16 +206,10 @@ describe('TradeDealsService', () => {
       publicKey: 'GESCROW123ABC',
       secretKey: 'SESCROW123ABC',
     };
-    const mockTokenResult = {
-      txId: 'stellar-tx-123',
-      issuerPublicKey: 'GISSUER123ABC',
-      issuerSecret: 'SISSUER123ABC',
-    };
 
     beforeEach(() => {
       stellarService.createEscrowAccount.mockResolvedValue(mockEscrowKeys);
       stellarService.encryptSecret.mockReturnValue('encrypted-secret');
-      stellarService.issueTradeToken.mockResolvedValue(mockTokenResult);
       tradeDealRepo.update.mockResolvedValue({ affected: 1 });
     });
 
@@ -226,23 +228,20 @@ describe('TradeDealsService', () => {
       expect(stellarService.encryptSecret).toHaveBeenCalledWith(
         mockEscrowKeys.secretKey,
       );
-      expect(stellarService.issueTradeToken).toHaveBeenCalledWith(
-        deal.tokenSymbol,
-        mockEscrowKeys.publicKey,
-        mockEscrowKeys.secretKey,
-        deal.tokenCount,
-      );
       expect(tradeDealRepo.update).toHaveBeenCalledWith('deal-uuid', {
-        status: 'open',
         escrowPublicKey: mockEscrowKeys.publicKey,
         escrowSecretKey: 'encrypted-secret',
-        issuerPublicKey: mockTokenResult.issuerPublicKey,
-        issuerSecretKey: 'encrypted-secret',
-        stellarAssetTxId: mockTokenResult.txId,
       });
-      expect(result.status).toBe('open');
+      expect(queueService.enqueueDealPublish).toHaveBeenCalledWith({
+        dealId: 'deal-uuid',
+        tokenSymbol: deal.tokenSymbol,
+        escrowPublicKey: mockEscrowKeys.publicKey,
+        encryptedEscrowSecret: 'encrypted-secret',
+        tokenCount: deal.tokenCount,
+      });
+      expect(result.status).toBe('draft');
       expect(result.escrowPublicKey).toBe(mockEscrowKeys.publicKey);
-      expect(result.stellarAssetTxId).toBe(mockTokenResult.txId);
+      expect(result.escrowSecretKey).toBe('encrypted-secret');
     });
 
     it('stores encrypted escrow secret, never plaintext', async () => {
@@ -278,21 +277,24 @@ describe('TradeDealsService', () => {
       expect(tradeDealRepo.update).not.toHaveBeenCalled();
     });
 
-    it('throws UnprocessableEntityException when Stellar token issuance fails', async () => {
+    it('throws UnprocessableEntityException when queue enqueue fails', async () => {
       const deal = {
         ...mockDeal(),
         documents: [{ id: 'doc-1' }],
       };
       tradeDealRepo.findOne.mockResolvedValue(deal);
-      stellarService.issueTradeToken.mockRejectedValue(
-        new Error('Token issuance failed'),
+      queueService.enqueueDealPublish.mockRejectedValue(
+        new Error('Queue unavailable'),
       );
 
       await expect(
         service.publishDeal('deal-uuid', 'trader-uuid'),
       ).rejects.toThrow(UnprocessableEntityException);
 
-      expect(tradeDealRepo.update).not.toHaveBeenCalled();
+      expect(tradeDealRepo.update).toHaveBeenCalledWith('deal-uuid', {
+        escrowPublicKey: mockEscrowKeys.publicKey,
+        escrowSecretKey: 'encrypted-secret',
+      });
     });
 
     it('deal remains in draft status when Stellar operations fail', async () => {
