@@ -81,6 +81,12 @@ jobs:
         run: npm run build
         working-directory: backend
 
+      - name: Run database migrations
+        run: npm run migration:run
+        working-directory: backend
+        env:
+          DATABASE_URL: postgres://agri:agri@localhost:5432/agri_test
+
       - name: Test
         run: npm test -- --forceExit --passWithNoTests
         working-directory: backend

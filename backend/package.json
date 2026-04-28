@@ -5,6 +5,7 @@
   "scripts": {
     "test:e2e": "jest --config jest.e2e.config.js",
     "build": "nest build",
+    "build:docs": "npm run build && node generate-openapi.js",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main",
