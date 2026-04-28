@@ -7,6 +7,7 @@ import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
 import { Investment } from '../investments/entities/investment.entity';
 import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.entity';
 import { PaymentDistribution } from '../escrow/entities/payment-distribution.entity';
+import { TradeDealsModule } from '../trade-deals/trade-deals.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { PaymentDistribution } from '../escrow/entities/payment-distribution.ent
       ShipmentMilestone, 
       PaymentDistribution
     ]),
+    TradeDealsModule,
   ],
   controllers: [UsersController],
   providers: [UsersService],
