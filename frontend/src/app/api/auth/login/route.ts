@@ -1,18 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchBackend } from '@/config/backend';
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function POST(request: NextRequest) {
   try {
-    const id = params.id;
+    const body = await request.json();
 
-    const response = await fetchBackend(`/trade-deals/${id}`, {
-      method: 'GET',
+    const response = await fetchBackend('/auth/login', {
+      method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
+      body: JSON.stringify(body),
     });
 
     const data = await response.json();

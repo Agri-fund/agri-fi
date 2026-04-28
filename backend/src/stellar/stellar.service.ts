@@ -725,6 +725,7 @@ export class StellarService {
       amountUSD: number;
       assetCode: string;
       tokenAmount: number;
+      issuerPublicKey?: string;
       complianceData?: Record<string, unknown>;
     }>,
   ): Promise<string> {
@@ -740,15 +741,78 @@ export class StellarService {
 
     const investorAccount = await this.server.loadAccount(investorWallet);
 
-    // Each operation costs BASE_FEE stroops; multiply by number of operations
+    // Group investments by asset to check trustlines
+    const uniqueAssets = new Map<string, Asset>();
+    for (const inv of investments) {
+      if (inv.issuerPublicKey) {
+        const key = `${inv.assetCode}:${inv.issuerPublicKey}`;
+        if (!uniqueAssets.has(key)) {
+          uniqueAssets.set(key, new Asset(inv.assetCode, inv.issuerPublicKey));
+        }
+      }
+    }
+
+    // Check trustlines for each unique asset
+    const missingTrustlines: Asset[] = [];
+    for (const asset of uniqueAssets.values()) {
+      const hasTrustline = await this.hasTrustline(investorAccount, asset);
+      if (!hasTrustline) {
+        missingTrustlines.push(asset);
+      }
+    }
+
+    // Check XLM reserve for missing trustlines
+    if (missingTrustlines.length > 0) {
+      const xlmBalance = parseFloat(
+        (
+          investorAccount.balances.find(
+            (b: any) => b.asset_type === 'native',
+          ) as any
+        )?.balance ?? '0',
+      );
+      // Each new trustline requires 0.5 XLM base reserve
+      const minRequired =
+        (investorAccount.subentry_count + missingTrustlines.length) * 0.5 +
+        2 +
+        0.001 * missingTrustlines.length;
+      if (xlmBalance < minRequired) {
+        throw new Error(
+          `Insufficient XLM balance for trustline base reserves. ` +
+            `Need at least ${minRequired.toFixed(3)} XLM for ${missingTrustlines.length} new trustline(s), have ${xlmBalance} XLM.`,
+        );
+      }
+    }
+
+    // Calculate total operations: payments + compliance data + trustlines
+    const totalComplianceOps = investments.reduce(
+      (count, inv) => count + (inv.complianceData ? 4 : 0),
+      0,
+    );
+    const totalOps =
+      investments.length + totalComplianceOps + missingTrustlines.length;
+
+    if (totalOps > MAX_OPS) {
+      throw new Error(
+        `Bulk transaction cannot exceed ${MAX_OPS} operations. ` +
+          `Received ${investments.length} payments + ${totalComplianceOps} compliance ops + ${missingTrustlines.length} trustline ops = ${totalOps} total.`,
+      );
+    }
+
+    // Each operation costs BASE_FEE stroops; multiply by total operations
     const feePerOp = parseInt(BASE_FEE, 10);
-    const totalFee = (feePerOp * investments.length).toString();
+    const totalFee = (feePerOp * totalOps).toString();
 
     const txBuilder = new TransactionBuilder(investorAccount, {
       fee: totalFee,
       networkPassphrase: this.networkPassphrase,
     });
 
+    // Add trustline operations first
+    for (const asset of missingTrustlines) {
+      txBuilder.addOperation(Operation.changeTrust({ asset }));
+    }
+
+    // Add payment operations
     for (const inv of investments) {
       txBuilder.addOperation(
         Operation.payment({
@@ -771,6 +835,8 @@ export class StellarService {
         investorWallet,
         dealCount: investments.length,
         totalUsd: investments.reduce((s, i) => s + i.amountUSD, 0),
+        missingTrustlines: missingTrustlines.length,
+        totalOps,
         totalFee,
       },
       'Bulk investment transaction built',

@@ -1,18 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchBackend } from '@/config/backend';
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function POST(request: NextRequest) {
   try {
-    const id = params.id;
+    const body = await request.json();
+    const authHeader = request.headers.get('authorization');
 
-    const response = await fetchBackend(`/trade-deals/${id}`, {
-      method: 'GET',
+    const response = await fetchBackend('/shipments/milestones', {
+      method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': authHeader || '',
       },
+      body: JSON.stringify(body),
     });
 
     const data = await response.json();
@@ -23,7 +23,7 @@ export async function GET(
 
     return NextResponse.json(data);
   } catch (error: any) {
-    if (error?.isBackendUnreachable) {
+    if (error?.isBackdownUnreachable) {
       return NextResponse.json(
         { message: 'Backend service is unavailable' },
         { status: 503 }

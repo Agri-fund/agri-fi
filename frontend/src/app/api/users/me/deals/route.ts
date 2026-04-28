@@ -1,17 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchBackend } from '@/config/backend';
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(request: NextRequest) {
   try {
-    const id = params.id;
+    const authHeader = request.headers.get('authorization');
+    const { searchParams } = new URL(request.url);
+    const role = searchParams.get('role');
 
-    const response = await fetchBackend(`/trade-deals/${id}`, {
+    const url = role ? `/users/me/deals?role=${role}` : '/users/me/deals';
+
+    const response = await fetchBackend(url, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': authHeader || '',
       },
     });
 
