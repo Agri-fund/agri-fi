@@ -146,6 +146,12 @@ export class InvestmentsController {
   @ApiQuery({ name: 'limit', required: false, example: 20 })
   @ApiResponse({ status: 200, description: 'List of investments' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({
+    status: 403,
+    description: 'Only investors can access this endpoint',
+  })
+  @UseGuards(KycGuard, RolesGuard)
+  @Roles('investor')
   async getMyInvestments(
     @Request() req: { user: { id: string } },
     @Query('page') page?: string,

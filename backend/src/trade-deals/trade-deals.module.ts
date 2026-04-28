@@ -8,6 +8,7 @@ import { Investment } from '../investments/entities/investment.entity';
 import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.entity';
 import { User } from '../auth/entities/user.entity';
 import { StellarModule } from '../stellar/stellar.module';
+import { QueueModule } from '../queue/queue.module';
 import { TradeDealsGuard } from './trade-deals.guard';
 
 @Module({
@@ -20,6 +21,7 @@ import { TradeDealsGuard } from './trade-deals.guard';
       User,
     ]),
     StellarModule,
+    QueueModule,
   ],
   controllers: [TradeDealsController],
   providers: [TradeDealsService, TradeDealsGuard],
