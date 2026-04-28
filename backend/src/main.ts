@@ -29,7 +29,12 @@ async function bootstrap() {
     }),
   );
 
-  app.enableCors();
+  app.enableCors({
+    origin: process.env.ALLOWED_ORIGINS?.split(',') ?? [
+      'http://localhost:3000',
+    ],
+    credentials: true,
+  });
 
   // Use the fully-configured setupSwagger (includes production Basic-Auth guard)
   // instead of the previous inline setup that had no authentication.
