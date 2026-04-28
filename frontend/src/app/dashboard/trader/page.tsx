@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiClient, Deal, User, Milestone } from '@/lib/api';
+import { apiClient, Deal, User, MILESTONE_LABELS } from '@/lib/api';
 import ErrorBoundary from '@/components/ErrorBoundary';
 
 export default function TraderDashboard() {
@@ -263,16 +263,20 @@ export default function TraderDashboard() {
                               <p className="text-sm font-medium text-gray-900 mb-2">Current Milestone</p>
                               <div className="space-y-1">
                                 {deal.milestones
-                                  .filter(m => m.status !== 'completed')
                                   .slice(0, 2)
-                                  .map((milestone, index) => (
+                                  .map((milestone) => {
+                                    const milestoneStatus =
+                                      milestone.milestone === 'importer' ? 'completed' : 'active';
+                                    const milestoneLabel = MILESTONE_LABELS[milestone.milestone];
+                                    return (
                                     <div key={milestone.id} className="flex justify-between items-center">
-                                      <span className="text-sm text-gray-600">{milestone.title}</span>
-                                      <span className={`px-2 py-1 rounded text-xs font-medium ${getStatusColor(milestone.status)}`}>
-                                        {milestone.status}
+                                      <span className="text-sm text-gray-600">{milestoneLabel}</span>
+                                      <span className={`px-2 py-1 rounded text-xs font-medium ${getStatusColor(milestoneStatus)}`}>
+                                        {milestoneStatus}
                                       </span>
                                     </div>
-                                  ))}
+                                    );
+                                  })}
                               </div>
                             </div>
                           )}
@@ -313,7 +317,7 @@ export default function TraderDashboard() {
                   <div className="space-y-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Milestone Typen
+                        Milestone Type
                       </label>
                       <select
                         value={milestoneForm.milestone}

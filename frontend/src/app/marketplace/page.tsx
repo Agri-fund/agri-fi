@@ -18,7 +18,7 @@ export default function MarketplacePage() {
     setLoading(true);
     getOpenDeals(page, LIMIT)
       .then((res) => {
-        setDeals(res.data.filter((d) => d.status === 'open'));
+        setDeals(res.data);
         setTotal(res.total);
       })
       .catch(() => setDeals([]))

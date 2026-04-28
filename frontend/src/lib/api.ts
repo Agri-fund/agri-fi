@@ -39,7 +39,8 @@ export interface Milestone {
   milestone: MilestoneType;
   notes: string | null;
   recorded_at: string;
-  created_at: string;
+  stellar_tx_id?: string | null;
+  recorded_by?: string;
 }
 
 export interface Deal {
@@ -50,6 +51,8 @@ export interface Deal {
   total_value: number;
   funded_amount: number;
   total_invested: number;
+  token_count: number;
+  tokens_remaining: number;
   token_symbol: string;
   issuer_public_key?: string | null;
   status: "draft" | "open" | "funded" | "delivered" | "completed" | "failed";
@@ -106,6 +109,13 @@ function normalizeInvestment(investment: any): Investment {
     token_holdings: Number(investment.token_holdings ?? tokens),
     status: investment.status,
     created_at: investment.created_at ?? investment.createdAt,
+    expected_return_usd: Number(
+      investment.expected_return_usd ?? investment.expectedReturnUsd ?? 0,
+    ),
+    actual_return_usd:
+      investment.actual_return_usd ?? investment.actualReturnUsd ?? null,
+    return_percentage:
+      investment.return_percentage ?? investment.returnPercentage ?? null,
     deal: {
       id: tradeDeal.id ?? investment.trade_deal_id ?? investment.tradeDealId,
       commodity: tradeDeal.commodity ?? "Unknown",
@@ -121,6 +131,10 @@ function normalizeInvestment(investment: any): Investment {
       ),
       total_invested: Number(
         tradeDeal.total_invested ?? tradeDeal.totalInvested ?? 0,
+      ),
+      token_count: Number(tradeDeal.token_count ?? tradeDeal.tokenCount ?? 0),
+      tokens_remaining: Number(
+        tradeDeal.tokens_remaining ?? tradeDeal.tokensRemaining ?? 0,
       ),
       token_symbol: tradeDeal.token_symbol ?? tradeDeal.tokenSymbol ?? "",
       issuer_public_key:
@@ -224,12 +238,12 @@ export const apiClient = {
 
   // GET /users/me/deals
   async getFarmerDeals(): Promise<Deal[]> {
-    return apiFetch<Deal[]>("/users/me/deals");
+    return apiFetch<Deal[]>("/users/me/deals?role=farmer");
   },
 
   // GET /users/me/deals
   async getTraderDeals(): Promise<Deal[]> {
-    return apiFetch<Deal[]>("/users/me/deals");
+    return apiFetch<Deal[]>("/users/me/deals?role=trader");
   },
 
   // GET /investments/my-investments

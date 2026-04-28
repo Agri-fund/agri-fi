@@ -6,8 +6,8 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User, UserRole } from '../auth/entities/user.entity';
-import { TradeDeal } from './entities/trade-deal.entity';
-import { Investment } from './entities/investment.entity';
+import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
+import { Investment } from '../investments/entities/investment.entity';
 import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.entity';
 import { PaymentDistribution } from '../escrow/entities/payment-distribution.entity';
 
@@ -22,6 +22,8 @@ export interface CurrentUserProfile {
   country: string;
   createdAt: Date;
 }
+
+export type DashboardDealRole = 'farmer' | 'trader';
 
 @Injectable()
 export class UsersService {
@@ -58,9 +60,11 @@ export class UsersService {
     };
   }
 
-  async getUserDeals(userId: string, userRole: UserRole): Promise<any[]> {
-    if (userRole === 'investor') {
-      throw new ForbiddenException('Investors cannot access deals endpoint');
+  async getUserDeals(userId: string, userRole: DashboardDealRole): Promise<any[]> {
+    if (userRole !== 'farmer' && userRole !== 'trader') {
+      throw new ForbiddenException(
+        'Only farmers and traders can access deals endpoint',
+      );
     }
 
     const whereCondition =

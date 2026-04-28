@@ -51,6 +51,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check for unresolved merge conflicts
+        run: |
+          if grep -rn "<<<<<<< " --include="*.ts" --include="*.tsx" --include="*.json" .; then
+            echo "Unresolved merge conflicts found!"
+            exit 1
+          fi
+        working-directory: backend
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -80,6 +88,12 @@ jobs:
       - name: Build
         run: npm run build
         working-directory: backend
+
+      - name: Run database migrations
+        run: npm run migration:run
+        working-directory: backend
+        env:
+          DATABASE_URL: postgres://agri:agri@localhost:5432/agri_test
 
       - name: Test
         run: npm test -- --forceExit --passWithNoTests

@@ -44,7 +44,7 @@ export class NotificationsService {
   ): Promise<void> {
     if (!this.isEnabled || !this.transporter) {
       this.logger.info(
-        { to, subject, text },
+        { to: this.redactEmail(to), subject, text },
         `[Test Mode] Simulated sending email: ${subject}`,
       );
       return;
@@ -62,13 +62,35 @@ export class NotificationsService {
         text,
         html,
       });
-      this.logger.info({ to, subject }, `Successfully sent email to ${to}`);
+      this.logger.info(
+        { to: this.redactEmail(to), subject },
+        `Successfully sent email to ${this.redactEmail(to)}`,
+      );
     } catch (error: any) {
+      const redactedTo = this.redactEmail(to);
+      const sanitisedError = this.sanitiseErrorMessage(error.message);
       this.logger.error(
-        { to, subject, error: error.message },
-        `Failed to send email to ${to}: ${error.message}`,
+        { to: redactedTo, subject, error: sanitisedError },
+        `Failed to send email to ${redactedTo}: ${sanitisedError}`,
       );
       throw error;
     }
+  }
+
+  private redactEmail(email: string): string {
+    if (!email) return '***';
+    const parts = email.split('@');
+    if (parts.length !== 2) return '***';
+    return `***@${parts[1]}`;
+  }
+
+  private sanitiseErrorMessage(message: string): string {
+    if (!message) return '';
+    // Redact SMTP authentication commands and potential tokens
+    return message
+      .replace(/AUTH\s+(?:LOGIN|PLAIN|CRAM-MD5|DIGEST-MD5|XOAUTH2)\s+[a-zA-Z0-9+/=]+/gi, 'AUTH *** [REDACTED]')
+      .replace(/AUTH\s+(?:LOGIN|PLAIN|CRAM-MD5|DIGEST-MD5|XOAUTH2)/gi, 'AUTH ***')
+      // Redact potential base64 credentials (long alphanumeric strings that look like tokens)
+      .replace(/[a-zA-Z0-9+/]{20,}=*/g, '***');
   }
 }

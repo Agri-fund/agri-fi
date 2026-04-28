@@ -1,5 +1,7 @@
 import { ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
 import { RolesGuard } from '../auth/roles.guard';
 import { InvestmentsController } from './investments.controller';
 import { InvestmentsService } from './investments.service';
@@ -16,12 +18,22 @@ describe('InvestmentsController', () => {
   let controller: InvestmentsController;
   let rolesGuard: RolesGuard;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     jest.clearAllMocks();
-    controller = new InvestmentsController(
-      mockInvestmentsService as unknown as InvestmentsService,
-      mockStellarService,
-    );
+    
+    // Create a test module with throttler to verify it's applied
+    const { Test } = await import('@nestjs/testing');
+    const module = await Test.createTestingModule({
+      imports: [ThrottlerModule.forRoot([{ ttl: 60000, limit: 5 }])],
+      controllers: [InvestmentsController],
+      providers: [
+        { provide: InvestmentsService, useValue: mockInvestmentsService },
+        { provide: StellarService, useValue: mockStellarService },
+        { provide: APP_GUARD, useClass: ThrottlerGuard },
+      ],
+    }).compile();
+
+    controller = module.get<InvestmentsController>(InvestmentsController);
     rolesGuard = new RolesGuard(new Reflector());
   });
 
@@ -57,5 +69,26 @@ describe('InvestmentsController', () => {
 
     expect(() => rolesGuard.canActivate(context)).toThrow(ForbiddenException);
     expect(mockInvestmentsService.createInvestment).not.toHaveBeenCalled();
+  });
+
+  describe('POST /investments', () => {
+    it('should have throttler guard applied with 5 requests per minute', async () => {
+      const request = { user: { id: 'investor-1', role: 'investor' } };
+      const dto: CreateInvestmentDto = {
+        tradeDealId: '11111111-1111-1111-1111-111111111111',
+        tokenAmount: 5,
+        amountUsd: 500,
+      };
+      const expected = { id: 'investment-1' };
+      mockInvestmentsService.createInvestment.mockResolvedValue(expected);
+
+      const result = await controller.createInvestment(request as any, dto);
+
+      expect(result).toEqual(expected);
+      expect(mockInvestmentsService.createInvestment).toHaveBeenCalledWith(
+        'investor-1',
+        dto,
+      );
+    });
   });
 });

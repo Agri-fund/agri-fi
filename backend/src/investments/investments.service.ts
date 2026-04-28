@@ -124,17 +124,12 @@ export class InvestmentsService {
       });
     }
 
-    // Update investment status
-    investment.status = InvestmentStatus.CONFIRMED;
-    investment.stellarTxId = stellarTxId;
-
-    await this.investmentRepo.save(investment);
-
     // Update total invested on the trade deal using confirmed investments sum
     const tradeDeal = investment.tradeDeal;
     let becameFunded = false;
 
     await this.dataSource.transaction(async (manager) => {
+      // Update investment status inside the transaction
       await manager.update(Investment, investmentId, {
         status: InvestmentStatus.CONFIRMED,
         stellarTxId,
@@ -170,9 +165,11 @@ export class InvestmentsService {
       this.sendFundedNotification(tradeDeal).catch(() => {});
     }
 
-    investment.status = InvestmentStatus.CONFIRMED;
-    investment.stellarTxId = stellarTxId;
-    return investment;
+    // Return the updated investment by fetching it from the database
+    const updatedInvestment = await this.investmentRepo.findOne({
+      where: { id: investmentId },
+    });
+    return updatedInvestment!;
   }
 
   async markInvestmentFailed(investmentId: string): Promise<void> {

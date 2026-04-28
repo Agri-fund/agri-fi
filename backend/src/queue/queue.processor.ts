@@ -67,6 +67,9 @@ export class QueueProcessor {
       // Encrypt the issuer secret
       const encryptedIssuerSecret =
         this.stellarService.encryptSecret(result.issuerSecret);
+      if (encryptedIssuerSecret === result.issuerSecret) {
+        throw new Error('Issuer secret encryption failed');
+      }
 
       // Update deal with issuer keys and status to open
       await this.tradeDealRepo.update(data.dealId, {

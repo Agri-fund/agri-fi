@@ -28,7 +28,12 @@ import { ThrottlerModule } from '@nestjs/throttler';
       global: true,
       middleware: { mount: true }, // Automatically sets up the async context
     }),
-    ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
+    ThrottlerModule.forRoot([
+      { 
+        ttl: parseInt(process.env.RATE_LIMIT_TTL || '60000'), 
+        limit: parseInt(process.env.RATE_LIMIT_GLOBAL || '100') 
+      }
+    ]),
     LoggerModule.forRoot(loggingConfig),
     ConfigModule.forRoot({
       isGlobal: true,

@@ -1,10 +1,11 @@
 import { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { getDealById } from '@/lib/api';
+import { getDealById, Milestone } from '@/lib/api';
 import FundingProgressBar from '@/components/FundingProgressBar';
 import StatusBadge from '@/components/StatusBadge';
 import { ShipmentTimeline } from '@/components/ShipmentTimeline';
 import ErrorBoundary from '@/components/ErrorBoundary';
+import InvestmentSection from '@/components/InvestmentSection';
 
 // Render this route on demand. Avoids build-time fetches against a backend
 // that is not reachable from the CI build environment.
@@ -23,6 +24,7 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
 
   const title = `${deal.commodity.charAt(0).toUpperCase() + deal.commodity.slice(1)} Trade Deal | Agri-Fi`;
   const description = `Investment opportunity: ${deal.commodity} trade deal with a total value of $${Number(deal.total_value).toLocaleString()}. ${deal.quantity} ${deal.quantity_unit} available for funding.`;
+  const ogImageUrl = `/api/trade-deals/${params.id}/og?commodity=${encodeURIComponent(deal.commodity)}&value=${encodeURIComponent(Number(deal.total_value).toLocaleString())}`;
 
   return {
     title,
@@ -33,7 +35,7 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
       type: 'website',
       images: [
         {
-          url: 'https://images.unsplash.com/photo-1595113316349-9fa4eb24f884?q=80&w=1200&h=630&auto=format&fit=crop',
+          url: ogImageUrl,
           width: 1200,
           height: 630,
           alt: `${deal.commodity} Trade Deal`,
@@ -44,7 +46,7 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
       card: 'summary_large_image',
       title,
       description,
-      images: ['https://images.unsplash.com/photo-1595113316349-9fa4eb24f884?q=80&w=1200&h=630&auto=format&fit=crop'],
+      images: [ogImageUrl],
     },
   };
 }
@@ -61,8 +63,13 @@ export default async function DealDetailPage({ params }: { params: { id: string 
   }
   if (!deal) notFound();
 
+  const getMilestoneIndex = (m: Milestone) => {
+    const i = MILESTONE_ORDER.indexOf(m.milestone as string);
+    return i === -1 ? 999 : i;
+  };
+
   const milestones = [...(deal.milestones ?? [])].sort(
-    (a, b) => MILESTONE_ORDER.indexOf(a.milestone) - MILESTONE_ORDER.indexOf(b.milestone)
+    (a, b) => getMilestoneIndex(a) - getMilestoneIndex(b)
   );
 
   return (
@@ -86,15 +93,7 @@ export default async function DealDetailPage({ params }: { params: { id: string 
 
             <FundingProgressBar totalValue={Number(deal.total_value)} totalInvested={Number(deal.total_invested)} />
 
-            {deal.status === 'open' && (
-              <a
-                href={`/invest/${deal.id}`}
-                className="inline-block mt-2 bg-green-600 hover:bg-green-700 text-white font-medium px-5 py-2.5 rounded-xl transition-colors"
-                data-investor-only
-              >
-                Fund this Deal
-              </a>
-            )}
+            <InvestmentSection deal={deal} />
           </div>
 
           {/* Documents */}
@@ -126,7 +125,7 @@ export default async function DealDetailPage({ params }: { params: { id: string 
 
           {/* Milestones */}
           <section className="bg-white rounded-2xl shadow-sm border border-green-100 p-6">
-            <ShipmentTimeline tradeDealId={deal.id} />
+            <ShipmentTimeline tradeDealId={deal.id} initialMilestones={milestones} />
           </section>
 
         </div>
