@@ -650,10 +650,9 @@ export class StellarService {
   }
 
   /**
-   * Creates an unsigned XDR transaction for an investment.
+   * Creates an unsigned XDR transaction for an investment using USDC.
    * Prepends a changeTrust operation when the investor lacks a trustline.
    * Throws a descriptive error when the investor has insufficient XLM reserve.
-   * Creates an unsigned XDR transaction for an investment using USDC.
    * The investor will sign this transaction to fund the escrow account.
    */
   async createInvestmentTransaction(
@@ -693,6 +692,7 @@ export class StellarService {
       }
     }
 
+    // Use USDC for stable USD-denominated payments
     const txBuilder = new TransactionBuilder(investorAccount, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
