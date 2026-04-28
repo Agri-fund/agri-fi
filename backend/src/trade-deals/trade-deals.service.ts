@@ -394,8 +394,8 @@ export class TradeDealsService {
       });
     }
 
-    if (deal.status === 'cancelled') {
-      return deal;
+    if (deal.status === 'canceled') {
+      throw new Error('Deal is already canceled');
     }
 
     const cancellableStatuses: TradeDealStatus[] = ['draft', 'open'];
@@ -472,7 +472,7 @@ export class TradeDealsService {
       );
     }
 
-    deal.status = 'cancelled';
+    deal.status = 'canceled';
     return this.tradeDealRepo.save(deal);
   }
 
