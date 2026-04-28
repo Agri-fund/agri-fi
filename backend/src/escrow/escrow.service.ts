@@ -209,6 +209,9 @@ export class EscrowService {
         // Enqueue email notifications (outside transaction to avoid rollback issues)
         setTimeout(() => {
           this.sendCompletionNotifications(tradeDealId, deal, investments);
+          this.queueService.enqueueDealCleanup(tradeDealId).catch((err) => {
+            this.logger.error(`Failed to enqueue deal cleanup: ${err.message}`);
+          });
         }, 0);
       });
     } catch (error) {

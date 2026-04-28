@@ -3,6 +3,7 @@ import { Ctx, EventPattern, Payload, RmqContext } from '@nestjs/microservices';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { PinoLogger } from 'nestjs-pino';
+import { ConfigService } from '@nestjs/config';
 import { StellarService } from '../stellar/stellar.service';
 import { TradeDealsService } from '../trade-deals/trade-deals.service';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
@@ -27,6 +28,7 @@ export class QueueProcessor {
     private readonly tradeDealRepo: Repository<TradeDeal>,
     @InjectRepository(Investment)
     private readonly investmentRepo: Repository<Investment>,
+    private readonly config: ConfigService,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly notificationsService: NotificationsService,
@@ -283,6 +285,89 @@ export class QueueProcessor {
         { error: e.message },
         `Failed to send email.notification: ${e.message}`,
       );
+    }
+
+    const channel = context.getChannelRef();
+    channel.ack(context.getMessage());
+  }
+
+  @EventPattern('deal.cleanup')
+  async handleDealCleanup(
+    @Payload() data: DealCleanupPayload,
+    @Ctx() context: RmqContext,
+  ) {
+    this.setCorrelationId(data);
+    this.logger.info(
+      { dealId: data.tradeDealId },
+      `Processing deal.cleanup for deal ${data.tradeDealId}`,
+    );
+
+    try {
+      const deal = await this.tradeDealsService.findOne(data.tradeDealId);
+      if (!deal) {
+        this.logger.warn(`Deal ${data.tradeDealId} not found for cleanup`);
+        const channel = context.getChannelRef();
+        channel.ack(context.getMessage());
+        return;
+      }
+
+      const platformWallet = this.config.get<string>(
+        'STELLAR_PLATFORM_WALLET',
+        this.config.get<string>('STELLAR_PLATFORM_SECRET', ''),
+      );
+
+      if (!platformWallet) {
+        throw new Error('Platform wallet address not configured');
+      }
+
+      // Cleanup escrow account
+      if (deal.escrowPublicKey && deal.escrowSecretKey) {
+        try {
+          const escrowSecret = this.stellarService.decryptSecret(
+            deal.escrowSecretKey,
+          );
+          await this.stellarService.closeAccount(
+            deal.escrowPublicKey,
+            escrowSecret,
+            platformWallet,
+          );
+        } catch (error) {
+          this.logger.error(
+            { dealId: data.tradeDealId, error: error.message },
+            `Failed to cleanup escrow for deal ${data.tradeDealId}`,
+          );
+        }
+      }
+
+      // Cleanup issuer account
+      if (deal.issuerPublicKey && deal.issuerSecretKey) {
+        try {
+          const issuerSecret = this.stellarService.decryptSecret(
+            deal.issuerSecretKey,
+          );
+          await this.stellarService.closeAccount(
+            deal.issuerPublicKey,
+            issuerSecret,
+            platformWallet,
+          );
+        } catch (error) {
+          this.logger.error(
+            { dealId: data.tradeDealId, error: error.message },
+            `Failed to cleanup issuer for deal ${data.tradeDealId}`,
+          );
+        }
+      }
+
+      this.logger.info(
+        { dealId: data.tradeDealId },
+        `Successfully completed deal cleanup for deal ${data.tradeDealId}`,
+      );
+    } catch (error) {
+      this.logger.error(
+        { dealId: data.tradeDealId, error: error.message },
+        `Deal cleanup failed for deal ${data.tradeDealId}: ${error.message}`,
+      );
+      // We still ack the message, it's a best-effort cleanup
     }
 
     const channel = context.getChannelRef();
