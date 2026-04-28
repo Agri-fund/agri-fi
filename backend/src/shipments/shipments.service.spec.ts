@@ -49,7 +49,7 @@ describe('ShipmentsService', () => {
     save: jest.Mock;
     manager: { query: jest.Mock };
   };
-  let stellarService: { recordMemo: jest.Mock };
+  let stellarService: { recordMemo: jest.Mock; decryptSecret: jest.Mock };
   let config: { get: jest.Mock };
 
   beforeEach(async () => {
@@ -59,7 +59,7 @@ describe('ShipmentsService', () => {
       save: jest.fn(),
       manager: { query: jest.fn() },
     };
-    stellarService = { recordMemo: jest.fn() };
+    stellarService = { recordMemo: jest.fn(), decryptSecret: jest.fn() };
     config = { get: jest.fn() };
 
     queueService = { enqueueDealDelivered: jest.fn() };
@@ -127,6 +127,7 @@ describe('ShipmentsService', () => {
       milestoneRepo.create.mockReturnValue(mockMilestone());
       milestoneRepo.save.mockResolvedValue(mockMilestone());
       stellarService.recordMemo.mockResolvedValue('stellar-tx-123');
+      stellarService.decryptSecret.mockReturnValue('decrypted-escrow-secret');
 
       const result = await service.recordMilestone('trader-1', dto);
 
@@ -141,6 +142,12 @@ describe('ShipmentsService', () => {
         longitude: null,
       });
 
+      expect(stellarService.decryptSecret).toHaveBeenCalledWith('escrow-secret');
+      expect(stellarService.recordMemo).toHaveBeenCalledWith(
+        expect.any(String),
+        'decrypted-escrow-secret',
+        'hash',
+      );
       expect(result.milestone).toBe('farm');
     });
 
@@ -225,13 +232,15 @@ describe('ShipmentsService', () => {
       milestoneRepo.create.mockReturnValue(importerMilestone);
       milestoneRepo.save.mockResolvedValue(importerMilestone);
       stellarService.recordMemo.mockResolvedValue('stellar-tx-final');
+      stellarService.decryptSecret.mockReturnValue('decrypted-escrow-secret');
 
       const result = await service.recordMilestone('trader-1', dto);
 
       expect(result.milestone).toBe('importer');
+      expect(stellarService.decryptSecret).toHaveBeenCalledWith('escrow-secret');
       expect(stellarService.recordMemo).toHaveBeenCalledWith(
         expect.stringContaining('AGRIC:MILESTONE:'),
-        'escrow-secret',
+        'decrypted-escrow-secret',
         'hash',
       );
     });
@@ -389,12 +398,14 @@ describe('ShipmentsService', () => {
       milestoneRepo.create.mockReturnValue(warehouseMilestone);
       milestoneRepo.save.mockResolvedValue(warehouseMilestone);
       stellarService.recordMemo.mockResolvedValue('stellar-tx-456');
+      stellarService.decryptSecret.mockReturnValue('decrypted-escrow-secret');
 
       await service.recordMilestone('trader-1', dto);
 
+      expect(stellarService.decryptSecret).toHaveBeenCalledWith('escrow-secret');
       expect(stellarService.recordMemo).toHaveBeenCalledWith(
         expect.stringMatching(/^AGRIC:MILESTONE:deal1:warehouse:\d+$/),
-        'escrow-secret',
+        'decrypted-escrow-secret',
         'hash',
       );
     });

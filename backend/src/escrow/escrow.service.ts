@@ -119,8 +119,15 @@ export class EscrowService {
         }
 
         // Release escrow funds via Stellar
+        if (!deal.escrowSecretKey) {
+          throw new Error(`Escrow secret key missing for deal ${tradeDealId}`);
+        }
+
+        const escrowSecret = this.stellarService.decryptSecret(
+          deal.escrowSecretKey,
+        );
         const stellarTxIds = await this.stellarService.releaseEscrow(
-          deal.escrowSecretKey!,
+          escrowSecret,
           deal.farmer.walletAddress,
           investorShares,
           platformWallet,
