@@ -39,7 +39,8 @@ export interface Milestone {
   milestone: MilestoneType;
   notes: string | null;
   recorded_at: string;
-  created_at: string;
+  stellar_tx_id?: string | null;
+  recorded_by?: string;
 }
 
 export interface Deal {
@@ -50,6 +51,8 @@ export interface Deal {
   total_value: number;
   funded_amount: number;
   total_invested: number;
+  token_count: number;
+  tokens_remaining: number;
   token_symbol: string;
   issuer_public_key?: string | null;
   status: "draft" | "open" | "funded" | "delivered" | "completed" | "failed";
@@ -128,6 +131,10 @@ function normalizeInvestment(investment: any): Investment {
       ),
       total_invested: Number(
         tradeDeal.total_invested ?? tradeDeal.totalInvested ?? 0,
+      ),
+      token_count: Number(tradeDeal.token_count ?? tradeDeal.tokenCount ?? 0),
+      tokens_remaining: Number(
+        tradeDeal.tokens_remaining ?? tradeDeal.tokensRemaining ?? 0,
       ),
       token_symbol: tradeDeal.token_symbol ?? tradeDeal.tokenSymbol ?? "",
       issuer_public_key:
