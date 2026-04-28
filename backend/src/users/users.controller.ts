@@ -15,6 +15,7 @@ import {
 } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { UsersService } from './users.service';
+import { TradeDealsService } from '../trade-deals/trade-deals.service';
 import { User } from '../auth/entities/user.entity';
 
 interface AuthRequest extends Request {
@@ -26,7 +27,10 @@ interface AuthRequest extends Request {
 @UseGuards(AuthGuard('jwt'))
 @Controller('users')
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly tradeDealsService: TradeDealsService,
+  ) {}
 
   @Get('me')
   @ApiOperation({ summary: "Get the authenticated user's profile" })
@@ -55,7 +59,7 @@ export class UsersController {
     @Request() req: AuthRequest,
     @Query('role') requestedRole?: string,
   ) {
-    const { id, role } = req.user;
+    const { id: userId, role } = req.user;
 
     if (role !== 'farmer' && role !== 'trader') {
       throw new ForbiddenException(
@@ -77,7 +81,7 @@ export class UsersController {
       );
     }
 
-    return this.usersService.getUserDeals(id, role);
+    return this.tradeDealsService.findByUser(userId, role);
   }
 
   @Get('me/investments')

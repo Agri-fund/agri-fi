@@ -394,7 +394,7 @@ export class TradeDealsService {
       });
     }
 
-    if (deal.status === 'canceled') {
+    if (deal.status === 'cancelled') {
       return deal;
     }
 
@@ -472,8 +472,46 @@ export class TradeDealsService {
       );
     }
 
-    deal.status = 'canceled';
+    deal.status = 'cancelled';
     return this.tradeDealRepo.save(deal);
+  }
+
+  async findByUser(userId: string, role: string): Promise<any[]> {
+    if (role !== 'farmer' && role !== 'trader') {
+      return [];
+    }
+
+    const whereCondition =
+      role === 'farmer' ? { farmerId: userId } : { traderId: userId };
+
+    const deals = await this.tradeDealRepo.find({
+      where: whereCondition,
+      relations: ['farmer', 'trader', 'milestones'],
+    });
+
+    // Get document count for each deal (placeholder - would need documents entity)
+    const dealsWithCounts = await Promise.all(
+      deals.map(async (deal) => {
+        const latestMilestone = await this.milestoneRepo.findOne({
+          where: { tradeDealId: deal.id },
+          order: { recordedAt: 'DESC' },
+        });
+
+        return {
+          id: deal.id,
+          commodity: deal.commodity,
+          quantity: deal.quantity,
+          total_value: deal.totalValue,
+          total_invested: deal.totalInvested,
+          status: deal.status,
+          delivery_date: deal.deliveryDate,
+          latest_milestone: latestMilestone || null,
+          document_count: 0, // TODO: Implement when documents entity is available
+        };
+      }),
+    );
+
+    return dealsWithCounts;
   }
 
   private generateTokenSymbol(commodity: string, dealId: string): string {
