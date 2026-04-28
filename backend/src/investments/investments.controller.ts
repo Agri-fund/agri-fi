@@ -20,6 +20,7 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
+import { Throttle } from '@nestjs/throttler';
 import { InvestmentsService } from './investments.service';
 import { CreateInvestmentDto } from './dto/create-investment.dto';
 import { KycGuard } from '../auth/kyc.guard';
@@ -38,6 +39,7 @@ export class InvestmentsController {
   ) {}
 
   @Post()
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @ApiOperation({ summary: 'Create an investment (investor only)' })
   @ApiResponse({
     status: 201,
@@ -51,6 +53,7 @@ export class InvestmentsController {
   })
   @ApiResponse({ status: 404, description: 'Trade deal not found' })
   @ApiResponse({ status: 409, description: 'Deal already fully funded' })
+  @ApiResponse({ status: 429, description: 'Too Many Requests' })
   @UseGuards(KycGuard, RolesGuard)
   @Roles('investor')
   async createInvestment(

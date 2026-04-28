@@ -33,9 +33,6 @@ export class CorrelationIdMiddleware implements NestMiddleware {
     // 3. Set response header for client tracking
     res.setHeader('x-correlation-id', correlationId);
 
-    // 4. Set correlation ID in logger context
-    this.logger.assign({ correlationId });
-
     next();
   }
 }
