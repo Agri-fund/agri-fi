@@ -91,4 +91,34 @@ describe('InvestmentsController', () => {
       );
     });
   });
+
+  describe('GET /investments/buy-orders/:tokenCode/:tokenIssuer', () => {
+    it('is protected by AuthGuard', () => {
+      const guards =
+        Reflect.getMetadata(
+          '__guards__',
+          InvestmentsController.prototype.getActiveBuyOrders,
+        ) ?? [];
+
+      // The guard list must be non-empty, proving the method has its own
+      // AuthGuard and does not rely solely on the class-level decorator.
+      expect(guards.length).toBeGreaterThan(0);
+    });
+
+    it('delegates to StellarService when the request is authenticated', async () => {
+      const mockOffers = [
+        { offerId: '1', buyer: 'GBUYER...', amount: '100', price: '1.05' },
+      ];
+      (mockStellarService as any).getActiveBuyOrdersForToken = jest
+        .fn()
+        .mockResolvedValue(mockOffers);
+
+      const result = await controller.getActiveBuyOrders('AGRI', 'GISSUER123');
+
+      expect(
+        (mockStellarService as any).getActiveBuyOrdersForToken,
+      ).toHaveBeenCalledWith('AGRI', 'GISSUER123');
+      expect(result).toEqual(mockOffers);
+    });
+  });
 });
