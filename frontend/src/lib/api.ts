@@ -78,6 +78,8 @@ export interface Investment {
   actual_return_usd: number | null;
   return_percentage: number | null;
   deal: Deal;
+  stellar_tx_id?: string | null;
+  soroban_contract_id?: string | null;
 }
 
 interface PaginatedResponse<T> {

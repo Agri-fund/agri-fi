@@ -20,6 +20,7 @@ import { loggingConfig } from './common/logging/logging.config';
 import { HealthModule } from './health/health.module';
 import { TerminusModule } from '@nestjs/terminus';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { SorobanModule } from './soroban/soroban.module';
 
 @Module({
   imports: [
@@ -54,6 +55,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
     QueueProcessorModule,
     HealthModule,
     TerminusModule,
+    SorobanModule,
   ],
 })
 export class AppModule implements NestModule {

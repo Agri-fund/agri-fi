@@ -174,6 +174,21 @@ export class TradeDeal {
   })
   stellarAssetTxId: string | null;
 
+  @Column({ name: 'soroban_campaign_contract_id', nullable: true })
+  @ApiProperty({
+    description: 'Soroban FarmCampaign smart contract address for this deal',
+    nullable: true,
+    example: 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4',
+  })
+  sorobanCampaignContractId: string | null;
+
+  @Column({ name: 'soroban_factory_tx_hash', nullable: true })
+  @ApiProperty({
+    description: 'Soroban tx hash from ProjectFactory registration',
+    nullable: true,
+  })
+  sorobanFactoryTxHash: string | null;
+
   @OneToMany(() => Document, (document) => document.tradeDeal)
   documents: Document[];
 

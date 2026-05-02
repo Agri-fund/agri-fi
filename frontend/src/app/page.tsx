@@ -101,6 +101,7 @@ function Navbar() {
 
         <div className="hidden sm:flex items-center gap-1">
           <Link href="/marketplace" className="btn-ghost text-sm px-4 py-2">Marketplace</Link>
+          <Link href="/transparency" className="btn-ghost text-sm px-4 py-2">Transparency</Link>
           <Link href="/login"       className="btn-ghost text-sm px-4 py-2">Sign in</Link>
           <Link href="/register"    className="btn-primary ml-2 text-sm px-5 py-2">Get Started →</Link>
         </div>
@@ -289,6 +290,47 @@ export default function Home() {
         </div>
       </section>
 
+      {/* ── Blockchain Transparency ───────────────────────────────────────── */}
+      <section className="py-24 px-4 bg-white">
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center mb-16">
+            <span className="badge-green mb-4">Stellar Blockchain</span>
+            <h2 className="text-4xl font-black text-slate-900 mt-3 mb-4 tracking-tight">
+              Transparent by design
+            </h2>
+            <p className="text-slate-500 text-lg max-w-xl mx-auto">
+              Every investment, payout, and milestone is recorded on Stellar. Verify anything, anytime.
+            </p>
+          </div>
+
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5 mb-12">
+            {[
+              { icon: "🔗", title: "Soroban Smart Contracts", desc: "FarmCampaign contracts automate escrow, milestone releases, and revenue distribution — no manual intervention." },
+              { icon: "🪙", title: "Tokenized Investments", desc: "Each project issues Stellar assets. Investors hold tokens representing fractional ownership, tradeable on the DEX." },
+              { icon: "💵", title: "USDC Settlements", desc: "All payments use USDC on Stellar — stable, fast, and cross-border. Withdraw to local currency via Stellar Anchors." },
+              { icon: "📋", title: "On-Chain Certificates", desc: "Investment certificates are backed by immutable Stellar transactions. Proof of ownership, forever." },
+              { icon: "🌍", title: "Stellar Anchors", desc: "Deposit NGN, KES, GHS, ZAR or USD and receive USDC instantly. Withdraw earnings to your local bank." },
+              { icon: "🔍", title: "Public Audit Trail", desc: "Every contract address, transaction hash, and payout is publicly verifiable on Stellar Expert." },
+            ].map(item => (
+              <div key={item.title} className="card-hover p-6 group">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-50 flex items-center justify-center text-2xl mb-4 group-hover:scale-110 transition-transform">
+                  {item.icon}
+                </div>
+                <h3 className="font-bold text-slate-900 mb-2">{item.title}</h3>
+                <p className="text-sm text-slate-500 leading-relaxed">{item.desc}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="text-center">
+            <Link href="/transparency"
+              className="inline-flex items-center gap-2 px-6 py-3 bg-slate-900 text-white font-semibold rounded-2xl hover:bg-slate-800 transition-all text-sm">
+              🔍 View Live Blockchain Data →
+            </Link>
+          </div>
+        </div>
+      </section>
+
       {/* ── CTA ───────────────────────────────────────────────────────────── */}
       <section className="py-24 px-4 relative overflow-hidden">
         <div className="absolute inset-0 bg-brand-gradient" />
@@ -325,9 +367,10 @@ export default function Home() {
               <span className="font-black text-white text-lg">AgriFi</span>
             </div>
             <div className="flex items-center gap-6 text-sm">
-              <Link href="/marketplace" className="hover:text-white transition-colors">Marketplace</Link>
-              <Link href="/login"       className="hover:text-white transition-colors">Sign in</Link>
-              <Link href="/register"    className="hover:text-white transition-colors">Register</Link>
+              <Link href="/marketplace"  className="hover:text-white transition-colors">Marketplace</Link>
+              <Link href="/transparency" className="hover:text-white transition-colors">Transparency</Link>
+              <Link href="/login"        className="hover:text-white transition-colors">Sign in</Link>
+              <Link href="/register"     className="hover:text-white transition-colors">Register</Link>
             </div>
           </div>
           <div className="border-t border-slate-800 pt-8 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">

@@ -11,6 +11,9 @@ export function getBackendUrl(): string {
   return url || 'http://localhost:3001';
 }
 
+// Named export for direct use in API route files
+export const BACKEND_URL = getBackendUrl();
+
 export async function fetchBackend(
   path: string,
   options?: RequestInit

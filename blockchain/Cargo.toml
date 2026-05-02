@@ -1,0 +1,18 @@
+[workspace]
+members = [
+    "contracts/farm_campaign",
+    "contracts/revenue_distributor",
+    "contracts/project_factory",
+    "contracts/marketplace_settlement",
+]
+resolver = "2"
+
+[profile.release]
+opt-level = "z"
+overflow-checks = true
+debug = 0
+strip = "symbols"
+debug-assertions = false
+panic = "abort"
+codegen-units = 1
+lto = true
