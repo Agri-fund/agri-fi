@@ -2,319 +2,172 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { apiClient, Investment, User } from '@/lib/api';
-import ErrorBoundary from '@/components/ErrorBoundary';
+import DashboardLayout from '@/components/DashboardLayout';
+import StatCard from '@/components/StatCard';
+
+const INV_STATUS: Record<string, string> = {
+  confirmed: 'badge-green', pending: 'badge-yellow', failed: 'badge-red', refunded: 'badge-gray',
+};
+const DEAL_STATUS: Record<string, string> = {
+  open: 'badge-green', funded: 'badge-blue', completed: 'badge-gray',
+  delivered: 'badge-purple', failed: 'badge-red',
+};
 
 export default function InvestorDashboard() {
+  const router = useRouter();
+  const [user, setUser] = useState<User | null>(null);
   const [investments, setInvestments] = useState<Investment[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [user, setUser] = useState<User | null>(null);
-  const router = useRouter();
+  const [filter, setFilter] = useState<'all' | 'confirmed' | 'pending'>('all');
 
   useEffect(() => {
-    // Check authentication and role
-    const currentUser = apiClient.getCurrentUser();
-    if (!currentUser) {
-      router.push('/login');
-      return;
-    }
-
-    if (currentUser.role !== 'investor') {
-      // Redirect to correct dashboard based on role
-      router.push(`/dashboard/${currentUser.role}`);
-      return;
-    }
-
-    setUser(currentUser);
-    fetchInvestorInvestments();
+    (async () => {
+      const cached = apiClient.getCurrentUser();
+      if (!cached) { router.push('/login'); return; }
+      let u = cached;
+      try { const f = await apiClient.refreshCurrentUser(); if (f) u = f; } catch {}
+      if (u.role !== 'investor') { router.push(`/dashboard/${u.role}`); return; }
+      setUser(u);
+      try { setInvestments(await apiClient.getInvestorInvestments()); } catch {}
+      setLoading(false);
+    })();
   }, [router]);
 
-  const fetchInvestorInvestments = async () => {
-    try {
-      setLoading(true);
-      const investorInvestments = await apiClient.getInvestorInvestments();
-      setInvestments(investorInvestments);
-      setError(null);
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to fetch investments');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const totalInvested = investments.reduce((s, i) => s + Number(i.amount_invested), 0);
+  const totalTokens   = investments.reduce((s, i) => s + Number(i.token_holdings), 0);
+  const totalExpected = investments.reduce((s, i) => s + Number(i.expected_return_usd), 0);
+  const confirmed     = investments.filter(i => i.status === 'confirmed').length;
 
-  const getStatusColor = (status: string) => {
-    switch (status.toLowerCase()) {
-      case 'pending':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'funded':
-        return 'bg-blue-100 text-blue-800';
-      case 'active':
-        return 'bg-green-100 text-green-800';
-      case 'completed':
-        return 'bg-gray-100 text-gray-800';
-      case 'cancelled':
-        return 'bg-red-100 text-red-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
-  };
+  const filtered = filter === 'all' ? investments
+    : investments.filter(i => i.status === filter);
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(amount);
-  };
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString();
-  };
-
-  const calculateTotalInvested = () => {
-    return investments.reduce((total, investment) => total + investment.amount_invested, 0);
-  };
-
-  const calculateTotalTokens = () => {
-    return investments.reduce((total, investment) => total + investment.token_holdings, 0);
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading your investments...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="bg-red-50 border border-red-200 rounded-lg p-6">
-            <h2 className="text-red-800 text-lg font-semibold mb-2">Error</h2>
-            <p className="text-red-600 mb-4">{error}</p>
-            <button
-              onClick={fetchInvestorInvestments}
-              className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 transition-colors"
-            >
-              Try Again
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  if (!user) return null;
 
   return (
-    <ErrorBoundary>
-      <div className="min-h-screen bg-gray-50">
+    <DashboardLayout user={user}>
+      <div className="page-content">
         {/* Header */}
-        <div className="bg-white shadow-sm border-b">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center py-4">
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">Investor Dashboard</h1>
-                <p className="text-gray-600">Track your agricultural investments</p>
-              </div>
-              <div className="flex items-center space-x-4">
-                <span className="text-sm text-gray-600">
-                  Welcome, {user?.name || user?.email}
-                </span>
-                <button
-                  onClick={async () => {
-                    try {
-                      await apiClient.logout();
-                    } catch (err) {
-                      console.error('Logout failed:', err);
-                      // Still clear auth and redirect even if logout fails
-                      apiClient.clearAuth();
-                    }
-                    router.push('/login');
-                  }}
-                  className="bg-red-600 text-white px-4 py-2 rounded text-sm hover:bg-red-700 transition-colors"
-                >
-                  Logout
-                </button>
-              </div>
-            </div>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-sm text-slate-500 mb-1">Portfolio overview</p>
+            <h1 className="page-title">Investor Dashboard</h1>
           </div>
+          <Link href="/marketplace" className="btn-primary flex-shrink-0">
+            Browse Deals →
+          </Link>
         </div>
 
-        {/* Summary Cards */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="flex items-center">
-                <div className="bg-purple-50 rounded-full p-3">
-                  <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Total Invested</p>
-                  <p className="text-2xl font-bold text-gray-900">{formatCurrency(calculateTotalInvested())}</p>
-                </div>
-              </div>
-            </div>
+        {/* Stats */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard label="Total Invested"   value={`$${totalInvested.toLocaleString()}`}  icon="💰" color="bg-violet-50" />
+          <StatCard label="Confirmed"        value={confirmed}                              icon="✅" color="bg-emerald-50" />
+          <StatCard label="Total Tokens"     value={totalTokens.toLocaleString()}           icon="🪙" color="bg-blue-50" />
+          <StatCard label="Expected Returns" value={`$${totalExpected.toLocaleString()}`}   icon="📈" color="bg-amber-50"
+            trend={totalInvested > 0 ? `${((totalExpected / totalInvested - 1) * 100).toFixed(1)}% ROI` : undefined}
+            trendUp={totalExpected > totalInvested} />
+        </div>
 
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="flex items-center">
-                <div className="bg-green-50 rounded-full p-3">
-                  <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Total Tokens</p>
-                  <p className="text-2xl font-bold text-gray-900">{calculateTotalTokens().toLocaleString()}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="flex items-center">
-                <div className="bg-blue-50 rounded-full p-3">
-                  <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                  </svg>
-                </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Active Investments</p>
-                  <p className="text-2xl font-bold text-gray-900">{investments.length}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {investments.length === 0 ? (
-            // Empty State
-            <div className="bg-white rounded-lg shadow p-8 text-center">
-              <div className="bg-purple-50 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
-                <svg className="w-8 h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No investments found</h3>
-              <p className="text-gray-600 mb-4">
-                You haven&apos;t made any investments yet. Browse available deals to start investing in agricultural projects.
-              </p>
-              <button className="bg-purple-600 text-white px-6 py-2 rounded hover:bg-purple-700 transition-colors">
-                Browse Available Deals
+        {/* Filter tabs */}
+        {investments.length > 0 && (
+          <div className="flex gap-1 bg-slate-100 rounded-xl p-1 w-fit">
+            {(['all', 'confirmed', 'pending'] as const).map(f => (
+              <button key={f} onClick={() => setFilter(f)}
+                className={`px-4 py-2 rounded-lg text-sm font-semibold capitalize transition-all ${
+                  filter === f ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'
+                }`}>
+                {f}
+                <span className="ml-1.5 text-xs text-slate-400">
+                  ({f === 'all' ? investments.length : investments.filter(i => i.status === f).length})
+                </span>
               </button>
+            ))}
+          </div>
+        )}
+
+        {/* Investments */}
+        {loading ? (
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            {[1,2,3].map(i => <div key={i} className="card h-56 skeleton" />)}
+          </div>
+        ) : investments.length === 0 ? (
+          <div className="card p-14 text-center">
+            <div className="w-16 h-16 rounded-3xl bg-violet-50 flex items-center justify-center text-3xl mx-auto mb-5">💼</div>
+            <h3 className="font-bold text-slate-900 text-lg mb-2">No investments yet</h3>
+            <p className="text-slate-500 text-sm mb-6 max-w-xs mx-auto">
+              Browse the marketplace to find agricultural projects to fund and earn returns.
+            </p>
+            <Link href="/marketplace" className="btn-primary mx-auto">Browse Marketplace →</Link>
+          </div>
+        ) : (
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="section-title">Your Portfolio</h2>
+              <span className="muted">{filtered.length} investment{filtered.length !== 1 ? 's' : ''}</span>
             </div>
-          ) : (
-            // Investments List
-            <div className="space-y-6">
-              <div className="flex justify-between items-center">
-                <h2 className="text-xl font-semibold text-gray-900">Your Investments</h2>
-                <span className="text-sm text-gray-600">{investments.length} investments</span>
-              </div>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+              {filtered.map(inv => {
+                const pct = inv.deal.total_value > 0
+                  ? Math.min((Number(inv.deal.funded_amount) / Number(inv.deal.total_value)) * 100, 100) : 0;
+                const isCompleted = inv.deal.status === 'completed';
+                const returnVal = isCompleted && inv.actual_return_usd != null
+                  ? Number(inv.actual_return_usd) : Number(inv.expected_return_usd);
+                const returnLabel = isCompleted ? 'Actual Return' : 'Expected Return';
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {investments.map((investment) => (
-                  <div key={investment.id} className="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow">
-                    <div className="p-6">
-                      {/* Investment Header */}
-                      <div className="flex justify-between items-start mb-4">
+                return (
+                  <div key={inv.id} className="card-hover flex flex-col overflow-hidden">
+                    <div className="h-1 bg-gradient-to-r from-violet-400 to-purple-500" style={{ width: `${pct}%` }} />
+                    <div className="p-5 flex flex-col gap-3 flex-1">
+                      <div className="flex items-start justify-between gap-2">
                         <div>
-                          <h3 className="text-lg font-semibold text-gray-900 capitalize">
-                            {investment.deal.commodity}
-                          </h3>
-                          <p className="text-sm text-gray-600">Investment ID: {investment.id.slice(0, 8)}...</p>
+                          <h3 className="font-bold text-slate-900 capitalize">{inv.deal.commodity}</h3>
+                          <p className="text-xs text-slate-400 font-mono">{inv.deal.token_symbol}</p>
                         </div>
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(investment.deal.status)}`}>
-                          {investment.deal.status}
-                        </span>
-                      </div>
-
-                      {/* Investment Details */}
-                      <div className="space-y-3">
-                        <div className="flex justify-between">
-                          <span className="text-sm text-gray-600">Amount Invested:</span>
-                          <span className="text-sm font-medium">{formatCurrency(investment.amount_invested)}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-sm text-gray-600">Token Holdings:</span>
-                          <span className="text-sm font-medium">{investment.token_holdings.toLocaleString()}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-sm text-gray-600">Deal Value:</span>
-                          <span className="text-sm font-medium">{formatCurrency(investment.deal.total_value)}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-sm text-gray-600">Deal Quantity:</span>
-                          <span className="text-sm font-medium">{investment.deal.quantity.toLocaleString()} units</span>
-                        </div>
-
-                        {/* Deal Funding Progress */}
-                        <div className="border-t pt-3">
-                          <div className="flex justify-between text-sm mb-1">
-                            <span className="text-gray-600">Deal Funding</span>
-                            <span className="text-gray-900">
-                              {investment.deal.total_value > 0 
-                                ? ((investment.deal.funded_amount / investment.deal.total_value) * 100).toFixed(1)
-                                : '0'}%
-                            </span>
-                          </div>
-                          <div className="w-full bg-gray-200 rounded-full h-2">
-                            <div
-                              className="bg-purple-600 h-2 rounded-full transition-all"
-                              style={{ 
-                                width: `${Math.min(
-                                  investment.deal.total_value > 0 
-                                    ? (investment.deal.funded_amount / investment.deal.total_value) * 100
-                                    : 0, 
-                                  100
-                                )}%` 
-                              }}
-                            ></div>
-                          </div>
-                        </div>
-
-                        {/* Returns */}
-                        <div className="border-t pt-3">
-                          {investment.deal.status === 'completed' && investment.actual_return_usd !== null ? (
-                            <>
-                              <div className="flex justify-between">
-                                <span className="text-sm text-gray-600">Actual Return:</span>
-                                <span className="text-sm font-medium text-green-700">{formatCurrency(investment.actual_return_usd)}</span>
-                              </div>
-                              {investment.return_percentage !== null && (
-                                <div className="flex justify-between">
-                                  <span className="text-sm text-gray-600">Return %:</span>
-                                  <span className={`text-sm font-medium ${investment.return_percentage >= 0 ? 'text-green-700' : 'text-red-600'}`}>
-                                    {investment.return_percentage.toFixed(2)}%
-                                  </span>
-                                </div>
-                              )}
-                            </>
-                          ) : (
-                            <div className="flex justify-between">
-                              <span className="text-sm text-gray-600">Expected Return:</span>
-                              <span className="text-sm font-medium text-blue-700">{formatCurrency(investment.expected_return_usd)}</span>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Investment Date */}
-                        <div className="border-t pt-3">
-                          <p className="text-xs text-gray-500">
-                            Invested on {formatDate(investment.created_at)}
-                          </p>
+                        <div className="flex flex-col items-end gap-1">
+                          <span className={INV_STATUS[inv.status] ?? 'badge-gray'}>{inv.status}</span>
+                          <span className={DEAL_STATUS[inv.deal.status] ?? 'badge-gray'}>{inv.deal.status}</span>
                         </div>
                       </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        {[
+                          ['Invested',    `$${Number(inv.amount_invested).toLocaleString()}`, 'text-violet-700'],
+                          ['Tokens',      Number(inv.token_holdings).toLocaleString(), ''],
+                          [returnLabel,   `$${returnVal.toLocaleString()}`, isCompleted ? 'text-emerald-600' : 'text-blue-600'],
+                          inv.return_percentage != null
+                            ? ['ROI', `${inv.return_percentage.toFixed(1)}%`, inv.return_percentage >= 0 ? 'text-emerald-600' : 'text-red-500']
+                            : ['Deal Value', `$${Number(inv.deal.total_value).toLocaleString()}`, ''],
+                        ].map(([l, v, cls]) => (
+                          <div key={l} className="bg-slate-50 rounded-xl p-2.5">
+                            <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide">{l}</p>
+                            <p className={`text-sm font-bold mt-0.5 ${cls || 'text-slate-900'}`}>{v}</p>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-500">Deal funding</span>
+                          <span className="font-bold text-violet-600">{pct.toFixed(1)}%</span>
+                        </div>
+                        <div className="progress-track">
+                          <div className="progress-purple" style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+
+                      <Link href={`/marketplace/${inv.deal.id}`}
+                        className="btn-secondary text-xs py-2 text-center mt-auto">
+                        View Deal →
+                      </Link>
                     </div>
                   </div>
-                ))}
-              </div>
+                );
+              })}
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
-    </ErrorBoundary>
+    </DashboardLayout>
   );
 }

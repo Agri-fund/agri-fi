@@ -74,14 +74,11 @@ export class TradeDealsService {
     traderId: string,
     dto: CreateTradeDealDto,
   ): Promise<TradeDeal> {
-    const farmer = await this.userRepo.findOne({
-      where: { id: dto.farmer_id },
-    });
+    const farmerId = dto.farmer_id ?? traderId;
+    const effectiveTraderId = dto.trader_id ?? traderId;
 
-    if (!farmer) {
-      throw new NotFoundException('Farmer not found.');
-    }
-
+    const farmer = await this.userRepo.findOne({ where: { id: farmerId } });
+    if (!farmer) throw new NotFoundException('Farmer not found.');
     if (farmer.role !== 'farmer') {
       throw new BadRequestException({
         code: 'INVALID_FARMER',
@@ -107,8 +104,8 @@ export class TradeDealsService {
       tokenCount,
       tokenSymbol: 'PENDING',
       status: 'draft',
-      farmerId: dto.farmer_id,
-      traderId,
+      farmerId,
+      traderId: effectiveTraderId,
       totalInvested: 0,
       deliveryDate: new Date(dto.delivery_date),
       escrowPublicKey: null,

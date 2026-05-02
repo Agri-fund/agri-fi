@@ -1,4 +1,4 @@
-const API_BASE = ""; // Use relative URLs to hit Next.js API proxy routes
+const API_BASE = "http://localhost:3001"; // Use relative URLs to hit Next.js API proxy routes
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -267,6 +267,21 @@ export const apiClient = {
   // GET /users/me/deals
   async getFarmerDeals(): Promise<Deal[]> {
     return apiFetch<Deal[]>("/users/me/deals?role=farmer");
+  },
+
+  // POST /trade-deals — farmer self-listing
+  async createDeal(data: {
+    commodity: string;
+    quantity: number;
+    quantity_unit: 'kg' | 'tons';
+    total_value: number;
+    delivery_date: string;
+  }): Promise<Deal> {
+    const raw = await apiFetch<any>("/trade-deals", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+    return normalizeDeal(raw);
   },
 
   // GET /users/me/deals

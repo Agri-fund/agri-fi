@@ -4,6 +4,7 @@ import {
   Column,
   CreateDateColumn,
   ManyToOne,
+  JoinColumn,
 } from 'typeorm';
 import { User } from '../../auth/entities/user.entity';
 import { TradeDeal } from './trade-deal.entity';
@@ -43,10 +44,11 @@ export class Document {
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
-  // Relations
   @ManyToOne(() => TradeDeal, (tradeDeal) => tradeDeal.documents)
+  @JoinColumn({ name: 'trade_deal_id' })
   tradeDeal: TradeDeal;
 
   @ManyToOne(() => User)
+  @JoinColumn({ name: 'uploader_id' })
   uploader: User;
 }

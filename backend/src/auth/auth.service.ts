@@ -242,4 +242,14 @@ export class AuthService {
     await this.userRepo.save(user);
     return { message: 'Logged out successfully.' };
   }
+
+  async listUsers(page = 1, limit = 100): Promise<{ users: Partial<User>[]; total: number }> {
+    const [users, total] = await this.userRepo.findAndCount({
+      order: { createdAt: 'DESC' },
+      skip: (page - 1) * limit,
+      take: limit,
+      select: ['id', 'email', 'role', 'kycStatus', 'country', 'createdAt', 'walletAddress', 'isCompany'],
+    });
+    return { users, total };
+  }
 }

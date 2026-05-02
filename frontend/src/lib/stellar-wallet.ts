@@ -25,20 +25,24 @@ export interface WalletSignResult {
 // ── Freighter helpers ─────────────────────────────────────────────────────────
 
 async function getFreighterPublicKey(): Promise<string> {
-  const { getPublicKey } = await import('@stellar/freighter-api');
-  const result = await getPublicKey();
-  // v2 API returns { publicKey } or plain string
-  const publicKey = typeof result === 'object' ? (result as any).publicKey : result;
-  if (!publicKey) throw new Error('Freighter did not return a public key.');
-  return publicKey;
+  const { requestAccess, getPublicKey } = await import('@stellar/freighter-api');
+  // Try silent first (returns empty string if not yet allowed)
+  const silent = await getPublicKey();
+  if (silent) return silent;
+  // Not yet allowed — prompt the user
+  const result = await requestAccess();
+  if ((result as any).error) throw new Error((result as any).error);
+  const address = typeof result === 'object' ? (result as any).address ?? (result as any).publicKey : result;
+  if (!address) throw new Error('Freighter did not return a public key.');
+  return address;
 }
 
 async function freighterIsAvailable(): Promise<boolean> {
   try {
     const { isConnected } = await import('@stellar/freighter-api');
     const result = await isConnected();
-    // freighter-api v2 returns { isConnected: boolean } or just boolean
-    return typeof result === 'object' ? (result as any).isConnected : result;
+    if (!result) return false;
+    return typeof result === 'object' ? (result as any).isConnected : !!result;
   } catch {
     return false;
   }
@@ -55,9 +59,8 @@ async function signWithFreighter(
 ): Promise<WalletSignResult> {
   const { signTransaction } = await import('@stellar/freighter-api');
   const result = await signTransaction(xdr, { networkPassphrase });
-  // v2 returns { signedTxXdr } or plain string
-  const signedXdr =
-    typeof result === 'object' ? (result as any).signedTxXdr : result;
+  // v2.0.0 returns plain string; newer versions return { signedTxXdr }
+  const signedXdr = typeof result === 'object' ? (result as any).signedTxXdr : result;
   if (!signedXdr) throw new Error('Freighter did not return a signed XDR.');
   return { signedXdr, provider: 'freighter' };
 }

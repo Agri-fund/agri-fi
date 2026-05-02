@@ -17,22 +17,22 @@ export class CorrelationIdMiddleware implements NestMiddleware {
   ) {}
 
   use(req: RequestWithCorrelationId, res: Response, next: NextFunction) {
-    // Generate or extract correlation ID
     const correlationId =
       (req.headers['x-correlation-id'] as string) ||
       (req.headers['correlation-id'] as string) ||
       uuidv4();
 
-    // 1. Attach to request object (for legacy support)
+    // Attach to request object (always works)
     req.correlationId = correlationId;
 
-    // 2. Store in AsyncLocalStorage via ClsService
-    // This is what QueueService uses to grab the ID
-    this.cls.set('correlationId', correlationId);
+    // Store in CLS if context is available (may not be during early middleware)
+    try {
+      this.cls.set('correlationId', correlationId);
+    } catch {
+      // CLS context not yet established — correlationId is still on req object
+    }
 
-    // 3. Set response header for client tracking
     res.setHeader('x-correlation-id', correlationId);
-
     next();
   }
 }

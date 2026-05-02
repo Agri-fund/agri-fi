@@ -1,10 +1,12 @@
 import {
   Controller,
+  Get,
   Post,
   Param,
   UseGuards,
   Request,
   Body,
+  Query,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -35,6 +37,13 @@ interface AuthRequest extends Request {
 @ApiBearerAuth('jwt')
 export class AdminController {
   constructor(private readonly authService: AuthService) {}
+
+  @Get('users')
+  @ApiOperation({ summary: 'List all users (admin only)' })
+  @ApiResponse({ status: 200, description: 'List of users' })
+  async listUsers(@Query('page') page = '1', @Query('limit') limit = '100') {
+    return this.authService.listUsers(parseInt(page), parseInt(limit));
+  }
 
   @Post('kyc/:userId/approve')
   @ApiOperation({ summary: 'Approve a user KYC submission' })

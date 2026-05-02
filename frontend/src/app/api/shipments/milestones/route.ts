@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(data);
   } catch (error: any) {
-    if (error?.isBackdownUnreachable) {
+    if (error?.isBackendUnreachable) {
       return NextResponse.json(
         { message: 'Backend service is unavailable' },
         { status: 503 }

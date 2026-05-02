@@ -41,7 +41,7 @@ export class TradeDealsController {
   @UseGuards(AuthGuard('jwt'), KycGuard)
   @ApiBearerAuth('jwt')
   @ApiOperation({
-    summary: 'Create a draft trade deal (trader only, KYC required)',
+    summary: 'Create a draft trade deal (trader or farmer, KYC required)',
   })
   @ApiResponse({ status: 201, description: 'Trade deal created' })
   @ApiResponse({ status: 400, description: 'Validation error' })
@@ -51,11 +51,16 @@ export class TradeDealsController {
     @Request() req: AuthRequest,
     @Body() dto: CreateTradeDealDto,
   ): Promise<TradeDeal> {
-    if (req.user.role !== 'trader') {
+    if (req.user.role !== 'trader' && req.user.role !== 'farmer') {
       throw new ForbiddenException({
         code: 'ROLE_REQUIRED',
-        message: 'Only traders can create trade deals.',
+        message: 'Only traders or farmers can create trade deals.',
       });
+    }
+    // Farmers self-list: they are both the farmer and the acting trader
+    if (req.user.role === 'farmer') {
+      dto.farmer_id = req.user.id;
+      dto.trader_id = req.user.id;
     }
     return this.tradeDealsService.createDeal(req.user.id, dto);
   }

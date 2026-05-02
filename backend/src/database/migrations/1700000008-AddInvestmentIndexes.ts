@@ -1,7 +1,7 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddInvestmentIndexes1700000008 implements MigrationInterface {
-  name = 'AddInvestmentIndexes1700000008';
+export class AddInvestmentIndexes1700000008000 implements MigrationInterface {
+  name = 'AddInvestmentIndexes1700000008000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     // Composite index on (trade_deal_id, status) for investment availability queries

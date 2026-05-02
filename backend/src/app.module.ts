@@ -2,7 +2,7 @@ import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { LoggerModule } from 'nestjs-pino';
-import { ClsModule } from 'nestjs-cls'; // 1. Import ClsModule
+import { ClsModule, ClsMiddleware } from 'nestjs-cls';
 import { DatabaseConfig } from './database/database.config';
 import { AuthModule } from './auth/auth.module';
 import { StellarModule } from './stellar/stellar.module';
@@ -23,11 +23,9 @@ import { ThrottlerModule } from '@nestjs/throttler';
 
 @Module({
   imports: [
-    // 2. Register ClsModule globally
-    ClsModule.forRoot({
-      global: true,
-      middleware: { mount: true }, // Automatically sets up the async context
-    }),
+    // Register ClsModule globally — no auto-mount; we mount manually below
+    // to guarantee ordering: ClsMiddleware runs before CorrelationIdMiddleware
+    ClsModule.forRoot({ global: true }),
     ThrottlerModule.forRoot([
       {
         ttl: parseInt(process.env.RATE_LIMIT_TTL || '60000'),
@@ -60,6 +58,10 @@ import { ThrottlerModule } from '@nestjs/throttler';
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(CorrelationIdMiddleware).forRoutes('*');
+    // ClsMiddleware MUST run first to establish the async context,
+    // then CorrelationIdMiddleware can safely call cls.set()
+    consumer
+      .apply(ClsMiddleware, CorrelationIdMiddleware)
+      .forRoutes('*');
   }
 }

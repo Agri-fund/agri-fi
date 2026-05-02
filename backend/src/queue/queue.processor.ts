@@ -14,6 +14,7 @@ import {
   DealPublishPayload,
   InvestmentFundPayload,
   DealFundedPayload,
+  DealCleanupPayload,
   BasePayload,
 } from './queue.service';
 
