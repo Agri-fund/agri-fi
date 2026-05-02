@@ -5,6 +5,7 @@ import { Repository } from 'typeorm';
 import { PinoLogger } from 'nestjs-pino';
 import { ConfigService } from '@nestjs/config';
 import { StellarService } from '../stellar/stellar.service';
+import { SorobanService } from '../soroban/soroban.service';
 import { TradeDealsService } from '../trade-deals/trade-deals.service';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
 import { Investment } from '../investments/entities/investment.entity';
@@ -24,6 +25,7 @@ const MAX_RETRIES = 3;
 export class QueueProcessor {
   constructor(
     private readonly stellarService: StellarService,
+    private readonly sorobanService: SorobanService,
     private readonly tradeDealsService: TradeDealsService,
     @InjectRepository(TradeDeal)
     private readonly tradeDealRepo: Repository<TradeDeal>,
@@ -82,6 +84,15 @@ export class QueueProcessor {
         issuerPublicKey: result.issuerPublicKey,
         issuerSecretKey: encryptedIssuerSecret,
       });
+
+      // Initialize Soroban FarmCampaign contract (non-blocking)
+      this.initSorobanCampaign(data.dealId, data.escrowPublicKey).catch(
+        (e: any) =>
+          this.logger.warn(
+            { dealId: data.dealId, error: e.message },
+            'Soroban init skipped',
+          ),
+      );
 
       this.logger.info(
         { dealId: data.dealId, txId: result.txId },
@@ -373,5 +384,63 @@ export class QueueProcessor {
 
     const channel = context.getChannelRef();
     channel.ack(context.getMessage());
+  }
+
+  // ── Private helpers ─────────────────────────────────────────────────────────
+
+  /**
+   * Initializes a Soroban FarmCampaign contract after a deal goes live.
+   * Non-blocking — called with .catch() so failures don't affect the deal.
+   */
+  private async initSorobanCampaign(
+    dealId: string,
+    adminAddress: string,
+  ): Promise<void> {
+    const factoryContractId = this.config.get<string>(
+      'SOROBAN_FACTORY_CONTRACT_ID',
+    );
+    const sorobanRpcUrl = this.config.get<string>('SOROBAN_RPC_URL');
+    if (!factoryContractId || !sorobanRpcUrl) return;
+
+    const deal = await this.tradeDealRepo.findOne({
+      where: { id: dealId },
+      relations: ['farmer'],
+    });
+    if (!deal?.farmer?.walletAddress) return;
+
+    const usdcContractId = this.config.get<string>(
+      'USDC_CONTRACT_ID',
+      this.config.get<string>('USDC_ISSUER', ''),
+    );
+    if (!usdcContractId) return;
+
+    const deadlineTs = Math.floor(
+      new Date(deal.deliveryDate).getTime() / 1000,
+    );
+    const fundingTargetStroops = BigInt(
+      Math.round(Number(deal.totalValue) * 1e7),
+    );
+
+    const txHash = await this.sorobanService.initializeCampaign(
+      factoryContractId,
+      {
+        admin: adminAddress,
+        farmer: deal.farmer.walletAddress,
+        usdcToken: usdcContractId,
+        fundingTarget: fundingTargetStroops,
+        deadline: deadlineTs,
+        platformFeeBps: 200,
+        milestoneCount: 4,
+        projectName: deal.commodity,
+        commodity: deal.commodity,
+      },
+    );
+
+    await this.tradeDealRepo.update(dealId, {
+      sorobanCampaignContractId: factoryContractId,
+      sorobanFactoryTxHash: txHash,
+    });
+
+    this.logger.info({ dealId, txHash }, 'Soroban FarmCampaign initialized');
   }
 }

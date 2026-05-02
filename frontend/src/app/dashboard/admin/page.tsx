@@ -26,7 +26,7 @@ export default function AdminDashboard() {
   const [user, setUser] = useState<User | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<'overview' | 'users' | 'kyc'>('overview');
+  const [tab, setTab] = useState<'overview' | 'users' | 'kyc' | 'blockchain'>('overview');
   const [search, setSearch] = useState('');
   const [actionId, setActionId] = useState<string | null>(null);
 
@@ -109,12 +109,12 @@ export default function AdminDashboard() {
 
         {/* Tabs */}
         <div className="flex gap-1 bg-slate-100 rounded-xl p-1 w-fit">
-          {(['overview', 'users', 'kyc'] as const).map(t => (
+          {(['overview', 'users', 'kyc', 'blockchain'] as const).map(t => (
             <button key={t} onClick={() => setTab(t)}
               className={`px-4 py-2 rounded-lg text-sm font-semibold capitalize transition-all ${
                 tab === t ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'
               }`}>
-              {t}
+              {t === 'blockchain' ? '⛓ Blockchain' : t}
               {t === 'kyc' && pendingKyc.length > 0 && (
                 <span className="ml-1.5 bg-red-500 text-white text-[10px] rounded-full px-1.5 py-0.5 font-bold">
                   {pendingKyc.length}
@@ -292,7 +292,153 @@ export default function AdminDashboard() {
             )}
           </div>
         )}
+
+        {/* Blockchain tab */}
+        {tab === 'blockchain' && (
+          <BlockchainTab token={getStoredToken() ?? ''} toast={toast} />
+        )}
       </div>
     </DashboardLayout>
+  );
+}
+
+// ── Blockchain Tab ────────────────────────────────────────────────────────────
+
+interface BlockchainTabProps {
+  token: string;
+  toast: (msg: string, type: 'success' | 'error') => void;
+}
+
+function BlockchainTab({ token, toast }: BlockchainTabProps) {
+  const [contractId, setContractId] = useState('');
+  const [action, setAction] = useState<'approve' | 'pause' | 'fail' | 'milestone' | 'distribute'>('approve');
+  const [milestoneIndex, setMilestoneIndex] = useState(0);
+  const [revenueAmount, setRevenueAmount] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+
+  const handleAction = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!contractId.trim()) return;
+    setLoading(true);
+    setResult(null);
+
+    try {
+      let url = `/api/soroban/campaign/${contractId.trim()}/${action}`;
+      let body: Record<string, unknown> = {};
+
+      if (action === 'milestone') body = { milestoneIndex };
+      if (action === 'distribute') body = { revenueAmountStroops: revenueAmount };
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast(`✅ ${action} succeeded`, 'success');
+        setResult(data.txHash ?? JSON.stringify(data));
+      } else {
+        toast(data.message ?? 'Action failed', 'error');
+      }
+    } catch {
+      toast('Request failed', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="section-title">Soroban Contract Management</h2>
+        <p className="text-sm text-slate-500 mt-1">
+          Invoke on-chain actions on FarmCampaign smart contracts.
+        </p>
+      </div>
+
+      <div className="grid sm:grid-cols-2 gap-5">
+        {/* Action form */}
+        <div className="card p-5">
+          <h3 className="font-semibold text-slate-900 mb-4">Contract Action</h3>
+          <form onSubmit={handleAction} className="space-y-4">
+            <div>
+              <label className="label">Contract ID</label>
+              <input className="input font-mono text-xs" placeholder="C..." value={contractId}
+                onChange={e => setContractId(e.target.value)} required />
+            </div>
+
+            <div>
+              <label className="label">Action</label>
+              <select className="select" value={action}
+                onChange={e => setAction(e.target.value as typeof action)}>
+                <option value="approve">✅ Approve Campaign</option>
+                <option value="milestone">📍 Release Milestone</option>
+                <option value="distribute">💰 Distribute Revenue</option>
+                <option value="pause">⏸ Pause Campaign</option>
+                <option value="fail">❌ Mark Failed</option>
+              </select>
+            </div>
+
+            {action === 'milestone' && (
+              <div>
+                <label className="label">Milestone Index (0-based)</label>
+                <input className="input" type="number" min={0} max={3} value={milestoneIndex}
+                  onChange={e => setMilestoneIndex(Number(e.target.value))} />
+              </div>
+            )}
+
+            {action === 'distribute' && (
+              <div>
+                <label className="label">Revenue Amount (USDC stroops)</label>
+                <input className="input" placeholder="e.g. 500000000000 = 50,000 USDC"
+                  value={revenueAmount} onChange={e => setRevenueAmount(e.target.value)} required />
+                <p className="label-hint">1 USDC = 10,000,000 stroops</p>
+              </div>
+            )}
+
+            <button type="submit" disabled={loading} className="btn-primary w-full">
+              {loading ? 'Submitting…' : 'Execute On-Chain'}
+            </button>
+          </form>
+
+          {result && (
+            <div className="mt-4 p-3 bg-emerald-50 rounded-xl">
+              <p className="text-xs text-emerald-700 font-semibold mb-1">Transaction Hash</p>
+              <p className="font-mono text-xs text-emerald-900 break-all">{result}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Info panel */}
+        <div className="card p-5 space-y-4">
+          <h3 className="font-semibold text-slate-900">Contract Lifecycle</h3>
+          {[
+            { step: '1', label: 'Deal Published', desc: 'Soroban FarmCampaign auto-initialized on deal.publish queue event' },
+            { step: '2', label: 'Approve Campaign', desc: 'After KYC + funding target reached, admin approves on-chain' },
+            { step: '3', label: 'Release Milestones', desc: 'Release 1 of 4 tranches to farmer per verified milestone' },
+            { step: '4', label: 'Distribute Revenue', desc: 'After harvest sales, distribute USDC to all investors proportionally' },
+          ].map(item => (
+            <div key={item.step} className="flex gap-3">
+              <div className="w-7 h-7 rounded-full bg-green-600 text-white text-xs font-bold flex items-center justify-center flex-shrink-0">
+                {item.step}
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-slate-900">{item.label}</p>
+                <p className="text-xs text-slate-500">{item.desc}</p>
+              </div>
+            </div>
+          ))}
+
+          <div className="pt-2 border-t border-slate-100">
+            <a href="/transparency" target="_blank"
+              className="text-sm text-green-600 hover:underline font-medium">
+              🔍 View public transparency page →
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
