@@ -6,6 +6,7 @@ import {
 } from 'typeorm';
 import { ApiProperty } from '@nestjs/swagger';
 import { Exclude } from 'class-transformer';
+import { encryptionTransformer } from '../../common/encryption.transformer';
 
 export type UserRole =
   | 'farmer'
@@ -108,4 +109,19 @@ export class User {
     example: '2024-01-15T10:30:00Z',
   })
   createdAt: Date;
+
+  /** Full legal name — stored AES-256-CBC encrypted */
+  @Exclude()
+  @Column({ name: 'full_name', nullable: true, transformer: encryptionTransformer })
+  fullName: string | null;
+
+  /** Date of birth — stored AES-256-CBC encrypted (ISO date string) */
+  @Exclude()
+  @Column({ name: 'birthdate', nullable: true, transformer: encryptionTransformer })
+  birthdate: string | null;
+
+  /** Tax / national ID number — stored AES-256-CBC encrypted */
+  @Exclude()
+  @Column({ name: 'tax_id', nullable: true, transformer: encryptionTransformer })
+  taxId: string | null;
 }

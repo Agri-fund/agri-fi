@@ -1187,6 +1187,73 @@ export class StellarService {
   }
 
   /**
+   * Cleans up an investor's trustline for a trade asset after final distribution.
+   * Submits a changeTrust operation with limit=0, removing the trustline and
+   * freeing up the 0.5 XLM base reserve on the investor's account.
+   *
+   * @param investorWallet  Investor's public key
+   * @param investorSecret  Investor's decrypted secret key
+   * @param assetCode       Trade token asset code (e.g. "COCOA1002")
+   * @param issuerPublicKey Trade token issuer public key
+   * @returns Stellar transaction ID of the cleanup transaction
+   */
+  async cleanupInvestorTrustline(
+    investorWallet: string,
+    investorSecret: string,
+    assetCode: string,
+    issuerPublicKey: string,
+  ): Promise<string> {
+    const investorKeypair = Keypair.fromSecret(investorSecret);
+    const investorAccount = await this.server.loadAccount(investorWallet);
+    const tradeAsset = createAsset(assetCode, issuerPublicKey);
+
+    const balance = investorAccount.balances.find(
+      (b: any) =>
+        b.asset_type !== 'native' &&
+        b.asset_code === assetCode &&
+        b.asset_issuer === issuerPublicKey,
+    );
+
+    if (!balance) {
+      this.logger.warn(
+        { investorWallet, assetCode },
+        'No trustline found to clean up',
+      );
+      return '';
+    }
+
+    if (parseFloat((balance as any).balance) > 0) {
+      throw new Error(
+        `Cannot remove trustline: investor still holds ${(balance as any).balance} ${assetCode}`,
+      );
+    }
+
+    const tx = new TransactionBuilder(investorAccount, {
+      fee: BASE_FEE,
+      networkPassphrase: this.networkPassphrase,
+    })
+      .addOperation(
+        Operation.changeTrust({
+          asset: tradeAsset,
+          limit: '0',
+        }),
+      )
+      .addMemo(Memo.text(`cleanup:${assetCode}`))
+      .setTimeout(30)
+      .build();
+
+    tx.sign(investorKeypair);
+    const result = await this.submitWithRetry(tx);
+    const txId = (result as any).hash as string;
+
+    this.logger.info(
+      { investorWallet, assetCode, issuerPublicKey, txId },
+      'Investor trustline cleaned up successfully',
+    );
+    return txId;
+  }
+
+  /**
    * Clawbacks tokens from all current holders back to the issuer.
    */
   async clawbackTokens(
