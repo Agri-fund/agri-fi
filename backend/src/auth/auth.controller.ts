@@ -39,12 +39,7 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('register')
-  @Throttle({
-    default: {
-      limit: parseInt(process.env.RATE_LIMIT_REGISTER || '3'),
-      ttl: parseInt(process.env.RATE_LIMIT_TTL || '60000'),
-    },
-  })
+  @Throttle({ default: { limit: 3, ttl: 3600000 } })
   @ApiOperation({ summary: 'Register a new user' })
   @ApiResponse({ status: 201, description: 'User created successfully' })
   @ApiResponse({ status: 400, description: 'Validation error' })
@@ -55,12 +50,7 @@ export class AuthController {
   }
 
   @Post('login')
-  @Throttle({
-    default: {
-      limit: parseInt(process.env.RATE_LIMIT_LOGIN || '5'),
-      ttl: parseInt(process.env.RATE_LIMIT_TTL || '60000'),
-    },
-  })
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @ApiOperation({ summary: 'Authenticate and receive a JWT' })
   @ApiResponse({ status: 200, description: 'Returns access and refresh JWTs' })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
@@ -70,12 +60,7 @@ export class AuthController {
   }
 
   @Post('refresh')
-  @Throttle({
-    default: {
-      limit: parseInt(process.env.RATE_LIMIT_LOGIN || '5'),
-      ttl: parseInt(process.env.RATE_LIMIT_TTL || '60000'),
-    },
-  })
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @ApiOperation({ summary: 'Exchange a refresh token for a new access token' })
   @ApiResponse({ status: 200, description: 'Returns new access and refresh tokens' })
   @ApiResponse({ status: 401, description: 'Invalid or expired refresh token' })
