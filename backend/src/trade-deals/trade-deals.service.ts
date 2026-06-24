@@ -64,8 +64,11 @@ export class TradeDealsService {
     status: TradeDealStatus,
     stellarAssetTxId?: string,
   ): Promise<void> {
+    // Generate an application trace ID for authorized updates
+    const appTraceId = `app-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 10)}`;
     await this.tradeDealRepo.update(dealId, {
       status,
+      appTraceId,
       ...(stellarAssetTxId && { stellarAssetTxId }),
     });
   }
@@ -466,6 +469,8 @@ export class TradeDealsService {
     }
 
     deal.status = 'canceled';
+    // Set appTraceId for this authorized update
+    deal.appTraceId = `app-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 10)}`;
     return this.tradeDealRepo.save(deal);
   }
 

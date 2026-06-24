@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import 'dotenv-vault/config';
 import { NestFactory } from '@nestjs/core';
 import {
   ValidationPipe,
@@ -13,6 +13,8 @@ async function bootstrap() {
   // rawBody: true preserves the unparsed request buffer on req.rawBody,
   // which is required by WebhookSignatureGuard for HMAC verification.
   const app = await NestFactory.create(AppModule, { rawBody: true });
+
+  app.getHttpAdapter().getInstance().disable('x-powered-by');
 
   app.use(applySecurityHeaders);
 

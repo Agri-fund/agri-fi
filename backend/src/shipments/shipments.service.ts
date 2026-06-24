@@ -125,8 +125,10 @@ export class ShipmentsService {
       // 5.5 — Handle importer milestone: transition to delivered and enqueue job
       if (dto.milestone === 'importer') {
         // Update trade deal status to delivered
+        const appTraceId = `app-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 10)}`;
         await manager.update(TradeDeal, dto.trade_deal_id, {
           status: 'delivered',
+          appTraceId,
         });
 
         // Enqueue deal.delivered job for escrow release
