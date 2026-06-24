@@ -8,3 +8,10 @@ build
 *.log
 
 fix.md
+
+# Environment files
+.env
+.env.local
+.env.*.local
+!.env.example
+!.env.vault

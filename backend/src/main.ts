@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import 'dotenv-vault/config';
 import { NestFactory } from '@nestjs/core';
 import {
   ValidationPipe,
