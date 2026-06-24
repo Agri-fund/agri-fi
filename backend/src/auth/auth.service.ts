@@ -18,6 +18,7 @@ import { KycDto } from './dto/kyc.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { QueueService } from '../queue/queue.service';
 import { JwtPayload } from './jwt.strategy';
+import { LoginLog } from '../database/entities/login-log.entity';
 
 @Injectable()
 export class AuthService {
@@ -25,6 +26,8 @@ export class AuthService {
     @InjectRepository(User) private readonly userRepo: Repository<User>,
     @InjectRepository(KycSubmission)
     private readonly kycRepo: Repository<KycSubmission>,
+    @InjectRepository(LoginLog)
+    private readonly loginLogRepo: Repository<LoginLog>,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly queueService: QueueService,
@@ -95,14 +98,45 @@ export class AuthService {
     };
   }
 
+  /** Secure cookie options for JWT tokens */
+  cookieOptions() {
+    return {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'strict' as const,
+      path: '/',
+    };
+  }
+
   async login(
     dto: LoginDto,
+    ipAddress = 'unknown',
+    userAgent = 'unknown',
   ): Promise<{ accessToken: string; refreshToken: string }> {
     const user = await this.userRepo.findOne({ where: { email: dto.email } });
     if (!user) throw new UnauthorizedException('Invalid credentials.');
 
     const valid = await bcrypt.compare(dto.password, user.passwordHash);
     if (!valid) throw new UnauthorizedException('Invalid credentials.');
+
+    const previousLogin = await this.loginLogRepo.findOne({
+      where: { userId: user.id, ipAddress, userAgent },
+    });
+
+    await this.loginLogRepo.save(
+      this.loginLogRepo.create({ userId: user.id, ipAddress, userAgent }),
+    );
+
+    if (!previousLogin) {
+      this.queueService.emit('email.notification', {
+        type: 'new_device_login',
+        email: user.email,
+        userId: user.id,
+        ipAddress,
+        userAgent,
+        invalidateSessionUrl: `${this.configService.get('APP_URL', 'http://localhost:3001')}/v1/auth/invalidate-sessions`,
+      });
+    }
 
     return this.issueTokenPair(user);
   }

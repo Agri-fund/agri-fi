@@ -6,6 +6,7 @@ import {
   Request,
   RawBodyRequest,
   Req,
+  Res,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
@@ -18,7 +19,7 @@ import {
 } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { Throttle } from '@nestjs/throttler';
-import type { Request as ExpressRequest } from 'express';
+import type { Request as ExpressRequest, Response } from 'express';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -65,8 +66,20 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'Returns access and refresh JWTs' })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
   @ApiResponse({ status: 429, description: 'Too many requests' })
-  login(@Body() dto: LoginDto) {
-    return this.authService.login(dto);
+  async login(
+    @Body() dto: LoginDto,
+    @Req() req: ExpressRequest,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
+      ?? req.socket?.remoteAddress
+      ?? 'unknown';
+    const ua = req.headers['user-agent'] ?? 'unknown';
+    const tokens = await this.authService.login(dto, ip, ua);
+    const opts = this.authService.cookieOptions();
+    res.cookie('access_token', tokens.accessToken, opts);
+    res.cookie('refresh_token', tokens.refreshToken, opts);
+    return tokens;
   }
 
   @Post('refresh')
@@ -80,8 +93,15 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'Returns new access and refresh tokens' })
   @ApiResponse({ status: 401, description: 'Invalid or expired refresh token' })
   @ApiResponse({ status: 429, description: 'Too many requests' })
-  refresh(@Body() dto: RefreshTokenDto) {
-    return this.authService.refresh(dto.refreshToken);
+  async refresh(
+    @Body() dto: RefreshTokenDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const tokens = await this.authService.refresh(dto.refreshToken);
+    const opts = this.authService.cookieOptions();
+    res.cookie('access_token', tokens.accessToken, opts);
+    res.cookie('refresh_token', tokens.refreshToken, opts);
+    return tokens;
   }
 
   @Post('wallet')
@@ -131,6 +151,17 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'Logged out successfully' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   logout(@Request() req: AuthRequest) {
+    return this.authService.logout(req.user.id);
+  }
+
+  @Post('invalidate-sessions')
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth('jwt')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Invalidate all active sessions (triggered from email alert link)' })
+  @ApiResponse({ status: 200, description: 'All sessions invalidated' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  invalidateSessions(@Request() req: AuthRequest) {
     return this.authService.logout(req.user.id);
   }
 
