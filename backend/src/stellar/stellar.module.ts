@@ -18,6 +18,8 @@ import { StellarMonitorService } from './stellar-monitor.service';
   providers: [
     StellarService,
     PricesService,
+    StellarArchiverService,
+    StellarMonitorService,
     {
       provide: PRICE_REDIS_CLIENT,
       inject: [ConfigService],
@@ -33,7 +35,5 @@ import { StellarMonitorService } from './stellar-monitor.service';
     },
   ],
   exports: [StellarService, PricesService],
-  providers: [StellarService, StellarArchiverService, StellarMonitorService],
-  exports: [StellarService],
 })
 export class StellarModule {}
