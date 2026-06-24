@@ -8,3 +8,30 @@ build
 *.log
 
 fix.md
+
+# Secrets and environment variables
+.env
+.env.local
+.env.*.local
+.env.production.local
+*.pem
+*.key
+*.p8
+*.p12
+*.pfx
+*.der
+*.crt
+*.csr
+*.p7b
+credentials.json
+secrets.json
+.aws/credentials
+.ssh/
+
+# IDE secrets and configs
+.vscode/settings.json
+.idea/misc.xml
+
+# OS-specific files with sensitive data
+Desktop.ini
+.DS_Store
