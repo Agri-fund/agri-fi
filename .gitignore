@@ -15,3 +15,5 @@ fix.md
 .env.*.local
 !.env.example
 !.env.vault
+issue.md
+pr.md
