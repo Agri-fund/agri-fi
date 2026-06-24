@@ -6,6 +6,7 @@ import {
   IsString,
   MinLength,
 } from 'class-validator';
+import { IsStrongPassword } from '../validators/password-strength.validator';
 
 export class RegisterDto {
   @ApiProperty({
@@ -30,6 +31,7 @@ export class RegisterDto {
   })
   @IsString()
   @MinLength(8)
+  @IsStrongPassword()
   password: string;
 
   @ApiProperty({
