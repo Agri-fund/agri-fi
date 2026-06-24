@@ -1,10 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { BadGatewayException, Injectable } from '@nestjs/common';
 import { StorageService } from '../storage/storage.service';
 import { StellarService } from '../stellar/stellar.service';
 import { TradeDealsService } from '../trade-deals/trade-deals.service';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'crypto';
 import { buildDocumentMemo } from '../stellar/anchor-memo';
+import { isValidIpfsCid } from './ipfs-cid';
 
 @Injectable()
 export class DocumentsService {
@@ -31,6 +32,10 @@ export class DocumentsService {
       file.buffer,
       file.mimetype,
     );
+
+    if (!isValidIpfsCid(hash)) {
+      throw new BadGatewayException('Storage provider returned an invalid IPFS CID.');
+    }
 
     // 2. Calculate SHA-256 of the file for Stellar Anchoring
     const fileHash = createHash('sha256').update(file.buffer).digest('hex');
