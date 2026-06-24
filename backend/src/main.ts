@@ -14,6 +14,8 @@ async function bootstrap() {
   // which is required by WebhookSignatureGuard for HMAC verification.
   const app = await NestFactory.create(AppModule, { rawBody: true });
 
+  app.getHttpAdapter().getInstance().disable('x-powered-by');
+
   app.use(applySecurityHeaders);
 
   app.useGlobalPipes(
