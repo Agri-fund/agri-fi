@@ -40,10 +40,17 @@ async function bootstrap() {
 
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
 
+  const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',').map(o => o.trim()) ?? [
+    'http://localhost:3000',
+  ];
   app.enableCors({
-    origin: process.env.ALLOWED_ORIGINS?.split(',') ?? [
-      'http://localhost:3000',
-    ],
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error(`Origin ${origin} not allowed by CORS`), false);
+      }
+    },
     credentials: true,
   });
 
