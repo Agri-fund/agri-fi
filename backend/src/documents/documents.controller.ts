@@ -8,6 +8,8 @@ import {
   Request,
   BadRequestException,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
+import { createHash } from 'crypto';
 import {
   ApiTags,
   ApiOperation,
@@ -29,9 +31,13 @@ interface AuthRequest extends Request {
 @ApiBearerAuth('jwt')
 @Controller('documents')
 export class DocumentsController {
+  /** In-memory cache: SHA-256(fileBuffer) → upload result, to avoid redundant IPFS calls */
+  private readonly ipfsCache = new Map<string, object>();
+
   constructor(private readonly documentsService: DocumentsService) {}
 
   @Post()
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
   @UseGuards(AuthGuard('jwt'))
   @UseInterceptors(FileInterceptor('file'))
   @ApiOperation({
@@ -66,6 +72,7 @@ export class DocumentsController {
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'Trade deal not found' })
+  @ApiResponse({ status: 429, description: 'Too Many Requests – IPFS proxy limit is 20 per minute' })
   async uploadDocument(
     @UploadedFile() file: Express.Multer.File,
     @Body() body: { doc_type: string; trade_deal_id: string },
@@ -81,11 +88,23 @@ export class DocumentsController {
         'Unsupported file type. Only PDF, PNG, JPEG allowed',
       );
     }
-    return this.documentsService.handleUpload({
+
+    // Cache IPFS files locally by content hash to limit external node calls.
+    // If the exact same file bytes were previously uploaded, return the cached
+    // result without hitting the IPFS gateway again.
+    const contentKey = createHash('sha256').update(file.buffer).digest('hex');
+    if (this.ipfsCache.has(contentKey)) {
+      return this.ipfsCache.get(contentKey);
+    }
+
+    const result = await this.documentsService.handleUpload({
       file,
       docType: body.doc_type,
       tradeDealId: body.trade_deal_id,
       userId: req.user.id,
     });
+
+    this.ipfsCache.set(contentKey, result);
+    return result;
   }
 }

@@ -1,0 +1,53 @@
+---
+# Ansible inventory for agri-fi servers
+# SSH hardening: password authentication is disabled; only Ed25519 keys are accepted.
+
+all:
+  vars:
+    # -----------------------------------------------------------------------
+    # Global SSH hardening settings applied via the sshd role / lineinfile tasks
+    # -----------------------------------------------------------------------
+    ansible_ssh_private_key_file: "~/.ssh/id_ed25519"
+    ansible_ssh_common_args: "-o StrictHostKeyChecking=accept-new"
+
+    # sshd_config parameters enforced on every managed host
+    sshd_config:
+      PasswordAuthentication: "no"
+      ChallengeResponseAuthentication: "no"
+      UsePAM: "yes"
+      PermitRootLogin: "prohibit-password"
+      PubkeyAuthentication: "yes"
+      # Restrict accepted key types to Ed25519 only (no RSA/DSA/ECDSA)
+      PubkeyAcceptedAlgorithms: "ssh-ed25519,sk-ssh-ed25519@openssh.com"
+      AuthorizedKeysFile: ".ssh/authorized_keys"
+      # Harden further
+      X11Forwarding: "no"
+      AllowAgentForwarding: "no"
+      PermitEmptyPasswords: "no"
+      MaxAuthTries: "3"
+      LoginGraceTime: "30"
+
+  children:
+    webservers:
+      hosts:
+        web01:
+          ansible_host: "{{ lookup('env', 'WEB01_HOST') }}"
+          ansible_user: deploy
+        web02:
+          ansible_host: "{{ lookup('env', 'WEB02_HOST') }}"
+          ansible_user: deploy
+
+    db_servers:
+      hosts:
+        db01:
+          ansible_host: "{{ lookup('env', 'DB01_HOST') }}"
+          ansible_user: deploy
+
+    app_servers:
+      hosts:
+        app01:
+          ansible_host: "{{ lookup('env', 'APP01_HOST') }}"
+          ansible_user: deploy
+        app02:
+          ansible_host: "{{ lookup('env', 'APP02_HOST') }}"
+          ansible_user: deploy
