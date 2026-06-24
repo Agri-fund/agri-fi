@@ -292,8 +292,7 @@ export class TradeDealsService {
         await this.stellarService.createEscrowAccount(dealId);
 
       // Encrypt the escrow secret
-      const encryptedEscrowSecret =
-        this.stellarService.encryptSecret(escrowSecretKey);
+      const encryptedEscrowSecret = await this.stellarService.encryptSecret(escrowSecretKey);
 
       // Update deal with escrow data
       await this.tradeDealRepo.update(dealId, {

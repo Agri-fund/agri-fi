@@ -10,6 +10,7 @@ import { ConfigService } from '@nestjs/config';
 import { StellarHistory } from './entities/stellar-history.entity';
 import { StellarArchiverService } from './stellar-archiver.service';
 import { StellarMonitorService } from './stellar-monitor.service';
+import { KmsService } from '../kms/kms.service';
 
 @Global()
 @Module({
@@ -31,9 +32,10 @@ import { StellarMonitorService } from './stellar-monitor.service';
         return createClient({ url: redisUrl });
       },
     },
+    KmsService,
+    StellarArchiverService,
+    StellarMonitorService,
   ],
-  exports: [StellarService, PricesService],
-  providers: [StellarService, StellarArchiverService, StellarMonitorService],
-  exports: [StellarService],
+  exports: [StellarService, PricesService, KmsService],
 })
 export class StellarModule {}
