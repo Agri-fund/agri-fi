@@ -18,7 +18,8 @@ export class DatabaseConfig implements TypeOrmOptionsFactory {
       entities: [join(__dirname, '..', '**', '*.entity.{ts,js}')],
       migrations: [join(__dirname, 'migrations', '*.{ts,js}')],
       synchronize: false,
-      logging: this.config.get<string>('NODE_ENV') === 'development',
+      // pgAudit requires queries to be logged to CloudWatch in production
+      logging: this.config.get<string>('NODE_ENV') === 'development' ? 'all' : ['query', 'error'],
     };
   }
 }

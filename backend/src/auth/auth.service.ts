@@ -3,6 +3,7 @@ import {
   ConflictException,
   UnauthorizedException,
   NotFoundException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -14,6 +15,7 @@ import { KycSubmission } from './entities/kyc-submission.entity';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { KycDto } from './dto/kyc.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { QueueService } from '../queue/queue.service';
 import { JwtPayload } from './jwt.strategy';
 
@@ -288,6 +290,29 @@ export class AuthService {
     user.tokenVersion = (user.tokenVersion ?? 0) + 1;
     const saved = await this.userRepo.save(user);
     return { id: saved.id, role: saved.role };
+  }
+
+  async changePassword(
+    userId: string,
+    dto: ChangePasswordDto,
+  ): Promise<{ message: string }> {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found.');
+
+    const valid = await bcrypt.compare(dto.currentPassword, user.passwordHash);
+    if (!valid) throw new BadRequestException('Current password is incorrect.');
+
+    if (dto.currentPassword === dto.newPassword) {
+      throw new BadRequestException(
+        'New password must differ from the current password.',
+      );
+    }
+
+    user.passwordHash = await bcrypt.hash(dto.newPassword, 10);
+    user.tokenVersion = (user.tokenVersion ?? 0) + 1;
+    await this.userRepo.save(user);
+
+    return { message: 'Password updated. All active sessions have been invalidated.' };
   }
 
   async logout(userId: string): Promise<{ message: string }> {

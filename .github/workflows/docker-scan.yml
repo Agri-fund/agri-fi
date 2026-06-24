@@ -1,0 +1,78 @@
+name: Docker Image Security Scan
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "backend/Dockerfile"
+      - "frontend/Dockerfile"
+      - ".github/workflows/docker-scan.yml"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "backend/Dockerfile"
+      - "frontend/Dockerfile"
+      - ".github/workflows/docker-scan.yml"
+  workflow_dispatch: {}
+
+jobs:
+  trivy-scan:
+    name: Trivy Container Vulnerability Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write   # Required to upload SARIF results to GitHub Security tab
+
+    strategy:
+      fail-fast: true           # Halt all matrix jobs if any critical vuln is found
+      matrix:
+        include:
+          - context: ./backend
+            image: agri-fi-backend
+            dockerfile: backend/Dockerfile
+          - context: ./frontend
+            image: agri-fi-frontend
+            dockerfile: frontend/Dockerfile
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ------------------------------------------------------------------ #
+      # Build the Docker image so Trivy has a local image to scan           #
+      # ------------------------------------------------------------------ #
+      - name: Build Docker image (${{ matrix.image }})
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: false
+          tags: ${{ matrix.image }}:scan-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # ------------------------------------------------------------------ #
+      # Run Trivy — halt on CRITICAL findings                               #
+      # ------------------------------------------------------------------ #
+      - name: Run Trivy vulnerability scan (${{ matrix.image }})
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: "${{ matrix.image }}:scan-${{ github.sha }}"
+          format: "sarif"
+          output: "trivy-results-${{ matrix.image }}.sarif"
+          # EXIT_CODE 1 causes the step — and therefore the job — to fail,
+          # which blocks deployment when critical vulnerabilities are found.
+          exit-code: "1"
+          ignore-unfixed: false
+          vuln-type: "os,library"
+          severity: "CRITICAL"
+
+      # ------------------------------------------------------------------ #
+      # Upload SARIF to the GitHub Security tab (runs even on failure)      #
+      # ------------------------------------------------------------------ #
+      - name: Upload Trivy SARIF to GitHub Security tab (${{ matrix.image }})
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: "trivy-results-${{ matrix.image }}.sarif"
+          category: "trivy-${{ matrix.image }}"

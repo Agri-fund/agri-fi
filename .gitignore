@@ -35,3 +35,11 @@ secrets.json
 # OS-specific files with sensitive data
 Desktop.ini
 .DS_Store
+# Environment files
+.env
+.env.local
+.env.*.local
+!.env.example
+!.env.vault
+issue.md
+pr.md

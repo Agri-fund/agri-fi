@@ -80,8 +80,10 @@ export class QueueProcessor {
       }
 
       // Update deal with issuer keys and status to open
+      const appTraceId = `app-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 10)}`;
       await this.tradeDealRepo.update(data.dealId, {
         status: 'open',
+        appTraceId,
         stellarAssetTxId: result.txId,
         issuerPublicKey: result.issuerPublicKey,
         issuerSecretKey: encryptedIssuerSecret,
@@ -107,7 +109,8 @@ export class QueueProcessor {
       );
 
       // On Stellar failure: mark deal status = 'failed'
-      await this.tradeDealRepo.update(data.dealId, { status: 'failed' });
+      const appTraceId = `app-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 10)}`;
+      await this.tradeDealRepo.update(data.dealId, { status: 'failed', appTraceId });
     }
 
     // Acknowledge the message
