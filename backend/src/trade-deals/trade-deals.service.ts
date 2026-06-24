@@ -134,6 +134,10 @@ export class TradeDealsService {
     const limit = query.limit ?? 12;
     const skip = (page - 1) * limit;
 
+    if (query.commodity && !/^[a-zA-Z0-9 _-]{1,100}$/.test(query.commodity)) {
+      throw new BadRequestException('Invalid commodity search term.');
+    }
+
     const qb = this.tradeDealRepo
       .createQueryBuilder('deal')
       .where('deal.status = :status', { status: 'open' })
