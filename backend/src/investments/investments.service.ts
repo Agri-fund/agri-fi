@@ -260,10 +260,12 @@ export class InvestmentsService {
       });
 
       if (newTotalInvested >= Number(tradeDeal.totalValue)) {
+        // Generate application trace ID for authorized update
+        const appTraceId = `app-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 10)}`;
         const result = await manager.update(
           TradeDeal,
           { id: tradeDeal.id, status: 'open' as TradeDealStatus },
-          { status: 'funded' as TradeDealStatus },
+          { status: 'funded' as TradeDealStatus, appTraceId },
         );
         becameFunded = (result.affected ?? 0) > 0;
       }
