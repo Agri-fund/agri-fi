@@ -3,6 +3,7 @@ import {
   PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
+  DeleteDateColumn,
 } from 'typeorm';
 import { ApiProperty } from '@nestjs/swagger';
 import { Exclude } from 'class-transformer';
@@ -108,4 +109,7 @@ export class User {
     example: '2024-01-15T10:30:00Z',
   })
   createdAt: Date;
+
+  @DeleteDateColumn({ name: 'deleted_at', nullable: true })
+  deletedAt: Date | null;
 }

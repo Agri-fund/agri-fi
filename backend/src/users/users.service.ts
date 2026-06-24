@@ -2,9 +2,11 @@ import {
   Injectable,
   ForbiddenException,
   NotFoundException,
+  ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, In } from 'typeorm';
+import { randomBytes } from 'crypto';
 import { User, UserRole } from '../auth/entities/user.entity';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
 import { Investment } from '../investments/entities/investment.entity';
@@ -169,5 +171,47 @@ export class UsersService {
         };
       }),
     );
+  }
+
+  async deleteAccount(userId: string): Promise<{ message: string }> {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found.');
+
+    // Check for active trade deals as farmer or trader
+    const activeStatuses = ['draft', 'open', 'funded', 'delivered'];
+    const activeDeal = await this.tradeDealRepository.findOne({
+      where: [
+        { farmerId: userId, status: In(activeStatuses) as any },
+        { traderId: userId, status: In(activeStatuses) as any },
+      ],
+    });
+    if (activeDeal) {
+      throw new ConflictException(
+        'Cannot delete account with active trade deals.',
+      );
+    }
+
+    // Check for unresolved investments (pending or confirmed on active deals)
+    const unresolvedInvestment = await this.investmentRepository.findOne({
+      where: { investorId: userId, status: In(['pending', 'confirmed']) as any },
+    });
+    if (unresolvedInvestment) {
+      throw new ConflictException(
+        'Cannot delete account with unresolved investments.',
+      );
+    }
+
+    // Anonymize PII
+    const hash = randomBytes(8).toString('hex');
+    user.email = `deleted-${hash}@anon.invalid`;
+    user.walletAddress = null;
+    user.companyDetails = null;
+    user.tokenVersion = (user.tokenVersion ?? 0) + 1; // invalidate sessions
+    await this.userRepository.save(user);
+
+    // Soft-delete
+    await this.userRepository.softDelete(userId);
+
+    return { message: 'Account anonymized and scheduled for deletion.' };
   }
 }
