@@ -8,6 +8,8 @@ import {
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { applySecurityHeaders } from './common/middleware/security-headers.middleware';
+import * as cookieParser from 'cookie-parser';
+import * as csrf from 'csurf';
 
 async function bootstrap() {
   // rawBody: true preserves the unparsed request buffer on req.rawBody,
@@ -15,6 +17,19 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, { rawBody: true });
 
   app.use(applySecurityHeaders);
+
+  // Cookie parser is required by csurf
+  app.use(cookieParser());
+
+  // CSRF protection for cookie-based (session) endpoints.
+  // JWT-only routes are unaffected; the token is exposed via GET /csrf-token.
+  const csrfProtection = csrf({ cookie: { httpOnly: true, sameSite: 'strict' } });
+  app.use(csrfProtection);
+
+  // Expose CSRF token so clients can fetch it before mutating requests
+  app.use('/csrf-token', (req: any, res: any) => {
+    res.json({ csrfToken: req.csrfToken() });
+  });
 
   app.useGlobalPipes(
     new ValidationPipe({

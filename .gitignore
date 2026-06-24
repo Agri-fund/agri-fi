@@ -1,10 +1,53 @@
+# Kiro
 .kiro
+
+# Dependencies
 node_modules
 */node_modules
+
+# Build output
 dist
 build
 .next
-.eslintcache
-*.log
+out
 
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+logs/
+
+# Test artifacts
+coverage/
+__snapshots__/
+*.snap
+*.lcov
+junit.xml
+test-results/
+
+# Cache
+.eslintcache
+.tsbuildinfo
+*.tsbuildinfo
+.turbo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temp
+/tmp
+*.pgdump
+*.pgdump.enc
+
+# Misc
 fix.md
