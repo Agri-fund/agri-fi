@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { PinoLogger } from 'nestjs-pino';
+import axios from 'axios';
 import { TransactionLog, TxStatus } from './entities/transaction-log.entity';
 import { KmsService } from '../kms/kms.service';
 import {
@@ -86,6 +87,45 @@ export class StellarService {
     );
   }
 
+  private async fundAccountWithFriendbot(publicKey: string): Promise<void> {
+    const isDevelopmentEnv =
+      process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'dev';
+    const isTestnet = this.networkPassphrase === Networks.TESTNET;
+
+    if (!isDevelopmentEnv || !isTestnet) {
+      return;
+    }
+
+    const friendbotUrl = `https://friendbot.stellar.org?addr=${encodeURIComponent(publicKey)}`;
+    const maxAttempts = 3;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        await axios.get(friendbotUrl, { timeout: 10000 });
+        this.logger.info({ publicKey }, 'Funded Stellar account via Friendbot');
+        return;
+      } catch (error: any) {
+        const status = error?.response?.status;
+        const isRateLimited = status === 429 || status === 503;
+
+        if (attempt < maxAttempts && isRateLimited) {
+          this.logger.warn(
+            { publicKey, attempt, status, message: error?.message },
+            'Friendbot rate limited, retrying funding request',
+          );
+          await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
+          continue;
+        }
+
+        this.logger.warn(
+          { publicKey, attempt, status, message: error?.message },
+          'Friendbot funding request failed; continuing without funding',
+        );
+        return;
+      }
+    }
+  }
+
   /**
    * Persists a transaction audit record. Never throws — failures are logged only.
    */
@@ -113,6 +153,7 @@ export class StellarService {
     tradeDealId: string,
   ): Promise<{ publicKey: string; secretKey: string }> {
     const escrowKeypair = Keypair.random();
+    await this.fundAccountWithFriendbot(escrowKeypair.publicKey());
 
     const platformAccount = await this.server.loadAccount(
       this.platformKeypair.publicKey(),
@@ -188,6 +229,7 @@ export class StellarService {
   ): Promise<{ txId: string; issuerPublicKey: string; issuerSecret: string }> {
     // Generate a fresh issuer keypair for this deal
     const issuerKeypair = Keypair.random();
+    await this.fundAccountWithFriendbot(issuerKeypair.publicKey());
 
     // Fund the issuer account via platform account
     const platformAccount = await this.server.loadAccount(
