@@ -60,12 +60,7 @@ export class AuthController {
   }
 
   @Post('login')
-  @Throttle({
-    default: {
-      limit: parseInt(process.env.RATE_LIMIT_LOGIN || '5'),
-      ttl: parseInt(process.env.RATE_LIMIT_TTL || '60000'),
-    },
-  })
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @ApiOperation({ summary: 'Authenticate and receive a JWT' })
   @ApiResponse({ status: 200, description: 'Returns access and refresh JWTs' })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })

@@ -9,11 +9,15 @@ import {
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { applySecurityHeaders } from './common/middleware/security-headers.middleware';
+import { CustomLogger } from './common/logger/custom-logger.service';
 
 async function bootstrap() {
   // rawBody: true preserves the unparsed request buffer on req.rawBody,
   // which is required by WebhookSignatureGuard for HMAC verification.
-  const app = await NestFactory.create(AppModule, { rawBody: true });
+  const app = await NestFactory.create(AppModule, {
+    rawBody: true,
+    logger: new CustomLogger(),
+  });
 
   app.getHttpAdapter().getInstance().disable('x-powered-by');
 app.use(helmet({
