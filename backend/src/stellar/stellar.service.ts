@@ -35,6 +35,17 @@ export interface InvestorShare {
   totalTokens: number;
 }
 
+export interface SignatureValidationResult {
+  valid: boolean;
+  /** Public key that was checked */
+  publicKey: string;
+  /** Number of signatures found on the envelope */
+  signatureCount: number;
+  /** Index of the matching signature, or -1 if none matched */
+  matchedSignatureIndex: number;
+  error?: string;
+}
+
 @Injectable()
 export class StellarService implements OnModuleInit, OnModuleDestroy {
   private readonly server: Horizon.Server;
@@ -875,6 +886,107 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     tx.sign(signerKeypair);
     const result = await this.submitWithRetry(tx);
     return (result as any).hash as string;
+  }
+
+  /**
+   * Validates that an XDR transaction envelope carries a valid Ed25519 signature
+   * from the given public key, without submitting to the network.
+   *
+   * Steps:
+   *  1. Decode the XDR envelope and compute the transaction hash (the actual
+   *     payload that signers sign, which includes the network passphrase).
+   *  2. Derive the 4-byte key hint from the supplied public key.
+   *  3. Walk the envelope's decorator signatures; find the one whose hint matches
+   *     and cryptographically verify it with Keypair.verify().
+   *
+   * Returns a SignatureValidationResult so callers can surface precise errors to
+   * the user without an unnecessary round-trip to Horizon.
+   */
+  validateTransactionSignatures(
+    signedXdr: string,
+    expectedPublicKey: string,
+  ): SignatureValidationResult {
+    const base: Omit<SignatureValidationResult, 'valid'> = {
+      publicKey: expectedPublicKey,
+      signatureCount: 0,
+      matchedSignatureIndex: -1,
+    };
+
+    let keypair: Keypair;
+    try {
+      keypair = Keypair.fromPublicKey(expectedPublicKey);
+    } catch {
+      return {
+        ...base,
+        valid: false,
+        error: `Invalid public key: "${expectedPublicKey}" is not a valid Stellar ed25519 public key.`,
+      };
+    }
+
+    let tx: ReturnType<typeof TransactionBuilder.fromXDR>;
+    try {
+      tx = TransactionBuilder.fromXDR(signedXdr, this.networkPassphrase);
+    } catch {
+      return {
+        ...base,
+        valid: false,
+        error: 'Failed to parse XDR envelope. Ensure the transaction was built for the correct network.',
+      };
+    }
+
+    const signatures = tx.signatures;
+    base.signatureCount = signatures.length;
+
+    if (signatures.length === 0) {
+      return {
+        ...base,
+        valid: false,
+        error: 'Transaction envelope contains no signatures.',
+      };
+    }
+
+    // The payload that was signed: SHA-256(network_passphrase_hash || tx_hash_prefix || tx_body)
+    const txHash = tx.hash();
+    const expectedHint = keypair.signatureHint();
+
+    for (let i = 0; i < signatures.length; i++) {
+      const decoratedSig = signatures[i];
+      const hint = decoratedSig.hint();
+
+      // Quick hint check before expensive verify
+      if (!hint.equals(expectedHint)) {
+        continue;
+      }
+
+      const signatureBytes = decoratedSig.signature();
+      const isValid = keypair.verify(txHash, signatureBytes);
+
+      if (isValid) {
+        this.logger.info(
+          { publicKey: expectedPublicKey, signatureIndex: i },
+          'Transaction signature validated successfully',
+        );
+        return {
+          ...base,
+          valid: true,
+          matchedSignatureIndex: i,
+        };
+      }
+
+      // Hint matched but bytes failed — report immediately
+      return {
+        ...base,
+        valid: false,
+        matchedSignatureIndex: i,
+        error: `Signature at index ${i} has a matching hint for key ${expectedPublicKey} but failed cryptographic verification. The transaction may have been tampered with.`,
+      };
+    }
+
+    return {
+      ...base,
+      valid: false,
+      error: `No signature found for public key ${expectedPublicKey}. The transaction has ${signatures.length} signature(s) but none match this key's hint.`,
+    };
   }
 
   /**
