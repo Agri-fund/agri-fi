@@ -59,6 +59,11 @@ export class DocumentsController {
           type: 'string',
           example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
         },
+        signature_asc: {
+          type: 'string',
+          description:
+            'Optional detached PGP/GnuPG armored signature of the file, issued by a trusted certifying authority',
+        },
       },
     },
   })
@@ -75,7 +80,8 @@ export class DocumentsController {
   @ApiResponse({ status: 429, description: 'Too Many Requests – IPFS proxy limit is 20 per minute' })
   async uploadDocument(
     @UploadedFile() file: Express.Multer.File,
-    @Body() body: { doc_type: string; trade_deal_id: string },
+    @Body()
+    body: { doc_type: string; trade_deal_id: string; signature_asc?: string },
     @Request() req: AuthRequest,
   ) {
     if (!file) throw new BadRequestException('File is required');
@@ -102,6 +108,7 @@ export class DocumentsController {
       docType: body.doc_type,
       tradeDealId: body.trade_deal_id,
       userId: req.user.id,
+      signatureAsc: body.signature_asc,
     });
 
     this.ipfsCache.set(contentKey, result);

@@ -1,9 +1,16 @@
-import { Injectable } from '@nestjs/common';
+import {
+  Injectable,
+  Inject,
+  OnModuleDestroy,
+  OnModuleInit,
+  Optional,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { PinoLogger } from 'nestjs-pino';
 import { TransactionLog, TxStatus } from './entities/transaction-log.entity';
+import { KmsService } from '../kms/kms.service';
 import {
   Horizon,
   Keypair,
@@ -13,14 +20,14 @@ import {
   Asset,
   BASE_FEE,
   Memo,
+  Transaction,
 } from '@stellar/stellar-sdk';
+import { RedisClientType } from 'redis';
 import { createAsset } from './utils/asset-helper';
-import {
-  createDecipheriv,
-  createCipheriv,
-  randomBytes,
-  createHash,
-} from 'crypto';
+
+export const SEQUENCE_REDIS_CLIENT = 'SEQUENCE_REDIS_CLIENT';
+const SEQUENCE_CACHE_TTL = 5; // seconds
+
 
 export interface InvestorShare {
   walletAddress: string;
@@ -28,19 +35,38 @@ export interface InvestorShare {
   totalTokens: number;
 }
 
+export interface SignatureValidationResult {
+  valid: boolean;
+  /** Public key that was checked */
+  publicKey: string;
+  /** Number of signatures found on the envelope */
+  signatureCount: number;
+  /** Index of the matching signature, or -1 if none matched */
+  matchedSignatureIndex: number;
+  error?: string;
+}
+
 @Injectable()
-export class StellarService {
+export class StellarService implements OnModuleInit, OnModuleDestroy {
   private readonly server: Horizon.Server;
   private readonly networkPassphrase: string;
   private readonly platformKeypair: Keypair;
   private readonly usdcAsset: Asset;
+  private readonly localSequenceCache: Map<string, { seq: string; expiresAt: number }>;
+  private readonly enableSequenceCache: boolean;
 
   constructor(
     private readonly config: ConfigService,
     private readonly logger: PinoLogger,
     @InjectRepository(TransactionLog)
     private readonly txLogRepo: Repository<TransactionLog>,
+    private readonly kmsService: KmsService,
+    @Optional()
+    @Inject(SEQUENCE_REDIS_CLIENT)
+    private readonly sequenceRedis: RedisClientType | null,
   ) {
+    this.localSequenceCache = new Map();
+    this.enableSequenceCache = true;
     this.logger.setContext(StellarService.name);
 
     const horizonUrl = config.get<string>(
@@ -49,7 +75,7 @@ export class StellarService {
     );
     const network = config.get<string>('STELLAR_NETWORK', 'testnet');
 
-    this.server = new Horizon.Server(horizonUrl);
+    this.server = new Horizon.Server(horizonUrl, { timeout: 30000 });
     this.networkPassphrase =
       network === 'mainnet' ? Networks.PUBLIC : Networks.TESTNET;
 
@@ -68,16 +94,9 @@ export class StellarService {
       ? Keypair.fromSecret(platformSecret)
       : Keypair.random();
 
-    // Validate ENCRYPTION_KEY presence (except in test environment)
-    const encryptionKey = config.get<string>('ENCRYPTION_KEY', '');
-    if (!encryptionKey && process.env.NODE_ENV !== 'test') {
-      throw new Error(
-        'ENCRYPTION_KEY is required in production and development environments',
-      );
-    }
-    if (!encryptionKey && process.env.NODE_ENV === 'test') {
-      this.logger.warn('ENCRYPTION_KEY is not set; using empty key for tests');
-    }
+    // Removed ENCRYPTION_KEY validation as KMS handles encryption.
+    // Ensure KMS_KEY_ID is set via environment.
+
 
     const usdcAssetCode = config.get<string>('USDC_ASSET_CODE', 'USDC');
     const usdcIssuer = config.get<string>('USDC_ISSUER', '');
@@ -94,6 +113,189 @@ export class StellarService {
       },
       `StellarService initialized on ${network}`,
     );
+  }
+
+  async onModuleInit(): Promise<void> {
+    await this.connectRedis();
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    this.localSequenceCache.clear();
+    if (this.sequenceRedis?.isOpen) {
+      await this.sequenceRedis.quit();
+    }
+  }
+
+  private async connectRedis(): Promise<void> {
+    if (!this.sequenceRedis || this.sequenceRedis.isOpen) {
+      return;
+    }
+    await this.sequenceRedis.connect();
+  }
+
+  private cacheSeqKey(publicKey: string): string {
+    return `stellar:seq:${publicKey}`;
+  }
+
+  private async getCachedSequence(publicKey: string): Promise<string | null> {
+    const now = Date.now();
+    const local = this.localSequenceCache.get(publicKey);
+    if (local && now < local.expiresAt) {
+      return local.seq;
+    }
+    this.localSequenceCache.delete(publicKey);
+
+    if (this.sequenceRedis) {
+      try {
+        const raw = await this.sequenceRedis.get(this.cacheSeqKey(publicKey));
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          this.localSequenceCache.set(publicKey, {
+            seq: parsed.seq,
+            expiresAt: now + SEQUENCE_CACHE_TTL * 1000,
+          });
+          return parsed.seq;
+        }
+      } catch {
+        // Redis failure — fall back to local
+      }
+    }
+    return null;
+  }
+
+  private async setCachedSequence(publicKey: string, seq: string): Promise<void> {
+    const expiresAt = Date.now() + SEQUENCE_CACHE_TTL * 1000;
+    this.localSequenceCache.set(publicKey, { seq, expiresAt });
+
+    if (this.sequenceRedis) {
+      try {
+        await this.sequenceRedis.setEx(
+          this.cacheSeqKey(publicKey),
+          SEQUENCE_CACHE_TTL,
+          JSON.stringify({ seq }),
+        );
+      } catch {
+        // Redis failure — local cache is sufficient
+      }
+    }
+  }
+
+  private async invalidateCachedSequence(publicKey: string): Promise<void> {
+    this.localSequenceCache.delete(publicKey);
+    if (this.sequenceRedis) {
+      try {
+        await this.sequenceRedis.del(this.cacheSeqKey(publicKey));
+      } catch {
+        // best-effort
+      }
+    }
+  }
+
+  /**
+   * Loads a Stellar account, preferring cached sequence numbers.
+   */
+  async loadAccountCached(publicKey: string): Promise<Horizon.AccountResponse> {
+    const cachedSeq = await this.getCachedSequence(publicKey);
+    if (cachedSeq) {
+      try {
+        const account = await this.server.loadAccount(publicKey);
+        const liveSeq = account.sequenceNumber();
+        if (liveSeq === cachedSeq) {
+          return account;
+        }
+        await this.setCachedSequence(publicKey, liveSeq);
+        return account;
+      } catch {
+        // Fall through to fresh load
+      }
+    }
+
+    const account = await this.server.loadAccount(publicKey);
+    await this.setCachedSequence(publicKey, account.sequenceNumber());
+    return account;
+  }
+
+  /**
+   * Increments the locally-cached sequence number so subsequent pooled
+   * transactions can use the next sequence without re-fetching from Horizon.
+   */
+  private async incrementLocalSequence(publicKey: string): Promise<void> {
+    const current = this.localSequenceCache.get(publicKey);
+    if (current) {
+      const nextSeq = (BigInt(current.seq) + 1n).toString();
+      await this.setCachedSequence(publicKey, nextSeq);
+    }
+  }
+
+  /**
+   * Validates a transaction envelope XDR before submission.
+   * Asserts only expected operations are present and destination
+   * addresses match active deal escrows.
+   */
+  async validateTransactionXdr(
+    signedXdr: string,
+    allowedOpTypes: string[] = ['payment', 'changeTrust'],
+    allowedDestinations?: string[],
+  ): Promise<{ valid: boolean; reason?: string }> {
+    let tx: Transaction;
+    try {
+      tx = TransactionBuilder.fromXDR(signedXdr, this.networkPassphrase);
+    } catch {
+      return { valid: false, reason: 'Invalid XDR: could not decode transaction' };
+    }
+
+    const opTypeMap: Record<number, string> = {
+      1: 'createAccount',
+      2: 'payment',
+      3: 'pathPaymentStrictReceive',
+      4: 'manageSellOffer',
+      5: 'createPassiveSellOffer',
+      6: 'setOptions',
+      7: 'changeTrust',
+      8: 'allowTrust',
+      9: 'accountMerge',
+      10: 'inflation',
+      11: 'manageData',
+      12: 'bumpSequence',
+      13: 'manageBuyOffer',
+      14: 'pathPaymentStrictSend',
+      15: 'claimClaimableBalance',
+      16: 'beginSponsoringFutureReserves',
+      17: 'endSponsoringFutureReserves',
+      18: 'revokeSponsorship',
+      19: 'clawback',
+      20: 'clawbackClaimableBalance',
+      21: 'setTrustLineFlags',
+      22: 'liquidityPoolDeposit',
+      23: 'liquidityPoolWithdraw',
+    };
+
+    const allowedSet = new Set(allowedOpTypes.map((t) => t.toLowerCase()));
+
+    for (const op of tx.operations) {
+      const opName = opTypeMap[op.type] ?? `unknown_${op.type}`;
+      if (!allowedSet.has(opName)) {
+        return {
+          valid: false,
+          reason: `Operation type '${opName}' is not allowed. Allowed: ${allowedOpTypes.join(', ')}`,
+        };
+      }
+
+      if (
+        allowedDestinations &&
+        (opName === 'payment' || opName === 'createAccount')
+      ) {
+        const dest = (op as any).destination;
+        if (dest && !allowedDestinations.includes(dest)) {
+          return {
+            valid: false,
+            reason: `Destination ${dest} is not in the allowed escrow list`,
+          };
+        }
+      }
+    }
+
+    return { valid: true };
   }
 
   /**
@@ -396,47 +598,15 @@ export class StellarService {
   /**
    * Encrypts a secret key using AES-256-CBC with the ENCRYPTION_KEY env var.
    */
-  encryptSecret(secret: string): string {
-    const key = Buffer.from(
-      (() => {
-        const rawKey = this.config.get<string>('ENCRYPTION_KEY', '');
-        if (!rawKey) {
-          throw new Error('ENCRYPTION_KEY is not set');
-        }
-        // Expect a 64‑character hex string (32 bytes)
-        return Buffer.from(rawKey, 'hex');
-      })(),
-    );
-    const iv = randomBytes(16);
-    const cipher = createCipheriv('aes-256-cbc', key, iv);
-    const encrypted = Buffer.concat([
-      cipher.update(secret, 'utf8'),
-      cipher.final(),
-    ]);
-    return `${iv.toString('hex')}:${encrypted.toString('hex')}`;
+  async encryptSecret(secret: string): Promise<string> {
+    return this.kmsService.encrypt(secret);
   }
 
   /**
    * Decrypts a secret key encrypted by encryptSecret().
    */
-  decryptSecret(encryptedSecret: string): string {
-    const key = Buffer.from(
-      (() => {
-        const rawKey = this.config.get<string>('ENCRYPTION_KEY', '');
-        if (!rawKey) {
-          throw new Error('ENCRYPTION_KEY is not set');
-        }
-        return Buffer.from(rawKey, 'hex');
-      })(),
-    );
-    const [ivHex, encryptedHex] = encryptedSecret.split(':');
-    const iv = Buffer.from(ivHex, 'hex');
-    const encrypted = Buffer.from(encryptedHex, 'hex');
-    const decipher = createDecipheriv('aes-256-cbc', key, iv);
-    return Buffer.concat([
-      decipher.update(encrypted),
-      decipher.final(),
-    ]).toString('utf8');
+  async decryptSecret(encryptedSecret: string): string {
+    return this.kmsService.decrypt(encryptedSecret);
   }
 
   /**
@@ -485,9 +655,9 @@ export class StellarService {
       const batchStart = batchIdx * BATCH_SIZE;
       const batch = investorShares.slice(batchStart, batchStart + BATCH_SIZE);
 
-      const batchAccount = await this.server.loadAccount(
-        escrowKeypair.publicKey(),
-      );
+      const batchAccount = this.enableSequenceCache
+        ? await this.loadAccountCached(escrowKeypair.publicKey())
+        : await this.server.loadAccount(escrowKeypair.publicKey());
       const txBuilder = new TransactionBuilder(batchAccount, {
         fee: BASE_FEE,
         networkPassphrase: this.networkPassphrase,
@@ -519,13 +689,17 @@ export class StellarService {
 
         distributedToInvestors += shareStroops;
 
-        txBuilder.addOperation(
-          Operation.payment({
-            destination: share.walletAddress,
-            asset: this.usdcAsset,
-            amount: (shareStroops / 1e7).toFixed(7),
-          }),
-        );
+        // Ensure positive amount; skip zero-value payments
+        const shareAmount = (shareStroops / 1e7).toFixed(7);
+        if (parseFloat(shareAmount) > 0) {
+          txBuilder.addOperation(
+            Operation.payment({
+              destination: share.walletAddress,
+              asset: this.usdcAsset,
+              amount: shareAmount,
+            }),
+          );
+        }
       });
 
       if (batchIdx === batchCount - 1) {
@@ -540,6 +714,11 @@ export class StellarService {
 
       const tx = txBuilder.setTimeout(30).build();
       tx.sign(escrowKeypair);
+
+      // Increment local sequence for next batch
+      if (this.enableSequenceCache) {
+        await this.incrementLocalSequence(escrowKeypair.publicKey());
+      }
 
       try {
         const result = await this.submitWithRetry(tx);
@@ -707,6 +886,107 @@ export class StellarService {
     tx.sign(signerKeypair);
     const result = await this.submitWithRetry(tx);
     return (result as any).hash as string;
+  }
+
+  /**
+   * Validates that an XDR transaction envelope carries a valid Ed25519 signature
+   * from the given public key, without submitting to the network.
+   *
+   * Steps:
+   *  1. Decode the XDR envelope and compute the transaction hash (the actual
+   *     payload that signers sign, which includes the network passphrase).
+   *  2. Derive the 4-byte key hint from the supplied public key.
+   *  3. Walk the envelope's decorator signatures; find the one whose hint matches
+   *     and cryptographically verify it with Keypair.verify().
+   *
+   * Returns a SignatureValidationResult so callers can surface precise errors to
+   * the user without an unnecessary round-trip to Horizon.
+   */
+  validateTransactionSignatures(
+    signedXdr: string,
+    expectedPublicKey: string,
+  ): SignatureValidationResult {
+    const base: Omit<SignatureValidationResult, 'valid'> = {
+      publicKey: expectedPublicKey,
+      signatureCount: 0,
+      matchedSignatureIndex: -1,
+    };
+
+    let keypair: Keypair;
+    try {
+      keypair = Keypair.fromPublicKey(expectedPublicKey);
+    } catch {
+      return {
+        ...base,
+        valid: false,
+        error: `Invalid public key: "${expectedPublicKey}" is not a valid Stellar ed25519 public key.`,
+      };
+    }
+
+    let tx: ReturnType<typeof TransactionBuilder.fromXDR>;
+    try {
+      tx = TransactionBuilder.fromXDR(signedXdr, this.networkPassphrase);
+    } catch {
+      return {
+        ...base,
+        valid: false,
+        error: 'Failed to parse XDR envelope. Ensure the transaction was built for the correct network.',
+      };
+    }
+
+    const signatures = tx.signatures;
+    base.signatureCount = signatures.length;
+
+    if (signatures.length === 0) {
+      return {
+        ...base,
+        valid: false,
+        error: 'Transaction envelope contains no signatures.',
+      };
+    }
+
+    // The payload that was signed: SHA-256(network_passphrase_hash || tx_hash_prefix || tx_body)
+    const txHash = tx.hash();
+    const expectedHint = keypair.signatureHint();
+
+    for (let i = 0; i < signatures.length; i++) {
+      const decoratedSig = signatures[i];
+      const hint = decoratedSig.hint();
+
+      // Quick hint check before expensive verify
+      if (!hint.equals(expectedHint)) {
+        continue;
+      }
+
+      const signatureBytes = decoratedSig.signature();
+      const isValid = keypair.verify(txHash, signatureBytes);
+
+      if (isValid) {
+        this.logger.info(
+          { publicKey: expectedPublicKey, signatureIndex: i },
+          'Transaction signature validated successfully',
+        );
+        return {
+          ...base,
+          valid: true,
+          matchedSignatureIndex: i,
+        };
+      }
+
+      // Hint matched but bytes failed — report immediately
+      return {
+        ...base,
+        valid: false,
+        matchedSignatureIndex: i,
+        error: `Signature at index ${i} has a matching hint for key ${expectedPublicKey} but failed cryptographic verification. The transaction may have been tampered with.`,
+      };
+    }
+
+    return {
+      ...base,
+      valid: false,
+      error: `No signature found for public key ${expectedPublicKey}. The transaction has ${signatures.length} signature(s) but none match this key's hint.`,
+    };
   }
 
   /**
@@ -1076,7 +1356,8 @@ export class StellarService {
         const status: number | undefined = err?.response?.status;
         const isTimeout =
           err?.code === 'ECONNABORTED' || err?.message?.includes('timeout');
-        const isRetryable = (status !== undefined && RETRYABLE.has(status)) || isTimeout;
+        const isRetryable =
+          (status !== undefined && RETRYABLE.has(status)) || isTimeout;
 
         if (!isRetryable || attempt === MAX_RETRIES) {
           throw err;
@@ -1094,8 +1375,26 @@ export class StellarService {
 
   /**
    * Submits a signed XDR transaction to the Stellar network.
+   * Optionally validates the XDR envelope before submission.
    */
-  async submitTransaction(signedXdr: string): Promise<any> {
+  async submitTransaction(
+    signedXdr: string,
+    validateOpts?: {
+      allowedOpTypes?: string[];
+      allowedDestinations?: string[];
+    },
+  ): Promise<any> {
+    if (validateOpts) {
+      const validation = await this.validateTransactionXdr(
+        signedXdr,
+        validateOpts.allowedOpTypes,
+        validateOpts.allowedDestinations,
+      );
+      if (!validation.valid) {
+        throw new Error(`XDR validation failed: ${validation.reason}`);
+      }
+    }
+
     const tx = TransactionBuilder.fromXDR(signedXdr, this.networkPassphrase);
     try {
       const result = await this.submitWithRetry(tx);
@@ -1197,7 +1496,7 @@ export class StellarService {
   ): Promise<void> {
     const issuerKeypair = Keypair.fromSecret(issuerSecret);
     const issuerAccount = await this.server.loadAccount(issuerPublicKey);
-    
+
     if (!issuerAccount.flags.auth_clawback_enabled) {
       throw new Error('Token does not have clawback enabled');
     }

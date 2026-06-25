@@ -44,8 +44,16 @@ export class CreateInvestmentDto {
     description:
       'Originator and beneficiary metadata for FATF Travel Rule readiness on large transfers.',
     example: {
-      originator: { name: 'Ada Investor', walletAddress: 'GINVESTOR...' },
-      beneficiary: { name: 'Agri-Fi Escrow', walletAddress: 'GESCROW...' },
+      originator: {
+        name: 'Ada Investor',
+        address: '1 Market Street, Nairobi',
+        accountNumber: 'GINVESTOR...',
+      },
+      beneficiary: {
+        name: 'Agri-Fi Escrow',
+        address: '1 Finance Avenue, Nairobi',
+        accountNumber: 'GESCROW...',
+      },
     },
   })
   @IsOptional()

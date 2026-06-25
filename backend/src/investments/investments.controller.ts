@@ -24,7 +24,8 @@ import { Throttle } from '@nestjs/throttler';
 import { InvestmentsService } from './investments.service';
 import { CreateInvestmentDto } from './dto/create-investment.dto';
 import { KycGuard } from '../auth/kyc.guard';
-import { Roles, RolesGuard } from '../auth/roles.guard';
+import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
 import { StellarService } from '../stellar/stellar.service';
 import { PaginatedResult } from '../common/pagination';
 
