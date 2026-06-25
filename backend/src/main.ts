@@ -16,6 +16,25 @@ async function bootstrap() {
 
   app.getHttpAdapter().getInstance().disable('x-powered-by');
 
+  // DNS rebinding protection: reject requests whose Host header does not match
+  // a known domain. /health is exempted so kubelet liveness/readiness probes
+  // (which use the pod IP as Host) never get blocked.
+  const allowedHosts = (process.env.ALLOWED_HOSTS ?? 'localhost')
+    .split(',')
+    .map((h) => h.trim().toLowerCase());
+
+  app.use((req: any, res: any, next: () => void) => {
+    if (req.path === '/health' || req.path === '/v1/health') {
+      return next();
+    }
+    const host = (req.headers['host'] ?? '').split(':')[0].toLowerCase();
+    if (!allowedHosts.includes(host)) {
+      res.status(421).end('Misdirected Request');
+      return;
+    }
+    next();
+  });
+
   app.use(applySecurityHeaders);
 
   app.useGlobalPipes(
