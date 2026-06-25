@@ -477,13 +477,17 @@ export class StellarService {
 
         distributedToInvestors += shareStroops;
 
-        txBuilder.addOperation(
-          Operation.payment({
-            destination: share.walletAddress,
-            asset: this.usdcAsset,
-            amount: (shareStroops / 1e7).toFixed(7),
-          }),
-        );
+        // Ensure positive amount; skip zero-value payments
+        const shareAmount = (shareStroops / 1e7).toFixed(7);
+        if (parseFloat(shareAmount) > 0) {
+          txBuilder.addOperation(
+            Operation.payment({
+              destination: share.walletAddress,
+              asset: this.usdcAsset,
+              amount: shareAmount,
+            }),
+          );
+        }
       });
 
       if (batchIdx === batchCount - 1) {
@@ -1034,7 +1038,8 @@ export class StellarService {
         const status: number | undefined = err?.response?.status;
         const isTimeout =
           err?.code === 'ECONNABORTED' || err?.message?.includes('timeout');
-        const isRetryable = (status !== undefined && RETRYABLE.has(status)) || isTimeout;
+        const isRetryable =
+          (status !== undefined && RETRYABLE.has(status)) || isTimeout;
 
         if (!isRetryable || attempt === MAX_RETRIES) {
           throw err;
@@ -1155,7 +1160,7 @@ export class StellarService {
   ): Promise<void> {
     const issuerKeypair = Keypair.fromSecret(issuerSecret);
     const issuerAccount = await this.server.loadAccount(issuerPublicKey);
-    
+
     if (!issuerAccount.flags.auth_clawback_enabled) {
       throw new Error('Token does not have clawback enabled');
     }
