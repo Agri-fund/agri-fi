@@ -46,7 +46,7 @@ export class StellarService {
     );
     const network = config.get<string>('STELLAR_NETWORK', 'testnet');
 
-    this.server = new Horizon.Server(horizonUrl);
+    this.server = new Horizon.Server(horizonUrl, { timeout: 30000 });
     this.networkPassphrase =
       network === 'mainnet' ? Networks.PUBLIC : Networks.TESTNET;
 
