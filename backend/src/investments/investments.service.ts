@@ -29,6 +29,13 @@ export interface CreateInvestmentResult {
 }
 
 const STELLAR_TX_HASH_PATTERN = /^[a-f0-9]{64}$/i;
+const TRAVEL_RULE_THRESHOLD_USD = 1000;
+
+type TravelRuleParty = {
+  name?: unknown;
+  address?: unknown;
+  accountNumber?: unknown;
+};
 
 @Injectable()
 export class InvestmentsService {
@@ -48,6 +55,8 @@ export class InvestmentsService {
     investorId: string,
     dto: CreateInvestmentDto,
   ): Promise<CreateInvestmentResult> {
+    this.assertTravelRuleCompliance(dto.amountUsd, dto.complianceData);
+
     // Load investor to get their wallet address for the XDR
     const investor = await this.userRepo.findOne({ where: { id: investorId } });
     if (!investor) {
@@ -161,6 +170,32 @@ export class InvestmentsService {
     return { investment, unsignedXdr };
   }
 
+  private assertTravelRuleCompliance(
+    amountUsd: number,
+    complianceData?: Record<string, unknown>,
+  ): void {
+    if (amountUsd <= TRAVEL_RULE_THRESHOLD_USD) return;
+
+    const hasRequiredFields = (party: unknown): party is TravelRuleParty => {
+      if (!party || typeof party !== 'object') return false;
+      const { name, address, accountNumber } = party as TravelRuleParty;
+      return [name, address, accountNumber].every(
+        (field) => typeof field === 'string' && field.trim().length > 0,
+      );
+    };
+
+    if (
+      !hasRequiredFields(complianceData?.originator) ||
+      !hasRequiredFields(complianceData?.beneficiary)
+    ) {
+      throw new BadRequestException({
+        code: 'TRAVEL_RULE_DATA_REQUIRED',
+        message:
+          'Investments above $1,000 require originator and beneficiary name, address, and account number.',
+      });
+    }
+  }
+
   async confirmInvestment(
     investorId: string,
     investmentId: string,
@@ -225,10 +260,12 @@ export class InvestmentsService {
       });
 
       if (newTotalInvested >= Number(tradeDeal.totalValue)) {
+        // Generate application trace ID for authorized update
+        const appTraceId = `app-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 10)}`;
         const result = await manager.update(
           TradeDeal,
           { id: tradeDeal.id, status: 'open' as TradeDealStatus },
-          { status: 'funded' as TradeDealStatus },
+          { status: 'funded' as TradeDealStatus, appTraceId },
         );
         becameFunded = (result.affected ?? 0) > 0;
       }

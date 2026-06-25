@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { PinoLogger } from 'nestjs-pino';
 import { TransactionLog, TxStatus } from './entities/transaction-log.entity';
+import { KmsService } from '../kms/kms.service';
 import {
   Horizon,
   Keypair,
@@ -15,12 +16,7 @@ import {
   Memo,
 } from '@stellar/stellar-sdk';
 import { createAsset } from './utils/asset-helper';
-import {
-  createDecipheriv,
-  createCipheriv,
-  randomBytes,
-  createHash,
-} from 'crypto';
+
 
 export interface InvestorShare {
   walletAddress: string;
@@ -40,6 +36,7 @@ export class StellarService {
     private readonly logger: PinoLogger,
     @InjectRepository(TransactionLog)
     private readonly txLogRepo: Repository<TransactionLog>,
+    private readonly kmsService: KmsService,
   ) {
     this.logger.setContext(StellarService.name);
 
@@ -68,16 +65,9 @@ export class StellarService {
       ? Keypair.fromSecret(platformSecret)
       : Keypair.random();
 
-    // Validate ENCRYPTION_KEY presence (except in test environment)
-    const encryptionKey = config.get<string>('ENCRYPTION_KEY', '');
-    if (!encryptionKey && process.env.NODE_ENV !== 'test') {
-      throw new Error(
-        'ENCRYPTION_KEY is required in production and development environments',
-      );
-    }
-    if (!encryptionKey && process.env.NODE_ENV === 'test') {
-      this.logger.warn('ENCRYPTION_KEY is not set; using empty key for tests');
-    }
+    // Removed ENCRYPTION_KEY validation as KMS handles encryption.
+    // Ensure KMS_KEY_ID is set via environment.
+
 
     const usdcAssetCode = config.get<string>('USDC_ASSET_CODE', 'USDC');
     const usdcIssuer = config.get<string>('USDC_ISSUER', '');
@@ -396,47 +386,15 @@ export class StellarService {
   /**
    * Encrypts a secret key using AES-256-CBC with the ENCRYPTION_KEY env var.
    */
-  encryptSecret(secret: string): string {
-    const key = Buffer.from(
-      (() => {
-        const rawKey = this.config.get<string>('ENCRYPTION_KEY', '');
-        if (!rawKey) {
-          throw new Error('ENCRYPTION_KEY is not set');
-        }
-        // Expect a 64‑character hex string (32 bytes)
-        return Buffer.from(rawKey, 'hex');
-      })(),
-    );
-    const iv = randomBytes(16);
-    const cipher = createCipheriv('aes-256-cbc', key, iv);
-    const encrypted = Buffer.concat([
-      cipher.update(secret, 'utf8'),
-      cipher.final(),
-    ]);
-    return `${iv.toString('hex')}:${encrypted.toString('hex')}`;
+  async encryptSecret(secret: string): Promise<string> {
+    return this.kmsService.encrypt(secret);
   }
 
   /**
    * Decrypts a secret key encrypted by encryptSecret().
    */
-  decryptSecret(encryptedSecret: string): string {
-    const key = Buffer.from(
-      (() => {
-        const rawKey = this.config.get<string>('ENCRYPTION_KEY', '');
-        if (!rawKey) {
-          throw new Error('ENCRYPTION_KEY is not set');
-        }
-        return Buffer.from(rawKey, 'hex');
-      })(),
-    );
-    const [ivHex, encryptedHex] = encryptedSecret.split(':');
-    const iv = Buffer.from(ivHex, 'hex');
-    const encrypted = Buffer.from(encryptedHex, 'hex');
-    const decipher = createDecipheriv('aes-256-cbc', key, iv);
-    return Buffer.concat([
-      decipher.update(encrypted),
-      decipher.final(),
-    ]).toString('utf8');
+  async decryptSecret(encryptedSecret: string): string {
+    return this.kmsService.decrypt(encryptedSecret);
   }
 
   /**
@@ -519,13 +477,17 @@ export class StellarService {
 
         distributedToInvestors += shareStroops;
 
-        txBuilder.addOperation(
-          Operation.payment({
-            destination: share.walletAddress,
-            asset: this.usdcAsset,
-            amount: (shareStroops / 1e7).toFixed(7),
-          }),
-        );
+        // Ensure positive amount; skip zero-value payments
+        const shareAmount = (shareStroops / 1e7).toFixed(7);
+        if (parseFloat(shareAmount) > 0) {
+          txBuilder.addOperation(
+            Operation.payment({
+              destination: share.walletAddress,
+              asset: this.usdcAsset,
+              amount: shareAmount,
+            }),
+          );
+        }
       });
 
       if (batchIdx === batchCount - 1) {
@@ -1076,7 +1038,8 @@ export class StellarService {
         const status: number | undefined = err?.response?.status;
         const isTimeout =
           err?.code === 'ECONNABORTED' || err?.message?.includes('timeout');
-        const isRetryable = (status !== undefined && RETRYABLE.has(status)) || isTimeout;
+        const isRetryable =
+          (status !== undefined && RETRYABLE.has(status)) || isTimeout;
 
         if (!isRetryable || attempt === MAX_RETRIES) {
           throw err;
@@ -1197,7 +1160,7 @@ export class StellarService {
   ): Promise<void> {
     const issuerKeypair = Keypair.fromSecret(issuerSecret);
     const issuerAccount = await this.server.loadAccount(issuerPublicKey);
-    
+
     if (!issuerAccount.flags.auth_clawback_enabled) {
       throw new Error('Token does not have clawback enabled');
     }

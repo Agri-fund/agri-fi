@@ -1,5 +1,6 @@
-import 'dotenv/config';
+import 'dotenv-vault/config';
 import { NestFactory } from '@nestjs/core';
+import helmet from 'helmet';
 import {
   ValidationPipe,
   BadRequestException,
@@ -13,6 +14,22 @@ async function bootstrap() {
   // rawBody: true preserves the unparsed request buffer on req.rawBody,
   // which is required by WebhookSignatureGuard for HMAC verification.
   const app = await NestFactory.create(AppModule, { rawBody: true });
+
+  app.getHttpAdapter().getInstance().disable('x-powered-by');
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "https:"],
+      imgSrc: ["'self'", "data:"],
+      connectSrc: ["'self'"],
+      fontSrc: ["'self'", "https:"],
+      objectSrc: ["'none'"],
+    },
+  },
+  frameguard: { action: 'deny' },
+}));
 
   app.use(applySecurityHeaders);
 

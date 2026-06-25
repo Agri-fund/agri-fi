@@ -9,6 +9,7 @@ import { RedisConfig } from '../config/redis.config';
 import { StellarHistory } from './entities/stellar-history.entity';
 import { StellarArchiverService } from './stellar-archiver.service';
 import { StellarMonitorService } from './stellar-monitor.service';
+import { KmsService } from '../kms/kms.service';
 
 @Global()
 @Module({
@@ -27,7 +28,10 @@ import { StellarMonitorService } from './stellar-monitor.service';
         return redisConfig.createClient();
       },
     },
+    KmsService,
+    StellarArchiverService,
+    StellarMonitorService,
   ],
-  exports: [StellarService, PricesService],
+  exports: [StellarService, PricesService, KmsService],
 })
 export class StellarModule {}
