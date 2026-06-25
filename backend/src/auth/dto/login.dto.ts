@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsString, IsNotEmpty } from 'class-validator';
+import { IsEmail, IsString, IsNotEmpty, IsOptional } from 'class-validator';
 
 export class LoginDto {
   @ApiProperty({ example: 'amara@example.com' })
@@ -10,4 +10,13 @@ export class LoginDto {
   @IsString()
   @IsNotEmpty()
   password: string;
+
+  @ApiProperty({
+    example: '/dashboard',
+    description: 'Relative URL to redirect to after successful login',
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  redirect?: string;
 }

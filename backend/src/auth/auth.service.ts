@@ -18,6 +18,8 @@ import { KycDto } from './dto/kyc.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { QueueService } from '../queue/queue.service';
 import { JwtPayload } from './jwt.strategy';
+import { sanitizeRedirectUrl } from './utils/redirect-sanitizer';
+import { OfacSanctionsCheckService } from './utils/ofac-sanctions-check';
 
 @Injectable()
 export class AuthService {
@@ -28,11 +30,18 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly queueService: QueueService,
+    private readonly ofacSanctionsCheck: OfacSanctionsCheckService,
   ) {}
 
   async register(
     dto: RegisterDto,
-  ): Promise<{ id: string; email: string; role: string; kycStatus: string }> {
+  ): Promise<{
+    id: string;
+    email: string;
+    role: string;
+    kycStatus: string;
+    redirect?: string;
+  }> {
     const existing = await this.userRepo.findOne({
       where: { email: dto.email },
     });
@@ -53,11 +62,13 @@ export class AuthService {
     });
 
     const saved = await this.userRepo.save(user);
+    const safeRedirect = sanitizeRedirectUrl(dto.redirect);
     return {
       id: saved.id,
       email: saved.email,
       role: saved.role,
       kycStatus: saved.kycStatus,
+      redirect: safeRedirect || undefined,
     };
   }
 
@@ -97,14 +108,19 @@ export class AuthService {
 
   async login(
     dto: LoginDto,
-  ): Promise<{ accessToken: string; refreshToken: string }> {
+  ): Promise<{ accessToken: string; refreshToken: string; redirect?: string }> {
     const user = await this.userRepo.findOne({ where: { email: dto.email } });
     if (!user) throw new UnauthorizedException('Invalid credentials.');
 
     const valid = await bcrypt.compare(dto.password, user.passwordHash);
     if (!valid) throw new UnauthorizedException('Invalid credentials.');
 
-    return this.issueTokenPair(user);
+    const tokens = this.issueTokenPair(user);
+    const safeRedirect = sanitizeRedirectUrl(dto.redirect);
+    return {
+      ...tokens,
+      redirect: safeRedirect || undefined,
+    };
   }
 
   async refresh(
@@ -138,6 +154,18 @@ export class AuthService {
   ): Promise<{ walletAddress: string }> {
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found.');
+
+    // Check if the wallet address is sanctioned
+    const isSanctioned = await this.ofacSanctionsCheck.isAddressSanctioned(
+      walletAddress,
+    );
+    if (isSanctioned) {
+      throw new BadRequestException({
+        code: 'SANCTIONED_ADDRESS',
+        message:
+          'The provided wallet address is sanctioned and cannot be linked to an account.',
+      });
+    }
 
     user.walletAddress = walletAddress;
     await this.userRepo.save(user);
