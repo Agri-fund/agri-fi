@@ -4,7 +4,14 @@ import { StellarService, InvestorShare } from './stellar.service';
 import { PinoLogger } from 'nestjs-pino';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { TransactionLog, TxStatus } from './entities/transaction-log.entity';
-import { Keypair, Asset } from '@stellar/stellar-sdk';
+import {
+  Keypair,
+  TransactionBuilder,
+  Operation,
+  Asset,
+  Networks,
+  Account,
+} from '@stellar/stellar-sdk';
 
 /**
  * Unit tests for StellarService — pure logic that doesn't require network calls.
@@ -219,6 +226,101 @@ describe('StellarService', () => {
 
       const status = await service.getTransactionStatus('some-tx-id');
       expect(status).toBe('failed');
+    });
+  });
+
+  describe('validateTransactionSignatures', () => {
+    const TESTNET_PASSPHRASE = Networks.TESTNET;
+
+    /** Builds a minimal signed XDR using a fresh keypair */
+    function buildSignedXdr(signerKeypair: Keypair): string {
+      const account = new Account(signerKeypair.publicKey(), '100');
+      const tx = new TransactionBuilder(account, {
+        fee: '100',
+        networkPassphrase: TESTNET_PASSPHRASE,
+      })
+        .addOperation(
+          Operation.payment({
+            destination: Keypair.random().publicKey(),
+            asset: Asset.native(),
+            amount: '1',
+          }),
+        )
+        .setTimeout(30)
+        .build();
+      tx.sign(signerKeypair);
+      return tx.toXDR();
+    }
+
+    it('returns valid: true when the correct public key signed the transaction', () => {
+      const signer = Keypair.random();
+      const xdr = buildSignedXdr(signer);
+
+      const result = service.validateTransactionSignatures(xdr, signer.publicKey());
+
+      expect(result.valid).toBe(true);
+      expect(result.publicKey).toBe(signer.publicKey());
+      expect(result.signatureCount).toBe(1);
+      expect(result.matchedSignatureIndex).toBe(0);
+      expect(result.error).toBeUndefined();
+    });
+
+    it('returns valid: false when a different public key is checked against a valid signature', () => {
+      const signer = Keypair.random();
+      const unrelated = Keypair.random();
+      const xdr = buildSignedXdr(signer);
+
+      const result = service.validateTransactionSignatures(xdr, unrelated.publicKey());
+
+      expect(result.valid).toBe(false);
+      expect(result.signatureCount).toBe(1);
+      expect(result.matchedSignatureIndex).toBe(-1);
+      expect(result.error).toMatch(/No signature found/i);
+    });
+
+    it('returns valid: false with a parse error when XDR is malformed', () => {
+      const result = service.validateTransactionSignatures(
+        'not-valid-xdr==',
+        Keypair.random().publicKey(),
+      );
+
+      expect(result.valid).toBe(false);
+      expect(result.error).toMatch(/Failed to parse XDR/i);
+    });
+
+    it('returns valid: false when the transaction has no signatures', () => {
+      const signer = Keypair.random();
+      const account = new Account(signer.publicKey(), '100');
+      // Build but do NOT sign
+      const tx = new TransactionBuilder(account, {
+        fee: '100',
+        networkPassphrase: TESTNET_PASSPHRASE,
+      })
+        .addOperation(
+          Operation.payment({
+            destination: Keypair.random().publicKey(),
+            asset: Asset.native(),
+            amount: '1',
+          }),
+        )
+        .setTimeout(30)
+        .build();
+
+      const result = service.validateTransactionSignatures(tx.toXDR(), signer.publicKey());
+
+      expect(result.valid).toBe(false);
+      expect(result.signatureCount).toBe(0);
+      expect(result.error).toMatch(/no signatures/i);
+    });
+
+    it('returns valid: false with an invalid public key error', () => {
+      const signer = Keypair.random();
+      const xdr = buildSignedXdr(signer);
+
+      const result = service.validateTransactionSignatures(xdr, 'not-a-public-key');
+
+      expect(result.valid).toBe(false);
+      expect(result.error).toMatch(/Invalid public key/i);
     });
   });
 
