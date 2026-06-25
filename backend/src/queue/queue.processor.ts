@@ -61,7 +61,7 @@ export class QueueProcessor {
 
     try {
       // Call StellarService.issueTradeToken
-      const escrowSecretKey = this.stellarService.decryptSecret(
+      const escrowSecretKey = await this.stellarService.decryptSecret(
         data.encryptedEscrowSecret,
       );
       const result = await this.stellarService.issueTradeToken(
@@ -72,7 +72,7 @@ export class QueueProcessor {
       );
 
       // Encrypt the issuer secret
-      const encryptedIssuerSecret = this.stellarService.encryptSecret(
+      const encryptedIssuerSecret = await this.stellarService.encryptSecret(
         result.issuerSecret,
       );
       if (encryptedIssuerSecret === result.issuerSecret) {
@@ -148,7 +148,7 @@ export class QueueProcessor {
         // InvestmentFundPayload fields directly — the previously referenced
         // variables (escrowSecret, deal, investment) were never declared in
         // this method and would cause a ReferenceError at runtime.
-        const escrowSecret = this.stellarService.decryptSecret(
+        const escrowSecret = await this.stellarService.decryptSecret(
           data.encryptedEscrowSecret,
         );
         await this.stellarService.transferTradeTokens(
@@ -342,7 +342,7 @@ export class QueueProcessor {
       // Cleanup escrow account
       if (deal.escrowPublicKey && deal.escrowSecretKey) {
         try {
-          const escrowSecret = this.stellarService.decryptSecret(
+          const escrowSecret = await this.stellarService.decryptSecret(
             deal.escrowSecretKey,
           );
           await this.stellarService.closeAccount(
@@ -361,7 +361,7 @@ export class QueueProcessor {
       // Cleanup issuer account
       if (deal.issuerPublicKey && deal.issuerSecretKey) {
         try {
-          const issuerSecret = this.stellarService.decryptSecret(
+          const issuerSecret = await this.stellarService.decryptSecret(
             deal.issuerSecretKey,
           );
           await this.stellarService.closeAccount(
