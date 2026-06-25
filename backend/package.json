@@ -20,7 +20,8 @@
     "dotenv-vault:push": "dotenv-vault push",
     "dotenv-vault:pull": "dotenv-vault pull",
     "dotenv-vault:keys": "dotenv-vault keys",
-    "dotenv-vault:open": "dotenv-vault open"
+    "dotenv-vault:open": "dotenv-vault open",
+    "db:seed": "ts-node scripts/seed.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1016.0",
