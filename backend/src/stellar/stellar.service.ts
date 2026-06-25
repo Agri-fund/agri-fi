@@ -1,4 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import {
+  Injectable,
+  Inject,
+  OnModuleDestroy,
+  OnModuleInit,
+  Optional,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
@@ -14,8 +20,13 @@ import {
   Asset,
   BASE_FEE,
   Memo,
+  Transaction,
 } from '@stellar/stellar-sdk';
+import { RedisClientType } from 'redis';
 import { createAsset } from './utils/asset-helper';
+
+export const SEQUENCE_REDIS_CLIENT = 'SEQUENCE_REDIS_CLIENT';
+const SEQUENCE_CACHE_TTL = 5; // seconds
 
 
 export interface InvestorShare {
@@ -25,11 +36,13 @@ export interface InvestorShare {
 }
 
 @Injectable()
-export class StellarService {
+export class StellarService implements OnModuleInit, OnModuleDestroy {
   private readonly server: Horizon.Server;
   private readonly networkPassphrase: string;
   private readonly platformKeypair: Keypair;
   private readonly usdcAsset: Asset;
+  private readonly localSequenceCache: Map<string, { seq: string; expiresAt: number }>;
+  private readonly enableSequenceCache: boolean;
 
   constructor(
     private readonly config: ConfigService,
@@ -37,7 +50,12 @@ export class StellarService {
     @InjectRepository(TransactionLog)
     private readonly txLogRepo: Repository<TransactionLog>,
     private readonly kmsService: KmsService,
+    @Optional()
+    @Inject(SEQUENCE_REDIS_CLIENT)
+    private readonly sequenceRedis: RedisClientType | null,
   ) {
+    this.localSequenceCache = new Map();
+    this.enableSequenceCache = true;
     this.logger.setContext(StellarService.name);
 
     const horizonUrl = config.get<string>(
@@ -84,6 +102,189 @@ export class StellarService {
       },
       `StellarService initialized on ${network}`,
     );
+  }
+
+  async onModuleInit(): Promise<void> {
+    await this.connectRedis();
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    this.localSequenceCache.clear();
+    if (this.sequenceRedis?.isOpen) {
+      await this.sequenceRedis.quit();
+    }
+  }
+
+  private async connectRedis(): Promise<void> {
+    if (!this.sequenceRedis || this.sequenceRedis.isOpen) {
+      return;
+    }
+    await this.sequenceRedis.connect();
+  }
+
+  private cacheSeqKey(publicKey: string): string {
+    return `stellar:seq:${publicKey}`;
+  }
+
+  private async getCachedSequence(publicKey: string): Promise<string | null> {
+    const now = Date.now();
+    const local = this.localSequenceCache.get(publicKey);
+    if (local && now < local.expiresAt) {
+      return local.seq;
+    }
+    this.localSequenceCache.delete(publicKey);
+
+    if (this.sequenceRedis) {
+      try {
+        const raw = await this.sequenceRedis.get(this.cacheSeqKey(publicKey));
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          this.localSequenceCache.set(publicKey, {
+            seq: parsed.seq,
+            expiresAt: now + SEQUENCE_CACHE_TTL * 1000,
+          });
+          return parsed.seq;
+        }
+      } catch {
+        // Redis failure — fall back to local
+      }
+    }
+    return null;
+  }
+
+  private async setCachedSequence(publicKey: string, seq: string): Promise<void> {
+    const expiresAt = Date.now() + SEQUENCE_CACHE_TTL * 1000;
+    this.localSequenceCache.set(publicKey, { seq, expiresAt });
+
+    if (this.sequenceRedis) {
+      try {
+        await this.sequenceRedis.setEx(
+          this.cacheSeqKey(publicKey),
+          SEQUENCE_CACHE_TTL,
+          JSON.stringify({ seq }),
+        );
+      } catch {
+        // Redis failure — local cache is sufficient
+      }
+    }
+  }
+
+  private async invalidateCachedSequence(publicKey: string): Promise<void> {
+    this.localSequenceCache.delete(publicKey);
+    if (this.sequenceRedis) {
+      try {
+        await this.sequenceRedis.del(this.cacheSeqKey(publicKey));
+      } catch {
+        // best-effort
+      }
+    }
+  }
+
+  /**
+   * Loads a Stellar account, preferring cached sequence numbers.
+   */
+  async loadAccountCached(publicKey: string): Promise<Horizon.AccountResponse> {
+    const cachedSeq = await this.getCachedSequence(publicKey);
+    if (cachedSeq) {
+      try {
+        const account = await this.server.loadAccount(publicKey);
+        const liveSeq = account.sequenceNumber();
+        if (liveSeq === cachedSeq) {
+          return account;
+        }
+        await this.setCachedSequence(publicKey, liveSeq);
+        return account;
+      } catch {
+        // Fall through to fresh load
+      }
+    }
+
+    const account = await this.server.loadAccount(publicKey);
+    await this.setCachedSequence(publicKey, account.sequenceNumber());
+    return account;
+  }
+
+  /**
+   * Increments the locally-cached sequence number so subsequent pooled
+   * transactions can use the next sequence without re-fetching from Horizon.
+   */
+  private async incrementLocalSequence(publicKey: string): Promise<void> {
+    const current = this.localSequenceCache.get(publicKey);
+    if (current) {
+      const nextSeq = (BigInt(current.seq) + 1n).toString();
+      await this.setCachedSequence(publicKey, nextSeq);
+    }
+  }
+
+  /**
+   * Validates a transaction envelope XDR before submission.
+   * Asserts only expected operations are present and destination
+   * addresses match active deal escrows.
+   */
+  async validateTransactionXdr(
+    signedXdr: string,
+    allowedOpTypes: string[] = ['payment', 'changeTrust'],
+    allowedDestinations?: string[],
+  ): Promise<{ valid: boolean; reason?: string }> {
+    let tx: Transaction;
+    try {
+      tx = TransactionBuilder.fromXDR(signedXdr, this.networkPassphrase);
+    } catch {
+      return { valid: false, reason: 'Invalid XDR: could not decode transaction' };
+    }
+
+    const opTypeMap: Record<number, string> = {
+      1: 'createAccount',
+      2: 'payment',
+      3: 'pathPaymentStrictReceive',
+      4: 'manageSellOffer',
+      5: 'createPassiveSellOffer',
+      6: 'setOptions',
+      7: 'changeTrust',
+      8: 'allowTrust',
+      9: 'accountMerge',
+      10: 'inflation',
+      11: 'manageData',
+      12: 'bumpSequence',
+      13: 'manageBuyOffer',
+      14: 'pathPaymentStrictSend',
+      15: 'claimClaimableBalance',
+      16: 'beginSponsoringFutureReserves',
+      17: 'endSponsoringFutureReserves',
+      18: 'revokeSponsorship',
+      19: 'clawback',
+      20: 'clawbackClaimableBalance',
+      21: 'setTrustLineFlags',
+      22: 'liquidityPoolDeposit',
+      23: 'liquidityPoolWithdraw',
+    };
+
+    const allowedSet = new Set(allowedOpTypes.map((t) => t.toLowerCase()));
+
+    for (const op of tx.operations) {
+      const opName = opTypeMap[op.type] ?? `unknown_${op.type}`;
+      if (!allowedSet.has(opName)) {
+        return {
+          valid: false,
+          reason: `Operation type '${opName}' is not allowed. Allowed: ${allowedOpTypes.join(', ')}`,
+        };
+      }
+
+      if (
+        allowedDestinations &&
+        (opName === 'payment' || opName === 'createAccount')
+      ) {
+        const dest = (op as any).destination;
+        if (dest && !allowedDestinations.includes(dest)) {
+          return {
+            valid: false,
+            reason: `Destination ${dest} is not in the allowed escrow list`,
+          };
+        }
+      }
+    }
+
+    return { valid: true };
   }
 
   /**
@@ -443,9 +644,9 @@ export class StellarService {
       const batchStart = batchIdx * BATCH_SIZE;
       const batch = investorShares.slice(batchStart, batchStart + BATCH_SIZE);
 
-      const batchAccount = await this.server.loadAccount(
-        escrowKeypair.publicKey(),
-      );
+      const batchAccount = this.enableSequenceCache
+        ? await this.loadAccountCached(escrowKeypair.publicKey())
+        : await this.server.loadAccount(escrowKeypair.publicKey());
       const txBuilder = new TransactionBuilder(batchAccount, {
         fee: BASE_FEE,
         networkPassphrase: this.networkPassphrase,
@@ -502,6 +703,11 @@ export class StellarService {
 
       const tx = txBuilder.setTimeout(30).build();
       tx.sign(escrowKeypair);
+
+      // Increment local sequence for next batch
+      if (this.enableSequenceCache) {
+        await this.incrementLocalSequence(escrowKeypair.publicKey());
+      }
 
       try {
         const result = await this.submitWithRetry(tx);
@@ -1057,8 +1263,26 @@ export class StellarService {
 
   /**
    * Submits a signed XDR transaction to the Stellar network.
+   * Optionally validates the XDR envelope before submission.
    */
-  async submitTransaction(signedXdr: string): Promise<any> {
+  async submitTransaction(
+    signedXdr: string,
+    validateOpts?: {
+      allowedOpTypes?: string[];
+      allowedDestinations?: string[];
+    },
+  ): Promise<any> {
+    if (validateOpts) {
+      const validation = await this.validateTransactionXdr(
+        signedXdr,
+        validateOpts.allowedOpTypes,
+        validateOpts.allowedDestinations,
+      );
+      if (!validation.valid) {
+        throw new Error(`XDR validation failed: ${validation.reason}`);
+      }
+    }
+
     const tx = TransactionBuilder.fromXDR(signedXdr, this.networkPassphrase);
     try {
       const result = await this.submitWithRetry(tx);

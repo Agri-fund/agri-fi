@@ -109,7 +109,9 @@ export class StellarController {
         HttpStatus.FORBIDDEN,
       );
     }
-    const result = await this.stellarService.submitTransaction(signedXdr);
+    const result = await this.stellarService.submitTransaction(signedXdr, {
+      allowedOpTypes: ['payment', 'changeTrust', 'manageSellOffer', 'manageBuyOffer'],
+    });
     return { hash: result?.hash ?? (result as any)?.id, success: true };
   }
 

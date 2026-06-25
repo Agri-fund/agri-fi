@@ -10,6 +10,16 @@ import { Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
+import crypto from 'crypto';
+import {
+  Keypair,
+  TransactionBuilder,
+  Networks,
+  Operation,
+  BASE_FEE,
+  Transaction,
+  Memo,
+} from '@stellar/stellar-sdk';
 import { User } from './entities/user.entity';
 import { KycSubmission } from './entities/kyc-submission.entity';
 import { RegisterDto } from './dto/register.dto';
@@ -23,6 +33,11 @@ import { OfacSanctionsCheckService } from './utils/ofac-sanctions-check';
 
 @Injectable()
 export class AuthService {
+  private readonly sep10SigningKeypair: Keypair;
+  private readonly networkPassphrase: string;
+  private readonly challenges: Map<string, { nonce: string; expiresAt: number }>;
+  private readonly sep10Domain: string;
+
   constructor(
     @InjectRepository(User) private readonly userRepo: Repository<User>,
     @InjectRepository(KycSubmission)
@@ -31,7 +46,20 @@ export class AuthService {
     private readonly configService: ConfigService,
     private readonly queueService: QueueService,
     private readonly ofacSanctionsCheck: OfacSanctionsCheckService,
-  ) {}
+  ) {
+    const network = this.configService.get<string>('STELLAR_NETWORK', 'testnet');
+    this.networkPassphrase =
+      network === 'mainnet' ? Networks.PUBLIC : Networks.TESTNET;
+
+    const sep10Secret = this.configService.get<string>('SEP10_SIGNING_SECRET', '');
+    this.sep10SigningKeypair = sep10Secret
+      ? Keypair.fromSecret(sep10Secret)
+      : Keypair.random();
+
+    this.challenges = new Map();
+    this.sep10Domain =
+      this.configService.get<string>('SEP10_DOMAIN', 'agri-fi.com');
+  }
 
   async register(
     dto: RegisterDto,
@@ -372,5 +400,169 @@ export class AuthService {
       ],
     });
     return { users, total };
+  }
+
+  /**
+   * Generates a SEP-10 challenge transaction for Stellar Web Authentication.
+   * The client signs this transaction to prove ownership of their wallet.
+   */
+  async generateSep10Challenge(
+    clientPublicKey: string,
+  ): Promise<{ transactionXdr: string; networkPassphrase: string }> {
+    if (!clientPublicKey || !clientPublicKey.startsWith('G')) {
+      throw new BadRequestException(
+        'Invalid Stellar public key',
+      );
+    }
+
+    const nonce = crypto.randomBytes(32).toString('hex');
+    const manageDataKey = `${this.sep10Domain} SEP-10 Web Auth`;
+    const now = Math.floor(Date.now() / 1000);
+    const expiry = now + 300; // 5 minutes
+
+    const tx = new TransactionBuilder(
+      { sequence: '0', accountId: () => this.sep10SigningKeypair.publicKey() } as any,
+      {
+        fee: BASE_FEE,
+        networkPassphrase: this.networkPassphrase,
+      },
+    )
+      .addOperation(
+        Operation.manageData({
+          name: manageDataKey,
+          value: nonce,
+          source: clientPublicKey,
+        }),
+      )
+      .addMemo(Memo.text('SEP-10 Auth'))
+      .setTimeout(300)
+      .build();
+
+    tx.sign(this.sep10SigningKeypair);
+
+    // Store challenge for later validation
+    this.challenges.set(clientPublicKey, { nonce, expiresAt: expiry });
+
+    return {
+      transactionXdr: tx.toXDR(),
+      networkPassphrase: this.networkPassphrase,
+    };
+  }
+
+  /**
+   * Validates a client-signed SEP-10 challenge response and issues a JWT.
+   */
+  async validateSep10Response(
+    signedXdr: string,
+  ): Promise<{ accessToken: string; refreshToken: string; publicKey: string }> {
+    let tx: Transaction;
+    try {
+      tx = new Transaction(signedXdr, this.networkPassphrase);
+    } catch {
+      throw new UnauthorizedException('Invalid SEP-10 response XDR');
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+    if (tx.timeBounds) {
+      if (tx.timeBounds.maxTime && now > tx.timeBounds.maxTime) {
+        throw new UnauthorizedException('SEP-10 challenge has expired');
+      }
+    }
+
+    // Verify server signature
+    const serverSigned = tx.signatures.some((sig) => {
+      try {
+        const keypair = this.sep10SigningKeypair;
+        return keypair.verify(tx.hash(), sig.signature);
+      } catch {
+        return false;
+      }
+    });
+    if (!serverSigned) {
+      throw new UnauthorizedException(
+        'SEP-10 challenge is not signed by the server',
+      );
+    }
+
+    // Extract the manageData operation to find the client public key
+    const manageDataOp = tx.operations.find(
+      (op) => op.type === 11, // manageData
+    );
+    if (!manageDataOp) {
+      throw new UnauthorizedException(
+        'SEP-10 challenge must contain a manageData operation',
+      );
+    }
+
+    const clientPublicKey = (manageDataOp as any).source;
+    if (!clientPublicKey) {
+      throw new UnauthorizedException(
+        'manageData operation must have a source account',
+      );
+    }
+
+    // Verify client signature
+    const txHash = tx.hash();
+    const clientVerified = tx.signatures.some((sig) => {
+      try {
+        const hint = sig.hint.toString('hex');
+        const clientKeypair = Keypair.fromPublicKey(clientPublicKey);
+        const clientHint = clientKeypair
+          .signatureHint()
+          .toString('hex');
+        if (hint !== clientHint) return false;
+        return clientKeypair.verify(txHash, sig.signature);
+      } catch {
+        return false;
+      }
+    });
+    if (!clientVerified) {
+      throw new UnauthorizedException(
+        'Transaction must be signed by the client wallet',
+      );
+    }
+
+    // Clean up stored challenge
+    this.challenges.delete(clientPublicKey);
+
+    // Find or create user by wallet address
+    let user = await this.userRepo.findOne({
+      where: { walletAddress: clientPublicKey },
+    });
+    if (!user) {
+      // Auto-register with wallet
+      user = this.userRepo.create({
+        email: `${clientPublicKey.slice(0, 8)}@stellar.agri-fi.com`,
+        passwordHash: '',
+        role: 'investor',
+        country: 'XX',
+        kycStatus: 'pending',
+        walletAddress: clientPublicKey,
+      });
+      user = await this.userRepo.save(user);
+    }
+
+    // Issue JWT
+    const base: JwtPayload = {
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+      tokenVersion: user.tokenVersion ?? 0,
+    };
+
+    const accessToken = this.jwtService.sign(
+      { ...base, typ: 'access' },
+      {
+        expiresIn:
+          this.configService.get<string>('JWT_ACCESS_EXPIRES_IN') ??
+          this.configService.get<string>('JWT_EXPIRES_IN', '7d'),
+      },
+    );
+    const refreshToken = this.jwtService.sign(
+      { ...base, typ: 'refresh' },
+      { expiresIn: '7d' },
+    );
+
+    return { accessToken, refreshToken, publicKey: clientPublicKey };
   }
 }
