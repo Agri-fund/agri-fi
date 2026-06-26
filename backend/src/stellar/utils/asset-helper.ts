@@ -42,3 +42,39 @@ export function createAsset(code: string, issuer: string): Asset {
   validateAsset(code, issuer);
   return new Asset(code.trim(), issuer.trim());
 }
+
+/**
+ * Parses a "CODE-ISSUER" string into a Stellar Asset instance.
+ *
+ * Special cases:
+ *  - "native" or "XLM" (case-insensitive, no issuer segment) → Asset.native()
+ *  - "CODE-ISSUER" → validated non-native asset
+ *
+ * The separator is the FIRST hyphen found; issuers (G… keys) never contain
+ * hyphens, so this split is unambiguous even for codes that contain hyphens
+ * in theory—though valid Stellar codes are alphanumeric only.
+ */
+export function parseAsset(descriptor: string): Asset {
+  if (!descriptor || typeof descriptor !== 'string') {
+    throw new Error('Asset descriptor must be a non-empty string');
+  }
+
+  const trimmed = descriptor.trim();
+
+  if (trimmed.toUpperCase() === 'XLM' || trimmed.toLowerCase() === 'native') {
+    return Asset.native();
+  }
+
+  const hyphenIndex = trimmed.indexOf('-');
+  if (hyphenIndex === -1) {
+    throw new Error(
+      `Invalid asset descriptor "${trimmed}": expected "CODE-ISSUER" or "native"/"XLM"`,
+    );
+  }
+
+  const code = trimmed.slice(0, hyphenIndex);
+  const issuer = trimmed.slice(hyphenIndex + 1);
+
+  validateAsset(code, issuer);
+  return new Asset(code, issuer);
+}
