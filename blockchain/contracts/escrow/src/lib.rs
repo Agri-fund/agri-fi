@@ -5,7 +5,7 @@ mod test;
 
 use soroban_sdk::{
     contract, contractimpl, contracttype, contracterror, symbol_short,
-    Address, Env, Vec, token, IntoVal, Val,
+    Address, BytesN, Env, token,
 };
 
 #[contracterror]
@@ -213,6 +213,28 @@ impl EscrowContract {
             .set(&DataKey::Released, &true);
         env.events()
             .publish((symbol_short!("release"),), total_funded);
+        Ok(())
+    }
+
+    /// Upgrades the contract WASM bytecode to a new version.
+    /// Only the admin account can invoke this function.
+    /// The `new_wasm_hash` is the hash of the new compiled WASM blob.
+    pub fn upgrade(env: Env, caller: Address, new_wasm_hash: BytesN<32>) -> Result<(), Error> {
+        if !env.storage().instance().has(&DataKey::Admin) {
+            return Err(Error::NotInitialized);
+        }
+        caller.require_auth();
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap();
+        if caller != admin {
+            return Err(Error::Unauthorized);
+        }
+        env.deployer().update_current_contract_wasm(new_wasm_hash);
+        env.events()
+            .publish((symbol_short!("upgrade"),), true);
         Ok(())
     }
 
