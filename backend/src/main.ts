@@ -1,5 +1,6 @@
-import 'dotenv/config';
+import 'dotenv-vault/config';
 import { NestFactory } from '@nestjs/core';
+import helmet from 'helmet';
 import {
   ValidationPipe,
   BadRequestException,
@@ -13,6 +14,41 @@ async function bootstrap() {
   // rawBody: true preserves the unparsed request buffer on req.rawBody,
   // which is required by WebhookSignatureGuard for HMAC verification.
   const app = await NestFactory.create(AppModule, { rawBody: true });
+
+  app.getHttpAdapter().getInstance().disable('x-powered-by');
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "https:"],
+      imgSrc: ["'self'", "data:"],
+      connectSrc: ["'self'"],
+      fontSrc: ["'self'", "https:"],
+      objectSrc: ["'none'"],
+    },
+  },
+  frameguard: { action: 'deny' },
+}));
+
+  // DNS rebinding protection: reject requests whose Host header does not match
+  // a known domain. /health is exempted so kubelet liveness/readiness probes
+  // (which use the pod IP as Host) never get blocked.
+  const allowedHosts = (process.env.ALLOWED_HOSTS ?? 'localhost')
+    .split(',')
+    .map((h) => h.trim().toLowerCase());
+
+  app.use((req: any, res: any, next: () => void) => {
+    if (req.path === '/health' || req.path === '/v1/health') {
+      return next();
+    }
+    const host = (req.headers['host'] ?? '').split(':')[0].toLowerCase();
+    if (!allowedHosts.includes(host)) {
+      res.status(421).end('Misdirected Request');
+      return;
+    }
+    next();
+  });
 
   app.use(applySecurityHeaders);
 
@@ -40,10 +76,23 @@ async function bootstrap() {
 
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
 
+  const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? 'http://localhost:3000')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0);
+
   app.enableCors({
-    origin: process.env.ALLOWED_ORIGINS?.split(',') ?? [
-      'http://localhost:3000',
-    ],
+    origin: (origin, callback) => {
+      if (!origin) {
+        return callback(null, true);
+      }
+
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('Origin not allowed by CORS policy'));
+      }
+    },
     credentials: true,
   });
 
@@ -100,6 +149,7 @@ function setupSwagger(app: any) {
     .addTag('shipments', 'Record and query shipment milestones')
     .addTag('documents', 'Upload trade documents to IPFS')
     .addTag('users', 'User dashboard data')
+    .addTag('sep24', 'SEP-24 interactive deposit and withdrawal')
     .build();
 
   const document = SwaggerModule.createDocument(app, config);

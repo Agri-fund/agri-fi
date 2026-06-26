@@ -65,3 +65,4 @@ data:
   STELLAR_NETWORK: "testnet"
   STELLAR_HORIZON_URL: "https://horizon-testnet.stellar.org"
   ALLOWED_ORIGINS: "http://agri-fi-frontend"
+  ALLOWED_HOSTS: "agri-fi.local,api.agri-fi.local"
