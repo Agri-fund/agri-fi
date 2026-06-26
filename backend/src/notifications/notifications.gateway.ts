@@ -34,6 +34,7 @@ export class NotificationsGateway
           : undefined);
 
       if (!token) {
+        socket.disconnect();
         return next(new Error('Unauthorized'));
       }
 
@@ -41,6 +42,7 @@ export class NotificationsGateway
         socket.data.user = this.jwtService.verify(token);
         next();
       } catch {
+        socket.disconnect();
         next(new Error('Unauthorized'));
       }
     });

@@ -36,6 +36,9 @@ describe('Auth token expiration and renewal (E2E)', () => {
       isCompany: false,
       companyDetails: null,
       createdAt: new Date(),
+      fullName: null,
+      birthdate: null,
+      taxId: null,
     };
 
     userRepo = {

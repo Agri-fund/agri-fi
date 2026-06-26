@@ -3,13 +3,10 @@ import {
   CanActivate,
   ExecutionContext,
   ForbiddenException,
-  SetMetadata,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { User } from './entities/user.entity';
-
-export const ROLES_KEY = 'roles';
-export const Roles = (...roles: string[]) => SetMetadata(ROLES_KEY, roles);
+import { ROLES_KEY } from './decorators/roles.decorator';
 
 @Injectable()
 export class RolesGuard implements CanActivate {

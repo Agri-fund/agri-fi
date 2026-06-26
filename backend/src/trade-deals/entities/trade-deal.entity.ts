@@ -194,4 +194,13 @@ export class TradeDeal {
     example: '2024-01-15T10:30:00Z',
   })
   createdAt: Date;
+
+  @Column({ name: 'app_trace_id', nullable: true })
+  @ApiProperty({
+    description: 'Application-generated trace ID for authorized updates',
+    example: 'app-1234567890abcdef',
+    required: false,
+    nullable: true,
+  })
+  appTraceId: string | null;
 }
