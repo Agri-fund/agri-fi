@@ -47,6 +47,7 @@
     "amqp-connection-manager": "^4.1.14",
     "amqplib": "^0.10.3",
     "axios": "^1.6.0",
+    "argon2": "^0.31.2",
     "bcrypt": "^5.1.0",
     "bignumber.js": "^11.1.4",
     "class-transformer": "^0.5.1",

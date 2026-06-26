@@ -10,6 +10,8 @@ import { Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
+import * as argon2 from 'argon2';
+import { randomBytes } from 'crypto';
 import crypto from 'crypto';
 import {
   Keypair,
@@ -27,9 +29,13 @@ import { LoginDto } from './dto/login.dto';
 import { KycDto } from './dto/kyc.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { QueueService } from '../queue/queue.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { JwtPayload } from './jwt.strategy';
 import { sanitizeRedirectUrl } from './utils/redirect-sanitizer';
 import { OfacSanctionsCheckService } from './utils/ofac-sanctions-check';
+
+const LOCKOUT_MAX_ATTEMPTS = 5;
+const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
 
 @Injectable()
 export class AuthService {
@@ -61,6 +67,43 @@ export class AuthService {
       this.configService.get<string>('SEP10_DOMAIN', 'agri-fi.com');
   }
 
+  // ── helpers ────────────────────────────────────────────────────────────────
+
+  private isBcryptHash(hash: string): boolean {
+    return hash.startsWith('$2b$') || hash.startsWith('$2a$');
+  }
+
+  private async hashPassword(password: string): Promise<string> {
+    return argon2.hash(password, { type: argon2.argon2id });
+  }
+
+  private async verifyPassword(hash: string, password: string): Promise<boolean> {
+    if (this.isBcryptHash(hash)) {
+      return bcrypt.compare(password, hash);
+    }
+    return argon2.verify(hash, password);
+  }
+
+  private generateVerificationToken(): string {
+    return randomBytes(32).toString('hex');
+  }
+
+  private appBaseUrl(): string {
+    return this.configService.get<string>('APP_BASE_URL', 'http://localhost:3001');
+  }
+
+  private async sendVerificationEmail(email: string, token: string): Promise<void> {
+    const link = `${this.appBaseUrl()}/auth/verify-email?token=${token}`;
+    await this.notificationsService.sendEmail(
+      email,
+      'Verify your Agri-Fi email address',
+      `Please verify your email by visiting: ${link}`,
+      `<p>Click <a href="${link}">here</a> to verify your email address. This link is valid for 24 hours.</p>`,
+    );
+  }
+
+  // ── register ───────────────────────────────────────────────────────────────
+
   async register(
     dto: RegisterDto,
   ): Promise<{
@@ -80,16 +123,23 @@ export class AuthService {
       });
     }
 
-    const passwordHash = await bcrypt.hash(dto.password, 10);
+    const passwordHash = await this.hashPassword(dto.password);
+    const emailVerificationToken = this.generateVerificationToken();
+
     const user = this.userRepo.create({
       email: dto.email,
       passwordHash,
       role: dto.role,
       country: dto.country,
       kycStatus: 'pending',
+      isEmailVerified: false,
+      emailVerificationToken,
     });
 
     const saved = await this.userRepo.save(user);
+
+    await this.sendVerificationEmail(saved.email, emailVerificationToken);
+
     const safeRedirect = sanitizeRedirectUrl(dto.redirect);
     return {
       id: saved.id,
@@ -99,6 +149,26 @@ export class AuthService {
       redirect: safeRedirect || undefined,
     };
   }
+
+  // ── verify email ───────────────────────────────────────────────────────────
+
+  async verifyEmail(token: string): Promise<{ message: string }> {
+    const user = await this.userRepo.findOne({
+      where: { emailVerificationToken: token },
+    });
+
+    if (!user) {
+      throw new BadRequestException('Invalid or expired verification token.');
+    }
+
+    user.isEmailVerified = true;
+    user.emailVerificationToken = null;
+    await this.userRepo.save(user);
+
+    return { message: 'Email verified successfully.' };
+  }
+
+  // ── token pair ─────────────────────────────────────────────────────────────
 
   private accessTokenExpiresIn(): string {
     return (
@@ -150,8 +220,58 @@ export class AuthService {
     const user = await this.userRepo.findOne({ where: { email: dto.email } });
     if (!user) throw new UnauthorizedException('Invalid credentials.');
 
-    const valid = await bcrypt.compare(dto.password, user.passwordHash);
-    if (!valid) throw new UnauthorizedException('Invalid credentials.');
+    // Check lockout
+    if (user.lockoutUntil && user.lockoutUntil > new Date()) {
+      const unlockAt = user.lockoutUntil.toISOString();
+      throw new UnauthorizedException(
+        `Account locked. Try again after ${unlockAt}.`,
+      );
+    }
+
+    // Verify email requirement
+    if (!user.isEmailVerified) {
+      throw new UnauthorizedException(
+        'Please verify your email address before logging in.',
+      );
+    }
+
+    const valid = await this.verifyPassword(user.passwordHash, dto.password);
+
+    if (!valid) {
+      user.failedLoginAttempts = (user.failedLoginAttempts ?? 0) + 1;
+
+      if (user.failedLoginAttempts >= LOCKOUT_MAX_ATTEMPTS) {
+        user.lockoutUntil = new Date(Date.now() + LOCKOUT_DURATION_MS);
+        user.failedLoginAttempts = 0;
+        await this.userRepo.save(user);
+
+        // Send lockout notification email
+        const unlockAt = user.lockoutUntil.toUTCString();
+        await this.notificationsService.sendEmail(
+          user.email,
+          'Your Agri-Fi account has been locked',
+          `Your account has been temporarily locked due to 5 consecutive failed login attempts. It will unlock at ${unlockAt}.`,
+          `<p>Your account has been temporarily locked due to 5 consecutive failed login attempts.</p><p>It will unlock automatically at <strong>${unlockAt}</strong>.</p><p>If this wasn't you, please reset your password immediately.</p>`,
+        );
+
+        throw new UnauthorizedException(
+          `Account locked for 15 minutes due to too many failed attempts.`,
+        );
+      }
+
+      await this.userRepo.save(user);
+      throw new UnauthorizedException('Invalid credentials.');
+    }
+
+    // Successful login — reset counters and re-hash bcrypt passwords to argon2id
+    user.failedLoginAttempts = 0;
+    user.lockoutUntil = null;
+
+    if (this.isBcryptHash(user.passwordHash)) {
+      user.passwordHash = await this.hashPassword(dto.password);
+    }
+
+    await this.userRepo.save(user);
 
     const tokens = this.issueTokenPair(user);
     const safeRedirect = sanitizeRedirectUrl(dto.redirect);
@@ -160,6 +280,8 @@ export class AuthService {
       redirect: safeRedirect || undefined,
     };
   }
+
+  // ── refresh ────────────────────────────────────────────────────────────────
 
   async refresh(
     refreshToken: string,
@@ -186,6 +308,8 @@ export class AuthService {
     return this.issueTokenPair(user);
   }
 
+  // ── wallet ─────────────────────────────────────────────────────────────────
+
   async linkWallet(
     userId: string,
     walletAddress: string,
@@ -210,6 +334,8 @@ export class AuthService {
     return { walletAddress };
   }
 
+  // ── KYC ───────────────────────────────────────────────────────────────────
+
   async submitKyc(userId: string, dto: KycDto): Promise<{ kycStatus: string }> {
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found.');
@@ -217,8 +343,6 @@ export class AuthService {
     const isAutoApprove =
       this.configService.get<string>('KYC_AUTO_APPROVE') === 'true';
 
-    // Dev-only flag: allow auto-approving non-corporate submissions when explicitly enabled.
-    // Corporate verification is always manual review.
     const automatedApproval = dto.isCorporate ? false : isAutoApprove;
 
     const submission = this.kycRepo.create({
@@ -235,7 +359,6 @@ export class AuthService {
 
     await this.kycRepo.save(submission);
 
-    // Persist corporate metadata for review, but don't mark verified until admin approval.
     if (dto.isCorporate) {
       user.companyDetails = {
         companyName: dto.companyName,
@@ -332,7 +455,6 @@ export class AuthService {
     user.kycStatus = 'verified';
     await this.userRepo.save(user);
 
-    // Email notification would be triggered here
     console.log(
       `KYC manually verified for user ${user.email} — notification queued.`,
     );
@@ -344,6 +466,8 @@ export class AuthService {
 
     return { kycStatus: user.kycStatus };
   }
+
+  // ── admin ──────────────────────────────────────────────────────────────────
 
   async updateUserRole(
     userId: string,
@@ -358,6 +482,8 @@ export class AuthService {
     return { id: saved.id, role: saved.role };
   }
 
+  // ── password ───────────────────────────────────────────────────────────────
+
   async changePassword(
     userId: string,
     dto: ChangePasswordDto,
@@ -365,7 +491,7 @@ export class AuthService {
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found.');
 
-    const valid = await bcrypt.compare(dto.currentPassword, user.passwordHash);
+    const valid = await this.verifyPassword(user.passwordHash, dto.currentPassword);
     if (!valid) throw new BadRequestException('Current password is incorrect.');
 
     if (dto.currentPassword === dto.newPassword) {
@@ -374,7 +500,7 @@ export class AuthService {
       );
     }
 
-    user.passwordHash = await bcrypt.hash(dto.newPassword, 10);
+    user.passwordHash = await this.hashPassword(dto.newPassword);
     user.tokenVersion = (user.tokenVersion ?? 0) + 1;
     await this.userRepo.save(user);
 
@@ -389,6 +515,8 @@ export class AuthService {
     await this.userRepo.save(user);
     return { message: 'Logged out successfully.' };
   }
+
+  // ── list users ─────────────────────────────────────────────────────────────
 
   async listUsers(
     page = 1,
@@ -407,6 +535,7 @@ export class AuthService {
         'createdAt',
         'walletAddress',
         'isCompany',
+        'isEmailVerified',
       ],
     });
     return { users, total };

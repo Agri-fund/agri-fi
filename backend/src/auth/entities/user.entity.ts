@@ -103,6 +103,22 @@ export class User {
   })
   companyDetails: CompanyDetails | null;
 
+  // #409 — email verification
+  @Column({ name: 'is_email_verified', default: false })
+  @ApiProperty({ description: 'Whether the email address has been verified', example: false })
+  isEmailVerified: boolean;
+
+  @Exclude()
+  @Column({ name: 'email_verification_token', nullable: true })
+  emailVerificationToken: string | null;
+
+  // #413 — account lockout
+  @Column({ name: 'failed_login_attempts', default: 0 })
+  failedLoginAttempts: number;
+
+  @Column({ name: 'lockout_until', type: 'timestamptz', nullable: true })
+  lockoutUntil: Date | null;
+
   @CreateDateColumn({ name: 'created_at' })
   @ApiProperty({
     description: 'Account creation timestamp',
