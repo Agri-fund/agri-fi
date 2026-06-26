@@ -21,6 +21,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { AuthGuard } from '@nestjs/passport';
 import { DocumentsService } from './documents.service';
+import { ClamScanService } from './clam-scan.service';
 import { User } from '../auth/entities/user.entity';
 
 interface AuthRequest extends Request {
@@ -34,7 +35,10 @@ export class DocumentsController {
   /** In-memory cache: SHA-256(fileBuffer) → upload result, to avoid redundant IPFS calls */
   private readonly ipfsCache = new Map<string, object>();
 
-  constructor(private readonly documentsService: DocumentsService) {}
+  constructor(
+    private readonly documentsService: DocumentsService,
+    private readonly clamScan: ClamScanService,
+  ) {}
 
   @Post()
   @Throttle({ default: { limit: 20, ttl: 60000 } })
@@ -59,6 +63,11 @@ export class DocumentsController {
           type: 'string',
           example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
         },
+        signature_asc: {
+          type: 'string',
+          description:
+            'Optional detached PGP/GnuPG armored signature of the file, issued by a trusted certifying authority',
+        },
       },
     },
   })
@@ -68,14 +77,15 @@ export class DocumentsController {
   })
   @ApiResponse({
     status: 400,
-    description: 'Missing file, unsupported type, or file too large',
+    description: 'Missing file, unsupported type, file too large, or virus detected',
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'Trade deal not found' })
   @ApiResponse({ status: 429, description: 'Too Many Requests – IPFS proxy limit is 20 per minute' })
   async uploadDocument(
     @UploadedFile() file: Express.Multer.File,
-    @Body() body: { doc_type: string; trade_deal_id: string },
+    @Body()
+    body: { doc_type: string; trade_deal_id: string; signature_asc?: string },
     @Request() req: AuthRequest,
   ) {
     if (!file) throw new BadRequestException('File is required');
@@ -86,6 +96,14 @@ export class DocumentsController {
     ) {
       throw new BadRequestException(
         'Unsupported file type. Only PDF, PNG, JPEG allowed',
+      );
+    }
+
+    // Scan for malware before storing
+    const scanResult = await this.clamScan.scan(file.buffer);
+    if (!scanResult.isClean) {
+      throw new BadRequestException(
+        `File rejected: virus detected (${scanResult.virusName})`,
       );
     }
 
@@ -102,6 +120,7 @@ export class DocumentsController {
       docType: body.doc_type,
       tradeDealId: body.trade_deal_id,
       userId: req.user.id,
+      signatureAsc: body.signature_asc,
     });
 
     this.ipfsCache.set(contentKey, result);

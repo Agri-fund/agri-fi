@@ -41,6 +41,9 @@ export class Document {
   @Column({ name: 'memo_text', nullable: true })
   memoText: string | null;
 
+  @Column({ name: 'signature_verified', default: false })
+  signatureVerified: boolean;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

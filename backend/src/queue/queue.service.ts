@@ -3,6 +3,7 @@ import { ClientProxy } from '@nestjs/microservices';
 import { PinoLogger } from 'nestjs-pino';
 import { ClsService } from 'nestjs-cls'; // Added for safe context access
 import { QUEUE_SERVICE } from './queue.constants';
+import { encryptPayload } from './queue.crypto';
 
 export interface BasePayload {
   correlationId?: string;
@@ -62,7 +63,7 @@ export class QueueService {
 
   public async emit(pattern: string, data: unknown): Promise<void> {
     try {
-      this.client.emit(pattern, data);
+      this.client.emit(pattern, encryptPayload(data));
       this.logger.info({ event: pattern }, `Emitted event: ${pattern}`);
     } catch (err) {
       this.logger.error(

@@ -21,6 +21,9 @@ const mockUser = (): User => ({
   isCompany: false,
   companyDetails: null,
   createdAt: new Date(),
+  fullName: null,
+  birthdate: null,
+  taxId: null,
 });
 
 describe('AuthService', () => {

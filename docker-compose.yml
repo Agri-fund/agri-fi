@@ -36,10 +36,14 @@ services:
     environment:
       - DATABASE_URL=postgres://postgres:postgres@postgres:5432/agric_onchain
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+      - CLAMAV_HOST=clamav
+      - CLAMAV_PORT=3310
     depends_on:
       postgres:
         condition: service_healthy
       rabbitmq:
+        condition: service_healthy
+      clamav:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
@@ -47,6 +51,17 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+
+  clamav:
+    image: clamav/clamav:stable
+    ports:
+      - '3310:3310'
+    healthcheck:
+      test: ["CMD", "clamdscan", "--ping", "3"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
 
   pgadmin:
     image: dpage/pgadmin4

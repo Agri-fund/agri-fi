@@ -1,0 +1,35 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: agri-fi-ingress
+  labels:
+    app: agri-fi
+spec:
+  rules:
+    - host: agri-fi.local
+      http:
+        paths:
+          - path: /api/
+            pathType: Prefix
+            backend:
+              service:
+                name: agri-fi-backend
+                port:
+                  number: 80
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: agri-fi-frontend
+                port:
+                  number: 80
+    - host: api.agri-fi.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: agri-fi-backend
+                port:
+                  number: 80

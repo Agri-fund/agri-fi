@@ -8,8 +8,10 @@ import {
   Request,
   RawBodyRequest,
   Req,
+  Res,
   HttpCode,
   HttpStatus,
+  Query,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -17,10 +19,11 @@ import {
   ApiResponse,
   ApiBearerAuth,
   ApiHeader,
+  ApiQuery,
 } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { Throttle } from '@nestjs/throttler';
-import type { Request as ExpressRequest } from 'express';
+import type { Request as ExpressRequest, Response } from 'express';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -28,6 +31,8 @@ import { WalletDto } from './dto/wallet.dto';
 import { KycDto } from './dto/kyc.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { Sep10ChallengeDto } from './dto/sep10-challenge.dto';
+import { Sep10ResponseDto } from './dto/sep10-response.dto';
 import { WebhookSignatureGuard } from './webhook-signature.guard';
 import { User } from './entities/user.entity';
 
@@ -41,12 +46,7 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('register')
-  @Throttle({
-    default: {
-      limit: parseInt(process.env.RATE_LIMIT_REGISTER || '3'),
-      ttl: parseInt(process.env.RATE_LIMIT_TTL || '60000'),
-    },
-  })
+  @Throttle({ default: { limit: 3, ttl: 3600000 } })
   @ApiOperation({ summary: 'Register a new user' })
   @ApiResponse({ status: 201, description: 'User created successfully' })
   @ApiResponse({ status: 400, description: 'Validation error' })
@@ -65,33 +65,35 @@ export class AuthController {
   }
 
   @Post('login')
-  @Throttle({
-    default: {
-      limit: parseInt(process.env.RATE_LIMIT_LOGIN || '5'),
-      ttl: parseInt(process.env.RATE_LIMIT_TTL || '60000'),
-    },
-  })
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @ApiOperation({ summary: 'Authenticate and receive a JWT' })
   @ApiResponse({ status: 200, description: 'Returns access and refresh JWTs' })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
   @ApiResponse({ status: 429, description: 'Too many requests' })
-  login(@Body() dto: LoginDto) {
-    return this.authService.login(dto);
+  async login(
+    @Body() dto: LoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const tokens = await this.authService.login(dto);
+    const opts = this.authService.cookieOptions();
+    res.cookie('access_token', tokens.accessToken, opts);
+    res.cookie('refresh_token', tokens.refreshToken, opts);
+    return tokens;
   }
 
   @Post('refresh')
-  @Throttle({
-    default: {
-      limit: parseInt(process.env.RATE_LIMIT_LOGIN || '5'),
-      ttl: parseInt(process.env.RATE_LIMIT_TTL || '60000'),
-    },
-  })
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @ApiOperation({ summary: 'Exchange a refresh token for a new access token' })
   @ApiResponse({ status: 200, description: 'Returns new access and refresh tokens' })
   @ApiResponse({ status: 401, description: 'Invalid or expired refresh token' })
   @ApiResponse({ status: 429, description: 'Too many requests' })
-  refresh(@Body() dto: RefreshTokenDto) {
-    return this.authService.refresh(dto.refreshToken);
+  refresh(@Body() dto: RefreshTokenDto, @Res({ passthrough: true }) res: Response) {
+    return this.authService.refresh(dto.refreshToken).then((tokens) => {
+      const opts = this.authService.cookieOptions();
+      res.cookie('access_token', tokens.accessToken, opts);
+      res.cookie('refresh_token', tokens.refreshToken, opts);
+      return tokens;
+    });
   }
 
   @Post('wallet')
@@ -142,6 +144,47 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   logout(@Request() req: AuthRequest) {
     return this.authService.logout(req.user.id);
+  }
+
+  @Get('stellar-challenge')
+  @ApiOperation({
+    summary: 'Get a SEP-10 challenge transaction for Stellar Web Authentication',
+    description:
+      'Returns an XDR challenge transaction that the client must sign with their Stellar wallet key',
+  })
+  @ApiQuery({
+    name: 'wallet',
+    description: 'Stellar public key to authenticate',
+    required: true,
+    type: String,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns SEP-10 challenge XDR',
+  })
+  @ApiResponse({ status: 400, description: 'Invalid wallet address' })
+  async getSep10Challenge(@Query() query: Sep10ChallengeDto) {
+    return this.authService.generateSep10Challenge(query.wallet);
+  }
+
+  @Post('stellar-login')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({
+    default: {
+      limit: parseInt(process.env.RATE_LIMIT_LOGIN || '5'),
+      ttl: parseInt(process.env.RATE_LIMIT_TTL || '60000'),
+    },
+  })
+  @ApiOperation({
+    summary: 'Authenticate via SEP-10 by submitting a signed challenge transaction',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns JWT tokens for the authenticated wallet',
+  })
+  @ApiResponse({ status: 401, description: 'Invalid signature or expired challenge' })
+  async sep10Login(@Body() dto: Sep10ResponseDto) {
+    return this.authService.validateSep10Response(dto.signedXdr);
   }
 
   @Post('webhook')
