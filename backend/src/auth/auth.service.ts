@@ -48,6 +48,8 @@ export class AuthService {
     @InjectRepository(User) private readonly userRepo: Repository<User>,
     @InjectRepository(KycSubmission)
     private readonly kycRepo: Repository<KycSubmission>,
+    @InjectRepository(LoginLog)
+    private readonly loginLogRepo: Repository<LoginLog>,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly queueService: QueueService,

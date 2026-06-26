@@ -18,7 +18,7 @@ import { OfacSanctionsCheckService } from './utils/ofac-sanctions-check';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, KycSubmission, TradeDeal]),
+    TypeOrmModule.forFeature([User, KycSubmission, TradeDeal, LoginLog]),
     QueueModule,
     NotificationsModule,
     PassportModule,
