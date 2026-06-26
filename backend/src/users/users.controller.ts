@@ -7,9 +7,10 @@ import {
   Query,
   BadRequestException,
   ForbiddenException,
-  HttpCode,
-  HttpStatus,
+  Res,
+  Header,
 } from '@nestjs/common';
+import { Response } from 'express';
 import {
   ApiTags,
   ApiOperation,
@@ -108,20 +109,18 @@ export class UsersController {
     return this.usersService.getUserInvestments(id, role);
   }
 
-  @Delete('me')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: 'GDPR Right to be Forgotten — anonymize and soft-delete account',
-    description:
-      'Verifies no active trade deals or unresolved investments exist, ' +
-      'anonymizes PII (email, wallet, company details), invalidates all ' +
-      'sessions, then soft-deletes the user record.',
+  @Get('me/export')
+  @ApiOperation({ summary: 'Export all user data (GDPR compliance)' })
+  @ApiResponse({
+    status: 200,
+    description: 'JSON file containing all user data',
   })
-  @ApiResponse({ status: 200, description: 'Account anonymized and scheduled for deletion' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({ status: 404, description: 'User not found' })
-  @ApiResponse({ status: 409, description: 'Active deals or unresolved investments exist' })
-  deleteAccount(@Request() req: AuthRequest) {
-    return this.usersService.deleteAccount(req.user.id);
+  @Header('Content-Type', 'application/json')
+  @Header('Content-Disposition', 'attachment; filename="user-data-export.json"')
+  async exportUserData(@Request() req: AuthRequest, @Res() res: Response) {
+    const { id } = req.user;
+    const userData = await this.usersService.exportUserData(id);
+    res.json(userData);
   }
 }

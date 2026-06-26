@@ -12,6 +12,7 @@ import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
 import { Investment } from '../investments/entities/investment.entity';
 import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.entity';
 import { PaymentDistribution } from '../escrow/entities/payment-distribution.entity';
+import { KycSubmission } from '../auth/entities/kyc-submission.entity';
 
 export interface CurrentUserProfile {
   id: string;
@@ -40,6 +41,8 @@ export class UsersService {
     private readonly milestoneRepository: Repository<ShipmentMilestone>,
     @InjectRepository(PaymentDistribution)
     private readonly paymentDistributionRepository: Repository<PaymentDistribution>,
+    @InjectRepository(KycSubmission)
+    private readonly kycSubmissionRepository: Repository<KycSubmission>,
   ) {}
 
   async getProfile(userId: string): Promise<CurrentUserProfile> {
@@ -173,45 +176,95 @@ export class UsersService {
     );
   }
 
-  async deleteAccount(userId: string): Promise<{ message: string }> {
+  async exportUserData(userId: string): Promise<any> {
     const user = await this.userRepository.findOne({ where: { id: userId } });
-    if (!user) throw new NotFoundException('User not found.');
-
-    // Check for active trade deals as farmer or trader
-    const activeStatuses = ['draft', 'open', 'funded', 'delivered'];
-    const activeDeal = await this.tradeDealRepository.findOne({
-      where: [
-        { farmerId: userId, status: In(activeStatuses) as any },
-        { traderId: userId, status: In(activeStatuses) as any },
-      ],
-    });
-    if (activeDeal) {
-      throw new ConflictException(
-        'Cannot delete account with active trade deals.',
-      );
+    if (!user) {
+      throw new NotFoundException('User not found.');
     }
 
-    // Check for unresolved investments (pending or confirmed on active deals)
-    const unresolvedInvestment = await this.investmentRepository.findOne({
-      where: { investorId: userId, status: In(['pending', 'confirmed']) as any },
+    // Get KYC submissions
+    const kycSubmissions = await this.kycSubmissionRepository.find({
+      where: { userId },
     });
-    if (unresolvedInvestment) {
-      throw new ConflictException(
-        'Cannot delete account with unresolved investments.',
-      );
-    }
 
-    // Anonymize PII
-    const hash = randomBytes(8).toString('hex');
-    user.email = `deleted-${hash}@anon.invalid`;
-    user.walletAddress = null;
-    user.companyDetails = null;
-    user.tokenVersion = (user.tokenVersion ?? 0) + 1; // invalidate sessions
-    await this.userRepository.save(user);
+    // Get trade deals (as farmer or trader)
+    const tradeDeals = await this.tradeDealRepository.find({
+      where: [{ farmerId: userId }, { traderId: userId }],
+    });
 
-    // Soft-delete
-    await this.userRepository.softDelete(userId);
+    // Get investments
+    const investments = await this.investmentRepository.find({
+      where: { investorId: userId },
+      relations: ['tradeDeal'],
+    });
 
-    return { message: 'Account anonymized and scheduled for deletion.' };
+    // Get shipment milestones for user's deals
+    const dealIds = tradeDeals.map((d) => d.id);
+    const milestones = await this.milestoneRepository.find({
+      where: { tradeDealId: dealIds as any },
+    });
+
+    // Get payment distributions
+    const paymentDistributions = await this.paymentDistributionRepository.find({
+      where: { recipientId: userId },
+    });
+
+    return {
+      profile: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        country: user.country,
+        kycStatus: user.kycStatus,
+        walletAddress: user.walletAddress,
+        isCompany: user.isCompany,
+        companyDetails: user.companyDetails,
+        createdAt: user.createdAt,
+      },
+      kycSubmissions: kycSubmissions.map((kyc) => ({
+        id: kyc.id,
+        status: kyc.status,
+        isCorporate: kyc.isCorporate,
+        companyName: kyc.companyName,
+        registrationNumber: kyc.registrationNumber,
+        createdAt: kyc.createdAt,
+      })),
+      tradeDeals: tradeDeals.map((deal) => ({
+        id: deal.id,
+        commodity: deal.commodity,
+        quantity: deal.quantity,
+        quantityUnit: deal.quantityUnit,
+        totalValue: deal.totalValue,
+        status: deal.status,
+        deliveryDate: deal.deliveryDate,
+        createdAt: deal.createdAt,
+      })),
+      investments: investments.map((inv) => ({
+        id: inv.id,
+        tokenAmount: inv.tokenAmount,
+        amountUsd: inv.amountUsd,
+        status: inv.status,
+        stellarTxId: inv.stellarTxId,
+        tradeDealId: inv.tradeDealId,
+        createdAt: inv.createdAt,
+      })),
+      shipmentMilestones: milestones.map((ms) => ({
+        id: ms.id,
+        tradeDealId: ms.tradeDealId,
+        milestone: ms.milestone,
+        recordedBy: ms.recordedBy,
+        notes: ms.notes,
+        recordedAt: ms.recordedAt,
+      })),
+      paymentDistributions: paymentDistributions.map((pd) => ({
+        id: pd.id,
+        tradeDealId: pd.tradeDealId,
+        recipientType: pd.recipientType,
+        amountUsd: pd.amountUsd,
+        status: pd.status,
+        createdAt: pd.createdAt,
+      })),
+      exportedAt: new Date().toISOString(),
+    };
   }
 }

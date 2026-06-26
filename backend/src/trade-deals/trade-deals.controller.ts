@@ -22,7 +22,8 @@ import { TradeDealsService } from './trade-deals.service';
 import { TradeDeal } from './entities/trade-deal.entity';
 import { User } from '../auth/entities/user.entity';
 import { KycGuard } from '../auth/kyc.guard';
-import { Roles, RolesGuard } from '../auth/roles.guard';
+import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
 import { OptionalJwtGuard } from '../auth/optional-jwt.guard';
 import { CreateTradeDealDto } from './dto/create-trade-deal.dto';
 

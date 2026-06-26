@@ -37,6 +37,7 @@ export interface AddDocumentDto {
   stellarTxId?: string | null;
   fileSizeBytes?: number;
   memoText?: string | null;
+  signatureVerified?: boolean;
 }
 
 @Injectable()
@@ -64,8 +65,11 @@ export class TradeDealsService {
     status: TradeDealStatus,
     stellarAssetTxId?: string,
   ): Promise<void> {
+    // Generate an application trace ID for authorized updates
+    const appTraceId = `app-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 10)}`;
     await this.tradeDealRepo.update(dealId, {
       status,
+      appTraceId,
       ...(stellarAssetTxId && { stellarAssetTxId }),
     });
   }
@@ -133,6 +137,10 @@ export class TradeDealsService {
     const page = query.page ?? 1;
     const limit = query.limit ?? 12;
     const skip = (page - 1) * limit;
+
+    if (query.commodity && !/^[a-zA-Z0-9 _-]{1,100}$/.test(query.commodity)) {
+      throw new BadRequestException('Invalid commodity search term.');
+    }
 
     const qb = this.tradeDealRepo
       .createQueryBuilder('deal')
@@ -289,8 +297,7 @@ export class TradeDealsService {
         await this.stellarService.createEscrowAccount(dealId);
 
       // Encrypt the escrow secret
-      const encryptedEscrowSecret =
-        this.stellarService.encryptSecret(escrowSecretKey);
+      const encryptedEscrowSecret = await this.stellarService.encryptSecret(escrowSecretKey);
 
       // Update deal with escrow data
       await this.tradeDealRepo.update(dealId, {
@@ -365,6 +372,7 @@ export class TradeDealsService {
       storageUrl: dto.storageUrl,
       stellarTxId: dto.stellarTxId ?? null,
       memoText: dto.memoText ?? null,
+      signatureVerified: dto.signatureVerified ?? false,
     });
 
     return this.documentRepo.save(doc);
@@ -466,6 +474,8 @@ export class TradeDealsService {
     }
 
     deal.status = 'canceled';
+    // Set appTraceId for this authorized update
+    deal.appTraceId = `app-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 10)}`;
     return this.tradeDealRepo.save(deal);
   }
 

@@ -5,7 +5,9 @@ import {
   IsNotEmpty,
   IsString,
   MinLength,
+  IsOptional,
 } from 'class-validator';
+import { IsStrongPassword } from '../validators/password-strength.validator';
 
 export class RegisterDto {
   @ApiProperty({
@@ -30,6 +32,7 @@ export class RegisterDto {
   })
   @IsString()
   @MinLength(8)
+  @IsStrongPassword()
   password: string;
 
   @ApiProperty({
@@ -43,4 +46,13 @@ export class RegisterDto {
   @IsString()
   @IsNotEmpty()
   country: string;
+
+  @ApiProperty({
+    example: '/dashboard',
+    description: 'Relative URL to redirect to after successful registration',
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  redirect?: string;
 }
