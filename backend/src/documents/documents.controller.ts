@@ -20,6 +20,7 @@ import {
 } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { AuthGuard } from '@nestjs/passport';
+import { unlink } from 'fs/promises';
 import { DocumentsService } from './documents.service';
 import { ClamScanService } from './clam-scan.service';
 import { User } from '../auth/entities/user.entity';

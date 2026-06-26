@@ -7,6 +7,7 @@ import {
   VersioningType,
 } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { Transport, MicroserviceOptions } from '@nestjs/microservices';
 import { AppModule } from './app.module';
 import { applySecurityHeaders } from './common/middleware/security-headers.middleware';
 import { CustomLogger } from './common/logger/custom-logger.service';
