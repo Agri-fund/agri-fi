@@ -107,8 +107,15 @@ export class AdminController {
     summary: 'Freeze or unfreeze an investor trustline for a trade asset (AML compliance)',
   })
   @ApiBody({ type: FreezeAssetDto })
-  @ApiResponse({ status: 201, description: 'Trustline freeze/unfreeze submitted', schema: { properties: { txId: { type: 'string' } } } })
-  @ApiResponse({ status: 400, description: 'Issuer keys not available for this deal' })
+  @ApiResponse({
+    status: 201,
+    description: 'Trustline freeze/unfreeze submitted',
+    schema: { properties: { txId: { type: 'string' } } },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Issuer keys not available for this deal',
+  })
   @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
   @ApiResponse({ status: 404, description: 'Trade deal not found' })
   async freezeAsset(@Body() dto: FreezeAssetDto) {
@@ -124,7 +131,9 @@ export class AdminController {
       );
     }
 
-    const issuerSecret = this.stellarService.decryptSecret(deal.issuerSecretKey);
+    const issuerSecret = this.stellarService.decryptSecret(
+      deal.issuerSecretKey,
+    );
     const txId = await this.stellarService.freezeAsset(
       issuerSecret,
       deal.tokenSymbol,

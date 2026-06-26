@@ -55,7 +55,6 @@ describe('AuthController', () => {
 
       expect(mockAuthService.register).toHaveBeenCalledWith(registerDto);
     });
-  });
 
     it('should return validation error response formats for invalid data', async () => {
       const invalidDto: any = { email: 'not-an-email' };
@@ -86,9 +85,14 @@ describe('AuthController', () => {
     });
 
     it('should mock JWT sign helper methods verification', async () => {
-      const loginDto = { email: 'test@example.com', password: 'password123' };
-      mockAuthService.login.mockResolvedValue({ access_token: 'mock-signed-jwt' });
-      
+      const loginDto = {
+        email: 'test@example.com',
+        password: 'password123',
+      };
+      mockAuthService.login.mockResolvedValue({
+        access_token: 'mock-signed-jwt',
+      });
+
       const result = await controller.login(loginDto);
       expect(result.access_token).toBe('mock-signed-jwt');
       expect(mockAuthService.login).toHaveBeenCalledWith(loginDto);

@@ -11,7 +11,6 @@ import {
   Res,
   HttpCode,
   HttpStatus,
-  Query,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -84,10 +83,19 @@ export class AuthController {
   @Post('refresh')
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   @ApiOperation({ summary: 'Exchange a refresh token for a new access token' })
-  @ApiResponse({ status: 200, description: 'Returns new access and refresh tokens' })
-  @ApiResponse({ status: 401, description: 'Invalid or expired refresh token' })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns new access and refresh tokens',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Invalid or expired refresh token',
+  })
   @ApiResponse({ status: 429, description: 'Too many requests' })
-  refresh(@Body() dto: RefreshTokenDto, @Res({ passthrough: true }) res: Response) {
+  refresh(
+    @Body() dto: RefreshTokenDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     return this.authService.refresh(dto.refreshToken).then((tokens) => {
       const opts = this.authService.cookieOptions();
       res.cookie('access_token', tokens.accessToken, opts);
@@ -99,7 +107,9 @@ export class AuthController {
   @Post('wallet')
   @UseGuards(AuthGuard('jwt'))
   @ApiBearerAuth('jwt')
-  @ApiOperation({ summary: 'Link a Stellar wallet address to the authenticated user' })
+  @ApiOperation({
+    summary: 'Link a Stellar wallet address to the authenticated user',
+  })
   @ApiResponse({ status: 200, description: 'Wallet linked' })
   @ApiResponse({ status: 400, description: 'Invalid wallet address' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
@@ -129,8 +139,14 @@ export class AuthController {
       'Updates the account password and increments tokenVersion, ' +
       'revoking every outstanding JWT issued before this call.',
   })
-  @ApiResponse({ status: 200, description: 'Password updated; sessions invalidated' })
-  @ApiResponse({ status: 400, description: 'Current password incorrect or new password reused' })
+  @ApiResponse({
+    status: 200,
+    description: 'Password updated; sessions invalidated',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Current password incorrect or new password reused',
+  })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   changePassword(@Request() req: AuthRequest, @Body() dto: ChangePasswordDto) {
     return this.authService.changePassword(req.user.id, dto);
@@ -182,7 +198,10 @@ export class AuthController {
     status: 200,
     description: 'Returns JWT tokens for the authenticated wallet',
   })
-  @ApiResponse({ status: 401, description: 'Invalid signature or expired challenge' })
+  @ApiResponse({
+    status: 401,
+    description: 'Invalid signature or expired challenge',
+  })
   async sep10Login(@Body() dto: Sep10ResponseDto) {
     return this.authService.validateSep10Response(dto.signedXdr);
   }
@@ -204,7 +223,7 @@ export class AuthController {
   })
   @ApiResponse({ status: 200, description: 'Webhook accepted' })
   @ApiResponse({ status: 401, description: 'Invalid or missing signature' })
-  handleWebhook(@Req() req: RawBodyRequest<ExpressRequest>) {
+  handleWebhook(@Req() _req: RawBodyRequest<ExpressRequest>) {
     // Payload is safe to process — signature already verified by guard.
     return { received: true };
   }

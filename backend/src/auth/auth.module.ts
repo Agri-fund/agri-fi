@@ -32,7 +32,13 @@ import { OfacSanctionsCheckService } from './utils/ofac-sanctions-check';
     }),
   ],
   controllers: [AuthController, AdminController],
-  providers: [AuthService, JwtStrategy, KycGuard, RolesGuard, OfacSanctionsCheckService],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    KycGuard,
+    RolesGuard,
+    OfacSanctionsCheckService,
+  ],
   exports: [AuthService, JwtModule, TypeOrmModule, KycGuard, RolesGuard],
 })
 export class AuthModule {}
