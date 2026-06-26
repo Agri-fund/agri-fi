@@ -1023,6 +1023,63 @@ export class StellarService {
   }
 
   /**
+   * Fetches all current holders for a given non-native asset.
+   * Uses Horizon /accounts?asset={code}:{issuer} and follows pagination.
+   * Returns an array of InvestorShare where `tokenAmount` is the holder's
+   * balance and `totalTokens` is the aggregate supply across holders.
+   */
+  async getTokenHolders(
+    assetCode: string,
+    issuerPublicKey: string,
+  ): Promise<InvestorShare[]> {
+    const tradeAsset = createAsset(assetCode, issuerPublicKey);
+
+    const LIMIT = 200;
+    let page = await this.server.accounts().forAsset(tradeAsset).limit(LIMIT).call();
+
+    const holders: Array<{ walletAddress: string; tokenAmount: number }> = [];
+
+    // Iterate through pages until no next page is available
+    while (page && Array.isArray(page.records) && page.records.length > 0) {
+      for (const acc of page.records) {
+        const balanceEntry = (acc.balances || []).find(
+          (b: any) =>
+            b.asset_type !== 'native' &&
+            b.asset_code === tradeAsset.getCode() &&
+            b.asset_issuer === tradeAsset.getIssuer(),
+        );
+
+        if (balanceEntry) {
+          const bal = parseFloat(balanceEntry.balance || '0');
+          if (bal > 0) {
+            holders.push({ walletAddress: acc.account_id ?? acc.id, tokenAmount: bal });
+          }
+        }
+      }
+
+      // Fetch next page if available; the SDK exposes `next()` on the page
+      if (typeof (page as any).next === 'function') {
+        try {
+          page = await (page as any).next();
+        } catch (e) {
+          this.logger.warn({ err: e }, 'Failed to fetch next page of asset holders');
+          break;
+        }
+      } else {
+        break;
+      }
+    }
+
+    const totalTokens = holders.reduce((s, h) => s + h.tokenAmount, 0);
+
+    return holders.map((h) => ({
+      walletAddress: h.walletAddress,
+      tokenAmount: h.tokenAmount,
+      totalTokens,
+    }));
+  }
+
+  /**
    * Submits a transaction with exponential backoff retry for transient Horizon errors.
    * Retries on HTTP 429, 503, 504, and network timeout errors.
    * Waits 1s → 2s → 4s before each retry; throws after 3 failed attempts.
