@@ -136,7 +136,19 @@ export class AuthService {
       emailVerificationToken,
     });
 
-    const saved = await this.userRepo.save(user);
+    let saved: User;
+    try {
+      saved = await this.userRepo.save(user);
+    } catch (err: any) {
+      // PostgreSQL unique_violation code
+      if (err?.code === '23505') {
+        throw new ConflictException({
+          code: 'EMAIL_EXISTS',
+          message: 'Email is already registered.',
+        });
+      }
+      throw err;
+    }
 
     await this.sendVerificationEmail(saved.email, emailVerificationToken);
 
