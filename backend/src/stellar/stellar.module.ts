@@ -3,7 +3,10 @@ import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { StellarService, SEQUENCE_REDIS_CLIENT } from './stellar.service';
 import { StellarController } from './stellar.controller';
+import { Sep24Controller } from './sep24.controller';
+import { Sep24Service } from './sep24.service';
 import { TransactionLog } from './entities/transaction-log.entity';
+import { Sep24Transaction } from './entities/sep24-transaction.entity';
 import { PricesService, PRICE_REDIS_CLIENT } from './prices.service';
 import { RedisConfig } from '../config/redis.config';
 import { StellarHistory } from './entities/stellar-history.entity';
@@ -29,10 +32,14 @@ const sequenceRedisClientFactory = {
 
 @Global()
 @Module({
-  imports: [ConfigModule, TypeOrmModule.forFeature([TransactionLog, StellarHistory])],
-  controllers: [StellarController],
+  imports: [
+    ConfigModule,
+    TypeOrmModule.forFeature([TransactionLog, StellarHistory, Sep24Transaction]),
+  ],
+  controllers: [StellarController, Sep24Controller],
   providers: [
     StellarService,
+    Sep24Service,
     PricesService,
     StellarArchiverService,
     StellarMonitorService,
@@ -43,6 +50,6 @@ const sequenceRedisClientFactory = {
     StellarArchiverService,
     StellarMonitorService,
   ],
-  exports: [StellarService, PricesService, KmsService],
+  exports: [StellarService, Sep24Service, PricesService, KmsService],
 })
 export class StellarModule {}

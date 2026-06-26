@@ -149,6 +149,7 @@ function setupSwagger(app: any) {
     .addTag('shipments', 'Record and query shipment milestones')
     .addTag('documents', 'Upload trade documents to IPFS')
     .addTag('users', 'User dashboard data')
+    .addTag('sep24', 'SEP-24 interactive deposit and withdrawal')
     .build();
 
   const document = SwaggerModule.createDocument(app, config);
