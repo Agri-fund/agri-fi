@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, BadRequestException } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { Transport, MicroserviceOptions } from '@nestjs/microservices';
 import { AppModule } from './app.module';
 import { applySecurityHeaders } from './common/middleware/security-headers.middleware';
 
@@ -9,6 +10,21 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   app.use(applySecurityHeaders);
+
+  // Connect the hybrid RMQ consumer with prefetchCount=1 so Stellar operations
+  // for a single escrow account execute sequentially and never race on sequence numbers.
+  app.connectMicroservice<MicroserviceOptions>({
+    transport: Transport.RMQ,
+    options: {
+      urls: [process.env.RABBITMQ_URL ?? 'amqp://guest:guest@localhost:5672'],
+      queue: 'agric_onchain_queue',
+      queueOptions: { durable: true },
+      prefetchCount: 1,
+      noAck: false,
+    },
+  });
+
+  await app.startAllMicroservices();
 
   app.useGlobalPipes(
     new ValidationPipe({

@@ -18,6 +18,7 @@ import {
 } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { AuthGuard } from '@nestjs/passport';
+import { unlink } from 'fs/promises';
 import { DocumentsService } from './documents.service';
 import { User } from '../auth/entities/user.entity';
 
@@ -81,11 +82,17 @@ export class DocumentsController {
         'Unsupported file type. Only PDF, PNG, JPEG allowed',
       );
     }
-    return this.documentsService.handleUpload({
-      file,
-      docType: body.doc_type,
-      tradeDealId: body.trade_deal_id,
-      userId: req.user.id,
-    });
+    try {
+      return await this.documentsService.handleUpload({
+        file,
+        docType: body.doc_type,
+        tradeDealId: body.trade_deal_id,
+        userId: req.user.id,
+      });
+    } finally {
+      if (file.path) {
+        await unlink(file.path).catch(() => undefined);
+      }
+    }
   }
 }
