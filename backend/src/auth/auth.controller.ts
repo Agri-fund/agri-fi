@@ -7,6 +7,7 @@ import {
   Request,
   RawBodyRequest,
   Req,
+  Res,
   HttpCode,
   HttpStatus,
   Query,
@@ -21,7 +22,7 @@ import {
 } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { Throttle } from '@nestjs/throttler';
-import type { Request as ExpressRequest } from 'express';
+import type { Request as ExpressRequest, Response } from 'express';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -60,8 +61,15 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'Returns access and refresh JWTs' })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
   @ApiResponse({ status: 429, description: 'Too many requests' })
-  login(@Body() dto: LoginDto) {
-    return this.authService.login(dto);
+  async login(
+    @Body() dto: LoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const tokens = await this.authService.login(dto);
+    const opts = this.authService.cookieOptions();
+    res.cookie('access_token', tokens.accessToken, opts);
+    res.cookie('refresh_token', tokens.refreshToken, opts);
+    return tokens;
   }
 
   @Post('refresh')
@@ -70,8 +78,13 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'Returns new access and refresh tokens' })
   @ApiResponse({ status: 401, description: 'Invalid or expired refresh token' })
   @ApiResponse({ status: 429, description: 'Too many requests' })
-  refresh(@Body() dto: RefreshTokenDto) {
-    return this.authService.refresh(dto.refreshToken);
+  refresh(@Body() dto: RefreshTokenDto, @Res({ passthrough: true }) res: Response) {
+    return this.authService.refresh(dto.refreshToken).then((tokens) => {
+      const opts = this.authService.cookieOptions();
+      res.cookie('access_token', tokens.accessToken, opts);
+      res.cookie('refresh_token', tokens.refreshToken, opts);
+      return tokens;
+    });
   }
 
   @Post('wallet')
