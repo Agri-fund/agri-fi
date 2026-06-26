@@ -68,9 +68,12 @@ describe('SentryIntegrationHandler', () => {
       const uncaughtError = new Error('Uncaught error');
       handler.captureException(uncaughtError);
 
-      expect(mockedSentry.captureException).toHaveBeenCalledWith(uncaughtError, {
-        contexts: undefined,
-      });
+      expect(mockedSentry.captureException).toHaveBeenCalledWith(
+        uncaughtError,
+        {
+          contexts: undefined,
+        },
+      );
     });
 
     it('captures multiple exceptions in sequence', () => {

@@ -34,14 +34,20 @@ describe('Security Headers (E2E)', () => {
   it('sets Strict-Transport-Security (HSTS) header', async () => {
     const response = await request(app.getHttpServer()).get('/');
     expect(response.headers['strict-transport-security']).toBeDefined();
-    expect(response.headers['strict-transport-security']).toContain('max-age=31536000');
-    expect(response.headers['strict-transport-security']).toContain('includeSubDomains');
+    expect(response.headers['strict-transport-security']).toContain(
+      'max-age=31536000',
+    );
+    expect(response.headers['strict-transport-security']).toContain(
+      'includeSubDomains',
+    );
   });
 
   it('sets Content-Security-Policy (CSP) header', async () => {
     const response = await request(app.getHttpServer()).get('/');
     expect(response.headers['content-security-policy']).toBeDefined();
-    expect(response.headers['content-security-policy']).toContain("default-src 'self'");
+    expect(response.headers['content-security-policy']).toContain(
+      "default-src 'self'",
+    );
   });
 
   it('sets X-Content-Type-Options header to nosniff', async () => {

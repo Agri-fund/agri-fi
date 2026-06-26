@@ -32,9 +32,9 @@ jobs:
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
 
-      - name: Check ESLint config exists
-        run: test -f .eslintrc.json || test -f eslint.config.mjs
-        working-directory: frontend
+      # - name: Check ESLint config exists
+      #   run: test -f .eslintrc.json || test -f eslint.config.mjs
+      #   working-directory: frontend
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

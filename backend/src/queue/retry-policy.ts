@@ -1,8 +1,7 @@
 export const DEFAULT_QUEUE_MAX_RETRIES = 3;
 
 export function isTransientQueueError(error: unknown): boolean {
-  const message =
-    error instanceof Error ? error.message : String(error ?? '');
+  const message = error instanceof Error ? error.message : String(error ?? '');
 
   return [
     'stellar',

@@ -1,0 +1,45 @@
+# Restrict Postgres ingress to backend pods only and block all external egress
+# from the Postgres pod. Linux conntrack allows TCP responses to established
+# inbound connections even with egress: [], so queries work correctly.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-isolation
+spec:
+  podSelector:
+    matchLabels:
+      app: postgres
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: agri-fi-backend
+      ports:
+        - protocol: TCP
+          port: 5432
+  egress: []
+---
+# Restrict RabbitMQ ingress to backend pods only and block all external egress.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: rabbitmq-isolation
+spec:
+  podSelector:
+    matchLabels:
+      app: rabbitmq
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: agri-fi-backend
+      ports:
+        - protocol: TCP
+          port: 5672
+  egress: []

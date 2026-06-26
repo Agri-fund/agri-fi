@@ -9,6 +9,9 @@ name: CD — Staging
 #   * Secret KUBE_CONFIG_STAGING — base64-encoded kubeconfig for the staging
 #     cluster. Create with: `base64 -w0 ~/.kube/config` (Linux) and store it as
 #     a repository/environment secret.
+#   * Database migrations run automatically before deployment using the new
+#     backend image. The migration pod requires database connection credentials
+#     configured in the Kubernetes environment (via ConfigMaps/Secrets).
 
 on:
   push:
@@ -33,6 +36,69 @@ jobs:
           # GHCR requires a lowercase image path.
           echo "image_prefix=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
           echo "tag=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          # Discord notification
+          if [ -n "${{ secrets.DISCORD_WEBHOOK_URL }}" ]; then
+            curl -X POST ${{ secrets.DISCORD_WEBHOOK_URL }} \
+              -H "Content-Type: application/json" \
+              -d '{
+                "content": "❌ **CD Prepare Job Failed**\n\n**Repository:** ${{ github.repository }}\n**Branch:** ${{ github.ref_name }}\n**Commit:** ${{ github.sha }}\n**Actor:** ${{ github.actor }}\n**Workflow:** ${{ github.workflow }}\n**Job:** prepare\n**Run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+                "username": "GitHub Actions"
+              }' || true
+          fi
+          
+          # Slack notification
+          if [ -n "${{ secrets.SLACK_WEBHOOK_URL }}" ]; then
+            curl -X POST ${{ secrets.SLACK_WEBHOOK_URL }} \
+              -H "Content-Type: application/json" \
+              -d '{
+                "text": "❌ CD Prepare Job Failed",
+                "blocks": [
+                  {
+                    "type": "header",
+                    "text": {
+                      "type": "plain_text",
+                      "text": "❌ CD Prepare Job Failed"
+                    }
+                  },
+                  {
+                    "type": "section",
+                    "fields": [
+                      {
+                        "type": "mrkdwn",
+                        "text": "*Repository:*\n${{ github.repository }}"
+                      },
+                      {
+                        "type": "mrkdwn",
+                        "text": "*Branch:*\n${{ github.ref_name }}"
+                      },
+                      {
+                        "type": "mrkdwn",
+                        "text": "*Commit:*\n${{ github.sha }}"
+                      },
+                      {
+                        "type": "mrkdwn",
+                        "text": "*Actor:*\n${{ github.actor }}"
+                      },
+                      {
+                        "type": "mrkdwn",
+                        "text": "*Job:*\nprepare"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "section",
+                    "text": {
+                      "type": "mrkdwn",
+                      "text": "<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow Run>"
+                    }
+                  }
+                ]
+              }' || true
+          fi
 
   build:
     name: Build & push ${{ matrix.component }} image
@@ -68,6 +134,73 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.component }}
           cache-to: type=gha,mode=max,scope=${{ matrix.component }}
 
+      - name: Notify on failure
+        if: failure()
+        run: |
+          # Discord notification
+          if [ -n "${{ secrets.DISCORD_WEBHOOK_URL }}" ]; then
+            curl -X POST ${{ secrets.DISCORD_WEBHOOK_URL }} \
+              -H "Content-Type: application/json" \
+              -d '{
+                "content": "❌ **CD Build Job Failed**\n\n**Repository:** ${{ github.repository }}\n**Branch:** ${{ github.ref_name }}\n**Commit:** ${{ github.sha }}\n**Actor:** ${{ github.actor }}\n**Workflow:** ${{ github.workflow }}\n**Job:** build\n**Component:** ${{ matrix.component }}\n**Run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+                "username": "GitHub Actions"
+              }' || true
+          fi
+          
+          # Slack notification
+          if [ -n "${{ secrets.SLACK_WEBHOOK_URL }}" ]; then
+            curl -X POST ${{ secrets.SLACK_WEBHOOK_URL }} \
+              -H "Content-Type: application/json" \
+              -d '{
+                "text": "❌ CD Build Job Failed",
+                "blocks": [
+                  {
+                    "type": "header",
+                    "text": {
+                      "type": "plain_text",
+                      "text": "❌ CD Build Job Failed"
+                    }
+                  },
+                  {
+                    "type": "section",
+                    "fields": [
+                      {
+                        "type": "mrkdwn",
+                        "text": "*Repository:*\n${{ github.repository }}"
+                      },
+                      {
+                        "type": "mrkdwn",
+                        "text": "*Branch:*\n${{ github.ref_name }}"
+                      },
+                      {
+                        "type": "mrkdwn",
+                        "text": "*Commit:*\n${{ github.sha }}"
+                      },
+                      {
+                        "type": "mrkdwn",
+                        "text": "*Actor:*\n${{ github.actor }}"
+                      },
+                      {
+                        "type": "mrkdwn",
+                        "text": "*Job:*\nbuild"
+                      },
+                      {
+                        "type": "mrkdwn",
+                        "text": "*Component:*\n${{ matrix.component }}"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "section",
+                    "text": {
+                      "type": "mrkdwn",
+                      "text": "<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow Run>"
+                    }
+                  }
+                ]
+              }' || true
+          fi
+
   deploy:
     name: Deploy to staging
     needs: [prepare, build]
@@ -81,6 +214,38 @@ jobs:
         run: |
           mkdir -p "$HOME/.kube"
           echo "${{ secrets.KUBE_CONFIG_STAGING }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Run database migrations
+        env:
+          IMAGE_PREFIX: ${{ needs.prepare.outputs.image_prefix }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          echo "Running database migrations..."
+          
+          # Create a temporary pod to run migrations
+          kubectl -n default run migration-runner-${GITHUB_SHA::12} \
+            --image="${IMAGE_PREFIX}/backend:${TAG}" \
+            --restart=Never \
+            --command -- \
+            npm run migration:run
+          
+          # Wait for the migration pod to complete
+          kubectl -n default wait pod/migration-runner-${GITHUB_SHA::12} \
+            --for=condition=complete \
+            --timeout=300s
+          
+          # Check if migration was successful
+          MIGRATION_STATUS=$(kubectl -n default get pod/migration-runner-${GITHUB_SHA::12} -o jsonpath='{.status.phase}')
+          
+          # Clean up the migration pod
+          kubectl -n default delete pod migration-runner-${GITHUB_SHA::12} --ignore-not-found=true
+          
+          if [ "$MIGRATION_STATUS" != "Succeeded" ]; then
+            echo "Migration failed with status: $MIGRATION_STATUS"
+            exit 1
+          fi
+          
+          echo "Database migrations completed successfully"
 
       - name: Roll out new image tags
         env:
@@ -96,3 +261,70 @@ jobs:
         run: |
           kubectl -n default rollout status deployment/agri-fi-backend --timeout=180s
           kubectl -n default rollout status deployment/agri-fi-frontend --timeout=180s
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          # Discord notification
+          if [ -n "${{ secrets.DISCORD_WEBHOOK_URL }}" ]; then
+            curl -X POST ${{ secrets.DISCORD_WEBHOOK_URL }} \
+              -H "Content-Type: application/json" \
+              -d '{
+                "content": "❌ **CD Deploy Job Failed**\n\n**Repository:** ${{ github.repository }}\n**Branch:** ${{ github.ref_name }}\n**Commit:** ${{ github.sha }}\n**Actor:** ${{ github.actor }}\n**Workflow:** ${{ github.workflow }}\n**Job:** deploy\n**Environment:** staging\n**Run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+                "username": "GitHub Actions"
+              }' || true
+          fi
+          
+          # Slack notification
+          if [ -n "${{ secrets.SLACK_WEBHOOK_URL }}" ]; then
+            curl -X POST ${{ secrets.SLACK_WEBHOOK_URL }} \
+              -H "Content-Type: application/json" \
+              -d '{
+                "text": "❌ CD Deploy Job Failed",
+                "blocks": [
+                  {
+                    "type": "header",
+                    "text": {
+                      "type": "plain_text",
+                      "text": "❌ CD Deploy Job Failed"
+                    }
+                  },
+                  {
+                    "type": "section",
+                    "fields": [
+                      {
+                        "type": "mrkdwn",
+                        "text": "*Repository:*\n${{ github.repository }}"
+                      },
+                      {
+                        "type": "mrkdwn",
+                        "text": "*Branch:*\n${{ github.ref_name }}"
+                      },
+                      {
+                        "type": "mrkdwn",
+                        "text": "*Commit:*\n${{ github.sha }}"
+                      },
+                      {
+                        "type": "mrkdwn",
+                        "text": "*Actor:*\n${{ github.actor }}"
+                      },
+                      {
+                        "type": "mrkdwn",
+                        "text": "*Job:*\ndeploy"
+                      },
+                      {
+                        "type": "mrkdwn",
+                        "text": "*Environment:*\nstaging"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "section",
+                    "text": {
+                      "type": "mrkdwn",
+                      "text": "<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow Run>"
+                    }
+                  }
+                ]
+              }' || true
+          fi

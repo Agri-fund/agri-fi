@@ -32,7 +32,8 @@ export class MetricsInterceptor implements NestInterceptor {
     const start = process.hrtime.bigint();
     const method: string = req.method;
     // Prefer the matched route pattern over the raw URL to bound label cardinality.
-    const route: string = req.route?.path ?? req.url?.split('?')[0] ?? 'unknown';
+    const route: string =
+      req.route?.path ?? req.url?.split('?')[0] ?? 'unknown';
 
     const record = (statusCode: number) => {
       const labels = { method, route, status_code: String(statusCode) };

@@ -1,1 +1,1 @@
-self.__REACT_LOADABLE_MANIFEST="{}";
+self.__REACT_LOADABLE_MANIFEST='{"components/dashboard/ShipmentMap.tsx -> react-leaflet":{"id":3839,"files":["static/chunks/839.a523f3a16d1a0c4b.js"]},"lib/stellar-wallet.ts -> @stellar/freighter-api":{"id":2705,"files":["static/chunks/705.20d14b9b98dc8f63.js"]}}';

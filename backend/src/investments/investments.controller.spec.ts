@@ -10,6 +10,7 @@ import { CreateInvestmentDto } from './dto/create-investment.dto';
 
 const mockInvestmentsService = {
   createInvestment: jest.fn(),
+  confirmInvestment: jest.fn(),
 };
 
 const mockStellarService = {} as StellarService;
@@ -69,6 +70,29 @@ describe('InvestmentsController', () => {
 
     expect(() => rolesGuard.canActivate(context)).toThrow(ForbiddenException);
     expect(mockInvestmentsService.createInvestment).not.toHaveBeenCalled();
+  });
+
+  describe('POST /investments/:id/confirm', () => {
+    it('delegates confirmation to the service with the authenticated user id', async () => {
+      const request = { user: { id: 'investor-1' } };
+      const stellarTxId =
+        'a1b2c3d4e5f67890abcdef1234567890abcdef1234567890abcdef1234567890';
+      const expected = { id: 'investment-1', status: 'confirmed' };
+      mockInvestmentsService.confirmInvestment.mockResolvedValue(expected);
+
+      const result = await controller.confirmInvestment(
+        request as any,
+        'investment-1',
+        stellarTxId,
+      );
+
+      expect(result).toEqual(expected);
+      expect(mockInvestmentsService.confirmInvestment).toHaveBeenCalledWith(
+        'investor-1',
+        'investment-1',
+        stellarTxId,
+      );
+    });
   });
 
   describe('POST /investments', () => {

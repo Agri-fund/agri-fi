@@ -111,7 +111,10 @@ describe('AuditSubscriber', () => {
       await subscriber.afterUpdate(event);
 
       const [, auditPayload] = mockManager.save.mock.calls[0];
-      expect(JSON.parse(auditPayload.changes)).toEqual(['status', 'totalInvested']);
+      expect(JSON.parse(auditPayload.changes)).toEqual([
+        'status',
+        'totalInvested',
+      ]);
     });
 
     it('stores an empty changes array when no columns are listed', async () => {

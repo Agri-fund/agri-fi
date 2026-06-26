@@ -22,6 +22,7 @@ import {
   DEFAULT_QUEUE_MAX_RETRIES,
   getExponentialBackoffDelayMs,
 } from './retry-policy';
+import { decryptPayload } from './queue.crypto';
 
 @Controller()
 export class QueueProcessor {
@@ -48,11 +49,39 @@ export class QueueProcessor {
     }
   }
 
+  private unwrap<T>(
+    encrypted: string,
+    pattern: string,
+    channel: any,
+    msg: any,
+  ): T | null {
+    try {
+      return decryptPayload<T>(encrypted);
+    } catch (err: any) {
+      this.logger.error(
+        { event: pattern, error: err.message },
+        `${pattern} decryption failed — nacking message`,
+      );
+      channel.nack(msg, false, false);
+      return null;
+    }
+  }
+
   @EventPattern('deal.publish')
   async handleDealPublish(
-    @Payload() data: DealPublishPayload,
+    @Payload() encrypted: string,
     @Ctx() context: RmqContext,
   ) {
+    const channel = context.getChannelRef();
+    const originalMsg = context.getMessage();
+    const data = this.unwrap<DealPublishPayload>(
+      encrypted,
+      'deal.publish',
+      channel,
+      originalMsg,
+    );
+    if (!data) return;
+
     this.setCorrelationId(data);
     this.logger.info(
       { dealId: data.dealId },
@@ -61,7 +90,7 @@ export class QueueProcessor {
 
     try {
       // Call StellarService.issueTradeToken
-      const escrowSecretKey = this.stellarService.decryptSecret(
+      const escrowSecretKey = await this.stellarService.decryptSecret(
         data.encryptedEscrowSecret,
       );
       const result = await this.stellarService.issueTradeToken(
@@ -72,7 +101,7 @@ export class QueueProcessor {
       );
 
       // Encrypt the issuer secret
-      const encryptedIssuerSecret = this.stellarService.encryptSecret(
+      const encryptedIssuerSecret = await this.stellarService.encryptSecret(
         result.issuerSecret,
       );
       if (encryptedIssuerSecret === result.issuerSecret) {
@@ -80,8 +109,10 @@ export class QueueProcessor {
       }
 
       // Update deal with issuer keys and status to open
+      const appTraceId = `app-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 10)}`;
       await this.tradeDealRepo.update(data.dealId, {
         status: 'open',
+        appTraceId,
         stellarAssetTxId: result.txId,
         issuerPublicKey: result.issuerPublicKey,
         issuerSecretKey: encryptedIssuerSecret,
@@ -107,20 +138,29 @@ export class QueueProcessor {
       );
 
       // On Stellar failure: mark deal status = 'failed'
-      await this.tradeDealRepo.update(data.dealId, { status: 'failed' });
+      const appTraceId = `app-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 10)}`;
+      await this.tradeDealRepo.update(data.dealId, { status: 'failed', appTraceId });
     }
 
     // Acknowledge the message
-    const channel = context.getChannelRef();
-    const originalMsg = context.getMessage();
     channel.ack(originalMsg);
   }
 
   @EventPattern('investment.fund')
   async handleInvestmentFund(
-    @Payload() data: InvestmentFundPayload,
+    @Payload() encrypted: string,
     @Ctx() context: RmqContext,
   ) {
+    const channel = context.getChannelRef();
+    const originalMsg = context.getMessage();
+    const data = this.unwrap<InvestmentFundPayload>(
+      encrypted,
+      'investment.fund',
+      channel,
+      originalMsg,
+    );
+    if (!data) return;
+
     this.setCorrelationId(data);
     this.logger.info(
       { investmentId: data.investmentId },
@@ -129,8 +169,6 @@ export class QueueProcessor {
 
     let attempt = 0;
     let lastError: Error | null = null;
-    const channel = context.getChannelRef();
-    const originalMsg = context.getMessage();
 
     while (attempt < DEFAULT_QUEUE_MAX_RETRIES) {
       try {
@@ -145,7 +183,7 @@ export class QueueProcessor {
         // InvestmentFundPayload fields directly — the previously referenced
         // variables (escrowSecret, deal, investment) were never declared in
         // this method and would cause a ReferenceError at runtime.
-        const escrowSecret = this.stellarService.decryptSecret(
+        const escrowSecret = await this.stellarService.decryptSecret(
           data.encryptedEscrowSecret,
         );
         await this.stellarService.transferTradeTokens(
@@ -208,9 +246,19 @@ export class QueueProcessor {
 
   @EventPattern('deal.funded')
   async handleDealFunded(
-    @Payload() data: DealFundedPayload,
+    @Payload() encrypted: string,
     @Ctx() context: RmqContext,
   ) {
+    const channel = context.getChannelRef();
+    const originalMsg = context.getMessage();
+    const data = this.unwrap<DealFundedPayload>(
+      encrypted,
+      'deal.funded',
+      channel,
+      originalMsg,
+    );
+    if (!data) return;
+
     this.setCorrelationId(data);
     this.logger.info(
       { tradeDealId: data.tradeDealId },
@@ -233,15 +281,24 @@ export class QueueProcessor {
       );
     }
 
-    const channel = context.getChannelRef();
-    channel.ack(context.getMessage());
+    channel.ack(originalMsg);
   }
 
   @EventPattern('email.notification')
   async handleEmailNotification(
-    @Payload() data: any,
+    @Payload() encrypted: string,
     @Ctx() context: RmqContext,
   ) {
+    const channel = context.getChannelRef();
+    const originalMsg = context.getMessage();
+    const data = this.unwrap<any>(
+      encrypted,
+      'email.notification',
+      channel,
+      originalMsg,
+    );
+    if (!data) return;
+
     this.setCorrelationId(data);
     this.logger.info(
       { type: data.type },
@@ -303,15 +360,24 @@ export class QueueProcessor {
       );
     }
 
-    const channel = context.getChannelRef();
-    channel.ack(context.getMessage());
+    channel.ack(originalMsg);
   }
 
   @EventPattern('deal.cleanup')
   async handleDealCleanup(
-    @Payload() data: DealCleanupPayload,
+    @Payload() encrypted: string,
     @Ctx() context: RmqContext,
   ) {
+    const channel = context.getChannelRef();
+    const originalMsg = context.getMessage();
+    const data = this.unwrap<DealCleanupPayload>(
+      encrypted,
+      'deal.cleanup',
+      channel,
+      originalMsg,
+    );
+    if (!data) return;
+
     this.setCorrelationId(data);
     this.logger.info(
       { dealId: data.tradeDealId },
@@ -322,8 +388,7 @@ export class QueueProcessor {
       const deal = await this.tradeDealsService.findOne(data.tradeDealId);
       if (!deal) {
         this.logger.warn(`Deal ${data.tradeDealId} not found for cleanup`);
-        const channel = context.getChannelRef();
-        channel.ack(context.getMessage());
+        channel.ack(originalMsg);
         return;
       }
 
@@ -339,7 +404,7 @@ export class QueueProcessor {
       // Cleanup escrow account
       if (deal.escrowPublicKey && deal.escrowSecretKey) {
         try {
-          const escrowSecret = this.stellarService.decryptSecret(
+          const escrowSecret = await this.stellarService.decryptSecret(
             deal.escrowSecretKey,
           );
           await this.stellarService.closeAccount(
@@ -358,7 +423,7 @@ export class QueueProcessor {
       // Cleanup issuer account
       if (deal.issuerPublicKey && deal.issuerSecretKey) {
         try {
-          const issuerSecret = this.stellarService.decryptSecret(
+          const issuerSecret = await this.stellarService.decryptSecret(
             deal.issuerSecretKey,
           );
           await this.stellarService.closeAccount(
@@ -386,8 +451,7 @@ export class QueueProcessor {
       // We still ack the message, it's a best-effort cleanup
     }
 
-    const channel = context.getChannelRef();
-    channel.ack(context.getMessage());
+    channel.ack(originalMsg);
   }
 
   // ── Private helpers ─────────────────────────────────────────────────────────
@@ -418,9 +482,7 @@ export class QueueProcessor {
     );
     if (!usdcContractId) return;
 
-    const deadlineTs = Math.floor(
-      new Date(deal.deliveryDate).getTime() / 1000,
-    );
+    const deadlineTs = Math.floor(new Date(deal.deliveryDate).getTime() / 1000);
     const fundingTargetStroops = BigInt(
       Math.round(Number(deal.totalValue) * 1e7),
     );

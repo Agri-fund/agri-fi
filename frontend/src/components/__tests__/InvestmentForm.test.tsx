@@ -1,7 +1,11 @@
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { InvestmentForm } from '../InvestmentForm';
+import { ToastProvider } from '../ui/ToastProvider';
 import * as freighterApi from '@stellar/freighter-api';
+
+const renderWithToast = (ui: React.ReactElement) =>
+  render(<ToastProvider>{ui}</ToastProvider>);
 
 // Mock the useWallet hook
 jest.mock('../../hooks/useWallet', () => ({
@@ -40,7 +44,7 @@ describe('InvestmentForm', () => {
   });
 
   it('validates token quantity input and shows calculated USD amount', async () => {
-    render(<InvestmentForm {...defaultProps} />);
+    renderWithToast(<InvestmentForm {...defaultProps} />);
 
     const tokenInput = screen.getByLabelText('Number of Tokens');
     expect(tokenInput).toBeInTheDocument();
@@ -63,7 +67,7 @@ describe('InvestmentForm', () => {
   });
 
   it('enforces minimum and maximum token limits', async () => {
-    render(<InvestmentForm {...defaultProps} />);
+    renderWithToast(<InvestmentForm {...defaultProps} />);
 
     const tokenInput = screen.getByLabelText('Number of Tokens');
     const submitButton = screen.getByRole('button', { name: /Invest/ });
@@ -104,7 +108,7 @@ describe('InvestmentForm', () => {
       signTransaction: jest.fn(),
     });
 
-    render(<InvestmentForm {...defaultProps} />);
+    renderWithToast(<InvestmentForm {...defaultProps} />);
 
     expect(screen.getByText(/Please connect your Stellar wallet to invest/)).toBeInTheDocument();
     expect(screen.queryByLabelText('Number of Tokens')).not.toBeInTheDocument();
@@ -138,7 +142,7 @@ describe('InvestmentForm', () => {
         }),
       });
 
-    render(<InvestmentForm {...defaultProps} />);
+    renderWithToast(<InvestmentForm {...defaultProps} />);
 
     const tokenInput = screen.getByLabelText('Number of Tokens');
     const submitButton = screen.getByRole('button', { name: /Invest/ });
@@ -185,7 +189,7 @@ describe('InvestmentForm', () => {
       json: async () => ({ message: 'Insufficient tokens available' }),
     });
 
-    render(<InvestmentForm {...defaultProps} />);
+    renderWithToast(<InvestmentForm {...defaultProps} />);
 
     const submitButton = screen.getByRole('button', { name: /Invest/ });
     await user.click(submitButton);
@@ -217,7 +221,7 @@ describe('InvestmentForm', () => {
       }),
     });
 
-    render(<InvestmentForm {...defaultProps} />);
+    renderWithToast(<InvestmentForm {...defaultProps} />);
 
     const submitButton = screen.getByRole('button', { name: /Invest/ });
     await user.click(submitButton);
@@ -231,7 +235,7 @@ describe('InvestmentForm', () => {
     const user = userEvent.setup();
     mockLocalStorage.getItem.mockReturnValueOnce(null);
 
-    render(<InvestmentForm {...defaultProps} />);
+    renderWithToast(<InvestmentForm {...defaultProps} />);
 
     const submitButton = screen.getByRole('button', { name: /Invest/ });
     await user.click(submitButton);
@@ -257,7 +261,7 @@ describe('InvestmentForm', () => {
         json: async () => ({ stellarTxId: 'stellar-tx-456' }),
       });
 
-    render(<InvestmentForm {...defaultProps} />);
+    renderWithToast(<InvestmentForm {...defaultProps} />);
 
     const submitButton = screen.getByRole('button', { name: /Invest/ });
     await user.click(submitButton);

@@ -23,6 +23,8 @@ describe('EscrowService', () => {
   let mockDataSource: jest.Mocked<DataSource>;
 
   beforeEach(async () => {
+    jest.useFakeTimers();
+
     const mockManager = {
       findOne: jest.fn(),
       find: jest.fn(),
@@ -54,6 +56,7 @@ describe('EscrowService', () => {
 
     mockQueueService = {
       emit: jest.fn(),
+      enqueueDealCleanup: jest.fn().mockResolvedValue(undefined),
     } as any;
 
     mockConfigService = {
@@ -108,6 +111,10 @@ describe('EscrowService', () => {
     }).compile();
 
     service = module.get<EscrowService>(EscrowService);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   describe('processDealDelivered', () => {

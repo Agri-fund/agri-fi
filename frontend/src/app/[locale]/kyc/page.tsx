@@ -174,8 +174,8 @@ export default function KycPage() {
   const avgProgress =
     totalUploads > 0
       ? Math.round(
-          Object.values(uploadProgress).reduce((a, b) => a + b, 0) / totalUploads,
-        )
+        Object.values(uploadProgress).reduce((a, b) => a + b, 0) / totalUploads,
+      )
       : 0;
 
   // ── Main form ───────────────────────────────────────────────────────────────
@@ -246,11 +246,10 @@ export default function KycPage() {
                       type="button"
                       onClick={() => setMode(m)}
                       disabled={loading}
-                      className={`p-3 rounded-xl border-2 text-sm font-semibold capitalize transition-all ${
-                        mode === m
+                      className={`p-3 rounded-xl border-2 text-sm font-semibold capitalize transition-all ${mode === m
                           ? 'border-brand-500 bg-brand-50 text-brand-700'
                           : 'border-slate-200 text-slate-600 hover:border-slate-300'
-                      }`}
+                        }`}
                     >
                       {m === 'individual' ? '👤 Individual' : '🏢 Business'}
                     </button>

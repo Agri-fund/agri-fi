@@ -8,6 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "test": "jest",
+    "test:a11y": "playwright test frontend/tests/accessibility.spec.ts",
+    "test:a11y:report": "playwright test frontend/tests/accessibility.spec.ts --reporter=html",
     "prepare": "husky"
   },
   "dependencies": {
@@ -15,6 +17,7 @@
     "@sentry/nextjs": "^8.0.0",
     "@stellar/freighter-api": "^2.0.0",
     "@types/leaflet": "^1.9.21",
+    "@types/zxcvbn": "^4.4.4",
     "axios": "^1.6.0",
     "framer-motion": "^12.40.0",
     "leaflet": "^1.9.4",
@@ -26,9 +29,12 @@
     "react-dropzone": "^14.2.3",
     "react-hook-form": "^7.51.5",
     "react-leaflet": "^4.2.1",
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "zxcvbn": "^4.4.2"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.8.0",
+    "@playwright/test": "^1.40.0",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",

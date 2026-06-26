@@ -24,7 +24,8 @@ import { Throttle } from '@nestjs/throttler';
 import { InvestmentsService } from './investments.service';
 import { CreateInvestmentDto } from './dto/create-investment.dto';
 import { KycGuard } from '../auth/kyc.guard';
-import { Roles, RolesGuard } from '../auth/roles.guard';
+import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
 import { StellarService } from '../stellar/stellar.service';
 import { PaginatedResult } from '../common/pagination';
 
@@ -43,7 +44,8 @@ export class InvestmentsController {
   @ApiOperation({ summary: 'Create an investment (investor only)' })
   @ApiResponse({
     status: 201,
-    description: 'Investment created, returns pending investment and unsigned Stellar XDR',
+    description:
+      'Investment created, returns pending investment and unsigned Stellar XDR',
     schema: {
       type: 'object',
       properties: {
@@ -61,7 +63,8 @@ export class InvestmentsController {
         },
         unsignedXdr: {
           type: 'string',
-          description: 'Base64-encoded unsigned Stellar XDR transaction envelope',
+          description:
+            'Base64-encoded unsigned Stellar XDR transaction envelope',
         },
       },
     },
@@ -74,7 +77,11 @@ export class InvestmentsController {
   })
   @ApiResponse({ status: 404, description: 'Trade deal not found' })
   @ApiResponse({ status: 409, description: 'Deal already fully funded' })
-  @ApiResponse({ status: 422, description: 'No wallet address linked / deal not open / insufficient tokens' })
+  @ApiResponse({
+    status: 422,
+    description:
+      'No wallet address linked / deal not open / insufficient tokens',
+  })
   @ApiResponse({ status: 429, description: 'Too Many Requests' })
   @UseGuards(KycGuard, RolesGuard)
   @Roles('investor')
@@ -154,12 +161,21 @@ export class InvestmentsController {
   @ApiResponse({ status: 200, description: 'Investment confirmed on-chain' })
   @ApiResponse({ status: 400, description: 'Invalid transaction' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({
+    status: 403,
+    description: 'Only the investment owner can confirm this investment',
+  })
   @ApiResponse({ status: 404, description: 'Investment not found' })
   async confirmInvestment(
+    @Request() req: { user: { id: string } },
     @Param('id') id: string,
     @Body('stellarTxId') stellarTxId: string,
   ) {
-    return this.investmentsService.confirmInvestment(id, stellarTxId);
+    return this.investmentsService.confirmInvestment(
+      req.user.id,
+      id,
+      stellarTxId,
+    );
   }
 
   @Get('trade-deal/:tradeDealId')

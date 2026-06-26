@@ -1,4 +1,5 @@
 import React from 'react';
+import { useLocale } from 'next-intl';
 
 type CurrencyKind = 'usd' | 'stellar';
 

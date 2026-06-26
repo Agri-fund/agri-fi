@@ -1,7 +1,6 @@
 import { validate } from 'class-validator';
 import { RegisterDto } from '../src/auth/dto/register.dto';
 import { LoginDto } from '../src/auth/dto/login.dto';
-import { CreateTradeDealDto } from '../src/trade-deals/dto/create-trade-deal.dto';
 
 describe('DTO Validation checks', () => {
   it('should invalidate RegisterDto with incorrect parameters', async () => {
@@ -13,18 +12,18 @@ describe('DTO Validation checks', () => {
     dto.country = '';
 
     const errors = await validate(dto);
-    
+
     expect(errors.length).toBeGreaterThan(0);
-    
-    const emailError = errors.find(e => e.property === 'email');
+
+    const emailError = errors.find((e) => e.property === 'email');
     expect(emailError).toBeDefined();
     expect(emailError?.constraints).toHaveProperty('isEmail');
 
-    const passwordError = errors.find(e => e.property === 'password');
+    const passwordError = errors.find((e) => e.property === 'password');
     expect(passwordError).toBeDefined();
     expect(passwordError?.constraints).toHaveProperty('minLength');
-    
-    const roleError = errors.find(e => e.property === 'role');
+
+    const roleError = errors.find((e) => e.property === 'role');
     expect(roleError).toBeDefined();
     expect(roleError?.constraints).toHaveProperty('isIn');
   });

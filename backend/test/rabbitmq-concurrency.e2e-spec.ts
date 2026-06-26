@@ -1,7 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import { ClientProxy, ClientsModule, Transport } from '@nestjs/microservices';
-import { Controller, EventPattern, Payload, Ctx } from '@nestjs/common';
+import { Controller } from '@nestjs/common';
+import { EventPattern, Payload, Ctx } from '@nestjs/microservices';
 import { RmqContext } from '@nestjs/microservices';
 
 const QUEUE_SERVICE = 'QUEUE_SERVICE';
@@ -31,6 +32,14 @@ class TestQueueProcessor {
 }
 
 describe('RabbitMQ Consumer Concurrency Settings (E2E)', () => {
+  const RABBITMQ_AVAILABLE =
+    process.env.RABBITMQ_URL || process.env.CI_RABBITMQ;
+
+  if (!RABBITMQ_AVAILABLE) {
+    it.skip('skipped — no RabbitMQ available in this environment', () => {});
+    return;
+  }
+
   let app: INestApplication;
   let client: ClientProxy;
 
@@ -56,7 +65,7 @@ describe('RabbitMQ Consumer Concurrency Settings (E2E)', () => {
     app = module.createNestApplication();
     client = module.get<ClientProxy>(QUEUE_SERVICE);
 
-    await app.listen();
+    await app.listen(0);
     await new Promise((resolve) => setTimeout(resolve, 500));
   });
 
@@ -165,7 +174,6 @@ describe('RabbitMQ Consumer Concurrency Settings (E2E)', () => {
         { sequenceNumber: 3 },
       ];
 
-      const publishedAt = Date.now();
       messages.forEach((msg) => {
         client.emit(TEST_EVENT_PATTERN, msg);
       });
@@ -180,10 +188,9 @@ describe('RabbitMQ Consumer Concurrency Settings (E2E)', () => {
         const endTime = processingEndTimes.get(seqNum) || 0;
 
         if (previousEndTime > 0) {
-          const overlap = Math.min(endTime, previousEndTime) - Math.max(
-            startTime,
-            previousEndTime,
-          );
+          const overlap =
+            Math.min(endTime, previousEndTime) -
+            Math.max(startTime, previousEndTime);
           expect(overlap).toBeLessThanOrEqual(10);
         }
         previousEndTime = endTime;

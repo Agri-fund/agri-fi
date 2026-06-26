@@ -11,7 +11,7 @@ import {
   Networks,
   Operation,
   Account,
-} from 'stellar-sdk';
+} from '@stellar/stellar-sdk';
 
 const mockStellarService = {
   submitTransaction: jest.fn(),

@@ -144,7 +144,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, fileName = 'document.
           </div>
           <div>
             <p className="text-sm font-semibold text-slate-700">PDF preview not supported</p>
-            <p className="text-xs text-slate-400 mt-1">Your browser doesn't support inline PDF viewing.</p>
+            <p className="text-xs text-slate-400 mt-1">Your browser doesn&apos;t support inline PDF viewing.</p>
           </div>
           <a
             href={url}

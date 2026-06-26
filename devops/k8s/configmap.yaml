@@ -30,6 +30,11 @@ data:
   RABBITMQ_HOST: "agri-fi-rabbitmq"
   RABBITMQ_PORT: "5672"
 
+  # Redis cache
+  REDIS_HOST: "agri-fi-redis"
+  REDIS_PORT: "6379"
+  REDIS_DB: "0"
+
   # Stellar network
   STELLAR_NETWORK: "testnet"
   STELLAR_HORIZON_URL: "https://horizon-testnet.stellar.org"

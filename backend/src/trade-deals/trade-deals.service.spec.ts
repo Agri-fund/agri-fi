@@ -31,6 +31,9 @@ const mockFarmer = (): User => ({
   isCompany: false,
   companyDetails: null,
   createdAt: new Date(),
+  fullName: null,
+  birthdate: null,
+  taxId: null,
 });
 
 const mockDeal = (): TradeDeal => ({
@@ -53,6 +56,8 @@ const mockDeal = (): TradeDeal => ({
   totalInvested: 0,
   deliveryDate: new Date('2026-12-01'),
   stellarAssetTxId: null,
+  sorobanCampaignContractId: null,
+  sorobanFactoryTxHash: null,
   documents: [],
   investments: [],
   createdAt: new Date(),
@@ -196,6 +201,74 @@ describe('TradeDealsService', () => {
       await expect(
         service.createDeal('trader-uuid', { ...dto, total_value: 50 }),
       ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  // ─── findOne ──────────────────────────────────────────────────────────────
+
+  describe('findOne', () => {
+    const dealWithSecrets = () => ({
+      ...mockDeal(),
+      status: 'open' as const,
+      escrowPublicKey: 'GESCROW',
+      escrowSecretKey: 'enc-escrow',
+      issuerPublicKey: 'GISSUER',
+      issuerSecretKey: 'enc-issuer',
+      trader: { email: 'trader@example.com' },
+      documents: [{ id: 'doc-1' }],
+      investments: [
+        {
+          status: InvestmentStatus.CONFIRMED,
+          tokenAmount: 10,
+        },
+      ],
+    });
+
+    beforeEach(() => {
+      milestoneRepo.find.mockResolvedValue([
+        {
+          id: 'ms-1',
+          milestone: 'shipped',
+          notes: null,
+          stellarTxId: 'tx-1',
+          recordedBy: 'trader-uuid',
+          recordedAt: new Date('2026-06-01'),
+        },
+      ]);
+    });
+
+    it('omits secret key fields from public response shape', async () => {
+      tradeDealRepo.findOne.mockResolvedValue(dealWithSecrets());
+
+      const result = await service.findOne('deal-uuid');
+
+      expect(result).not.toHaveProperty('escrowSecretKey');
+      expect(result).not.toHaveProperty('issuerSecretKey');
+      expect(result).not.toHaveProperty('escrow_secret_key');
+      expect(result).not.toHaveProperty('issuer_secret_key');
+    });
+
+    it('omits secret key fields from privileged response shape', async () => {
+      tradeDealRepo.findOne.mockResolvedValue(dealWithSecrets());
+
+      const result = await service.findOne('deal-uuid', {
+        canViewSensitive: true,
+      });
+
+      expect(result).not.toHaveProperty('escrowSecretKey');
+      expect(result).not.toHaveProperty('issuerSecretKey');
+      expect(result).not.toHaveProperty('escrow_secret_key');
+      expect(result).not.toHaveProperty('issuer_secret_key');
+      expect(result.escrow_public_key).toBe('GESCROW');
+      expect(result.issuer_public_key).toBe('GISSUER');
+    });
+
+    it('throws NotFoundException when deal does not exist', async () => {
+      tradeDealRepo.findOne.mockResolvedValue(null);
+
+      await expect(service.findOne('missing')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 

@@ -13,22 +13,22 @@ import {
   Contract,
   Keypair,
   Networks,
-  SorobanRpc,
+  rpc,
   TransactionBuilder,
   BASE_FEE,
   nativeToScVal,
   Address,
   xdr,
   scValToNative,
-} from 'stellar-sdk';
+} from '@stellar/stellar-sdk';
 
 export interface CampaignConfig {
   admin: string;
   farmer: string;
   usdcToken: string;
-  fundingTarget: bigint;   // in USDC stroops (1 USDC = 10_000_000)
-  deadline: number;        // unix timestamp
-  platformFeeBps: number;  // 200 = 2%
+  fundingTarget: bigint; // in USDC stroops (1 USDC = 10_000_000)
+  deadline: number; // unix timestamp
+  platformFeeBps: number; // 200 = 2%
   milestoneCount: number;
   projectName: string;
   commodity: string;
@@ -41,7 +41,7 @@ export interface InvestorShareEntry {
 
 @Injectable()
 export class SorobanService {
-  private readonly rpcServer: SorobanRpc.Server;
+  private readonly rpcServer: rpc.Server;
   private readonly networkPassphrase: string;
   private readonly platformKeypair: Keypair;
 
@@ -59,7 +59,7 @@ export class SorobanService {
     this.networkPassphrase =
       network === 'mainnet' ? Networks.PUBLIC : Networks.TESTNET;
 
-    this.rpcServer = new SorobanRpc.Server(rpcUrl, { allowHttp: false });
+    this.rpcServer = new rpc.Server(rpcUrl, { allowHttp: false });
 
     const platformSecret = config.get<string>('STELLAR_PLATFORM_SECRET', '');
     this.platformKeypair = platformSecret
@@ -96,16 +96,28 @@ export class SorobanService {
 
     // Simulate to get footprint + resource fees
     const simResult = await this.rpcServer.simulateTransaction(tx);
-    if (SorobanRpc.Api.isSimulationError(simResult)) {
+    if (rpc.Api.isSimulationError(simResult)) {
       throw new Error(`Soroban simulation failed: ${simResult.error}`);
     }
 
-    const preparedTx = SorobanRpc.assembleTransaction(tx, simResult as SorobanRpc.Api.SimulateTransactionSuccessResponse).build();
+    const successSim = simResult as rpc.Api.SimulateTransactionSuccessResponse;
+    this.logger.debug(
+      {
+        contractId,
+        method,
+        minResourceFee: successSim.minResourceFee,
+      },
+      'Soroban simulation succeeded',
+    );
+
+    const preparedTx = rpc.assembleTransaction(tx, successSim).build();
     preparedTx.sign(signer);
 
     const sendResult = await this.rpcServer.sendTransaction(preparedTx);
     if (sendResult.status === 'ERROR') {
-      throw new Error(`Soroban tx submission failed: ${sendResult.errorResult}`);
+      throw new Error(
+        `Soroban tx submission failed: ${sendResult.errorResult}`,
+      );
     }
 
     // Poll for confirmation
@@ -114,7 +126,7 @@ export class SorobanService {
     let attempts = 0;
 
     while (
-      getResult.status === SorobanRpc.Api.GetTransactionStatus.NOT_FOUND &&
+      getResult.status === rpc.Api.GetTransactionStatus.NOT_FOUND &&
       attempts < 20
     ) {
       await new Promise((r) => setTimeout(r, 1500));
@@ -122,11 +134,14 @@ export class SorobanService {
       attempts++;
     }
 
-    if (getResult.status !== SorobanRpc.Api.GetTransactionStatus.SUCCESS) {
+    if (getResult.status !== rpc.Api.GetTransactionStatus.SUCCESS) {
       throw new Error(`Soroban tx failed or timed out: ${getResult.status}`);
     }
 
-    this.logger.info({ contractId, method, hash }, 'Soroban contract call succeeded');
+    this.logger.info(
+      { contractId, method, hash },
+      'Soroban contract call succeeded',
+    );
     return hash;
   }
 
@@ -138,7 +153,9 @@ export class SorobanService {
     method: string,
     args: xdr.ScVal[],
   ): Promise<unknown> {
-    const account = await this.rpcServer.getAccount(this.platformKeypair.publicKey());
+    const account = await this.rpcServer.getAccount(
+      this.platformKeypair.publicKey(),
+    );
     const contract = new Contract(contractId);
 
     const tx = new TransactionBuilder(account, {
@@ -150,11 +167,12 @@ export class SorobanService {
       .build();
 
     const simResult = await this.rpcServer.simulateTransaction(tx);
-    if (SorobanRpc.Api.isSimulationError(simResult)) {
+    if (rpc.Api.isSimulationError(simResult)) {
       throw new Error(`Soroban read failed: ${simResult.error}`);
     }
 
-    const successResult = simResult as SorobanRpc.Api.SimulateTransactionSuccessResponse;
+    const successResult =
+      simResult as rpc.Api.SimulateTransactionSuccessResponse;
     if (!successResult.result) return null;
     return scValToNative(successResult.result.retval);
   }
@@ -188,7 +206,10 @@ export class SorobanService {
     return this.invokeContract(contractId, 'approve', args);
   }
 
-  async releaseMilestone(contractId: string, milestoneIndex: number): Promise<string> {
+  async releaseMilestone(
+    contractId: string,
+    milestoneIndex: number,
+  ): Promise<string> {
     const args = [
       new Address(this.platformKeypair.publicKey()).toScVal(),
       nativeToScVal(milestoneIndex, { type: 'u32' }),
@@ -196,7 +217,10 @@ export class SorobanService {
     return this.invokeContract(contractId, 'release_milestone', args);
   }
 
-  async distributeRevenue(contractId: string, revenueAmount: bigint): Promise<string> {
+  async distributeRevenue(
+    contractId: string,
+    revenueAmount: bigint,
+  ): Promise<string> {
     const args = [
       new Address(this.platformKeypair.publicKey()).toScVal(),
       nativeToScVal(revenueAmount, { type: 'i128' }),
@@ -218,9 +242,16 @@ export class SorobanService {
     return this.readContract(contractId, 'get_state', []);
   }
 
-  async getInvestorOwnership(contractId: string, investorAddress: string): Promise<number> {
+  async getInvestorOwnership(
+    contractId: string,
+    investorAddress: string,
+  ): Promise<number> {
     const args = [new Address(investorAddress).toScVal()];
-    const result = await this.readContract(contractId, 'get_ownership_pct', args);
+    const result = await this.readContract(
+      contractId,
+      'get_ownership_pct',
+      args,
+    );
     return Number(result ?? 0);
   }
 
@@ -243,7 +274,10 @@ export class SorobanService {
     return this.invokeContract(factoryContractId, 'register_campaign', args);
   }
 
-  async getCampaignFromFactory(factoryContractId: string, dealId: string): Promise<unknown> {
+  async getCampaignFromFactory(
+    factoryContractId: string,
+    dealId: string,
+  ): Promise<unknown> {
     const args = [nativeToScVal(dealId, { type: 'string' })];
     return this.readContract(factoryContractId, 'get_campaign', args);
   }
@@ -272,7 +306,10 @@ export class SorobanService {
     return this.invokeContract(settlementContractId, 'refund_buyer', args);
   }
 
-  async getMarketplaceOrder(settlementContractId: string, orderId: string): Promise<unknown> {
+  async getMarketplaceOrder(
+    settlementContractId: string,
+    orderId: string,
+  ): Promise<unknown> {
     const args = [nativeToScVal(orderId, { type: 'string' })];
     return this.readContract(settlementContractId, 'get_order', args);
   }

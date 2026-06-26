@@ -28,9 +28,10 @@ export async function signSorobanTransaction(xdr: string): Promise<string> {
   });
 
   // Freighter v2+ returns { signedTxXdr }; older returns plain string
+  const r = result as unknown;
   const signed =
-    typeof result === 'object' && 'signedTxXdr' in result
-      ? (result as any).signedTxXdr
+    r !== null && typeof r === 'object' && 'signedTxXdr' in r
+      ? (r as any).signedTxXdr
       : result;
 
   if (!signed) throw new Error('Freighter did not return a signed XDR.');

@@ -54,9 +54,11 @@ describe('QueueProcessor', () => {
 
     processor = new QueueProcessor(
       stellarService as any,
-      {} as any,
+      {} as any, // sorobanService
+      {} as any, // tradeDealsService
       tradeDealRepo as any,
       investmentRepo as any,
+      {} as any, // config
       userRepo as any,
       notificationsService as any,
       logger as any,

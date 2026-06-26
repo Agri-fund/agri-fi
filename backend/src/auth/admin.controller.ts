@@ -7,6 +7,8 @@ import {
   Request,
   Body,
   Query,
+  NotFoundException,
+  BadRequestException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -18,12 +20,28 @@ import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { User } from './entities/user.entity';
 import { ApiBody } from '@nestjs/swagger';
-import { IsIn } from 'class-validator';
-import { Roles, RolesGuard } from './roles.guard';
+import { IsIn, IsString, IsBoolean, IsUUID } from 'class-validator';
+import { Roles } from './decorators/roles.decorator';
+import { RolesGuard } from './roles.guard';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
+import { StellarService } from '../stellar/stellar.service';
 
 class UpdateUserRoleDto {
   @IsIn(['farmer', 'trader', 'investor', 'company_admin', 'admin'])
   role: 'farmer' | 'trader' | 'investor' | 'company_admin' | 'admin';
+}
+
+class FreezeAssetDto {
+  @IsUUID()
+  tradeDealId: string;
+
+  @IsString()
+  trustorWallet: string;
+
+  @IsBoolean()
+  freeze: boolean;
 }
 
 interface AuthRequest extends Request {
@@ -36,7 +54,12 @@ interface AuthRequest extends Request {
 @Roles('admin')
 @ApiBearerAuth('jwt')
 export class AdminController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly stellarService: StellarService,
+    @InjectRepository(TradeDeal)
+    private readonly tradeDealRepo: Repository<TradeDeal>,
+  ) {}
 
   @Get('users')
   @ApiOperation({ summary: 'List all users (admin only)' })
@@ -78,5 +101,48 @@ export class AdminController {
     @Body() dto: UpdateUserRoleDto,
   ) {
     return this.authService.updateUserRole(userId, dto.role);
+  }
+
+  @Post('freeze-asset')
+  @ApiOperation({
+    summary: 'Freeze or unfreeze an investor trustline for a trade asset (AML compliance)',
+  })
+  @ApiBody({ type: FreezeAssetDto })
+  @ApiResponse({
+    status: 201,
+    description: 'Trustline freeze/unfreeze submitted',
+    schema: { properties: { txId: { type: 'string' } } },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Issuer keys not available for this deal',
+  })
+  @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
+  @ApiResponse({ status: 404, description: 'Trade deal not found' })
+  async freezeAsset(@Body() dto: FreezeAssetDto) {
+    const deal = await this.tradeDealRepo.findOne({
+      where: { id: dto.tradeDealId },
+    });
+    if (!deal) {
+      throw new NotFoundException(`Trade deal ${dto.tradeDealId} not found`);
+    }
+    if (!deal.issuerPublicKey || !deal.issuerSecretKey) {
+      throw new BadRequestException(
+        `Issuer keys not available for deal ${dto.tradeDealId}`,
+      );
+    }
+
+    const issuerSecret = this.stellarService.decryptSecret(
+      deal.issuerSecretKey,
+    );
+    const txId = await this.stellarService.freezeAsset(
+      issuerSecret,
+      deal.tokenSymbol,
+      deal.issuerPublicKey,
+      dto.trustorWallet,
+      dto.freeze,
+    );
+
+    return { txId };
   }
 }

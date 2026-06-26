@@ -21,17 +21,30 @@ const mockUser = (): User => ({
   isCompany: false,
   companyDetails: null,
   createdAt: new Date(),
+  fullName: null,
+  birthdate: null,
+  taxId: null,
 });
 
 describe('AuthService', () => {
   let service: AuthService;
-  let userRepo: { findOne: jest.Mock; create: jest.Mock; save: jest.Mock };
+  let userRepo: {
+    findOne: jest.Mock;
+    create: jest.Mock;
+    save: jest.Mock;
+    findAndCount: jest.Mock;
+  };
   let kycRepo: { findOne: jest.Mock; create: jest.Mock; save: jest.Mock };
   let jwtService: { sign: jest.Mock };
   let configService: { get: jest.Mock };
 
   beforeEach(async () => {
-    userRepo = { findOne: jest.fn(), create: jest.fn(), save: jest.fn() };
+    userRepo = {
+      findOne: jest.fn(),
+      create: jest.fn(),
+      save: jest.fn(),
+      findAndCount: jest.fn(),
+    };
     kycRepo = { findOne: jest.fn(), create: jest.fn(), save: jest.fn() };
     jwtService = { sign: jest.fn().mockReturnValue('token') };
     configService = { get: jest.fn() };
@@ -70,6 +83,37 @@ describe('AuthService', () => {
 
       expect(result.kycStatus).toBe('pending');
       expect(result.email).toBe('farmer@example.com');
+      expect(result).not.toHaveProperty('passwordHash');
+    });
+  });
+
+  describe('listUsers', () => {
+    it('does not return passwordHash in user records', async () => {
+      userRepo.findAndCount.mockResolvedValue([
+        [
+          {
+            id: 'uuid-1',
+            email: 'farmer@example.com',
+            role: 'farmer',
+            kycStatus: 'verified',
+            country: 'NG',
+            createdAt: new Date(),
+            walletAddress: null,
+            isCompany: false,
+          },
+        ],
+        1,
+      ]);
+
+      const result = await service.listUsers();
+
+      expect(userRepo.findAndCount).toHaveBeenCalledWith(
+        expect.objectContaining({
+          select: expect.not.arrayContaining(['passwordHash']),
+        }),
+      );
+      expect(result.users[0]).not.toHaveProperty('passwordHash');
+      expect(result.users[0]).not.toHaveProperty('password_hash');
     });
   });
 

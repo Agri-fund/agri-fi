@@ -11,7 +11,10 @@ function buildMockRequest(method = 'GET', url = '/test') {
   return { method, url };
 }
 
-function buildMockHost(request: object, response: ReturnType<typeof buildMockResponse>) {
+function buildMockHost(
+  request: object,
+  response: ReturnType<typeof buildMockResponse>,
+) {
   return {
     switchToHttp: () => ({
       getRequest: () => request,
@@ -46,7 +49,10 @@ describe('HttpExceptionFilter', () => {
   it('maps a 401 Unauthorized exception', () => {
     const response = buildMockResponse();
     const host = buildMockHost(buildMockRequest(), response);
-    const exception = new HttpException('Unauthorized', HttpStatus.UNAUTHORIZED);
+    const exception = new HttpException(
+      'Unauthorized',
+      HttpStatus.UNAUTHORIZED,
+    );
 
     filter.catch(exception, host);
 

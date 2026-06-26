@@ -1,12 +1,16 @@
 import {
   Controller,
   Get,
+  Delete,
   UseGuards,
   Request,
   Query,
   BadRequestException,
   ForbiddenException,
+  Res,
+  Header,
 } from '@nestjs/common';
+import { Response } from 'express';
 import {
   ApiTags,
   ApiOperation,
@@ -103,5 +107,20 @@ export class UsersController {
       );
     }
     return this.usersService.getUserInvestments(id, role);
+  }
+
+  @Get('me/export')
+  @ApiOperation({ summary: 'Export all user data (GDPR compliance)' })
+  @ApiResponse({
+    status: 200,
+    description: 'JSON file containing all user data',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @Header('Content-Type', 'application/json')
+  @Header('Content-Disposition', 'attachment; filename="user-data-export.json"')
+  async exportUserData(@Request() req: AuthRequest, @Res() res: Response) {
+    const { id } = req.user;
+    const userData = await this.usersService.exportUserData(id);
+    res.json(userData);
   }
 }

@@ -3,8 +3,11 @@ import {
   PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
+  DeleteDateColumn,
 } from 'typeorm';
 import { ApiProperty } from '@nestjs/swagger';
+import { Exclude } from 'class-transformer';
+import { encryptionTransformer } from '../../common/encryption.transformer';
 
 export type UserRole =
   | 'farmer'
@@ -36,11 +39,8 @@ export class User {
   })
   email: string;
 
+  @Exclude()
   @Column({ name: 'password_hash' })
-  @ApiProperty({
-    description: 'Hashed password (bcrypt)',
-    example: '$2b$10$...',
-  })
   passwordHash: string;
 
   @Column()
@@ -104,10 +104,41 @@ export class User {
   })
   companyDetails: CompanyDetails | null;
 
+  // #409 — email verification
+  @Column({ name: 'is_email_verified', default: false })
+  @ApiProperty({ description: 'Whether the email address has been verified', example: false })
+  isEmailVerified: boolean;
+
+  @Exclude()
+  @Column({ name: 'email_verification_token', nullable: true })
+  emailVerificationToken: string | null;
+
+  // #413 — account lockout
+  @Column({ name: 'failed_login_attempts', default: 0 })
+  failedLoginAttempts: number;
+
+  @Column({ name: 'lockout_until', type: 'timestamptz', nullable: true })
+  lockoutUntil: Date | null;
+
   @CreateDateColumn({ name: 'created_at' })
   @ApiProperty({
     description: 'Account creation timestamp',
     example: '2024-01-15T10:30:00Z',
   })
   createdAt: Date;
+
+  /** Full legal name — stored AES-256-CBC encrypted */
+  @Exclude()
+  @Column({ name: 'full_name', nullable: true, transformer: encryptionTransformer })
+  fullName: string | null;
+
+  /** Date of birth — stored AES-256-CBC encrypted (ISO date string) */
+  @Exclude()
+  @Column({ name: 'birthdate', nullable: true, transformer: encryptionTransformer })
+  birthdate: string | null;
+
+  /** Tax / national ID number — stored AES-256-CBC encrypted */
+  @Exclude()
+  @Column({ name: 'tax_id', nullable: true, transformer: encryptionTransformer })
+  taxId: string | null;
 }

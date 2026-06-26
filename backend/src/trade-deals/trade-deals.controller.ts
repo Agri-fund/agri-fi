@@ -7,7 +7,6 @@ import {
   Body,
   UseGuards,
   Request,
-  ForbiddenException,
   HttpCode,
 } from '@nestjs/common';
 import {
@@ -23,6 +22,8 @@ import { TradeDealsService } from './trade-deals.service';
 import { TradeDeal } from './entities/trade-deal.entity';
 import { User } from '../auth/entities/user.entity';
 import { KycGuard } from '../auth/kyc.guard';
+import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
 import { OptionalJwtGuard } from '../auth/optional-jwt.guard';
 import { CreateTradeDealDto } from './dto/create-trade-deal.dto';
 
@@ -38,7 +39,8 @@ export class TradeDealsController {
   constructor(private readonly tradeDealsService: TradeDealsService) {}
 
   @Post()
-  @UseGuards(AuthGuard('jwt'), KycGuard)
+  @UseGuards(AuthGuard('jwt'), RolesGuard, KycGuard)
+  @Roles('trader', 'farmer')
   @ApiBearerAuth('jwt')
   @ApiOperation({
     summary: 'Create a draft trade deal (trader or farmer, KYC required)',
@@ -51,12 +53,6 @@ export class TradeDealsController {
     @Request() req: AuthRequest,
     @Body() dto: CreateTradeDealDto,
   ): Promise<TradeDeal> {
-    if (req.user.role !== 'trader' && req.user.role !== 'farmer') {
-      throw new ForbiddenException({
-        code: 'ROLE_REQUIRED',
-        message: 'Only traders or farmers can create trade deals.',
-      });
-    }
     // Farmers self-list: they are both the farmer and the acting trader
     if (req.user.role === 'farmer') {
       dto.farmer_id = req.user.id;
@@ -67,7 +63,8 @@ export class TradeDealsController {
 
   @Post(':id/publish')
   @HttpCode(202)
-  @UseGuards(AuthGuard('jwt'), KycGuard)
+  @UseGuards(AuthGuard('jwt'), RolesGuard, KycGuard)
+  @Roles('trader')
   @ApiBearerAuth('jwt')
   @ApiOperation({
     summary: 'Publish a draft trade deal (async token issuance)',
@@ -88,13 +85,6 @@ export class TradeDealsController {
     @Param('id') id: string,
     @Request() req: AuthRequest,
   ): Promise<TradeDeal> {
-    if (req.user.role !== 'trader') {
-      throw new ForbiddenException({
-        code: 'ROLE_REQUIRED',
-        message: 'Only traders can publish trade deals.',
-      });
-    }
-
     return this.tradeDealsService.publishDeal(id, req.user.id);
   }
 
@@ -133,7 +123,8 @@ export class TradeDealsController {
   }
 
   @Post(':id/cancel')
-  @UseGuards(AuthGuard('jwt'), KycGuard)
+  @UseGuards(AuthGuard('jwt'), RolesGuard, KycGuard)
+  @Roles('trader')
   @ApiBearerAuth('jwt')
   @ApiOperation({
     summary:
@@ -147,13 +138,6 @@ export class TradeDealsController {
     @Param('id') id: string,
     @Request() req: AuthRequest,
   ): Promise<TradeDeal> {
-    if (req.user.role !== 'trader') {
-      throw new ForbiddenException({
-        code: 'ROLE_REQUIRED',
-        message: 'Only traders can cancel trade deals.',
-      });
-    }
-
     return this.tradeDealsService.cancelDeal(id, req.user.id);
   }
 }

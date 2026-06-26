@@ -12,11 +12,15 @@ import { KycSubmission } from './entities/kyc-submission.entity';
 import { KycGuard } from './kyc.guard';
 import { RolesGuard } from './roles.guard';
 import { QueueModule } from '../queue/queue.module';
+import { NotificationsModule } from '../notifications/notifications.module';
+import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
+import { OfacSanctionsCheckService } from './utils/ofac-sanctions-check';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, KycSubmission]),
+    TypeOrmModule.forFeature([User, KycSubmission, TradeDeal, LoginLog]),
     QueueModule,
+    NotificationsModule,
     PassportModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
@@ -28,7 +32,13 @@ import { QueueModule } from '../queue/queue.module';
     }),
   ],
   controllers: [AuthController, AdminController],
-  providers: [AuthService, JwtStrategy, KycGuard, RolesGuard],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    KycGuard,
+    RolesGuard,
+    OfacSanctionsCheckService,
+  ],
   exports: [AuthService, JwtModule, TypeOrmModule, KycGuard, RolesGuard],
 })
 export class AuthModule {}

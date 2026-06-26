@@ -1,12 +1,189 @@
 {
   "nav": {
-    "title": "Finanças Agrícolas Agric-onchain"
+    "title": "Finanças Agrícolas Agric-onchain",
+    "dashboard": "Painel",
+    "marketplace": "Mercado",
+    "documents": "Documentos",
+    "settings": "Configurações",
+    "kycStatus": "Status KYC",
+    "signOut": "Sair",
+    "menu": "Menu",
+    "roles": {
+      "farmer": "Agricultor",
+      "trader": "Comerciante",
+      "investor": "Investidor",
+      "company": "Empresa",
+      "admin": "Admin"
+    }
   },
   "home": {
     "title": "Finanças Agrícolas Agric-onchain",
     "subtitle": "Plataforma de finanças do comércio agrícola baseada em blockchain",
     "description": "Conecte agricultores, comerciantes e investidores através de contratos de comércio agrícola tokenizados na blockchain Stellar.",
     "viewMarketplace": "Ver Mercado",
+    "getStarted": "Começar",
+    "signIn": "Entrar",
+    "startFree": "Começar gratuitamente",
+    "browseProjects": "Procurar projetos",
+    "trustedBy": "Confiado por {count} investidores em toda a África",
+    "liveOnStellar": "Ao vivo na Rede de Teste Stellar · Zero taxas durante beta",
+    "hero": {
+      "titlePart1": "Agricultura encontra",
+      "titlePart2": "DeFi",
+      "titlePart3": "— com transparência."
+    },
+    "stats": {
+      "totalFunded": "Total Financiado",
+      "activeProjects": "Projetos Ativos",
+      "investors": "Investidores",
+      "harvestSuccess": "Sucesso da Colheita"
+    },
+    "features": {
+      "badge": "Recursos da Plataforma",
+      "title": "Tudo em um ecossistema",
+      "description": "Do financiamento de sementes às vendas de colheita — AgriFi gerencia toda a cadeia de valor agrícola.",
+      "fundFarming": {
+        "title": "Financiar Projetos Agrícolas",
+        "desc": "Agricultores tokenizam culturas e levantam capital. Investidores obtêm propriedade fracionada com retornos transparentes na cadeia."
+      },
+      "realTime": {
+        "title": "Rastreamento em Tempo Real",
+        "desc": "Atualizações de colheita ao vivo, marcos de envio GPS e prova imutável de cada transação na Stellar."
+      },
+      "marketplace": {
+        "title": "Mercado Direto",
+        "desc": "Empresas compram produtos agrícolas verificados diretamente de agricultores — zero intermediários, rastreabilidade total."
+      },
+      "escrow": {
+        "title": "Escrow Stellar",
+        "desc": "Contas de escrow inteligentes, ativos tokenizados e prova criptográfica protegem cada negócio de ponta a ponta."
+      }
+    },
+    "roles": {
+      "farmer": {
+        "title": "Agricultores",
+        "cta": "Começar como Agricultor",
+        "points": [
+          "Lançar campanhas de financiamento",
+          "Enviar dados da fazenda e colheita",
+          "Vender diretamente para compradores",
+          "Sacar ganhos instantaneamente"
+        ]
+      },
+      "investor": {
+        "title": "Investidores",
+        "cta": "Começar a Investir",
+        "points": [
+          "Procurar projetos verificados",
+          "Investir fracionadamente a partir de $100",
+          "Ganhar ROI transparente",
+          "Rastrear portfólio em tempo real"
+        ]
+      },
+      "company": {
+        "title": "Empresas",
+        "cta": "Registrar como Comprador",
+        "points": [
+          "Comprar produtos em massa diretamente",
+          "Rede de agricultores verificados",
+          "Rastrear entregas ao vivo",
+          "Pagamentos de escrow seguros"
+        ]
+      }
+    },
+    "steps": {
+      "title": "Como funciona",
+      "step1": {
+        "title": "Criar Conta",
+        "desc": "Inscreva-se como agricultor, investidor ou empresa em menos de 2 minutos."
+      },
+      "step2": {
+        "title": "Completar KYC",
+        "desc": "Verifique sua identidade para desbloquear acesso completo à plataforma."
+      },
+      "step3": {
+        "title": "Financiar ou Listar",
+        "desc": "Agricultores listam culturas; investidores procuram e financiam projetos."
+      },
+      "step4": {
+        "title": "Ganhar Retornos",
+        "desc": "Rastreie a colheita, receba pagamentos e reinvista lucros."
+      }
+    },
+    "transparency": {
+      "badge": "Blockchain Stellar",
+      "title": "Transparente por design",
+      "description": "Cada investimento, pagamento e marco é registrado na Stellar. Verifique qualquer coisa, a qualquer momento.",
+      "smartContracts": {
+        "title": "Smart Contracts Soroban",
+        "desc": "Contratos FarmCampaign automatizam escrow, lançamentos de marcos e distribuição de receita — sem intervenção manual."
+      },
+      "tokenized": {
+        "title": "Investimentos Tokenizados",
+        "desc": "Cada projeto emite ativos Stellar. Investidores detêm tokens representando propriedade fracionada, negociáveis no DEX."
+      },
+      "usdc": {
+        "title": "Liquidações em USDC",
+        "desc": "Todos os pagamentos usam USDC na Stellar — estável, rápido e transfronteiriço. Retire em moeda local via Stellar Anchors."
+      },
+      "certificates": {
+        "title": "Certificados On-Chain",
+        "desc": "Certificados de investimento são apoiados por transações Stellar imutáveis. Prova de propriedade, para sempre."
+      },
+      "anchors": {
+        "title": "Stellar Anchors",
+        "desc": "Deposite NGN, KES, GHS, ZAR ou USD e receba USDC instantaneamente. Retire ganhos para seu banco local."
+      },
+      "audit": {
+        "title": "Trilha de Auditoria Pública",
+        "desc": "Cada endereço de contrato, hash de transação e pagamento é verificável publicamente no Stellar Expert."
+      },
+      "viewData": "Ver Dados de Blockchain ao Vivo"
+    },
+    "cta": {
+      "title": "Pronto para fazer sua riqueza crescer?",
+      "description": "Junte-se a milhares de agricultores, investidores e compradores já construindo o futuro da agricultura.",
+      "createAccount": "Criar Conta Gratuita",
+      "browseMarketplace": "Procurar Mercado"
+    },
+    "footer": {
+      "rights": "© {year} AgriFi. Todos os direitos reservados.",
+      "poweredBy": "Alimentado pela blockchain {brand}"
+    },
+    "dashboard": {
+      "farmer": {
+        "title": "Painel do Agricultor",
+        "greeting": "Bom dia 👋",
+        "listCrop": "Listar Cultura",
+        "stats": {
+          "totalProjects": "Total de Projetos",
+          "active": "Ativos",
+          "totalValue": "Valor Total",
+          "funded": "Financiados"
+        },
+        "kyc": {
+          "title": "Verificação KYC necessária",
+          "desc": "Complete o KYC para publicar negócios e receber pagamentos.",
+          "verifyNow": "Verificar agora →"
+        },
+        "noProjects": {
+          "title": "Nenhum projeto ainda",
+          "desc": "Liste sua primeira cultura para começar a arrecadar fundos de investidores em todo o mundo.",
+          "cta": "+ Listar Sua Primeira Cultura"
+        },
+        "projects": {
+          "title": "Seus Projetos",
+          "total": "{count} no total",
+          "fundingProgress": "Progresso do financiamento",
+          "viewDetails": "Ver Detalhes →"
+        },
+        "modal": {
+          "title": "Listar Sua Cultura",
+          "subtitle": "Criar uma nova campanha de financiamento",
+          "success": "Cultura listada com sucesso! 🌱"
+        }
+      }
+    },
     "instructions": {
       "title": "Certifique-se de:",
       "installWallet": "Instalar a extensão da carteira Freighter",
@@ -14,9 +191,42 @@
       "connectWallet": "Conectar sua carteira na navegação superior"
     }
   },
+  "deals": {
+    "createTitle": "Criar Novo Negócio Comercial",
+    "commodity": "Nome da Mercadoria",
+    "quantity": "Quantidade",
+    "unit": "Unidade",
+    "totalValue": "Valor Total (USD)",
+    "tokenPrice": "Preço do Token (USD)",
+    "deliveryDate": "Data de Entrega (Data de Término)",
+    "farmerId": "ID do Agricultor (Opcional)",
+    "traderId": "ID do Comerciante (Opcional)",
+    "createButton": "Criar Negócio",
+    "creating": "Criando...",
+    "cancel": "Cancelar",
+    "tokenInfo": "Isso criará {count} tokens a ${price} cada.",
+    "raised": "{amount} arrecadados",
+    "remainingOf": "{remaining} restantes de {total}",
+    "validation": {
+      "commodityRequired": "Nome da mercadoria é obrigatório",
+      "quantityMin": "A quantidade deve ser pelo menos 1",
+      "totalValueMin": "O valor total deve ser maior que 1000",
+      "tokenPriceFixed": "O preço do token deve ser exatamente 100",
+      "deliveryDateRequired": "Data de entrega é obrigatória",
+      "deliveryDateFuture": "A data de término deve ser no futuro",
+      "invalidId": "ID inválido"
+    }
+  },
   "common": {
     "loading": "Carregando...",
     "error": "Erro",
-    "success": "Sucesso"
+    "success": "Sucesso",
+    "processing": "Processando...",
+    "dismiss": "Descartar"
+  },
+  "format": {
+    "currency": "{value, number, currency}",
+    "date": "{value, date, short}",
+    "number": "{value, number}"
   }
 }

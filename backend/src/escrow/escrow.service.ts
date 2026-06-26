@@ -12,7 +12,7 @@ import {
 import { User } from '../auth/entities/user.entity';
 import { StellarService, InvestorShare } from '../stellar/stellar.service';
 import { QueueService } from '../queue/queue.service';
-import { Keypair } from 'stellar-sdk';
+import { Keypair } from '@stellar/stellar-sdk';
 
 interface DealDeliveredPayload {
   tradeDealId: string;
@@ -201,7 +201,8 @@ export class EscrowService {
         await manager.save(PaymentDistribution, paymentDistributions);
 
         // Update deal status to completed
-        await manager.update(TradeDeal, tradeDealId, { status: 'completed' });
+        const appTraceId = `app-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 10)}`;
+        await manager.update(TradeDeal, tradeDealId, { status: 'completed', appTraceId });
 
         this.logger.info(
           `Deal ${tradeDealId} completed successfully. Stellar TX: ${stellarTxId}`,

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useState, type ReactNode } from 'react';
 import { useDropzone, FileRejection } from 'react-dropzone';
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -27,7 +27,7 @@ interface DropzoneProps {
   /** Called when a valid file is accepted */
   onFileAccepted: (entry: DropzoneFile) => void;
   /** Label shown above the dropzone */
-  label?: string;
+  label?: ReactNode;
   /** Optional hint text below the label */
   hint?: string;
   /** Whether the field is disabled */
@@ -192,9 +192,9 @@ export function Dropzone({
       <div
         {...getRootProps()}
         className={`relative flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-6 py-8 text-center cursor-pointer transition-all duration-200 outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${borderColor} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-        aria-label={label ?? 'File upload dropzone'}
+        aria-label={typeof label === 'string' ? label : 'File upload dropzone'}
       >
-        <input {...getInputProps()} aria-label={label ?? 'Upload file'} />
+        <input {...getInputProps()} aria-label={typeof label === 'string' ? label : 'Upload file'} />
 
         {loading ? (
           /* Upload spinner */

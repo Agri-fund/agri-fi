@@ -4,7 +4,7 @@ import {
   ValidationOptions,
 } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
-import { Keypair } from 'stellar-sdk';
+import { Keypair } from '@stellar/stellar-sdk';
 
 export function IsStellarPublicKey(validationOptions?: ValidationOptions) {
   return function (object: object, propertyName: string) {

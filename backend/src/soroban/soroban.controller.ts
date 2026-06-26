@@ -11,9 +11,8 @@ import {
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../auth/roles.guard';
-import { Roles } from '../auth/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
 import { SorobanService } from './soroban.service';
-import { ApproveCampaignDto } from './dto/approve-campaign.dto';
 import { ReleaseMilestoneDto } from './dto/release-milestone.dto';
 import { DistributeRevenueDto } from './dto/distribute-revenue.dto';
 import { ConfirmDeliveryDto } from './dto/confirm-delivery.dto';
@@ -37,7 +36,10 @@ export class SorobanController {
     @Param('contractId') contractId: string,
     @Param('address') address: string,
   ) {
-    const bps = await this.sorobanService.getInvestorOwnership(contractId, address);
+    const bps = await this.sorobanService.getInvestorOwnership(
+      contractId,
+      address,
+    );
     return { ownershipBps: bps, ownershipPct: (bps / 100).toFixed(2) };
   }
 
@@ -58,7 +60,10 @@ export class SorobanController {
     @Param('contractId') contractId: string,
     @Body() dto: ReleaseMilestoneDto,
   ) {
-    const txHash = await this.sorobanService.releaseMilestone(contractId, dto.milestoneIndex);
+    const txHash = await this.sorobanService.releaseMilestone(
+      contractId,
+      dto.milestoneIndex,
+    );
     return { txHash };
   }
 
@@ -112,7 +117,10 @@ export class SorobanController {
     @Param('contractId') contractId: string,
     @Body() dto: ConfirmDeliveryDto,
   ) {
-    const txHash = await this.sorobanService.confirmMarketplaceDelivery(contractId, dto.orderId);
+    const txHash = await this.sorobanService.confirmMarketplaceDelivery(
+      contractId,
+      dto.orderId,
+    );
     return { txHash };
   }
 
@@ -124,7 +132,10 @@ export class SorobanController {
     @Param('contractId') contractId: string,
     @Body() dto: ConfirmDeliveryDto,
   ) {
-    const txHash = await this.sorobanService.refundMarketplaceBuyer(contractId, dto.orderId);
+    const txHash = await this.sorobanService.refundMarketplaceBuyer(
+      contractId,
+      dto.orderId,
+    );
     return { txHash };
   }
 
