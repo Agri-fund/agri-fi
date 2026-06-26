@@ -55,7 +55,7 @@ export class Investment {
   })
   tokenAmount: number;
 
-  @Column({ name: 'amount_usd', type: 'numeric', precision: 10, scale: 2 })
+  @Column({ name: 'amount_usd', type: 'decimal', precision: 18, scale: 2 })
   @ApiProperty({
     description: 'Investment amount in USD',
     example: '10000.00',

@@ -32,7 +32,7 @@ export class PaymentDistribution {
   @Column({ name: 'wallet_address' })
   walletAddress: string;
 
-  @Column({ name: 'amount_usd', type: 'numeric' })
+  @Column({ name: 'amount_usd', type: 'decimal', precision: 18, scale: 2 })
   amountUsd: number;
 
   @Column({ name: 'stellar_tx_id', nullable: true })

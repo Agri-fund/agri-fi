@@ -38,7 +38,7 @@ export class TradeDeal {
   })
   commodity: string;
 
-  @Column({ type: 'numeric', precision: 10, scale: 2 })
+  @Column({ type: 'decimal', precision: 18, scale: 2 })
   @ApiProperty({
     description: 'Quantity of the commodity',
     example: '1000.00',
@@ -53,7 +53,7 @@ export class TradeDeal {
   })
   quantityUnit: string;
 
-  @Column({ name: 'total_value', type: 'numeric', precision: 10, scale: 2 })
+  @Column({ name: 'total_value', type: 'decimal', precision: 18, scale: 2 })
   @ApiProperty({
     description: 'Total deal value in USD',
     example: '50000.00',
@@ -141,8 +141,8 @@ export class TradeDeal {
 
   @Column({
     name: 'total_invested',
-    type: 'numeric',
-    precision: 10,
+    type: 'decimal',
+    precision: 18,
     scale: 2,
     default: 0,
   })
