@@ -10,6 +10,8 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { applySecurityHeaders } from './common/middleware/security-headers.middleware';
 import { CustomLogger } from './common/logger/custom-logger.service';
+import * as cookieParser from 'cookie-parser';
+import * as csrf from 'csurf';
 
 async function bootstrap() {
   // rawBody: true preserves the unparsed request buffer on req.rawBody,
@@ -56,6 +58,19 @@ app.use(helmet({
 
   app.use(applySecurityHeaders);
 
+  // Cookie parser is required by csurf
+  app.use(cookieParser());
+
+  // CSRF protection for cookie-based (session) endpoints.
+  // JWT-only routes are unaffected; the token is exposed via GET /csrf-token.
+  const csrfProtection = csrf({ cookie: { httpOnly: true, sameSite: 'strict' } });
+  app.use(csrfProtection);
+
+  // Expose CSRF token so clients can fetch it before mutating requests
+  app.use('/csrf-token', (req: any, res: any) => {
+    res.json({ csrfToken: req.csrfToken() });
+  });
+
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -80,10 +95,23 @@ app.use(helmet({
 
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
 
+  const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? 'http://localhost:3000')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0);
+
   app.enableCors({
-    origin: process.env.ALLOWED_ORIGINS?.split(',') ?? [
-      'http://localhost:3000',
-    ],
+    origin: (origin, callback) => {
+      if (!origin) {
+        return callback(null, true);
+      }
+
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('Origin not allowed by CORS policy'));
+      }
+    },
     credentials: true,
   });
 
@@ -140,6 +168,7 @@ function setupSwagger(app: any) {
     .addTag('shipments', 'Record and query shipment milestones')
     .addTag('documents', 'Upload trade documents to IPFS')
     .addTag('users', 'User dashboard data')
+    .addTag('sep24', 'SEP-24 interactive deposit and withdrawal')
     .build();
 
   const document = SwaggerModule.createDocument(app, config);

@@ -20,7 +20,8 @@
     "dotenv-vault:push": "dotenv-vault push",
     "dotenv-vault:pull": "dotenv-vault pull",
     "dotenv-vault:keys": "dotenv-vault keys",
-    "dotenv-vault:open": "dotenv-vault open"
+    "dotenv-vault:open": "dotenv-vault open",
+    "db:seed": "ts-node scripts/seed.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1016.0",
@@ -41,11 +42,13 @@
     "@nestjs/websockets": "^10.0.0",
     "@sentry/node": "^10.55.0",
     "@stellar/stellar-sdk": "^13.3.0",
+    "@types/zxcvbn": "^4.4.4",
     "@willsoto/nestjs-prometheus": "^6.1.0",
     "amqp-connection-manager": "^4.1.14",
     "amqplib": "^0.10.3",
     "axios": "^1.6.0",
     "bcrypt": "^5.1.0",
+    "bignumber.js": "^11.1.4",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.0",
     "cron": "^4.4.0",
@@ -66,7 +69,8 @@
     "rxjs": "^7.8.0",
     "swagger-ui-express": "^5.0.1",
     "typeorm": "^0.3.17",
-    "uuid": "^9.0.0"
+    "uuid": "^9.0.0",
+    "zxcvbn": "^4.4.2"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.0.0",

@@ -134,6 +134,16 @@ export class AuthService {
     };
   }
 
+  /** Secure cookie options for JWT tokens */
+  cookieOptions() {
+    return {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'strict' as const,
+      path: '/',
+    };
+  }
+
   async login(
     dto: LoginDto,
   ): Promise<{ accessToken: string; refreshToken: string; redirect?: string }> {

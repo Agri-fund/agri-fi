@@ -21,7 +21,9 @@ import {
   BASE_FEE,
   Memo,
   Transaction,
+  Claimant,
 } from '@stellar/stellar-sdk';
+import BigNumber from 'bignumber.js';
 import { RedisClientType } from 'redis';
 import { createAsset } from './utils/asset-helper';
 
@@ -75,7 +77,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     );
     const network = config.get<string>('STELLAR_NETWORK', 'testnet');
 
-    this.server = new Horizon.Server(horizonUrl);
+    this.server = new Horizon.Server(horizonUrl, { timeout: 30000 });
     this.networkPassphrase =
       network === 'mainnet' ? Networks.PUBLIC : Networks.TESTNET;
 
@@ -611,7 +613,10 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
 
   /**
    * Releases escrow funds: farmer (98%), investors (proportional), platform (2%).
-   * Returns an array of transaction IDs for each payment.
+   * Uses BigNumber.js for all amount conversions to avoid precision loss.
+   * For investors without a USDC trustline, creates a claimable balance instead
+   * of a payment so funds remain available for later claiming.
+   * Returns an array of transaction IDs for each batch.
    */
   async releaseEscrow(
     escrowSecret: string,
@@ -622,16 +627,25 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
   ): Promise<string[]> {
     const escrowKeypair = Keypair.fromSecret(escrowSecret);
 
-    // Convert to stroops (1 XLM = 10^7 stroops)
-    const totalStroops = Math.round(totalValue * 1e7);
+    // Convert to stroops using BigNumber (1 XLM = 10^7 stroops)
+    const totalValueBN = new BigNumber(totalValue);
+    const totalStroopsBN = totalValueBN.multipliedBy(1e7);
 
-    if (totalStroops <= 0) {
+    if (totalStroopsBN.isLessThanOrEqualTo(0)) {
       throw new Error('Invalid totalValue');
     }
 
-    // Calculate platform + farmer
-    const platformStroops = Math.floor(totalStroops * 0.02);
-    const farmerStroops = Math.floor(totalStroops * 0.98);
+    // Calculate platform + farmer using BigNumber
+    const platformStroopsBN = totalStroopsBN.multipliedBy(0.02).integerValue(
+      BigNumber.ROUND_FLOOR,
+    );
+    const farmerStroopsBN = totalStroopsBN.multipliedBy(0.98).integerValue(
+      BigNumber.ROUND_FLOOR,
+    );
+
+    const totalStroops = totalStroopsBN.toNumber();
+    const platformStroops = platformStroopsBN.toNumber();
+    const farmerStroops = farmerStroopsBN.toNumber();
 
     // Compute total tokens safely
     const totalTokens = investorShares.reduce(
@@ -643,6 +657,20 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       throw new Error('Invalid investor token distribution');
     }
 
+    // Pre-check which investors have a USDC trustline for claimable balance logic
+    const trustlineResults = await Promise.allSettled(
+      investorShares.map((share) =>
+        this.server
+          .loadAccount(share.walletAddress)
+          .then((acc) => this.hasTrustline(acc, this.usdcAsset)),
+      ),
+    );
+    const hasUsdcTrustline = investorShares.map(
+      (_, i) =>
+        trustlineResults[i].status === 'fulfilled' &&
+        (trustlineResults[i] as PromiseFulfilledResult<boolean>).value,
+    );
+
     const BATCH_SIZE = 98;
     const txIds: string[] = [];
     let distributedToInvestors = 0;
@@ -650,6 +678,13 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       1,
       Math.ceil(investorShares.length / BATCH_SIZE),
     );
+
+    // Track claimable balances for database logging
+    const claimableInvestors: Array<{
+      walletAddress: string;
+      amount: string;
+      txHash?: string;
+    }> = [];
 
     for (let batchIdx = 0; batchIdx < batchCount; batchIdx++) {
       const batchStart = batchIdx * BATCH_SIZE;
@@ -668,7 +703,9 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
           Operation.payment({
             destination: farmerWallet,
             asset: this.usdcAsset,
-            amount: (farmerStroops / 1e7).toFixed(7),
+            amount: new BigNumber(farmerStroops)
+              .dividedBy(1e7)
+              .toFixed(7),
           }),
         );
       }
@@ -689,16 +726,37 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
 
         distributedToInvestors += shareStroops;
 
-        // Ensure positive amount; skip zero-value payments
-        const shareAmount = (shareStroops / 1e7).toFixed(7);
+        const shareAmount = new BigNumber(shareStroops)
+          .dividedBy(1e7)
+          .toFixed(7);
         if (parseFloat(shareAmount) > 0) {
-          txBuilder.addOperation(
-            Operation.payment({
-              destination: share.walletAddress,
-              asset: this.usdcAsset,
+          if (hasUsdcTrustline[globalIdx]) {
+            txBuilder.addOperation(
+              Operation.payment({
+                destination: share.walletAddress,
+                asset: this.usdcAsset,
+                amount: shareAmount,
+              }),
+            );
+          } else {
+            // Investor lacks USDC trustline — create claimable balance
+            txBuilder.addOperation(
+              Operation.createClaimableBalance({
+                asset: this.usdcAsset,
+                amount: shareAmount,
+                claimants: [
+                  new Claimant(
+                    share.walletAddress,
+                    Claimant.predicateUnconditional(),
+                  ),
+                ],
+              }),
+            );
+            claimableInvestors.push({
+              walletAddress: share.walletAddress,
               amount: shareAmount,
-            }),
-          );
+            });
+          }
         }
       });
 
@@ -707,7 +765,9 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
           Operation.payment({
             destination: platformWallet,
             asset: this.usdcAsset,
-            amount: (platformStroops / 1e7).toFixed(7),
+            amount: new BigNumber(platformStroops)
+              .dividedBy(1e7)
+              .toFixed(7),
           }),
         );
       }
@@ -722,7 +782,23 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
 
       try {
         const result = await this.submitWithRetry(tx);
-        txIds.push((result as any).hash as string);
+        const txHash = (result as any).hash as string;
+        txIds.push(txHash);
+
+        // Log any claimable balances created in this batch
+        const batchClaimable = claimableInvestors.filter(
+          (ci) =>
+            !ci.txHash &&
+            batch.some((s) => s.walletAddress === ci.walletAddress),
+        );
+        for (const ci of batchClaimable) {
+          ci.txHash = txHash;
+          await this.saveLog({
+            dealId: ci.walletAddress,
+            txHash,
+            status: TxStatus.PENDING_CLAIM,
+          });
+        }
       } catch (err: any) {
         this.logger.error(
           { batchIdx, totalBatches: batchCount },
@@ -732,7 +808,10 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
-    this.logger.info({ txIds }, 'Escrow released successfully');
+    this.logger.info(
+      { txIds, claimableCount: claimableInvestors.length },
+      'Escrow released successfully',
+    );
     return txIds;
   }
 
@@ -1002,6 +1081,48 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         b.asset_code === asset.getCode() &&
         b.asset_issuer === asset.getIssuer(),
     );
+  }
+
+  /**
+   * Calculates the minimum XLM reserve required for an account.
+   * Formula: base_reserve = (2 + num_trustlines + num_signers) * 0.5 XLM
+   */
+  async getMinimumBalance(account: Horizon.AccountResponse): Promise<string> {
+    const numTrustlines = account.balances.filter(
+      (b: any) => b.asset_type !== 'native',
+    ).length;
+    const numSigners = account.signers ? account.signers.length : 1;
+    const reserve = new BigNumber(2)
+      .plus(numTrustlines)
+      .plus(numSigners)
+      .multipliedBy(0.5);
+    return reserve.toFixed(7);
+  }
+
+  /**
+   * Verifies an account's XLM balance exceeds the minimum base reserve
+   * before sending transactions. Returns the balance and minimum required.
+   */
+  async checkMinimumReserve(
+    publicKey: string,
+  ): Promise<{
+    sufficient: boolean;
+    balance: string;
+    minimumRequired: string;
+  }> {
+    const account = await this.server.loadAccount(publicKey);
+    const xlmBalance =
+      (
+        account.balances.find(
+          (b: any) => b.asset_type === 'native',
+        ) as any
+      )?.balance ?? '0';
+    const minRequired = await this.getMinimumBalance(account);
+    return {
+      sufficient: new BigNumber(xlmBalance).gte(minRequired),
+      balance: xlmBalance,
+      minimumRequired: minRequired,
+    };
   }
 
   /**
@@ -1481,6 +1602,73 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     this.logger.info(
       { assetCode, issuerPublicKey, trustorWallet, freeze, txId },
       `Asset trustline ${freeze ? 'frozen' : 'unfrozen'} for ${trustorWallet}`,
+    );
+    return txId;
+  }
+
+  /**
+   * Cleans up an investor's trustline for a trade asset after final distribution.
+   * Submits a changeTrust operation with limit=0, removing the trustline and
+   * freeing up the 0.5 XLM base reserve on the investor's account.
+   *
+   * @param investorWallet  Investor's public key
+   * @param investorSecret  Investor's decrypted secret key
+   * @param assetCode       Trade token asset code (e.g. "COCOA1002")
+   * @param issuerPublicKey Trade token issuer public key
+   * @returns Stellar transaction ID of the cleanup transaction
+   */
+  async cleanupInvestorTrustline(
+    investorWallet: string,
+    investorSecret: string,
+    assetCode: string,
+    issuerPublicKey: string,
+  ): Promise<string> {
+    const investorKeypair = Keypair.fromSecret(investorSecret);
+    const investorAccount = await this.server.loadAccount(investorWallet);
+    const tradeAsset = createAsset(assetCode, issuerPublicKey);
+
+    const balance = investorAccount.balances.find(
+      (b: any) =>
+        b.asset_type !== 'native' &&
+        b.asset_code === assetCode &&
+        b.asset_issuer === issuerPublicKey,
+    );
+
+    if (!balance) {
+      this.logger.warn(
+        { investorWallet, assetCode },
+        'No trustline found to clean up',
+      );
+      return '';
+    }
+
+    if (parseFloat((balance as any).balance) > 0) {
+      throw new Error(
+        `Cannot remove trustline: investor still holds ${(balance as any).balance} ${assetCode}`,
+      );
+    }
+
+    const tx = new TransactionBuilder(investorAccount, {
+      fee: BASE_FEE,
+      networkPassphrase: this.networkPassphrase,
+    })
+      .addOperation(
+        Operation.changeTrust({
+          asset: tradeAsset,
+          limit: '0',
+        }),
+      )
+      .addMemo(Memo.text(`cleanup:${assetCode}`))
+      .setTimeout(30)
+      .build();
+
+    tx.sign(investorKeypair);
+    const result = await this.submitWithRetry(tx);
+    const txId = (result as any).hash as string;
+
+    this.logger.info(
+      { investorWallet, assetCode, issuerPublicKey, txId },
+      'Investor trustline cleaned up successfully',
     );
     return txId;
   }
