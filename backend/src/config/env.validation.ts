@@ -1,13 +1,17 @@
-import { ConfigFactory } from '@nestjs/config';
+import * as Joi from 'joi';
 
-export const validateEnvironment: ConfigFactory = () => {
-  const jwtSecret = process.env.JWT_SECRET?.trim();
+export const validateEnvironment = (config: Record<string, unknown>) => {
+  const schema = Joi.object({
+    JWT_SECRET: Joi.string().required().trim(),
+    STELLAR_NETWORK: Joi.string().required().trim(),
+    DATABASE_PASSWORD: Joi.string().required().trim(),
+  }).unknown(true); // Allow other env vars that aren't validated
 
-  if (!jwtSecret) {
-    throw new Error('JWT_SECRET is required for backend startup.');
+  const { error, value } = schema.validate(config, { abortEarly: false });
+
+  if (error) {
+    throw new Error(`Config validation error: ${error.message}`);
   }
 
-  return {
-    JWT_SECRET: jwtSecret,
-  };
+  return value;
 };
