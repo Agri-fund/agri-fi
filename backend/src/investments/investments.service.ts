@@ -387,7 +387,7 @@ export class InvestmentsService {
     const { page, limit, skip } = normalizePagination(query);
     const [data, total] = await this.investmentRepo.findAndCount({
       where: { tradeDealId },
-      relations: ['investor'],
+      relations: ['investor', 'tradeDeal'],
       order: { createdAt: 'DESC' },
       skip,
       take: limit,
@@ -403,7 +403,7 @@ export class InvestmentsService {
     const { page, limit, skip } = normalizePagination(query);
     const [data, total] = await this.investmentRepo.findAndCount({
       where: { investorId },
-      relations: ['tradeDeal'],
+      relations: ['investor', 'tradeDeal'],
       order: { createdAt: 'DESC' },
       skip,
       take: limit,
