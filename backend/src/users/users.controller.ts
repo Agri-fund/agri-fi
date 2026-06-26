@@ -1,6 +1,7 @@
 import {
   Controller,
   Get,
+  Delete,
   UseGuards,
   Request,
   Query,
