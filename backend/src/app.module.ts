@@ -1,4 +1,5 @@
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
+import { AppController } from './app.controller';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { LoggerModule } from 'nestjs-pino';
@@ -26,6 +27,7 @@ import { validateEnvironment } from './config/env.validation';
 import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
+  controllers: [AppController],
   imports: [
     // Register ClsModule globally — no auto-mount; we mount manually below
     // to guarantee ordering: ClsMiddleware runs before CorrelationIdMiddleware
