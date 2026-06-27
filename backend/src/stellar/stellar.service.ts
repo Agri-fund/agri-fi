@@ -9,6 +9,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { PinoLogger } from 'nestjs-pino';
+import { createHash } from 'crypto';
 import axios from 'axios';
 import { TransactionLog, TxStatus } from './entities/transaction-log.entity';
 import { KmsService } from '../kms/kms.service';
@@ -888,6 +889,31 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
 
     const txId = (result as any).hash as string;
     return txId;
+  }
+
+  /**
+   * Anchors an IPFS CID on the Stellar ledger by submitting a transaction
+   * with SHA-256(CID) in Memo.hash. Returns the Stellar transaction ID.
+   */
+  async anchorIpfsCid(
+    cid: string,
+    signerSecret: string,
+  ): Promise<{ txId: string }> {
+    const cidHash = createHash('sha256').update(cid).digest('hex');
+    const txId = await this.recordDocumentHash(cidHash, signerSecret);
+    return { txId };
+  }
+
+  /**
+   * Returns a public Stellar explorer URL for a given transaction hash.
+   * Uses stellar.expert — network-aware (testnet vs public).
+   */
+  getVerificationUrl(txHash: string): string {
+    const baseUrl =
+      this.networkPassphrase === Networks.TESTNET
+        ? 'https://stellar.expert/explorer/testnet/tx'
+        : 'https://stellar.expert/explorer/public/tx';
+    return `${baseUrl}/${txHash}`;
   }
 
   /**

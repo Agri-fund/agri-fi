@@ -41,14 +41,12 @@ export class DocumentsService {
       throw new BadGatewayException('Storage provider returned an invalid IPFS CID.');
     }
 
-    // 2. Calculate SHA-256 of the file for Stellar Anchoring
-    const fileHash = createHash('sha256').update(file.buffer).digest('hex');
-    const memo = buildDocumentMemo(tradeDealId, fileHash);
-
+    // 2. Anchor the IPFS CID on Stellar via Memo.hash(SHA-256(CID))
     const signerSecret = this.config.get<string>('STELLAR_PLATFORM_SECRET', '');
-
-    const stellarTxId = await this.stellarService.recordDocumentHash(
-      fileHash,
+    const cidHash = createHash('sha256').update(hash).digest('hex');
+    const memo = buildDocumentMemo(tradeDealId, cidHash);
+    const { txId: stellarTxId } = await this.stellarService.anchorIpfsCid(
+      hash,
       signerSecret,
     );
 
@@ -60,7 +58,7 @@ export class DocumentsService {
     }
 
     // 4. Persist using existing logic (VERY IMPORTANT)
-    return this.tradeDealsService.addDocument({
+    const doc = await this.tradeDealsService.addDocument({
       tradeDealId,
       uploaderId: userId,
       docType,
@@ -71,6 +69,11 @@ export class DocumentsService {
       memoText: memo,
       signatureVerified,
     });
+
+    return {
+      ...doc,
+      verificationUrl: this.stellarService.getVerificationUrl(stellarTxId),
+    };
   }
 
   private async verifySignature(
