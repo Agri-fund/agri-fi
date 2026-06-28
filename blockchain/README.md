@@ -1,101 +1,194 @@
-# AgriFi Soroban Smart Contracts
+# Agri-Fi Blockchain - Soroban Smart Contracts
 
-Stellar-native smart contracts powering the AgriFi platform's investment escrow, revenue distribution, and marketplace settlement.
+Rust smart contracts for the Agri-Fi platform using the Soroban platform on Stellar.
 
-## Contracts
+## Quick Start
 
-| Contract | Description |
-|---|---|
-| `FarmCampaign` | Per-project escrow, investment tracking, milestone releases, revenue distribution |
-| `ProjectFactory` | On-chain registry of all deployed campaign contracts |
-| `RevenueDistributor` | Standalone proportional USDC payout distributor |
-| `MarketplaceSettlement` | Buyer → escrow → farmer + investors settlement |
-
-## Prerequisites
+### 1. Set Up Environment
 
 ```bash
-# Rust + wasm32 target
-rustup default stable
+make soroban-up
+```
+
+### 2. Build Contracts
+
+```bash
+make build-docker
+```
+
+### 3. Run Tests
+
+```bash
+make test-docker
+```
+
+## Installation
+
+### Prerequisites
+
+- Docker & Docker Compose (recommended)
+- Rust (optional, for local development)
+
+### Local Rust Setup
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 rustup target add wasm32-unknown-unknown
-
-# Stellar CLI
-cargo install --locked stellar-cli --features opt
+cargo install stellar-cli
 ```
 
-## Build
+## Development Commands
+
+### Common Tasks
 
 ```bash
-cargo build --target wasm32-unknown-unknown --release
+make help              # Show all commands
+make build            # Build all contracts
+make test             # Run all tests
+make build-escrow     # Build specific contract
+make test-escrow      # Test specific contract
+make soroban-up       # Start services
+make soroban-down     # Stop services
+make deploy-local     # Deploy to local network
 ```
 
-WASM files output to `target/wasm32-unknown-unknown/release/`.
-
-## Deploy
+### Using Cargo
 
 ```bash
-# Set environment variables
-export DEPLOYER_SECRET=S...          # Stellar secret key with XLM
-export USDC_CONTRACT_ID=C...         # USDC SAC contract on target network
-export NETWORK=testnet               # or mainnet
-
-./scripts/deploy.sh
+cargo wasm            # Build WASM
+cargo test-wasm       # Test WASM
+cargo clippy-wasm     # Lint WASM
 ```
 
-The script outputs contract IDs — add them to `backend/.env`:
-
-```env
-SOROBAN_FACTORY_CONTRACT_ID=C...
-SOROBAN_SETTLEMENT_CONTRACT_ID=C...
-SOROBAN_DISTRIBUTOR_CONTRACT_ID=C...
-USDC_CONTRACT_ID=C...
-```
-
-## FarmCampaign Lifecycle
+## Project Structure
 
 ```
-initialize() → invest() × N → approve() → release_milestone() × 4 → distribute_revenue()
-                                                                  ↓
-                                                            (if failed) → refund()
+blockchain/
+├── Cargo.toml                    # Workspace configuration
+├── Makefile                      # Development commands
+├── SOROBAN_DEVELOPMENT.md        # Comprehensive guide
+├── .cargo/config.toml           # Cargo settings
+├── contracts/
+│   ├── escrow/                  # Escrow (Issue #345)
+│   ├── farm_campaign/
+│   ├── farm_campaign_settlement/
+│   ├── marketplace_settlement/
+│   ├── project_factory/
+│   └── revenue_distributor/
+└── target/
+    └── wasm32-unknown-unknown/
+        └── release/             # WASM binaries
 ```
 
-### Key operations
+## Building
 
-| Method | Caller | Description |
-|---|---|---|
-| `initialize` | Platform (once) | Set farmer, target, deadline, milestones |
-| `invest` | Investor | Lock USDC in contract |
-| `approve` | Admin | Verify KYC + activate campaign |
-| `release_milestone` | Admin | Pay farmer 1/4 tranche |
-| `distribute_revenue` | Admin | Split harvest revenue to investors |
-| `refund` | Investor | Claim back if deadline passed or failed |
-| `pause` / `unpause` | Admin | Emergency controls |
-| `mark_failed` | Admin | Enable investor refunds |
+### Build All Contracts
 
-## MarketplaceSettlement Lifecycle
-
-```
-create_order() [buyer locks USDC] → confirm_delivery() [auto-split payout]
-                                  ↓
-                            (dispute) → refund_buyer()
+```bash
+make build
+# or
+cargo build --release --target wasm32-unknown-unknown
 ```
 
-## Revenue Split
+### Build Specific Contract
 
-- **Farmer**: configurable per campaign (default ~98% of raised funds via milestones)
-- **Investors**: proportional to USDC invested, paid from harvest revenue
-- **Platform**: `platform_fee_bps` (default 200 = 2%)
-
-## Security
-
-- All admin functions require `admin.require_auth()` — Stellar signature verification
-- Investor functions require `investor.require_auth()`
-- Reentrancy: Soroban's execution model prevents reentrancy by design
-- Emergency pause on all campaigns via `pause()` / `mark_failed()`
-- Funds only leave the contract via explicit transfer operations
-
-## Testnet USDC
-
-For testnet, use the Circle USDC testnet SAC contract:
+```bash
+make build-escrow
 ```
-USDC_CONTRACT_ID=CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA
+
+### Verify WASM Created
+
+```bash
+make check-wasm
 ```
+
+## Testing
+
+### Run All Tests
+
+```bash
+make test
+cargo test
+```
+
+### Test Specific Contract
+
+```bash
+make test-escrow
+cargo test -p escrow
+```
+
+### Test with Output
+
+```bash
+cargo test -- --nocapture
+```
+
+## Deployment
+
+### Deploy Locally
+
+```bash
+make deploy-local
+```
+
+### Deploy to Testnet
+
+```bash
+soroban contract deploy \
+  --wasm target/wasm32-unknown-unknown/release/escrow.wasm \
+  --network testnet
+```
+
+## Docker Services
+
+Services defined in `docker-compose.yml`:
+
+- **soroban**: CLI container for building and testing
+- **soroban-rpc**: RPC server on port 8000
+
+Start services:
+```bash
+docker-compose up -d soroban soroban-rpc
+```
+
+## Documentation
+
+- [SOROBAN_DEVELOPMENT.md](SOROBAN_DEVELOPMENT.md) - Comprehensive guide
+- [contracts/escrow/ESCROW_CONTRACT.md](contracts/escrow/ESCROW_CONTRACT.md) - Escrow contract
+
+## Issues Addressed
+
+- **Issue #345** - Soroban escrow smart contract
+- **Issue #346** - Development environment configuration
+
+## Resources
+
+- [Soroban Docs](https://developers.stellar.org/learn/build/smart-contracts)
+- [Soroban SDK](https://docs.rs/soroban-sdk/)
+- [Stellar Dev Center](https://developers.stellar.org/)
+
+## Troubleshooting
+
+**wasm32 target not found:**
+```bash
+rustup target add wasm32-unknown-unknown
+```
+
+**Docker not found:**
+Install Docker Desktop or Docker Engine.
+
+**Tests won't run:**
+```bash
+docker-compose up -d soroban
+```
+
+## Support
+
+- Check [SOROBAN_DEVELOPMENT.md](SOROBAN_DEVELOPMENT.md)
+- Visit [Stellar Discord](https://discord.gg/stellardev)
+- Open GitHub issue (reference Issue #346)
+
+---
+
+**Status**: Soroban development environment integration complete (Issue #346)
