@@ -400,6 +400,130 @@ export class AuthService {
     return { kycStatus: user.kycStatus };
   }
 
+  private asRecord(value: unknown): Record<string, unknown> | null {
+    return typeof value === 'object' && value !== null && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : null;
+  }
+
+  private pickFirstString(
+    source: Record<string, unknown>,
+    keys: string[],
+  ): string | null {
+    for (const key of keys) {
+      const value = source[key];
+      if (typeof value === 'string' && value.trim().length > 0) {
+        return value.trim();
+      }
+    }
+    return null;
+  }
+
+  private mapProviderKycStatus(payload: Record<string, unknown>): User['kycStatus'] | null {
+    const rootStatus = this.pickFirstString(payload, [
+      'status',
+      'reviewStatus',
+      'kycStatus',
+      'result',
+    ]);
+
+    const reviewResult = this.asRecord(payload.reviewResult);
+    const reviewAnswer = reviewResult
+      ? this.pickFirstString(reviewResult, ['reviewAnswer', 'answer'])
+      : null;
+
+    const normalized = (reviewAnswer ?? rootStatus ?? '').toLowerCase();
+    if (!normalized) {
+      return null;
+    }
+
+    if (
+      ['approved', 'verified', 'green', 'completed', 'success'].includes(normalized)
+    ) {
+      return 'verified';
+    }
+
+    if (
+      ['rejected', 'declined', 'red', 'failed', 'failure'].includes(normalized)
+    ) {
+      return 'rejected';
+    }
+
+    if (
+      ['pending', 'yellow', 'processing', 'queued', 'on_hold'].includes(normalized)
+    ) {
+      return 'pending';
+    }
+
+    return null;
+  }
+
+  private extractKycWebhookUserReference(
+    payload: Record<string, unknown>,
+  ): string | null {
+    const directReference = this.pickFirstString(payload, [
+      'externalUserId',
+      'userId',
+      'customerId',
+      'clientId',
+      'email',
+    ]);
+    if (directReference) {
+      return directReference;
+    }
+
+    const applicant = this.asRecord(payload.applicant);
+    if (applicant) {
+      return this.pickFirstString(applicant, ['externalUserId', 'userId', 'email']);
+    }
+
+    return null;
+  }
+
+  async handleKycWebhook(
+    payload: Record<string, unknown>,
+  ): Promise<{ received: true; updated: boolean; userId?: string; kycStatus?: User['kycStatus'] }> {
+    const userReference = this.extractKycWebhookUserReference(payload);
+    if (!userReference) {
+      return { received: true, updated: false };
+    }
+
+    const user = await this.userRepo.findOne({
+      where: [{ id: userReference }, { email: userReference }],
+    });
+    if (!user) {
+      return { received: true, updated: false };
+    }
+
+    const mappedStatus = this.mapProviderKycStatus(payload);
+    if (!mappedStatus || user.kycStatus === mappedStatus) {
+      return {
+        received: true,
+        updated: false,
+        userId: user.id,
+        kycStatus: user.kycStatus,
+      };
+    }
+
+    user.kycStatus = mappedStatus;
+    await this.userRepo.save(user);
+
+    if (mappedStatus === 'verified') {
+      this.queueService.emit('email.notification', {
+        type: 'kyc_verified',
+        email: user.email,
+        userId: user.id,
+      });
+    }
+
+    return {
+      received: true,
+      updated: true,
+      userId: user.id,
+      kycStatus: user.kycStatus,
+    };
+  }
+
   async approveCorporateKycSubmission(
     submissionId: string,
   ): Promise<{ kycStatus: string }> {
