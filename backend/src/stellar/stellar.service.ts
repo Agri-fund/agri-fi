@@ -54,6 +54,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
   private readonly server: Horizon.Server;
   private readonly networkPassphrase: string;
   private readonly platformKeypair: Keypair;
+  private readonly multiSigSigners: Keypair[];
   private readonly usdcAsset: Asset;
   private readonly localSequenceCache: Map<string, { seq: string; expiresAt: number }>;
   private readonly enableSequenceCache: boolean;
@@ -97,6 +98,9 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       ? Keypair.fromSecret(platformSecret)
       : Keypair.random();
 
+    // Initialize multi-sig signers for platform fee wallet security
+    this.multiSigSigners = this.initializeMultiSigSigners(config);
+
     // Removed ENCRYPTION_KEY validation as KMS handles encryption.
     // Ensure KMS_KEY_ID is set via environment.
 
@@ -113,9 +117,186 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         horizonUrl,
         usdcAssetCode,
         usdcIssuer: usdcIssuer || 'NOT_SET',
+        multiSigSignersCount: this.multiSigSigners.length,
       },
       `StellarService initialized on ${network}`,
     );
+  }
+
+  /**
+   * Initializes multi-signature signer keypairs from environment variables.
+   * Reads STELLAR_MULTISIG_SIGNER_1_SECRET and STELLAR_MULTISIG_SIGNER_2_SECRET.
+   * If not configured, generates random keypairs (for development only).
+   */
+  private initializeMultiSigSigners(config: ConfigService): Keypair[] {
+    const signers: Keypair[] = [];
+    const maxSigners = 2; // We'll have 3 total: platform key + 2 additional signers
+
+    for (let i = 1; i <= maxSigners; i++) {
+      const secretKey = config.get<string>(`STELLAR_MULTISIG_SIGNER_${i}_SECRET`, '');
+      if (secretKey) {
+        try {
+          signers.push(Keypair.fromSecret(secretKey));
+          this.logger.info(`Loaded multi-sig signer ${i} from environment`);
+        } catch (err) {
+          this.logger.error(
+            `Invalid STELLAR_MULTISIG_SIGNER_${i}_SECRET: ${(err as Error).message}`,
+          );
+          throw err;
+        }
+      } else if (process.env.NODE_ENV !== 'test') {
+        this.logger.warn(
+          `STELLAR_MULTISIG_SIGNER_${i}_SECRET not configured. Generate and set this in production.`,
+        );
+      }
+    }
+
+    return signers;
+  }
+
+  /**
+   * Returns the platform fee wallet public key.
+   */
+  getPlatformPublicKey(): string {
+    return this.platformKeypair.publicKey();
+  }
+
+  /**
+   * Configures multi-signature authorization for the platform fee wallet.
+   * Sets up 3 total signers (platform key + 2 additional signers) with a 2-of-3 threshold.
+   * This requires 2 signatures to approve any transfer from the platform account.
+   *
+   * Multi-sig Structure:
+   * - Master Key (Platform Key): weight 1
+   * - Signer 1: weight 1
+   * - Signer 2: weight 1
+   * - Transaction Threshold: 2 (minimum 2 signatures required)
+   * - Medium Threshold: 2 (for operations like setOptions)
+   * - High Threshold: 2 (for operations like mergeAccount)
+   *
+   * Security Considerations:
+   * - At least 2 of the 3 keys are required to move funds
+   * - Reduces risk of single key compromise
+   * - Keys should be stored separately and managed securely
+   * - For auditing: verify signers via Horizon API
+   *
+   * @throws Error if multi-sig configuration fails or signers are not configured
+   */
+  async setupPlatformMultiSig(): Promise<{
+    platformPublicKey: string;
+    signers: string[];
+    transactionThreshold: number;
+  }> {
+    if (this.multiSigSigners.length < 2) {
+      throw new Error(
+        'Multi-sig setup requires at least 2 signer keys. Configure STELLAR_MULTISIG_SIGNER_1_SECRET and STELLAR_MULTISIG_SIGNER_2_SECRET in environment variables.',
+      );
+    }
+
+    const platformPublicKey = this.platformKeypair.publicKey();
+    this.logger.info(
+      { platformPublicKey },
+      'Starting platform wallet multi-sig configuration',
+    );
+
+    // Load the platform account
+    const platformAccount = await this.server.loadAccount(platformPublicKey);
+
+    // Build transaction to set multi-sig configuration
+    // We need to add the 2 additional signers and set transaction thresholds
+    const signerKeys = this.multiSigSigners.map((signer) => signer.publicKey());
+
+    const setOptionsOp = Operation.setOptions({
+      signer: {
+        ed25519PublicKey: signerKeys[0],
+        weight: 1,
+      },
+      masterWeight: 1, // Platform key has weight 1
+      lowThreshold: 1, // Low: single signature (e.g., for reading account)
+      medThreshold: 2, // Medium: 2 signatures (e.g., for setOptions)
+      highThreshold: 2, // High: 2 signatures (e.g., for transfers)
+    });
+
+    const tx = new TransactionBuilder(platformAccount, {
+      fee: BASE_FEE,
+      networkPassphrase: this.networkPassphrase,
+    })
+      .addOperation(setOptionsOp)
+      .setTimeout(30)
+      .build();
+
+    // Sign with platform key
+    tx.sign(this.platformKeypair);
+
+    await this.submitWithRetry(tx);
+
+    // Add second signer in a separate transaction
+    const updatedPlatformAccount = await this.server.loadAccount(platformPublicKey);
+
+    const secondSignerOp = Operation.setOptions({
+      signer: {
+        ed25519PublicKey: signerKeys[1],
+        weight: 1,
+      },
+    });
+
+    const secondTx = new TransactionBuilder(updatedPlatformAccount, {
+      fee: BASE_FEE,
+      networkPassphrase: this.networkPassphrase,
+    })
+      .addOperation(secondSignerOp)
+      .setTimeout(30)
+      .build();
+
+    secondTx.sign(this.platformKeypair);
+
+    await this.submitWithRetry(secondTx);
+
+    this.logger.info(
+      {
+        platformPublicKey,
+        signers: signerKeys,
+        masterWeight: 1,
+        lowThreshold: 1,
+        medThreshold: 2,
+        highThreshold: 2,
+      },
+      'Platform wallet multi-sig configuration completed successfully',
+    );
+
+    return {
+      platformPublicKey,
+      signers: signerKeys,
+      transactionThreshold: 2,
+    };
+  }
+
+  /**
+   * Returns the multi-sig configuration of the platform wallet for audit purposes.
+   * Queries the Horizon API to get the current signer configuration.
+   */
+  async getPlatformMultiSigConfig(): Promise<{
+    publicKey: string;
+    signers: Array<{ key: string; weight: number }>;
+    thresholds: { low: number; med: number; high: number };
+  }> {
+    const platformPublicKey = this.platformKeypair.publicKey();
+    const account = await this.server.loadAccount(platformPublicKey);
+
+    const signers = account.signers.map((signer) => ({
+      key: signer.key,
+      weight: signer.weight,
+    }));
+
+    return {
+      publicKey: platformPublicKey,
+      signers,
+      thresholds: {
+        low: account.thresholds.low_threshold,
+        med: account.thresholds.med_threshold,
+        high: account.thresholds.high_threshold,
+      },
+    };
   }
 
   private async fundAccountWithFriendbot(publicKey: string): Promise<void> {
@@ -155,6 +336,8 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         return;
       }
     }
+  }
+
   async onModuleInit(): Promise<void> {
     await this.connectRedis();
   }
