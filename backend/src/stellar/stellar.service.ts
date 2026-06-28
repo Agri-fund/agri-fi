@@ -1235,6 +1235,129 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Queries the Horizon path-finding endpoint (strictSendPaths) to discover
+   * the best conversion route from sourceAsset to destAsset for a given amount.
+   * Returns the intermediate path and the projected destination amount, or null
+   * if no route exists.
+   */
+  async findPaymentPaths(
+    sourceAsset: Asset,
+    destAsset: Asset,
+    amount: string,
+  ): Promise<{ path: Asset[]; destAmount: string } | null> {
+    const page = await this.server
+      .strictSendPaths(sourceAsset, amount, [destAsset])
+      .call();
+
+    const record = page.records[0];
+    if (!record) return null;
+
+    return {
+      path: record.path as unknown as Asset[],
+      destAmount: record.destination_amount,
+    };
+  }
+
+  /**
+   * Creates an unsigned XDR transaction for an investment using a path payment.
+   * Investors who do not hold USDC can pay with XLM (native) or a custom asset
+   * (e.g. EURC). Horizon path finding automatically discovers the best conversion
+   * route through the Stellar DEX.
+   *
+   * Builds a pathPaymentStrictSend operation so the investor defines the exact
+   * send asset and amount, while the escrow receives the required USDC.
+   *
+   * @param investorWallet   Public key of the investor (transaction source)
+   * @param escrowPublicKey  Escrow account that receives USDC
+   * @param sourceAsset      Asset the investor will send (native XLM or custom)
+   * @param sendAmount       Exact amount of sourceAsset to send
+   * @param amountUSD        Required USDC amount the escrow must receive (destMin)
+   * @param assetCode        Trade token asset code
+   * @param tokenAmount      Number of trade tokens the investor receives
+   * @param issuerPublicKey  Trade token issuer
+   * @param complianceData   Optional FATF Travel Rule data
+   * @returns                Unsigned base64 XDR for the investor to sign
+   */
+  async createPathPaymentInvestmentTransaction(
+    investorWallet: string,
+    escrowPublicKey: string,
+    sourceAsset: Asset,
+    sendAmount: string,
+    amountUSD: number,
+    assetCode: string,
+    tokenAmount: number,
+    issuerPublicKey: string,
+    complianceData?: Record<string, unknown>,
+  ): Promise<string> {
+    const investorAccount = await this.server.loadAccount(investorWallet);
+    const tradeAsset = createAsset(assetCode, issuerPublicKey);
+
+    // Find best conversion path from sourceAsset to USDC
+    const pathResult = await this.findPaymentPaths(
+      sourceAsset,
+      this.usdcAsset,
+      sendAmount,
+    );
+
+    if (!pathResult) {
+      throw new Error(
+        `No path found from ${sourceAsset.getCode()} to USDC for ${sendAmount} ${sourceAsset.getCode()}. ` +
+        'Ensure the Stellar DEX has sufficient liquidity for this conversion.',
+      );
+    }
+
+    const needsTrustline = !(await this.hasTrustline(
+      investorAccount,
+      tradeAsset,
+    ));
+
+    if (needsTrustline) {
+      const xlmBalance = parseFloat(
+        (
+          investorAccount.balances.find(
+            (b: any) => b.asset_type === 'native',
+          ) as any
+        )?.balance ?? '0',
+      );
+      const minRequired =
+        (investorAccount.subentry_count + 1) * 0.5 + 2 + 0.001;
+      if (xlmBalance < minRequired) {
+        throw new Error(
+          `Insufficient XLM balance for trustline base reserve. ` +
+          `Need at least ${minRequired.toFixed(3)} XLM, have ${xlmBalance} XLM.`,
+        );
+      }
+    }
+
+    const txBuilder = new TransactionBuilder(investorAccount, {
+      fee: BASE_FEE,
+      networkPassphrase: this.networkPassphrase,
+    });
+
+    if (needsTrustline) {
+      txBuilder.addOperation(Operation.changeTrust({ asset: tradeAsset }));
+    }
+
+    txBuilder
+      .addOperation(
+        Operation.pathPaymentStrictSend({
+          sendAsset: sourceAsset,
+          sendAmount,
+          destination: escrowPublicKey,
+          destAsset: this.usdcAsset,
+          destMin: amountUSD.toFixed(7),
+          path: pathResult.path,
+        }),
+      )
+      .addMemo(Memo.text(`path:${assetCode}:${tokenAmount}`))
+      .setTimeout(300);
+
+    this.addComplianceDataOperations(txBuilder, complianceData);
+
+    return txBuilder.build().toXDR();
+  }
+
+  /**
    * Creates an unsigned XDR transaction for a bulk investment.
    * Groups multiple USDC payment operations into a single transaction (max 100 ops).
    * This lets institutional investors fund multiple deals in one network call.

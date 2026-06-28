@@ -110,7 +110,7 @@ export class StellarController {
       );
     }
     const result = await this.stellarService.submitTransaction(signedXdr, {
-      allowedOpTypes: ['payment', 'changeTrust', 'manageSellOffer', 'manageBuyOffer'],
+      allowedOpTypes: ['payment', 'changeTrust', 'manageSellOffer', 'manageBuyOffer', 'pathPaymentStrictSend', 'pathPaymentStrictReceive'],
     });
     return { hash: result?.hash ?? (result as any)?.id, success: true };
   }
