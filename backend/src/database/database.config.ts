@@ -20,6 +20,8 @@ export class DatabaseConfig implements TypeOrmOptionsFactory {
       synchronize: false,
       // pgAudit requires queries to be logged to CloudWatch in production
       logging: this.config.get<string>('NODE_ENV') === 'development' ? 'all' : ['query', 'error'],
+      retryAttempts: 10,
+      retryDelay: 3000,
     };
   }
 }
