@@ -15,6 +15,17 @@ export type DocumentType =
   | 'export_certificate'
   | 'warehouse_receipt';
 
+export interface DocumentMetadata {
+  dimensions?: {
+    width: number;
+    height: number;
+    unit?: string;
+  };
+  pageCount?: number;
+  detectedLanguages?: string[];
+  [key: string]: any; // Allow additional metadata fields
+}
+
 @Entity('documents')
 export class Document {
   @PrimaryGeneratedColumn('uuid')
@@ -43,6 +54,9 @@ export class Document {
 
   @Column({ name: 'signature_verified', default: false })
   signatureVerified: boolean;
+
+  @Column({ name: 'metadata', type: 'jsonb', default: {} })
+  metadata: DocumentMetadata;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
