@@ -9,6 +9,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { PinoLogger } from 'nestjs-pino';
+import { createHash } from 'crypto';
 import axios from 'axios';
 import { TransactionLog, TxStatus } from './entities/transaction-log.entity';
 import { KmsService } from '../kms/kms.service';
@@ -27,6 +28,12 @@ import {
 import BigNumber from 'bignumber.js';
 import { RedisClientType } from 'redis';
 import { createAsset } from './utils/asset-helper';
+import {
+  chunkOperations,
+  MAX_OPERATIONS_PER_TX,
+  planTransactionBatches,
+  generateBatchMemo,
+} from './utils/transaction-chunker';
 
 export const SEQUENCE_REDIS_CLIENT = 'SEQUENCE_REDIS_CLIENT';
 const SEQUENCE_CACHE_TTL = 5; // seconds
@@ -891,6 +898,31 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Anchors an IPFS CID on the Stellar ledger by submitting a transaction
+   * with SHA-256(CID) in Memo.hash. Returns the Stellar transaction ID.
+   */
+  async anchorIpfsCid(
+    cid: string,
+    signerSecret: string,
+  ): Promise<{ txId: string }> {
+    const cidHash = createHash('sha256').update(cid).digest('hex');
+    const txId = await this.recordDocumentHash(cidHash, signerSecret);
+    return { txId };
+  }
+
+  /**
+   * Returns a public Stellar explorer URL for a given transaction hash.
+   * Uses stellar.expert — network-aware (testnet vs public).
+   */
+  getVerificationUrl(txHash: string): string {
+    const baseUrl =
+      this.networkPassphrase === Networks.TESTNET
+        ? 'https://stellar.expert/explorer/testnet/tx'
+        : 'https://stellar.expert/explorer/public/tx';
+    return `${baseUrl}/${txHash}`;
+  }
+
+  /**
    * Merges an empty escrow or issuer account back to the platform account.
    * Zeroes out any remaining custom tokens (burns them by sending to issuer)
    * and USDC (sends to platform), then removes trustlines before merging.
@@ -1502,6 +1534,63 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Fetches all current holders for a given non-native asset.
+   * Uses Horizon /accounts?asset={code}:{issuer} and follows pagination.
+   * Returns an array of InvestorShare where `tokenAmount` is the holder's
+   * balance and `totalTokens` is the aggregate supply across holders.
+   */
+  async getTokenHolders(
+    assetCode: string,
+    issuerPublicKey: string,
+  ): Promise<InvestorShare[]> {
+    const tradeAsset = createAsset(assetCode, issuerPublicKey);
+
+    const LIMIT = 200;
+    let page = await this.server.accounts().forAsset(tradeAsset).limit(LIMIT).call();
+
+    const holders: Array<{ walletAddress: string; tokenAmount: number }> = [];
+
+    // Iterate through pages until no next page is available
+    while (page && Array.isArray(page.records) && page.records.length > 0) {
+      for (const acc of page.records) {
+        const balanceEntry = (acc.balances || []).find(
+          (b: any) =>
+            b.asset_type !== 'native' &&
+            b.asset_code === tradeAsset.getCode() &&
+            b.asset_issuer === tradeAsset.getIssuer(),
+        );
+
+        if (balanceEntry) {
+          const bal = parseFloat(balanceEntry.balance || '0');
+          if (bal > 0) {
+            holders.push({ walletAddress: acc.account_id ?? acc.id, tokenAmount: bal });
+          }
+        }
+      }
+
+      // Fetch next page if available; the SDK exposes `next()` on the page
+      if (typeof (page as any).next === 'function') {
+        try {
+          page = await (page as any).next();
+        } catch (e) {
+          this.logger.warn({ err: e }, 'Failed to fetch next page of asset holders');
+          break;
+        }
+      } else {
+        break;
+      }
+    }
+
+    const totalTokens = holders.reduce((s, h) => s + h.tokenAmount, 0);
+
+    return holders.map((h) => ({
+      walletAddress: h.walletAddress,
+      tokenAmount: h.tokenAmount,
+      totalTokens,
+    }));
+  }
+
+  /**
    * Submits a transaction with exponential backoff retry for transient Horizon errors.
    * Retries on HTTP 429, 503, 504, and network timeout errors.
    * Waits 1s → 2s → 4s before each retry; throws after 3 failed attempts.
@@ -1711,6 +1800,144 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       'Investor trustline cleaned up successfully',
     );
     return txId;
+  }
+
+  /**
+   * Submits an array of operations in chunks of MAX_OPERATIONS_PER_TX (100).
+   * Handles sequence numbers correctly by loading the account for each chunk.
+   * Operations are submitted sequentially to maintain proper ordering.
+   *
+   * @param sourceSecret - Secret key of the account submitting the transactions
+   * @param operations - Array of Stellar operations to submit
+   * @param options - Optional configuration for the batch
+   * @returns Array of transaction hashes, one per chunk
+   *
+   * @example
+   * const ops = [op1, op2, ..., op250];
+   * const txHashes = await service.submitOperationsInChunks(secret, ops);
+   * // Returns 3 transaction hashes (100 + 100 + 50 operations)
+   */
+  async submitOperationsInChunks(
+    sourceSecret: string,
+    operations: any[],
+    options: {
+      memo?: string;
+      timeout?: number;
+      feePerOperation?: string;
+    } = {},
+  ): Promise<string[]> {
+    const { memo, timeout = 30, feePerOperation = BASE_FEE } = options;
+
+    // Detect operation count and validate
+    if (operations.length === 0) {
+      return [];
+    }
+
+    if (operations.length > MAX_OPERATIONS_PER_TX) {
+      const plan = planTransactionBatches(operations.length, MAX_OPERATIONS_PER_TX);
+      this.logger.info(
+        {
+          totalOperations: operations.length,
+          batchCount: plan.batchCount,
+          operationsPerBatch: plan.operationsPerBatch,
+        },
+        'Operations exceed single transaction limit, chunking into multiple transactions',
+      );
+    }
+
+    // Chunk operations into sub-arrays of size 100
+    const operationChunks = chunkOperations(operations, MAX_OPERATIONS_PER_TX);
+    const sourceKeypair = Keypair.fromSecret(sourceSecret);
+    const sourcePublicKey = sourceKeypair.publicKey();
+    const txHashes: string[] = [];
+
+    // Submit transactions sequentially with correct sequence numbers
+    for (let chunkIndex = 0; chunkIndex < operationChunks.length; chunkIndex++) {
+      const chunk = operationChunks[chunkIndex];
+      const totalChunks = operationChunks.length;
+
+      this.logger.info(
+        {
+          chunkIndex,
+          totalChunks,
+          operationsInChunk: chunk.length,
+          sourcePublicKey,
+        },
+        `Building transaction chunk ${chunkIndex + 1}/${totalChunks}`,
+      );
+
+      // Load account fresh for each chunk to get correct sequence number
+      const account = await this.server.loadAccount(sourcePublicKey);
+
+      // Calculate fee: base fee * number of operations in this chunk
+      const fee = (parseInt(feePerOperation, 10) * chunk.length).toString();
+
+      const txBuilder = new TransactionBuilder(account, {
+        fee,
+        networkPassphrase: this.networkPassphrase,
+      });
+
+      // Add all operations for this chunk
+      for (const op of chunk) {
+        txBuilder.addOperation(op);
+      }
+
+      // Add memo if provided (only on first chunk to save space)
+      if (memo && chunkIndex === 0) {
+        const memoText = memo.slice(0, 28); // Stellar memo text limit
+        txBuilder.addMemo(Memo.text(memoText));
+      }
+
+      // Add batch identifier memo for subsequent chunks
+      if (totalChunks > 1 && chunkIndex > 0) {
+        const batchMemo = generateBatchMemo(chunkIndex, totalChunks, 'chunk');
+        txBuilder.addMemo(Memo.text(batchMemo));
+      }
+
+      txBuilder.setTimeout(timeout);
+
+      const tx = txBuilder.build();
+      tx.sign(sourceKeypair);
+
+      try {
+        const result = await this.submitWithRetry(tx);
+        const txHash = (result as any).hash as string;
+        txHashes.push(txHash);
+
+        this.logger.info(
+          {
+            chunkIndex,
+            txHash,
+            operationsCount: chunk.length,
+          },
+          `Successfully submitted chunk ${chunkIndex + 1}/${totalChunks}`,
+        );
+      } catch (err: any) {
+        this.logger.error(
+          {
+            chunkIndex,
+            totalChunks,
+            error: err.message,
+            operationsInChunk: chunk.length,
+          },
+          `Failed to submit chunk ${chunkIndex + 1}/${totalChunks}`,
+        );
+        throw new Error(
+          `Transaction chunk ${chunkIndex + 1}/${totalChunks} failed: ${err.message}`,
+        );
+      }
+    }
+
+    this.logger.info(
+      {
+        totalChunks: txHashes.length,
+        totalOperations: operations.length,
+        txHashes,
+      },
+      'All operation chunks submitted successfully',
+    );
+
+    return txHashes;
   }
 
   /**

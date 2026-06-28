@@ -227,4 +227,28 @@ export class AuthController {
     // Payload is safe to process — signature already verified by guard.
     return { received: true };
   }
+
+  @Post('kyc/webhook')
+  @UseGuards(WebhookSignatureGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Receive KYC provider status updates',
+    description:
+      'Caller must include an `x-webhook-signature` header containing ' +
+      'the HMAC-SHA256 hex digest of the raw request body, signed with ' +
+      'the shared `WEBHOOK_SECRET` environment variable.',
+  })
+  @ApiHeader({
+    name: 'x-webhook-signature',
+    description: 'HMAC-SHA256 hex signature of the raw request body',
+    required: true,
+  })
+  @ApiResponse({ status: 200, description: 'KYC webhook processed' })
+  @ApiResponse({ status: 401, description: 'Invalid or missing signature' })
+  async handleKycWebhook(
+    @Body() payload: Record<string, unknown>,
+    @Req() _req: RawBodyRequest<ExpressRequest>,
+  ) {
+    return this.authService.handleKycWebhook(payload);
+  }
 }

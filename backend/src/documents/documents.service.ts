@@ -51,10 +51,12 @@ export class DocumentsService {
     const fileHash = createHash('sha256').update(compressedBuffer).digest('hex');
     const memo = buildDocumentMemo(tradeDealId, fileHash);
 
+    // 2. Anchor the IPFS CID on Stellar via Memo.hash(SHA-256(CID))
     const signerSecret = this.config.get<string>('STELLAR_PLATFORM_SECRET', '');
-
-    const stellarTxId = await this.stellarService.recordDocumentHash(
-      fileHash,
+    const cidHash = createHash('sha256').update(hash).digest('hex');
+    const memo = buildDocumentMemo(tradeDealId, cidHash);
+    const { txId: stellarTxId } = await this.stellarService.anchorIpfsCid(
+      hash,
       signerSecret,
     );
 
@@ -68,7 +70,7 @@ export class DocumentsService {
     }
 
     // 4. Persist using existing logic (VERY IMPORTANT)
-    return this.tradeDealsService.addDocument({
+    const doc = await this.tradeDealsService.addDocument({
       tradeDealId,
       uploaderId: userId,
       docType,
@@ -79,6 +81,11 @@ export class DocumentsService {
       memoText: memo,
       signatureVerified,
     });
+
+    return {
+      ...doc,
+      verificationUrl: this.stellarService.getVerificationUrl(stellarTxId),
+    };
   }
 
   private async compressFile(
