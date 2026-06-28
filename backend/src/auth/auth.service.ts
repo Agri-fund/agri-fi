@@ -33,6 +33,8 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { JwtPayload } from './jwt.strategy';
 import { sanitizeRedirectUrl } from './utils/redirect-sanitizer';
 import { OfacSanctionsCheckService } from './utils/ofac-sanctions-check';
+import { LoginLog } from '../database/entities/login-log.entity';
+import { AdminAction } from '../database/entities/admin-action.entity';
 
 const LOCKOUT_MAX_ATTEMPTS = 5;
 const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
@@ -50,6 +52,8 @@ export class AuthService {
     private readonly kycRepo: Repository<KycSubmission>,
     @InjectRepository(LoginLog)
     private readonly loginLogRepo: Repository<LoginLog>,
+    @InjectRepository(AdminAction)
+    private readonly adminActionRepo: Repository<AdminAction>,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly queueService: QueueService,
@@ -526,6 +530,8 @@ export class AuthService {
 
   async approveCorporateKycSubmission(
     submissionId: string,
+    adminId: string,
+    reason?: string,
   ): Promise<{ kycStatus: string }> {
     const submission = await this.kycRepo.findOne({
       where: { id: submissionId },
@@ -559,10 +565,20 @@ export class AuthService {
     user.kycStatus = 'verified';
     await this.userRepo.save(user);
 
+    await this.adminActionRepo.save(
+      this.adminActionRepo.create({
+        adminId,
+        targetUserId: user.id,
+        action: 'approve_corporate_kyc',
+        payload: { submissionId },
+        reason: reason ?? null,
+      }),
+    );
+
     return { kycStatus: user.kycStatus };
   }
 
-  async approveKyc(userId: string): Promise<{ kycStatus: string }> {
+  async approveKyc(userId: string, adminId: string, reason?: string): Promise<{ kycStatus: string }> {
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found.');
 
@@ -593,6 +609,16 @@ export class AuthService {
     user.kycStatus = 'verified';
     await this.userRepo.save(user);
 
+    await this.adminActionRepo.save(
+      this.adminActionRepo.create({
+        adminId,
+        targetUserId: user.id,
+        action: 'approve_kyc',
+        payload: { submissionId: submission.id },
+        reason: reason ?? null,
+      }),
+    );
+
     console.log(
       `KYC manually verified for user ${user.email} — notification queued.`,
     );
@@ -610,13 +636,29 @@ export class AuthService {
   async updateUserRole(
     userId: string,
     role: User['role'],
+    adminId?: string,
+    reason?: string,
   ): Promise<{ id: string; role: string }> {
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found.');
 
+    const previousRole = user.role;
     user.role = role;
     user.tokenVersion = (user.tokenVersion ?? 0) + 1;
     const saved = await this.userRepo.save(user);
+
+    if (adminId) {
+      await this.adminActionRepo.save(
+        this.adminActionRepo.create({
+          adminId,
+          targetUserId: userId,
+          action: 'update_user_role',
+          payload: { previousRole, newRole: role },
+          reason: reason ?? null,
+        }),
+      );
+    }
+
     return { id: saved.id, role: saved.role };
   }
 

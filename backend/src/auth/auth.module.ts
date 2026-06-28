@@ -15,10 +15,12 @@ import { QueueModule } from '../queue/queue.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
 import { OfacSanctionsCheckService } from './utils/ofac-sanctions-check';
+import { LoginLog } from '../database/entities/login-log.entity';
+import { AdminAction } from '../database/entities/admin-action.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, KycSubmission, TradeDeal, LoginLog]),
+    TypeOrmModule.forFeature([User, KycSubmission, TradeDeal, LoginLog, AdminAction]),
     QueueModule,
     NotificationsModule,
     PassportModule,
