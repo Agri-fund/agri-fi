@@ -1,4 +1,15 @@
 import 'dotenv-vault/config';
+
+// Shim BigInt JSON serialization globally.
+// Stellar ledger amounts (stroops, sequence numbers) can exceed Number.MAX_SAFE_INTEGER.
+// Without this, JSON.stringify throws: "TypeError: Do not know how to serialize a BigInt".
+// This ensures any BigInt that slips through the interceptor is still safely serialized as a string.
+if (!(BigInt.prototype as any).toJSON) {
+  (BigInt.prototype as any).toJSON = function () {
+    return this.toString();
+  };
+}
+
 import { NestFactory } from '@nestjs/core';
 import helmet from 'helmet';
 import {
@@ -11,6 +22,7 @@ import { Transport, MicroserviceOptions } from '@nestjs/microservices';
 import { AppModule } from './app.module';
 import { applySecurityHeaders } from './common/middleware/security-headers.middleware';
 import { CustomLogger } from './common/logger/custom-logger.service';
+import { JsonBigIntInterceptor } from './common/interceptors/json-bigint.interceptor';
 import * as cookieParser from 'cookie-parser';
 import * as csrf from 'csurf';
 
@@ -71,6 +83,10 @@ app.use(helmet({
   app.use('/csrf-token', (req: any, res: any) => {
     res.json({ csrfToken: req.csrfToken() });
   });
+
+  // Global interceptor to convert BigInt values (Stellar ledger amounts, sequence numbers)
+  // to strings in JSON responses, preventing precision loss and serialization errors.
+  app.useGlobalInterceptors(new JsonBigIntInterceptor());
 
   app.useGlobalPipes(
     new ValidationPipe({
