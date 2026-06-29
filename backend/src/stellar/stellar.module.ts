@@ -3,6 +3,8 @@ import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { StellarService, SEQUENCE_REDIS_CLIENT } from './stellar.service';
 import { StellarController } from './stellar.controller';
+import { Sep12Controller } from './sep12.controller';
+import { Sep12Service } from './sep12.service';
 import { Sep24Controller } from './sep24.controller';
 import { Sep24Service } from './sep24.service';
 import { TransactionLog } from './entities/transaction-log.entity';
@@ -13,6 +15,8 @@ import { StellarHistory } from './entities/stellar-history.entity';
 import { StellarArchiverService } from './stellar-archiver.service';
 import { StellarMonitorService } from './stellar-monitor.service';
 import { KmsService } from '../kms/kms.service';
+import { User } from '../auth/entities/user.entity';
+import { KycSubmission } from '../auth/entities/kyc-submission.entity';
 
 const redisClientFactory = {
   provide: PRICE_REDIS_CLIENT,
@@ -34,11 +38,12 @@ const sequenceRedisClientFactory = {
 @Module({
   imports: [
     ConfigModule,
-    TypeOrmModule.forFeature([TransactionLog, StellarHistory, Sep24Transaction]),
+    TypeOrmModule.forFeature([TransactionLog, StellarHistory, Sep24Transaction, User, KycSubmission]),
   ],
-  controllers: [StellarController, Sep24Controller],
+  controllers: [StellarController, Sep24Controller, Sep12Controller],
   providers: [
     StellarService,
+    Sep12Service,
     Sep24Service,
     PricesService,
     StellarArchiverService,
