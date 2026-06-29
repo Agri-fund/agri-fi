@@ -52,6 +52,36 @@ services:
       retries: 3
       start_period: 40s
 
+  soroban:
+    image: stellar/soroban-preview:latest
+    container_name: soroban-cli
+    working_dir: /app
+    volumes:
+      - ./blockchain:/app/blockchain
+      - ./target:/app/target
+    environment:
+      - SOROBAN_RPC_HOST=http://soroban-rpc:8000
+      - SOROBAN_RPC_URL=http://soroban-rpc:8000/soroban/rpc
+      - NETWORK=standalone
+    command: /bin/bash
+    stdin_open: true
+    tty: true
+    depends_on:
+      - soroban-rpc
+    networks:
+      - default
+
+  soroban-rpc:
+    image: stellar/soroban-preview:latest
+    container_name: soroban-rpc
+    ports:
+      - '8000:8000'
+    environment:
+      - SOROBAN_RPC_FRIENDBOT_URL=http://localhost:8000
+    command: soroban-rpc --help
+    networks:
+      - default
+
   clamav:
     image: clamav/clamav:stable
     ports:

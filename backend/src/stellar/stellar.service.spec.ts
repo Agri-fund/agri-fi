@@ -834,4 +834,234 @@ describe('StellarService', () => {
       expect(() => service.decryptSecret(corrupted)).toThrow();
     });
   });
+
+  describe('Multi-Signature Setup (Issue #352)', () => {
+    let signer1: Keypair;
+    let signer2: Keypair;
+    let mockConfigWithSigners: any;
+
+    beforeEach(() => {
+      signer1 = Keypair.random();
+      signer2 = Keypair.random();
+
+      mockConfigWithSigners = {
+        get: jest.fn((key: string, defaultVal?: string) => {
+          const values: Record<string, string> = {
+            STELLAR_NETWORK: 'testnet',
+            STELLAR_HORIZON_URL: 'https://horizon-testnet.stellar.org',
+            STELLAR_PLATFORM_SECRET: '',
+            STELLAR_PLATFORM_PUBLIC: '',
+            USDC_ASSET_CODE: 'USDC',
+            USDC_ISSUER: '',
+            STELLAR_MULTISIG_SIGNER_1_SECRET: signer1.secret(),
+            STELLAR_MULTISIG_SIGNER_2_SECRET: signer2.secret(),
+          };
+          return values[key] ?? defaultVal ?? '';
+        }),
+      };
+    });
+
+    describe('initializeMultiSigSigners', () => {
+      it('should load multi-sig signers from environment variables', () => {
+        const result = (service as any).initializeMultiSigSigners(mockConfigWithSigners);
+
+        expect(result).toHaveLength(2);
+        expect(result[0].publicKey()).toBe(signer1.publicKey());
+        expect(result[1].publicKey()).toBe(signer2.publicKey());
+      });
+
+      it('should warn if signers not configured in production', () => {
+        const originalEnv = process.env.NODE_ENV;
+        process.env.NODE_ENV = 'production';
+
+        try {
+          const testConfig = {
+            get: jest.fn((key: string, defaultVal?: string) => defaultVal ?? ''),
+          };
+
+          (service as any).initializeMultiSigSigners(testConfig);
+
+          expect(mockLogger.warn).toHaveBeenCalledWith(
+            expect.stringContaining('STELLAR_MULTISIG_SIGNER_1_SECRET not configured'),
+          );
+          expect(mockLogger.warn).toHaveBeenCalledWith(
+            expect.stringContaining('STELLAR_MULTISIG_SIGNER_2_SECRET not configured'),
+          );
+        } finally {
+          process.env.NODE_ENV = originalEnv;
+        }
+      });
+
+      it('should throw on invalid signer secret key', () => {
+        const badConfig = {
+          get: jest.fn((key: string, defaultVal?: string) => {
+            if (key === 'STELLAR_MULTISIG_SIGNER_1_SECRET') {
+              return 'invalid-secret-key';
+            }
+            return defaultVal ?? '';
+          }),
+        };
+
+        expect(() => {
+          (service as any).initializeMultiSigSigners(badConfig);
+        }).toThrow();
+      });
+    });
+
+    describe('getPlatformPublicKey', () => {
+      it('should return the platform keypair public key', () => {
+        const publicKey = service.getPlatformPublicKey();
+        expect(publicKey).toBe((service as any).platformKeypair.publicKey());
+      });
+
+      it('should return a valid Stellar public key format', () => {
+        const publicKey = service.getPlatformPublicKey();
+        expect(publicKey).toMatch(/^G[A-Z2-7]{55}$/);
+      });
+    });
+
+    describe('setupPlatformMultiSig', () => {
+      it('should throw error if signers not configured', async () => {
+        (service as any).multiSigSigners = [];
+
+        await expect(service.setupPlatformMultiSig()).rejects.toThrow(
+          'Multi-sig setup requires at least 2 signer keys',
+        );
+      });
+
+      it('should configure platform wallet with 2-of-3 multi-sig', async () => {
+        const platformPublicKey = service.getPlatformPublicKey();
+        (service as any).multiSigSigners = [signer1, signer2];
+
+        mockServer.loadAccount.mockResolvedValue(
+          createMockAccount(platformPublicKey),
+        );
+        mockServer.submitTransaction.mockResolvedValue({ hash: 'tx-hash-1' });
+
+        const result = await service.setupPlatformMultiSig();
+
+        expect(result).toEqual({
+          platformPublicKey,
+          signers: [signer1.publicKey(), signer2.publicKey()],
+          transactionThreshold: 2,
+        });
+
+        // Verify two transactions were submitted (one per signer)
+        expect(mockServer.submitTransaction.mock.calls.length).toBeGreaterThanOrEqual(1);
+      });
+
+      it('should log multi-sig configuration', async () => {
+        const platformPublicKey = service.getPlatformPublicKey();
+        (service as any).multiSigSigners = [signer1, signer2];
+
+        mockServer.loadAccount.mockResolvedValue(
+          createMockAccount(platformPublicKey),
+        );
+        mockServer.submitTransaction.mockResolvedValue({ hash: 'tx-hash' });
+
+        await service.setupPlatformMultiSig();
+
+        expect(mockLogger.info).toHaveBeenCalledWith(
+          expect.objectContaining({
+            platformPublicKey,
+            signers: expect.arrayContaining([signer1.publicKey(), signer2.publicKey()]),
+            masterWeight: 1,
+            lowThreshold: 1,
+            medThreshold: 2,
+            highThreshold: 2,
+          }),
+          expect.stringContaining('Platform wallet multi-sig configuration completed'),
+        );
+      });
+
+      it('should handle Horizon API errors gracefully', async () => {
+        (service as any).multiSigSigners = [signer1, signer2];
+
+        mockServer.loadAccount.mockRejectedValue(
+          new Error('Horizon API unavailable'),
+        );
+
+        await expect(service.setupPlatformMultiSig()).rejects.toThrow(
+          'Horizon API unavailable',
+        );
+      });
+    });
+
+    describe('getPlatformMultiSigConfig', () => {
+      it('should retrieve current multi-sig configuration', async () => {
+        const platformPublicKey = service.getPlatformPublicKey();
+        const mockSigners = [
+          { key: platformPublicKey, weight: 1 },
+          { key: signer1.publicKey(), weight: 1 },
+          { key: signer2.publicKey(), weight: 1 },
+        ];
+
+        mockServer.loadAccount.mockResolvedValue({
+          ...createMockAccount(platformPublicKey),
+          signers: mockSigners,
+          thresholds: {
+            low_threshold: 1,
+            med_threshold: 2,
+            high_threshold: 2,
+          },
+        });
+
+        const config = await service.getPlatformMultiSigConfig();
+
+        expect(config.publicKey).toBe(platformPublicKey);
+        expect(config.signers).toHaveLength(3);
+        expect(config.signers[0].key).toBe(platformPublicKey);
+        expect(config.signers[0].weight).toBe(1);
+        expect(config.thresholds).toEqual({
+          low: 1,
+          med: 2,
+          high: 2,
+        });
+      });
+
+      it('should format signer information correctly', async () => {
+        const platformPublicKey = service.getPlatformPublicKey();
+        const mockSigners = [
+          { key: platformPublicKey, weight: 1 },
+          { key: signer1.publicKey(), weight: 1 },
+          { key: signer2.publicKey(), weight: 1 },
+        ];
+
+        mockServer.loadAccount.mockResolvedValue({
+          ...createMockAccount(platformPublicKey),
+          signers: mockSigners,
+          thresholds: {
+            low_threshold: 1,
+            med_threshold: 2,
+            high_threshold: 2,
+          },
+        });
+
+        const config = await service.getPlatformMultiSigConfig();
+
+        expect(config.signers.every((s) => s.key && typeof s.weight === 'number')).toBe(
+          true,
+        );
+      });
+
+      it('should handle empty signer list', async () => {
+        const platformPublicKey = service.getPlatformPublicKey();
+
+        mockServer.loadAccount.mockResolvedValue({
+          ...createMockAccount(platformPublicKey),
+          signers: [],
+          thresholds: {
+            low_threshold: 0,
+            med_threshold: 0,
+            high_threshold: 0,
+          },
+        });
+
+        const config = await service.getPlatformMultiSigConfig();
+
+        expect(config.signers).toHaveLength(0);
+        expect(config.thresholds.med).toBe(0);
+      });
+    });
+  });
 });

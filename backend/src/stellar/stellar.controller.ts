@@ -1,6 +1,7 @@
 import {
   Controller,
   Post,
+  Get,
   Body,
   UseGuards,
   HttpCode,
@@ -165,6 +166,87 @@ export class StellarController {
     } catch (error: any) {
       throw new HttpException(
         error.message || 'Clawback failed',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  /**
+   * Configures multi-signature authorization for the platform fee wallet.
+   * Requires 2 of 3 signatures for transfers to prevent theft of platform fees.
+   * Issue #352 — Stellar multi-signature setup for platform fee wallet.
+   * Only accessible by admin users.
+   */
+  @Post('platform-wallet/setup-multisig')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Configure multi-signature for platform fee wallet',
+    description: 'Sets up 2-of-3 multi-sig authorization for the platform account to require 2 signatures for any transfers.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Multi-sig configuration set up successfully',
+  })
+  @ApiResponse({ status: 400, description: 'Multi-sig setup failed' })
+  @ApiResponse({ status: 403, description: 'Forbidden: Admins only' })
+  async setupPlatformMultiSig(@Req() req: Request) {
+    const caller = req.user as User;
+    if (caller.role !== 'admin') {
+      throw new HttpException(
+        'Only admins can configure platform wallet security',
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
+    try {
+      const result = await this.stellarService.setupPlatformMultiSig();
+      return {
+        success: true,
+        data: result,
+      };
+    } catch (error: any) {
+      throw new HttpException(
+        error.message || 'Multi-sig setup failed',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  /**
+   * Returns the current multi-signature configuration of the platform fee wallet.
+   * Used for auditing and verifying the multi-sig setup.
+   * Issue #352 — Stellar multi-signature setup for platform fee wallet.
+   * Only accessible by admin users.
+   */
+  @Get('platform-wallet/multisig-config')
+  @ApiOperation({
+    summary: 'Get multi-signature configuration of platform wallet',
+    description: 'Returns the current signers and thresholds configured on the platform account for audit purposes.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Multi-sig configuration retrieved successfully',
+  })
+  @ApiResponse({ status: 400, description: 'Failed to retrieve configuration' })
+  @ApiResponse({ status: 403, description: 'Forbidden: Admins only' })
+  async getPlatformMultiSigConfig(@Req() req: Request) {
+    const caller = req.user as User;
+    if (caller.role !== 'admin') {
+      throw new HttpException(
+        'Only admins can view platform wallet configuration',
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
+    try {
+      const config = await this.stellarService.getPlatformMultiSigConfig();
+      return {
+        success: true,
+        data: config,
+      };
+    } catch (error: any) {
+      throw new HttpException(
+        error.message || 'Failed to retrieve configuration',
         HttpStatus.BAD_REQUEST,
       );
     }

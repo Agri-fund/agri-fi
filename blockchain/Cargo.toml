@@ -1,10 +1,28 @@
+# Soroban Rust Smart Contracts Workspace
+# Issue #346 - Integrate Soroban Rust SDK in development environment
+#
+# This workspace manages all Soroban WASM smart contracts for the Agri-Fi platform.
+#
+# Build all contracts:
+#   cargo build --release --target wasm32-unknown-unknown
+#
+# Build specific contract:
+#   cargo build -p escrow --release --target wasm32-unknown-unknown
+#
+# Run tests:
+#   cargo test
+#
+# Deploy with Soroban CLI:
+#   soroban contract deploy --wasm ./target/wasm32-unknown-unknown/release/escrow.wasm
+
 [workspace]
 members = [
-    "contracts/farm_campaign",
-    "contracts/revenue_distributor",
-    "contracts/project_factory",
-    "contracts/marketplace_settlement",
     "contracts/escrow",
+    "contracts/farm_campaign",
+    "contracts/farm_campaign_settlement",
+    "contracts/marketplace_settlement",
+    "contracts/project_factory",
+    "contracts/revenue_distributor",
 ]
 resolver = "2"
 
