@@ -10,6 +10,7 @@ import { User } from '../auth/entities/user.entity';
 import { StellarModule } from '../stellar/stellar.module';
 import { QueueModule } from '../queue/queue.module';
 import { TradeDealsGuard } from './trade-deals.guard';
+import { TradeDealsCronService } from './trade-deals-cron.service';
 
 @Module({
   imports: [
@@ -24,7 +25,7 @@ import { TradeDealsGuard } from './trade-deals.guard';
     QueueModule,
   ],
   controllers: [TradeDealsController],
-  providers: [TradeDealsService, TradeDealsGuard],
+  providers: [TradeDealsService, TradeDealsGuard, TradeDealsCronService],
   exports: [TradeDealsService],
 })
 export class TradeDealsModule {}

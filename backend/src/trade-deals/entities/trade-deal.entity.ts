@@ -20,7 +20,8 @@ export type TradeDealStatus =
   | 'delivered'
   | 'completed'
   | 'failed'
-  | 'canceled';
+  | 'canceled'
+  | 'expired';
 
 @Entity('trade_deals')
 export class TradeDeal {
@@ -88,6 +89,7 @@ export class TradeDeal {
       'completed',
       'failed',
       'canceled',
+      'expired',
     ],
     example: 'open',
   })

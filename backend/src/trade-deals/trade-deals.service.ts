@@ -479,7 +479,112 @@ export class TradeDealsService {
     return this.tradeDealRepo.save(deal);
   }
 
-  async findByUser(userId: string, role: string): Promise<any[]> {
+  async expireDeal(dealId: string): Promise<TradeDeal> {
+    const deal = await this.tradeDealRepo.findOne({
+      where: { id: dealId },
+      relations: ['investments', 'investments.investor'],
+    });
+
+    if (!deal) {
+      throw new NotFoundException('Trade deal not found.');
+    }
+
+    if (deal.status !== 'open') {
+      throw new UnprocessableEntityException({
+        code: 'DEAL_NOT_OPEN',
+        message: `Cannot expire a deal in "${deal.status}" status. Only open deals can be expired.`,
+      });
+    }
+
+    const confirmedInvestments =
+      deal.investments?.filter(
+        (inv) => inv.status === InvestmentStatus.CONFIRMED,
+      ) || [];
+
+    if (
+      deal.issuerPublicKey &&
+      deal.issuerSecretKey &&
+      deal.stellarAssetTxId
+    ) {
+      const investorShares: { walletAddress: string; tokenAmount: number }[] =
+        confirmedInvestments
+          .filter((inv) => inv.investor?.walletAddress)
+          .map((inv) => ({
+            walletAddress: inv.investor.walletAddress as string,
+            tokenAmount: Number(inv.tokenAmount),
+          }));
+
+      const tokensSold = investorShares.reduce(
+        (acc, curr) => acc + curr.tokenAmount,
+        0,
+      );
+      const unsoldTokens = Number(deal.tokenCount) - tokensSold;
+
+      if (unsoldTokens > 0 && deal.escrowPublicKey) {
+        investorShares.push({
+          walletAddress: deal.escrowPublicKey,
+          tokenAmount: unsoldTokens,
+        });
+      }
+
+      if (investorShares.length > 0) {
+        const issuerSecret = await this.stellarService.decryptSecret(
+          deal.issuerSecretKey,
+        );
+
+        this.logger.info(
+          {
+            dealId,
+            tokenCount: deal.tokenCount,
+            holders: investorShares.length,
+          },
+          'Initiating clawback for expired deal',
+        );
+
+        await this.stellarService.clawbackTokens(
+          deal.tokenSymbol,
+          deal.issuerPublicKey,
+          issuerSecret,
+          investorShares,
+        );
+      }
+    }
+
+    if (confirmedInvestments.length > 0) {
+      await this.investmentRepo.update(
+        confirmedInvestments.map((inv) => inv.id),
+        { status: InvestmentStatus.REFUNDED },
+      );
+      this.logger.info(
+        { dealId, refundedCount: confirmedInvestments.length },
+        'Refunded confirmed investments for expired deal',
+      );
+    }
+
+    deal.status = 'expired';
+    deal.appTraceId = `app-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 10)}`;
+
+    const saved = await this.tradeDealRepo.save(deal);
+
+    this.queueService.emit('email.notification', {
+      type: 'deal_expired',
+      dealId,
+      commodity: deal.commodity,
+      traderId: deal.traderId,
+      farmerId: deal.farmerId,
+    });
+
+    this.queueService.emit('admin.alert', {
+      type: 'deal_expired',
+      dealId,
+      commodity: deal.commodity,
+      timestamp: new Date().toISOString(),
+    });
+
+    return saved;
+  }
+
+  async findByUser(userId: string, role: string): Promise<any[]>{
     if (role !== 'farmer' && role !== 'trader') {
       return [];
     }
