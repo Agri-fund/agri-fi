@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -11,6 +9,11 @@ services:
       - '5432:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   rabbitmq:
     image: rabbitmq:3-management-alpine
@@ -20,6 +23,88 @@ services:
     environment:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: ["CMD-SHELL", "rabbitmq-diagnostics -q ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      - DATABASE_URL=postgres://postgres:postgres@postgres:5432/agric_onchain
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+      - CLAMAV_HOST=clamav
+      - CLAMAV_PORT=3310
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      clamav:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  soroban:
+    image: stellar/soroban-preview:latest
+    container_name: soroban-cli
+    working_dir: /app
+    volumes:
+      - ./blockchain:/app/blockchain
+      - ./target:/app/target
+    environment:
+      - SOROBAN_RPC_HOST=http://soroban-rpc:8000
+      - SOROBAN_RPC_URL=http://soroban-rpc:8000/soroban/rpc
+      - NETWORK=standalone
+    command: /bin/bash
+    stdin_open: true
+    tty: true
+    depends_on:
+      - soroban-rpc
+    networks:
+      - default
+
+  soroban-rpc:
+    image: stellar/soroban-preview:latest
+    container_name: soroban-rpc
+    ports:
+      - '8000:8000'
+    environment:
+      - SOROBAN_RPC_FRIENDBOT_URL=http://localhost:8000
+    command: soroban-rpc --help
+    networks:
+      - default
+
+  clamav:
+    image: clamav/clamav:stable
+    ports:
+      - '3310:3310'
+    healthcheck:
+      test: ["CMD", "clamdscan", "--ping", "3"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+  pgadmin:
+    image: dpage/pgadmin4
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - '5050:80'
+    depends_on:
+      - postgres
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
 
 volumes:
   pgdata:
+  pgadmin_data:

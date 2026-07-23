@@ -22,7 +22,9 @@ describe('WalletDto — @IsStellarPublicKey', () => {
   });
 
   it('fails for a Stellar secret key (starts with S)', async () => {
-    const errors = await validateWallet('SAYNCJDKOD6DMRXKCLJWO4FVQAWRRABZ5CO7M7EXAEOIHGXPYRKXAQUC');
+    const errors = await validateWallet(
+      'SAYNCJDKOD6DMRXKCLJWO4FVQAWRRABZ5CO7M7EXAEOIHGXPYRKXAQUC',
+    );
     expect(errors[0].constraints?.isStellarPublicKey).toBeDefined();
   });
 

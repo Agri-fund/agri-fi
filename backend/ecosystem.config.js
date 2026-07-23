@@ -1,0 +1,41 @@
+module.exports = {
+  apps: [
+    {
+      name: "agri-fi-api",
+      script: "./src/index.js",
+      instances: "max",
+      exec_mode: "cluster",
+      watch: false,
+      max_memory_restart: "512M",
+      log_date_format: "YYYY-MM-DD HH:mm:ss Z",
+      error_file: "./logs/api-error.log",
+      out_file: "./logs/api-out.log",
+      merge_logs: true,
+      log_type: "json",
+      max_size: "10M",
+      retain: 7,
+      env: {
+        NODE_ENV: "production",
+        PORT: 3000,
+      },
+    },
+    {
+      name: "agri-fi-worker",
+      script: "./src/worker.js",
+      instances: 2,
+      exec_mode: "cluster",
+      watch: false,
+      max_memory_restart: "256M",
+      log_date_format: "YYYY-MM-DD HH:mm:ss Z",
+      error_file: "./logs/worker-error.log",
+      out_file: "./logs/worker-out.log",
+      merge_logs: true,
+      log_type: "json",
+      max_size: "10M",
+      retain: 7,
+      env: {
+        NODE_ENV: "production",
+      },
+    },
+  ],
+};

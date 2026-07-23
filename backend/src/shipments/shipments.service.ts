@@ -3,8 +3,8 @@ import {
   NotFoundException,
   ForbiddenException,
   UnprocessableEntityException,
-  Logger,
 } from '@nestjs/common';
+import { PinoLogger } from 'nestjs-pino';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import {
@@ -15,6 +15,8 @@ import { CreateMilestoneDto } from './dto/create-milestone.dto';
 import { StellarService } from '../stellar/stellar.service';
 import { QueueService } from '../queue/queue.service';
 import { ConfigService } from '@nestjs/config';
+import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
+import { buildShipmentMemo } from '../stellar/anchor-memo';
 
 const MILESTONE_SEQUENCE: MilestoneType[] = [
   'farm',
@@ -25,16 +27,19 @@ const MILESTONE_SEQUENCE: MilestoneType[] = [
 
 @Injectable()
 export class ShipmentsService {
-  private readonly logger = new Logger(ShipmentsService.name);
-
   constructor(
+    private readonly logger: PinoLogger,
     @InjectRepository(ShipmentMilestone)
     private readonly milestoneRepo: Repository<ShipmentMilestone>,
+    @InjectRepository(TradeDeal)
+    private readonly tradeDealRepo: Repository<TradeDeal>,
     private readonly stellarService: StellarService,
     private readonly queueService: QueueService,
     private readonly config: ConfigService,
     private readonly dataSource: DataSource,
-  ) {}
+  ) {
+    this.logger.setContext(ShipmentsService.name);
+  }
 
   async recordMilestone(
     userId: string,
@@ -42,22 +47,15 @@ export class ShipmentsService {
   ): Promise<ShipmentMilestone> {
     // Use a transaction to ensure atomicity
     return await this.dataSource.transaction(async (manager) => {
-      // Load the deal via raw query to avoid circular entity deps
-      const result = await manager.query(
-        `SELECT id, status, trader_id, escrow_secret_key FROM trade_deals WHERE id = $1`,
-        [dto.trade_deal_id],
-      );
+      // Load the deal via entity manager to avoid raw SQL
+      const deal = await manager.findOne(TradeDeal, {
+        where: { id: dto.trade_deal_id },
+        select: ['id', 'status', 'traderId', 'escrowSecretKey'],
+      });
 
-      if (!result.length) {
+      if (!deal) {
         throw new NotFoundException('Trade deal not found.');
       }
-
-      const deal = result[0] as {
-        id: string;
-        status: string;
-        trader_id: string;
-        escrow_secret_key: string;
-      };
 
       // 5.6 — only funded deals
       if (deal.status !== 'funded') {
@@ -68,7 +66,7 @@ export class ShipmentsService {
       }
 
       // 5.6 — only the assigned trader
-      if (deal.trader_id !== userId) {
+      if (deal.traderId !== userId) {
         throw new ForbiddenException({
           code: 'NOT_ASSIGNED_TRADER',
           message:
@@ -97,17 +95,17 @@ export class ShipmentsService {
       }
 
       // 5.2 — anchor on Stellar
-      const dealIdShort = deal.id.replace(/-/g, '').slice(0, 8);
-      const unixTs = Math.floor(Date.now() / 1000);
-      const memoText = `AGRIC:MILESTONE:${dealIdShort}:${dto.milestone}:${unixTs}`;
+      const memoText = buildShipmentMemo(deal.id, dto.milestone);
 
-      const signerSecret =
-        deal.escrow_secret_key ||
-        this.config.get<string>('STELLAR_PLATFORM_SECRET', '');
+      let signerSecret = this.config.get<string>('STELLAR_PLATFORM_SECRET', '');
+      if (deal.escrowSecretKey) {
+        signerSecret = this.stellarService.decryptSecret(deal.escrowSecretKey);
+      }
 
       const stellarTxId = await this.stellarService.recordMemo(
         memoText,
         signerSecret,
+        'hash',
       );
 
       // Create and save the milestone
@@ -117,6 +115,9 @@ export class ShipmentsService {
         recordedBy: userId,
         notes: dto.notes ?? null,
         stellarTxId,
+        memoText,
+        latitude: dto.latitude ?? null,
+        longitude: dto.longitude ?? null,
       });
 
       const savedMilestone = await manager.save(milestone);
@@ -124,16 +125,18 @@ export class ShipmentsService {
       // 5.5 — Handle importer milestone: transition to delivered and enqueue job
       if (dto.milestone === 'importer') {
         // Update trade deal status to delivered
-        await manager.query(
-          `UPDATE trade_deals SET status = 'delivered' WHERE id = $1`,
-          [dto.trade_deal_id],
-        );
+        const appTraceId = `app-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 10)}`;
+        await manager.update(TradeDeal, dto.trade_deal_id, {
+          status: 'delivered',
+          appTraceId,
+        });
 
         // Enqueue deal.delivered job for escrow release
         await this.queueService.enqueueDealDelivered(dto.trade_deal_id);
 
-        this.logger.log(
-          `Deal ${dto.trade_deal_id} transitioned to delivered — escrow release job enqueued`,
+        this.logger.info(
+          { dealId: dto.trade_deal_id },
+          'Deal transitioned to delivered — escrow release job enqueued',
         );
       }
 
@@ -143,12 +146,12 @@ export class ShipmentsService {
 
   async findByDeal(tradeDealId: string): Promise<ShipmentMilestone[]> {
     // First verify the trade deal exists
-    const dealExists = await this.milestoneRepo.manager.query(
-      `SELECT id FROM trade_deals WHERE id = $1`,
-      [tradeDealId],
-    );
+    const deal = await this.tradeDealRepo.findOne({
+      where: { id: tradeDealId },
+      select: ['id'],
+    });
 
-    if (!dealExists.length) {
+    if (!deal) {
       throw new NotFoundException('Trade deal not found');
     }
 

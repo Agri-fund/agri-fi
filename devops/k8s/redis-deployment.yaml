@@ -1,0 +1,74 @@
+# Redis Deployment with persistence for Agri-fi
+# This deployment provides a caching layer for the application
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agri-fi-redis
+  namespace: default
+  labels:
+    app: agri-fi
+    component: redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agri-fi
+      component: redis
+  template:
+    metadata:
+      labels:
+        app: agri-fi
+        component: redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        ports:
+        - containerPort: 6379
+          name: redis
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        volumeMounts:
+        - name: redis-data
+          mountPath: /data
+        livenessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: redis-data
+        persistentVolumeClaim:
+          claimName: agri-fi-redis-pvc
+---
+# Persistent Volume Claim for Redis data
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: agri-fi-redis-pvc
+  namespace: default
+  labels:
+    app: agri-fi
+    component: redis
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: standard

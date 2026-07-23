@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: agri-fi-frontend
+  labels:
+    app: agri-fi-frontend
+spec:
+  type: ClusterIP
+  selector:
+    app: agri-fi-frontend
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP

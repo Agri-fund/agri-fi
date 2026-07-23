@@ -1,0 +1,432 @@
+/* ── Screen styles ────────────────────────────────────────────────────────── */
+
+.receipt-page {
+  min-height: 100vh;
+  background-color: #f8fafc;
+  font-family: 'Inter', system-ui, sans-serif;
+  color: #0f172a;
+}
+
+.receipt-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1.5rem;
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.receipt-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.btn-print {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1.25rem;
+  background-color: #166534;
+  color: #ffffff;
+  font-size: 0.875rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 0.625rem;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.btn-print:hover {
+  background-color: #14532d;
+}
+
+.btn-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 1rem;
+  background: transparent;
+  color: #64748b;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.625rem;
+  cursor: pointer;
+  text-decoration: none;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.btn-back:hover {
+  color: #0f172a;
+  border-color: #94a3b8;
+}
+
+.receipt-wrapper {
+  max-width: 52rem;
+  margin: 2rem auto;
+  padding: 0 1rem 4rem;
+}
+
+.receipt-document {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 1rem;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+}
+
+/* ── Receipt header ───────────────────────────────────────────────────────── */
+
+.receipt-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 2rem 2.5rem 1.5rem;
+  border-bottom: 2px solid #f1f5f9;
+}
+
+.receipt-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  font-size: 1.25rem;
+  font-weight: 900;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+}
+
+.receipt-brand-icon {
+  font-size: 1.5rem;
+}
+
+.receipt-meta {
+  text-align: right;
+}
+
+.receipt-title {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+  margin: 0 0 0.25rem;
+}
+
+.receipt-subtitle {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  font-family: 'Courier New', monospace;
+}
+
+/* ── Status banner ────────────────────────────────────────────────────────── */
+
+.receipt-status-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.875rem 2.5rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.receipt-status-banner.completed {
+  background-color: #f0fdf4;
+  color: #166534;
+  border-bottom: 1px solid #bbf7d0;
+}
+
+.receipt-status-banner.delivered {
+  background-color: #eff6ff;
+  color: #1d4ed8;
+  border-bottom: 1px solid #bfdbfe;
+}
+
+.receipt-status-banner.funded {
+  background-color: #fefce8;
+  color: #854d0e;
+  border-bottom: 1px solid #fef08a;
+}
+
+.receipt-status-banner.other {
+  background-color: #f8fafc;
+  color: #475569;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+/* ── Sections ─────────────────────────────────────────────────────────────── */
+
+.receipt-section {
+  padding: 1.75rem 2.5rem;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.receipt-section:last-child {
+  border-bottom: none;
+}
+
+.receipt-section-title {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #94a3b8;
+  margin: 0 0 1rem;
+}
+
+/* ── Deal summary grid ────────────────────────────────────────────────────── */
+
+.receipt-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.875rem;
+}
+
+.receipt-grid-wide {
+  grid-column: span 2;
+}
+
+.receipt-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.receipt-field-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #94a3b8;
+}
+
+.receipt-field-value {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.receipt-field-value.mono {
+  font-family: 'Courier New', monospace;
+  font-size: 0.8125rem;
+  word-break: break-all;
+  color: #334155;
+}
+
+.receipt-field-value.large {
+  font-size: 1.25rem;
+  font-weight: 800;
+}
+
+/* ── Payout table ─────────────────────────────────────────────────────────── */
+
+.receipt-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.receipt-table thead tr {
+  border-bottom: 2px solid #f1f5f9;
+}
+
+.receipt-table th {
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #94a3b8;
+}
+
+.receipt-table th:last-child,
+.receipt-table td:last-child {
+  text-align: right;
+}
+
+.receipt-table tbody tr {
+  border-bottom: 1px solid #f8fafc;
+}
+
+.receipt-table tbody tr:last-child {
+  border-bottom: none;
+}
+
+.receipt-table td {
+  padding: 0.75rem;
+  color: #334155;
+  vertical-align: top;
+}
+
+.receipt-table td.mono {
+  font-family: 'Courier New', monospace;
+  font-size: 0.75rem;
+  color: #64748b;
+  word-break: break-all;
+  max-width: 18rem;
+}
+
+.receipt-table td.amount {
+  font-weight: 700;
+  color: #0f172a;
+  white-space: nowrap;
+}
+
+.receipt-table tfoot tr {
+  border-top: 2px solid #e2e8f0;
+  background-color: #f8fafc;
+}
+
+.receipt-table tfoot td {
+  padding: 0.875rem 0.75rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+/* ── Milestones ───────────────────────────────────────────────────────────── */
+
+.milestone-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.milestone-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.875rem;
+}
+
+.milestone-dot {
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 50%;
+  background-color: #166534;
+  margin-top: 0.3125rem;
+  flex-shrink: 0;
+}
+
+.milestone-dot.pending {
+  background-color: #cbd5e1;
+}
+
+.milestone-info {
+  flex: 1;
+}
+
+.milestone-name {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #0f172a;
+  text-transform: capitalize;
+}
+
+.milestone-date {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  margin-top: 0.125rem;
+}
+
+.milestone-tx {
+  font-family: 'Courier New', monospace;
+  font-size: 0.6875rem;
+  color: #64748b;
+  margin-top: 0.25rem;
+  word-break: break-all;
+}
+
+/* ── Footer ───────────────────────────────────────────────────────────────── */
+
+.receipt-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 2.5rem;
+  background-color: #f8fafc;
+  border-top: 1px solid #e2e8f0;
+}
+
+.receipt-footer-note {
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+
+.receipt-footer-generated {
+  font-size: 0.6875rem;
+  color: #cbd5e1;
+  font-family: 'Courier New', monospace;
+}
+
+/* ── Print media query ────────────────────────────────────────────────────── */
+
+@media print {
+  /* Page setup — A4 portrait */
+  @page {
+    size: A4 portrait;
+    margin: 12mm 14mm;
+  }
+
+  /* Hide everything that isn't the receipt document */
+  .receipt-toolbar,
+  .btn-print,
+  .btn-back,
+  .no-print {
+    display: none !important;
+  }
+
+  /* Reset screen chrome */
+  .receipt-page {
+    background: #ffffff;
+    min-height: unset;
+  }
+
+  .receipt-wrapper {
+    max-width: 100%;
+    margin: 0;
+    padding: 0;
+  }
+
+  .receipt-document {
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  /* Ensure text is black for ink efficiency */
+  body,
+  .receipt-field-value,
+  .receipt-table td,
+  .receipt-table tfoot td {
+    color: #000000 !important;
+  }
+
+  .receipt-field-label,
+  .receipt-section-title,
+  .receipt-table th {
+    color: #555555 !important;
+  }
+
+  /* Avoid page breaks inside key sections */
+  .receipt-section,
+  .receipt-table tr,
+  .milestone-item {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  /* Force background colours to print */
+  .receipt-status-banner,
+  .receipt-table tfoot tr {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Links: show the URL inline for printed Stellar TX hashes */
+  a[href]::after {
+    content: none;
+  }
+}

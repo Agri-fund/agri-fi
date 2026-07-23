@@ -4,6 +4,7 @@ import {
   Column,
   CreateDateColumn,
   ManyToOne,
+  JoinColumn,
 } from 'typeorm';
 import { User } from '../../auth/entities/user.entity';
 import { TradeDeal } from './trade-deal.entity';
@@ -13,6 +14,17 @@ export type DocumentType =
   | 'bill_of_lading'
   | 'export_certificate'
   | 'warehouse_receipt';
+
+export interface DocumentMetadata {
+  dimensions?: {
+    width: number;
+    height: number;
+    unit?: string;
+  };
+  pageCount?: number;
+  detectedLanguages?: string[];
+  [key: string]: any; // Allow additional metadata fields
+}
 
 @Entity('documents')
 export class Document {
@@ -37,13 +49,23 @@ export class Document {
   @Column({ name: 'stellar_tx_id', nullable: true })
   stellarTxId: string | null;
 
+  @Column({ name: 'memo_text', nullable: true })
+  memoText: string | null;
+
+  @Column({ name: 'signature_verified', default: false })
+  signatureVerified: boolean;
+
+  @Column({ name: 'metadata', type: 'jsonb', default: {} })
+  metadata: DocumentMetadata;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
-  // Relations
   @ManyToOne(() => TradeDeal, (tradeDeal) => tradeDeal.documents)
+  @JoinColumn({ name: 'trade_deal_id' })
   tradeDeal: TradeDeal;
 
   @ManyToOne(() => User)
+  @JoinColumn({ name: 'uploader_id' })
   uploader: User;
 }

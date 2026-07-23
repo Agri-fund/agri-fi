@@ -1,0 +1,37 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { fetchBackend } from '@/config/backend';
+
+/**
+ * POST /api/investments/bulk-transaction
+ * Proxies to backend POST /investments/bulk-transaction
+ * Issue #92 — Bulk Investments via Stellar Batching
+ */
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const authHeader = request.headers.get('authorization');
+
+    const response = await fetchBackend('/investments/bulk-transaction', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: authHeader ?? '',
+      },
+      body: JSON.stringify(body),
+    });
+
+    const data = await response.json();
+    return NextResponse.json(data, { status: response.status });
+  } catch (error: any) {
+    if (error?.isBackendUnreachable) {
+      return NextResponse.json(
+        { message: 'Backend service is unavailable' },
+        { status: 503 }
+      );
+    }
+    return NextResponse.json(
+      { message: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}

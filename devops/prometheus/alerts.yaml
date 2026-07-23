@@ -1,0 +1,88 @@
+groups:
+  - name: agri_fi_database_pool
+    interval: 30s
+    rules:
+
+      # ── Active connections approaching pool capacity (warning at 80%) ──────
+      - alert: DatabasePoolHighUsage
+        expr: |
+          (
+            pg_stat_activity_count{datname="agri",state!="idle"}
+            /
+            pg_settings_max_connections
+          ) * 100 > 80
+        for: 2m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "Database connection pool usage above 80%"
+          description: >
+            Active (non-idle) connections on instance {{ $labels.instance }} have
+            been above 80% of max_connections for more than 2 minutes.
+            Current usage: {{ $value | printf "%.1f" }}%.
+
+      # ── Active connections exceeding 90% of pool capacity (critical) ───────
+      - alert: DatabasePoolCriticalUsage
+        expr: |
+          (
+            pg_stat_activity_count{datname="agri",state!="idle"}
+            /
+            pg_settings_max_connections
+          ) * 100 > 90
+        for: 1m
+        labels:
+          severity: critical
+          team: backend
+          pagerduty: "true"
+        annotations:
+          summary: "Database connection pool usage above 90% — API requests at risk"
+          description: >
+            Active (non-idle) connections on instance {{ $labels.instance }} have
+            exceeded 90% of max_connections for more than 1 minute.
+            Current usage: {{ $value | printf "%.1f" }}%.
+            Immediate action required to prevent connection exhaustion.
+
+      # ── Idle-in-transaction connections (long-running uncommitted txns) ────
+      - alert: DatabaseIdleInTransactionConnections
+        expr: |
+          pg_stat_activity_count{datname="agri",state="idle in transaction"} > 5
+        for: 3m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "High number of idle-in-transaction connections"
+          description: >
+            {{ $value }} connections on {{ $labels.instance }} are in
+            'idle in transaction' state for more than 3 minutes.
+            These hold locks and count against max_connections.
+
+      # ── Connection pool fully exhausted ────────────────────────────────────
+      - alert: DatabaseConnectionPoolExhausted
+        expr: |
+          pg_stat_activity_count{datname="agri",state!="idle"}
+          >= pg_settings_max_connections
+        for: 30s
+        labels:
+          severity: critical
+          team: backend
+          pagerduty: "true"
+        annotations:
+          summary: "Database connection pool exhausted — new connections will be rejected"
+          description: >
+            All {{ $value }} connections on {{ $labels.instance }} are in use.
+            New API requests requiring a DB connection will fail immediately.
+
+      # ── Exporter down (no metrics from postgres_exporter) ──────────────────
+      - alert: DatabaseExporterDown
+        expr: up{job="postgres_exporter"} == 0
+        for: 1m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Postgres exporter is down — DB pool metrics unavailable"
+          description: >
+            The postgres_exporter instance {{ $labels.instance }} has been
+            unreachable for more than 1 minute. Connection pool alerts may not fire.

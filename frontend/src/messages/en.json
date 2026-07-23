@@ -1,0 +1,187 @@
+{
+  "nav": {
+    "title": "Agric-onchain Finance",
+    "dashboard": "Dashboard",
+    "marketplace": "Marketplace",
+    "documents": "Documents",
+    "settings": "Settings",
+    "kycStatus": "KYC Status",
+    "signOut": "Sign Out",
+    "menu": "Menu",
+    "roles": {
+      "farmer": "Farmer",
+      "trader": "Trader",
+      "investor": "Investor",
+      "company": "Company",
+      "admin": "Admin"
+    }
+  },
+  "home": {
+    "title": "Agric-onchain Finance",
+    "subtitle": "Blockchain-backed agricultural trade finance platform",
+    "description": "Connect farmers, traders, and investors through tokenized agricultural trade deals on Stellar blockchain.",
+    "viewMarketplace": "View Marketplace",
+    "getStarted": "Get Started",
+    "signIn": "Sign in",
+    "startFree": "Start for free",
+    "browseProjects": "Browse projects",
+    "trustedBy": "Trusted by {count} investors across Africa",
+    "liveOnStellar": "Live on Stellar Testnet · Zero fees during beta",
+    "hero": {
+      "titlePart1": "Agriculture meets",
+      "titlePart2": "DeFi",
+      "titlePart3": "— transparently."
+    },
+    "stats": {
+      "totalFunded": "Total Funded",
+      "activeProjects": "Active Projects",
+      "investors": "Investors",
+      "harvestSuccess": "Harvest Success"
+    },
+    "features": {
+      "badge": "Platform Features",
+      "title": "Everything in one ecosystem",
+      "description": "From seed funding to harvest sales — AgriFi handles the full agricultural value chain.",
+      "fundFarming": {
+        "title": "Fund Farming Projects",
+        "desc": "Farmers tokenize crops and raise capital. Investors get fractional ownership with transparent on-chain returns."
+      },
+      "realTime": {
+        "title": "Real-Time Tracking",
+        "desc": "Live harvest updates, GPS shipment milestones, and immutable proof of every transaction on Stellar."
+      },
+      "marketplace": {
+        "title": "Direct Marketplace",
+        "desc": "Companies buy verified agricultural products straight from farmers — zero middlemen, full traceability."
+      },
+      "escrow": {
+        "title": "Stellar Escrow",
+        "desc": "Smart escrow accounts, tokenized assets, and cryptographic proof secure every deal end-to-end."
+      }
+    },
+    "roles": {
+      "farmer": {
+        "title": "Farmers",
+        "cta": "Start as Farmer",
+        "points": ["Launch funding campaigns", "Upload farm & harvest data", "Sell directly to buyers", "Withdraw earnings instantly"]
+      },
+      "investor": {
+        "title": "Investors",
+        "cta": "Start Investing",
+        "points": ["Browse vetted projects", "Invest fractionally from $100", "Earn transparent ROI", "Track portfolio in real-time"]
+      },
+      "company": {
+        "title": "Companies",
+        "cta": "Register as Buyer",
+        "points": ["Buy bulk produce direct", "Verified farmer network", "Track deliveries live", "Secure escrow payments"]
+      }
+    },
+    "steps": {
+      "title": "How it works",
+      "step1": { "title": "Create Account", "desc": "Sign up as a farmer, investor, or company in under 2 minutes." },
+      "step2": { "title": "Complete KYC", "desc": "Verify your identity to unlock full platform access." },
+      "step3": { "title": "Fund or List", "desc": "Farmers list crops; investors browse and fund projects." },
+      "step4": { "title": "Earn Returns", "desc": "Track harvest, receive payouts, and reinvest profits." }
+    },
+    "transparency": {
+      "badge": "Stellar Blockchain",
+      "title": "Transparent by design",
+      "description": "Every investment, payout, and milestone is recorded on Stellar. Verify anything, anytime.",
+      "smartContracts": { "title": "Soroban Smart Contracts", "desc": "FarmCampaign contracts automate escrow, milestone releases, and revenue distribution — no manual intervention." },
+      "tokenized": { "title": "Tokenized Investments", "desc": "Each project issues Stellar assets. Investors hold tokens representing fractional ownership, tradeable on the DEX." },
+      "usdc": { "title": "USDC Settlements", "desc": "All payments use USDC on Stellar — stable, fast, and cross-border. Withdraw to local currency via Stellar Anchors." },
+      "certificates": { "title": "On-Chain Certificates", "desc": "Investment certificates are backed by immutable Stellar transactions. Proof of ownership, forever." },
+      "anchors": { "title": "Stellar Anchors", "desc": "Deposit NGN, KES, GHS, ZAR or USD and receive USDC instantly. Withdraw earnings to your local bank." },
+      "audit": { "title": "Public Audit Trail", "desc": "Every contract address, transaction hash, and payout is publicly verifiable on Stellar Expert." },
+      "viewData": "View Live Blockchain Data"
+    },
+    "cta": {
+      "title": "Ready to grow your wealth?",
+      "description": "Join thousands of farmers, investors, and buyers already building the future of agriculture.",
+      "createAccount": "Create Free Account",
+      "browseMarketplace": "Browse Marketplace"
+    },
+    "footer": {
+      "rights": "© {year} AgriFi. All rights reserved.",
+      "poweredBy": "Powered by {brand} blockchain"
+    },
+    "dashboard": {
+      "farmer": {
+        "title": "Farmer Dashboard",
+        "greeting": "Good day 👋",
+        "listCrop": "List Crop",
+        "stats": {
+          "totalProjects": "Total Projects",
+          "active": "Active",
+          "totalValue": "Total Value",
+          "funded": "Funded"
+        },
+        "kyc": {
+          "title": "KYC verification required",
+          "desc": "Complete KYC to publish deals and receive payments.",
+          "verifyNow": "Verify now →"
+        },
+        "noProjects": {
+          "title": "No projects yet",
+          "desc": "List your first crop to start raising funding from investors worldwide.",
+          "cta": "+ List Your First Crop"
+        },
+        "projects": {
+          "title": "Your Projects",
+          "total": "{count} total",
+          "fundingProgress": "Funding progress",
+          "viewDetails": "View Details →"
+        },
+        "modal": {
+          "title": "List Your Crop",
+          "subtitle": "Create a new funding campaign",
+          "success": "Crop listed successfully! 🌱"
+        }
+      }
+    },
+    "instructions": {
+      "title": "Make sure to:",
+      "installWallet": "Install Freighter wallet extension",
+      "switchTestnet": "Switch to Stellar testnet",
+      "connectWallet": "Connect your wallet in the top navigation"
+    }
+  },
+  "deals": {
+    "createTitle": "Create New Trade Deal",
+    "commodity": "Commodity Name",
+    "quantity": "Quantity",
+    "unit": "Unit",
+    "totalValue": "Total Value (USD)",
+    "tokenPrice": "Token Price (USD)",
+    "deliveryDate": "Delivery Date (End Date)",
+    "farmerId": "Farmer ID (Optional)",
+    "traderId": "Trader ID (Optional)",
+    "createButton": "Create Deal",
+    "creating": "Creating...",
+    "cancel": "Cancel",
+    "tokenInfo": "This will create {count} tokens at ${price} each.",
+    "raised": "{amount} raised",
+    "remainingOf": "{remaining} remaining of {total}",
+    "validation": {
+      "commodityRequired": "Commodity name is required",
+      "quantityMin": "Quantity must be at least 1",
+      "totalValueMin": "Total value must be greater than 1000",
+      "tokenPriceFixed": "Token price must be exactly 100",
+      "deliveryDateRequired": "Delivery date is required",
+      "deliveryDateFuture": "End date must be in the future",
+      "invalidId": "Invalid ID"
+    }
+  },
+  "common": {
+    "loading": "Loading...",
+    "error": "Error",
+    "success": "Success",
+    "processing": "Processing...",
+    "dismiss": "Dismiss"
+  },
+  "format": {
+    "currency": "{value, number, currency}",
+    "date": "{value, date, short}",
+    "number": "{value, number}"
+  }
+}

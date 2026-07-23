@@ -1,0 +1,187 @@
+{
+  "nav": {
+    "title": "Fedha za Kilimo za Agric-onchain",
+    "dashboard": "Dashibodi",
+    "marketplace": "Soko",
+    "documents": "Nyaraka",
+    "settings": "Mipangilio",
+    "kycStatus": "Hali ya KYC",
+    "signOut": "Toka",
+    "menu": "Menyu",
+    "roles": {
+      "farmer": "Mkulima",
+      "trader": "Mfanyabiashara",
+      "investor": "Mwekezaji",
+      "company": "Kampuni",
+      "admin": "Msimamizi"
+    }
+  },
+  "home": {
+    "title": "Fedha za Kilimo za Agric-onchain",
+    "subtitle": "Jukwaa la fedha za biashara ya kilimo linalotumia teknolojia ya blockchain",
+    "description": "Unganisha wakulima, wafanyabiashara, na wawekezaji kupitia mikataba ya biashara ya kilimo iliyotokeni kwenye blockchain ya Stellar.",
+    "viewMarketplace": "Tazama Soko",
+    "getStarted": "Anza Sasa",
+    "signIn": "Ingia",
+    "startFree": "Anza bure",
+    "browseProjects": "Vinjari miradi",
+    "trustedBy": "Inayoaminiwa na wawekezaji {count} kote Afrika",
+    "liveOnStellar": "Inaendeshwa kwenye Stellar Testnet · Bila ada wakati wa beta",
+    "hero": {
+      "titlePart1": "Kilimo kinakutana na",
+      "titlePart2": "DeFi",
+      "titlePart3": "— kwa uwazi."
+    },
+    "stats": {
+      "totalFunded": "Jumla Iliyofadhiliwa",
+      "activeProjects": "Miradi Inayoendelea",
+      "investors": "Wawekezaji",
+      "harvestSuccess": "Mafanikio ya Mavuno"
+    },
+    "features": {
+      "badge": "Vipengele vya Jukwaa",
+      "title": "Kila kitu katika mfumo mmoja",
+      "description": "Kutoka ufadhili wa mbegu hadi mauzo ya mavuno — AgriFi inashughulikia mnyororo wote wa thamani ya kilimo.",
+      "fundFarming": {
+        "title": "Fadhili Miradi ya Kilimo",
+        "desc": "Wakulima wanageuza mazao kuwa tokeni na kukusanya mtaji. Wawekezaji wanapata umiliki wa sehemu na mapato ya uwazi kwenye mnyororo."
+      },
+      "realTime": {
+        "title": "Ufuatiliaji wa Wakati Halisi",
+        "desc": "Masasisho ya mavuno ya moja kwa moja, alama za usafirishaji za GPS, na uthibitisho usiobadilika wa kila muamala kwenye Stellar."
+      },
+      "marketplace": {
+        "title": "Soko la Moja kwa Moja",
+        "desc": "Makampuni yanunua bidhaa za kilimo zilizothibitishwa moja kwa moja kutoka kwa wakulima — bila wasuluhishi, ufuatiliaji kamili."
+      },
+      "escrow": {
+        "title": "Escrow ya Stellar",
+        "desc": "Akaunti za escrow za akili, mali zilizotokeni, na uthibitisho wa kriptografia hulinda kila mkataba mwanzo hadi mwisho."
+      }
+    },
+    "roles": {
+      "farmer": {
+        "title": "Wakulima",
+        "cta": "Anza kama Mkulima",
+        "points": ["Zindua kampeni za ufadhili", "Pakia data ya shamba na mavuno", "Uza moja kwa moja kwa wanunuzi", "Toa mapato mara moja"]
+      },
+      "investor": {
+        "title": "Wawekezaji",
+        "cta": "Anza Kuwekeza",
+        "points": ["Vinjari miradi iliyochunguzwa", "Wekeza kwa sehemu kuanzia $100", "Pata ROI ya uwazi", "Fuatilia portfolio kwa wakati halisi"]
+      },
+      "company": {
+        "title": "Makampuni",
+        "cta": "Jiandikishe kama Mnunuzi",
+        "points": ["Nunua bidhaa kwa wingi moja kwa moja", "Mtandao wa wakulima waliohakikishwa", "Fuatilia usafirishaji moja kwa moja", "Malipo salama ya escrow"]
+      }
+    },
+    "steps": {
+      "title": "Jinsi inavyofanya kazi",
+      "step1": { "title": "Fungua Akaunti", "desc": "Jiandikishe kama mkulima, mwekezaji, au kampuni kwa chini ya dakika 2." },
+      "step2": { "title": "Kamilisha KYC", "desc": "Thibitisha utambulisho wako ili kufungua ufikiaji kamili wa jukwaa." },
+      "step3": { "title": "Fadhili au Orodhesha", "desc": "Wakulima wanaorodhesha mazao; wawekezaji wanaangalia na kufadhili miradi." },
+      "step4": { "title": "Pata Mapato", "desc": "Fuatilia mavuno, pokea malipo, na uwekeze tena faida." }
+    },
+    "transparency": {
+      "badge": "Blockchain ya Stellar",
+      "title": "Uwazi kwa muundo",
+      "description": "Kila uwekezaji, malipo, na alama imerekodiwa kwenye Stellar. Thibitisha chochote, wakati wowote.",
+      "smartContracts": { "title": "Mikataba Akili ya Soroban", "desc": "Mikataba ya FarmCampaign inafanya kiotomatiki escrow, utoaji wa alama, na usambazaji wa mapato." },
+      "tokenized": { "title": "Uwekezaji Uliotokeni", "desc": "Kila mradi hutoa mali za Stellar. Wawekezaji wanashikilia tokeni zinazowakilisha umiliki wa sehemu." },
+      "usdc": { "title": "Malipo ya USDC", "desc": "Malipo yote yanatumia USDC kwenye Stellar — imara, ya haraka, na ya kimataifa." },
+      "certificates": { "title": "Vyeti vya Kwenye Mnyororo", "desc": "Vyeti vya uwekezaji vinategemewa na miamala isiyobadilika ya Stellar." },
+      "anchors": { "title": "Stellar Anchors", "desc": "Weka NGN, KES, GHS, ZAR au USD na upokee USDC mara moja." },
+      "audit": { "title": "Rekodi ya Ukaguzi wa Umma", "desc": "Kila anwani ya mkataba, hash ya muamala, na malipo inaweza kuthibitishwa hadharani." },
+      "viewData": "Tazama Data ya Blockchain ya Moja kwa Moja"
+    },
+    "cta": {
+      "title": "Uko tayari kukuza utajiri wako?",
+      "description": "Jiunge na maelfu ya wakulima, wawekezaji, na wanunuzi wanajenga mustakabali wa kilimo.",
+      "createAccount": "Fungua Akaunti Bure",
+      "browseMarketplace": "Vinjari Soko"
+    },
+    "footer": {
+      "rights": "© {year} AgriFi. Haki zote zimehifadhiwa.",
+      "poweredBy": "Inayoendeshwa na blockchain ya {brand}"
+    },
+    "dashboard": {
+      "farmer": {
+        "title": "Dashibodi ya Mkulima",
+        "greeting": "Habari za asubuhi 👋",
+        "listCrop": "Orodhesha Zao",
+        "stats": {
+          "totalProjects": "Jumla ya Miradi",
+          "active": "Inayoendelea",
+          "totalValue": "Jumla ya Thamani",
+          "funded": "Iliyofadhiliwa"
+        },
+        "kyc": {
+          "title": "Uthibitisho wa KYC unahitajika",
+          "desc": "Kamilisha KYC ili kuchapisha mikataba na kupokea malipo.",
+          "verifyNow": "Thibitisha sasa →"
+        },
+        "noProjects": {
+          "title": "Hakuna miradi bado",
+          "desc": "Orodhesha zao lako la kwanza ili kuanza kukusanya ufadhili kutoka kwa wawekezaji duniani kote.",
+          "cta": "+ Orodhesha Zao Lako la Kwanza"
+        },
+        "projects": {
+          "title": "Miradi Yako",
+          "total": "jumla {count}",
+          "fundingProgress": "Maendeleo ya ufadhili",
+          "viewDetails": "Tazama Maelezo →"
+        },
+        "modal": {
+          "title": "Orodhesha Zao Lako",
+          "subtitle": "Unda kampeni mpya ya ufadhili",
+          "success": "Zao limeorodheshwa kwa mafanikio! 🌱"
+        }
+      }
+    },
+    "instructions": {
+      "title": "Hakikisha:",
+      "installWallet": "Sakinisha kiendelezi cha pochi ya Freighter",
+      "switchTestnet": "Badili kwenda Stellar testnet",
+      "connectWallet": "Unganisha pochi yako katika urambazaji wa juu"
+    }
+  },
+  "deals": {
+    "createTitle": "Unda Mkataba Mpya wa Biashara",
+    "commodity": "Jina la Bidhaa",
+    "quantity": "Kiasi",
+    "unit": "Kitengo",
+    "totalValue": "Jumla ya Thamani (USD)",
+    "tokenPrice": "Bei ya Tokeni (USD)",
+    "deliveryDate": "Tarehe ya Utoaji (Tarehe ya Mwisho)",
+    "farmerId": "Kitambulisho cha Mkulima (Hiari)",
+    "traderId": "Kitambulisho cha Mfanyabiashara (Hiari)",
+    "createButton": "Unda Mkataba",
+    "creating": "Inaunda...",
+    "cancel": "Ghairi",
+    "tokenInfo": "Hii itaunda tokeni {count} kwa bei ya ${price} kila moja.",
+    "raised": "{amount} imekusanywa",
+    "remainingOf": "{remaining} zilizobaki kati ya {total}",
+    "validation": {
+      "commodityRequired": "Jina la bidhaa linahitajika",
+      "quantityMin": "Kiasi lazima kiwe angalau 1",
+      "totalValueMin": "Jumla ya thamani lazima iwe zaidi ya 1000",
+      "tokenPriceFixed": "Bei ya tokeni lazima iwe hasa 100",
+      "deliveryDateRequired": "Tarehe ya utoaji inahitajika",
+      "deliveryDateFuture": "Tarehe ya mwisho lazima iwe siku zijazo",
+      "invalidId": "Kitambulisho batili"
+    }
+  },
+  "common": {
+    "loading": "Inapakia...",
+    "error": "Kosa",
+    "success": "Mafanikio",
+    "processing": "Inashughulikia...",
+    "dismiss": "Funga"
+  },
+  "format": {
+    "currency": "{value, number, currency}",
+    "date": "{value, date, short}",
+    "number": "{value, number}"
+  }
+}

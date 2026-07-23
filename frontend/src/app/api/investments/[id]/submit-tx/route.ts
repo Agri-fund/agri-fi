@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { fetchBackend } from '@/config/backend';
 
 export async function POST(
   request: NextRequest,
@@ -8,8 +9,8 @@ export async function POST(
     const body = await request.json();
     const authHeader = request.headers.get('authorization');
 
-    const response = await fetch(
-      `${process.env.BACKEND_URL || 'http://localhost:3001'}/investments/${params.id}/submit-tx`,
+    const response = await fetchBackend(
+      `/investments/${params.id}/submit-tx`,
       {
         method: 'POST',
         headers: {
@@ -27,7 +28,13 @@ export async function POST(
     }
 
     return NextResponse.json(data);
-  } catch (error) {
+  } catch (error: any) {
+    if (error?.isBackendUnreachable) {
+      return NextResponse.json(
+        { message: 'Backend service is unavailable' },
+        { status: 503 }
+      );
+    }
     return NextResponse.json(
       { message: 'Internal server error' },
       { status: 500 }

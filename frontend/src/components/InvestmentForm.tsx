@@ -1,7 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useWallet } from '../hooks/useWallet';
+import { getStoredToken } from '../lib/api';
+import { useToast } from './ui/ToastProvider';
 
 interface InvestmentFormProps {
   dealId: string;
@@ -9,13 +11,24 @@ interface InvestmentFormProps {
   tokenPrice: number;
   onSuccess?: (investment: any) => void;
   onError?: (error: string) => void;
+  onQuantityChange?: (quantity: number) => void;
 }
 
 interface InvestmentResponse {
-  id: string;
+  investment: {
+    id: string;
+    tokenAmount: number;
+    amountUsd: number;
+  };
   unsignedXdr: string;
-  tokenAmount: number;
-  amountUsd: number;
+}
+
+interface SuccessState {
+  investmentAmount: number;
+  tokenCount: number;
+  transactionId: string;
+  isQueued?: boolean;
+  investmentId?: string;
 }
 
 export const InvestmentForm: React.FC<InvestmentFormProps> = ({
@@ -24,25 +37,38 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
   tokenPrice = 100,
   onSuccess,
   onError,
+  onQuantityChange,
 }) => {
+  const { toast, promise } = useToast();
   const { isConnected, publicKey, signTransaction } = useWallet();
-  const [tokenQuantity, setTokenQuantity] = useState<number>(1);
+  const [tokenQuantity, setTokenQuantity] = useState<number | ''>(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<any>(null);
+  const [success, setSuccess] = useState<SuccessState | null>(null);
+  const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null);
 
-  const totalAmount = tokenQuantity * tokenPrice;
+  // Cleanup polling interval on unmount
+  useEffect(() => {
+    return () => {
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+      }
+    };
+  }, [pollingInterval]);
+
+  const safeQuantity = tokenQuantity === '' ? 0 : tokenQuantity;
+  const totalAmount = safeQuantity * tokenPrice;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!isConnected || !publicKey) {
-      setError('Please connect your wallet first');
+      toast('Please connect your wallet first', 'warning');
       return;
     }
 
-    if (tokenQuantity < 1 || tokenQuantity > maxTokens) {
-      setError(`Token quantity must be between 1 and ${maxTokens}`);
+    if (safeQuantity < 1 || safeQuantity > maxTokens) {
+      toast(`Token quantity must be between 1 and ${maxTokens}`, 'warning');
       return;
     }
 
@@ -50,13 +76,13 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
     setError(null);
     setSuccess(null);
 
-    try {
-      const token = localStorage.getItem('authToken');
+    const investmentFlow = async () => {
+      const token = getStoredToken();
       if (!token) {
         throw new Error('Please log in first');
       }
 
-      // Step 1: Create pending investment and get unsigned XDR
+      // Step 1: Create pending investment
       const createResponse = await fetch('/api/investments', {
         method: 'POST',
         headers: {
@@ -65,7 +91,8 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
         },
         body: JSON.stringify({
           tradeDealId: dealId,
-          tokenAmount: tokenQuantity,
+          tokenAmount: safeQuantity,
+          amountUsd: totalAmount,
         }),
       });
 
@@ -76,17 +103,18 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
 
       const investmentData: InvestmentResponse = await createResponse.json();
 
-      // Step 2: Sign the transaction with Freighter
+      // Step 2: Sign transaction
       const signedXdr = await signTransaction(investmentData.unsignedXdr);
 
       // Step 3: Submit signed transaction to backend
-      const submitResponse = await fetch(`/api/investments/${investmentData.id}/submit-tx`, {
+      const submitResponse = await fetch(`/api/investments/${investmentData.investment.id}/fund`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({
+          investorWalletAddress: publicKey,
           signedXdr,
         }),
       });
@@ -96,26 +124,88 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
         throw new Error(errorData.message || 'Failed to submit transaction');
       }
 
-      const finalResult = await submitResponse.json();
-      
-      setSuccess({
-        investmentAmount: totalAmount,
-        tokenCount: tokenQuantity,
-        transactionId: finalResult.stellarTxId,
+      return await submitResponse.json();
+    };
+
+    try {
+      const finalResult = await promise(investmentFlow(), {
+        loading: 'Processing Stellar investment...',
+        success: 'Transaction signed and submitted! 🚀',
+        error: 'Investment failed. Please try again.',
       });
       
+      if (finalResult.status === 'queued') {
+        setSuccess({
+          investmentAmount: totalAmount,
+          tokenCount: safeQuantity,
+          transactionId: 'Processing... (queued)',
+          isQueued: true,
+          investmentId: finalResult.investmentId,
+        });
+        startPollingInvestmentStatus(finalResult.investmentId);
+      } else {
+        setSuccess({
+          investmentAmount: totalAmount,
+          tokenCount: safeQuantity,
+          transactionId: finalResult.stellarTxId,
+          isQueued: false,
+        });
+      }
+      
       onSuccess?.(finalResult);
-      
-      // Reset form
       setTokenQuantity(1);
-      
-    } catch (error) {
+    } catch (error: any) {
       const errorMessage = error instanceof Error ? error.message : 'Investment failed';
       setError(errorMessage);
       onError?.(errorMessage);
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const startPollingInvestmentStatus = (investmentId: string) => {
+    // Clear any existing polling interval
+    if (pollingInterval) {
+      clearInterval(pollingInterval);
+    }
+
+    const interval = setInterval(async () => {
+      try {
+        const token = getStoredToken();
+        if (!token) {
+          clearInterval(interval);
+          return;
+        }
+
+        const response = await fetch(`/api/investments/${investmentId}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch investment status');
+        }
+
+        const investment = await response.json();
+        
+        if (investment.status === 'confirmed' && investment.stellarTxId) {
+          // Investment confirmed, update success state
+          setSuccess(prev => prev ? {
+            ...prev,
+            transactionId: investment.stellarTxId,
+            isQueued: false,
+          } : null);
+          
+          clearInterval(interval);
+          setPollingInterval(null);
+        }
+      } catch (error) {
+        console.error('Error polling investment status:', error);
+      }
+    }, 5000); // Poll every 5 seconds
+
+    setPollingInterval(interval);
   };
 
   if (!isConnected) {
@@ -130,31 +220,45 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
 
   if (success) {
     return (
-      <div className="bg-green-50 border border-green-200 rounded-lg p-6">
+      <div className={`${success.isQueued ? 'bg-blue-50 border-blue-200' : 'bg-green-50 border-green-200'} border rounded-lg p-6`}>
         <div className="flex items-center mb-4">
-          <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center mr-3">
-            <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-            </svg>
+          <div className={`w-8 h-8 ${success.isQueued ? 'bg-blue-500' : 'bg-green-500'} rounded-full flex items-center justify-center mr-3`}>
+            {success.isQueued ? (
+              <svg className="w-5 h-5 text-white animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+              </svg>
+            ) : (
+              <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+              </svg>
+            )}
           </div>
-          <h3 className="text-lg font-semibold text-green-800">Investment Successful!</h3>
+          <h3 className={`text-lg font-semibold ${success.isQueued ? 'text-blue-800' : 'text-green-800'}`}>
+            {success.isQueued ? 'Investment Processing...' : 'Investment Successful!'}
+          </h3>
         </div>
         
-        <div className="space-y-2 text-sm text-green-700">
+        <div className={`space-y-2 text-sm ${success.isQueued ? 'text-blue-700' : 'text-green-700'}`}>
           <p><strong>Investment Amount:</strong> ${success.investmentAmount.toLocaleString()}</p>
           <p><strong>Tokens Purchased:</strong> {success.tokenCount}</p>
           {success.transactionId && (
-            <p><strong>Transaction ID:</strong> 
+            <p><strong>{success.isQueued ? 'Status:' : 'Transaction ID:'}</strong> 
               <span className="font-mono text-xs break-all ml-1">
                 {success.transactionId}
               </span>
+            </p>
+          )}
+          {success.isQueued && (
+            <p className="text-xs italic">
+              Your investment is being processed. This page will update automatically when complete.
             </p>
           )}
         </div>
         
         <button
           onClick={() => setSuccess(null)}
-          className="mt-4 text-sm text-green-600 hover:text-green-800 underline"
+          className={`mt-4 text-sm ${success.isQueued ? 'text-blue-600 hover:text-blue-800' : 'text-green-600 hover:text-green-800'} underline`}
         >
           Make Another Investment
         </button>
@@ -173,8 +277,13 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
           id="tokenQuantity"
           min="1"
           max={maxTokens}
-          value={tokenQuantity}
-          onChange={(e) => setTokenQuantity(parseInt(e.target.value) || 1)}
+          value={tokenQuantity === '' ? '' : tokenQuantity}
+          onChange={(e) => {
+            const val = parseInt(e.target.value, 10);
+            const qty = isNaN(val) ? 0 : val;
+            setTokenQuantity(isNaN(val) ? '' : val);
+            onQuantityChange?.(qty);
+          }}
           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           disabled={isSubmitting}
         />
@@ -190,7 +299,7 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
         </div>
         <div className="flex justify-between text-sm">
           <span>Quantity:</span>
-          <span>{tokenQuantity}</span>
+          <span>{safeQuantity}</span>
         </div>
         <div className="flex justify-between font-semibold border-t pt-2 mt-2">
           <span>Total Investment:</span>
@@ -206,14 +315,14 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
 
       <button
         type="submit"
-        disabled={isSubmitting || tokenQuantity < 1 || tokenQuantity > maxTokens}
+        disabled={isSubmitting || safeQuantity < 1 || safeQuantity > maxTokens}
         className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white py-2 px-4 rounded-md font-medium transition-colors"
       >
         {isSubmitting ? 'Processing Investment...' : `Invest $${totalAmount.toLocaleString()}`}
       </button>
 
       <p className="text-xs text-gray-500 text-center">
-        This will open Freighter to sign the transaction. Make sure you're on Stellar testnet.
+        This will open Freighter to sign the transaction. Make sure you&apos;re on Stellar testnet.
       </p>
     </form>
   );

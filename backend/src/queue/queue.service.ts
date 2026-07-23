@@ -1,58 +1,137 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { ClientProxy } from '@nestjs/microservices';
+import { PinoLogger } from 'nestjs-pino';
+import { ClsService } from 'nestjs-cls'; // Added for safe context access
 import { QUEUE_SERVICE } from './queue.constants';
+import { encryptPayload } from './queue.crypto';
+
+export interface BasePayload {
+  correlationId?: string;
+}
+
+export interface InvestmentFundPayload extends BasePayload {
+  investmentId: string;
+  signedXdr: string;
+  escrowPublicKey: string;
+  encryptedEscrowSecret: string;
+  assetCode: string;
+  tokenAmount: number;
+  investorWallet: string;
+  amountUsd: number;
+}
+
+export interface DealFundedPayload extends BasePayload {
+  tradeDealId: string;
+  commodity: string;
+  totalValue: number;
+  investors: { email: string; tokenAmount: number }[];
+}
+
+export interface DealPublishPayload extends BasePayload {
+  dealId: string;
+  tokenSymbol: string;
+  escrowPublicKey: string;
+  encryptedEscrowSecret: string;
+  tokenCount: number;
+}
+
+export interface DealDeliveredPayload extends BasePayload {
+  tradeDealId: string;
+}
+
+export interface DealCleanupPayload extends BasePayload {
+  tradeDealId: string;
+}
+
+const EVENTS = {
+  DEAL_DELIVERED: 'deal.delivered',
+  INVESTMENT_FUND: 'investment.fund',
+  DEAL_FUNDED: 'deal.funded',
+  DEAL_PUBLISH: 'deal.publish',
+  DEAL_CLEANUP: 'deal.cleanup',
+} as const;
 
 @Injectable()
 export class QueueService {
-  private readonly logger = new Logger(QueueService.name);
+  constructor(
+    @Inject(QUEUE_SERVICE) private readonly client: ClientProxy,
+    private readonly logger: PinoLogger,
+    private readonly cls: ClsService, // Inject ClsService to access AsyncLocalStorage
+  ) {
+    this.logger.setContext(QueueService.name);
+  }
 
-  constructor(@Inject(QUEUE_SERVICE) private readonly client: ClientProxy) {}
-
-  async emit(pattern: string, data: unknown): Promise<void> {
+  public async emit(pattern: string, data: unknown): Promise<void> {
     try {
-      this.client.emit(pattern, data);
-      this.logger.log(`Emitted event: ${pattern}`);
+      this.client.emit(pattern, encryptPayload(data));
+      this.logger.info({ event: pattern }, `Emitted event: ${pattern}`);
     } catch (err) {
-      this.logger.error(`Failed to emit event ${pattern}`, err);
+      this.logger.error(
+        { event: pattern, error: err },
+        `Failed to emit event ${pattern}`,
+      );
       throw err;
     }
+  }
+
+  /**
+   * REFACTORED: Now uses ClsService instead of private Pino bindings.
+   * This ensures the correlationId is pulled from the active request context.
+   */
+  private addCorrelationId<T>(payload: T): T & BasePayload {
+    const correlationId =
+      (payload as any).correlationId || this.cls.get('correlationId');
+
+    return {
+      ...payload,
+      correlationId,
+    } as T & BasePayload;
+  }
+
+  /**
+   * Enqueue a deal.publish job to issue Trade_Token on Stellar
+   */
+  async enqueueDealPublish(
+    payload: Omit<DealPublishPayload, 'correlationId'>,
+  ): Promise<void> {
+    const enrichedPayload = this.addCorrelationId(payload);
+    await this.emit(EVENTS.DEAL_PUBLISH, enrichedPayload);
   }
 
   /**
    * Enqueue a deal.delivered job to trigger escrow release
    */
   async enqueueDealDelivered(tradeDealId: string): Promise<void> {
-    await this.emit('deal.delivered', { tradeDealId });
+    const payload = this.addCorrelationId({ tradeDealId });
+    await this.emit(EVENTS.DEAL_DELIVERED, payload);
   }
 
   /**
-   * Enqueue an investment.fund job to submit the signed XDR and confirm investment
+   * Enqueue a deal.cleanup job to merge escrow and issuer accounts
    */
-  async enqueueInvestmentFund(payload: {
-    investmentId: string;
-    signedXdr: string;
-    escrowPublicKey: string;
-    encryptedEscrowSecret: string;
-    assetCode: string;
-    tokenAmount: number;
-    investorWallet: string;
-    amountUsd: number;
-  }): Promise<void> {
-    await this.emit('investment.fund', payload);
+  async enqueueDealCleanup(tradeDealId: string): Promise<void> {
+    const payload = this.addCorrelationId({ tradeDealId });
+    await this.emit(EVENTS.DEAL_CLEANUP, payload);
   }
 
-  /**
-   * Enqueue a deal.funded notification job to email all participating investors
-   */
-  async enqueueDealFunded(payload: {
-    tradeDealId: string;
-    commodity: string;
-    totalValue: number;
-    investors: { email: string; tokenAmount: number }[];
-  }): Promise<void> {
-    this.logger.log(
-      `Deal ${payload.tradeDealId} fully funded — notifying ${payload.investors.length} investor(s)`,
+  async enqueueInvestmentFund(
+    payload: Omit<InvestmentFundPayload, 'correlationId'>,
+  ): Promise<void> {
+    const enrichedPayload = this.addCorrelationId(payload);
+    await this.emit(EVENTS.INVESTMENT_FUND, enrichedPayload);
+  }
+
+  async enqueueDealFunded(
+    payload: Omit<DealFundedPayload, 'correlationId'>,
+  ): Promise<void> {
+    const enrichedPayload = this.addCorrelationId(payload);
+    this.logger.info(
+      {
+        tradeDealId: enrichedPayload.tradeDealId,
+        investorCount: enrichedPayload.investors.length,
+      },
+      `Deal ${enrichedPayload.tradeDealId} fully funded — notifying ${enrichedPayload.investors.length} investor(s)`,
     );
-    await this.emit('deal.funded', payload);
+    await this.emit(EVENTS.DEAL_FUNDED, enrichedPayload);
   }
 }

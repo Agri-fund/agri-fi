@@ -1,0 +1,142 @@
+# Three-node RabbitMQ cluster for high availability.
+#
+# Removes the single-point-of-failure of the standalone broker in the root
+# docker-compose.yml. Nodes form a cluster via classic (config-based) peer
+# discovery and share a queue-mirroring policy so queues survive the loss of
+# any single node.
+#
+# Run from this directory (devops/rabbitmq):
+#   docker compose -f docker-compose-cluster.yml up -d
+#
+# The shared Erlang cookie below is a development default — override
+# RABBITMQ_ERLANG_COOKIE in every node before using this outside local dev.
+
+x-rabbitmq-common: &rabbitmq-common
+  image: rabbitmq:3-management-alpine
+  environment: &rabbitmq-env
+    RABBITMQ_ERLANG_COOKIE: ${RABBITMQ_ERLANG_COOKIE:-agri-fi-cluster-cookie}
+    RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-guest}
+    RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-guest}
+  configs:
+    - source: rabbitmq_cluster_conf
+      target: /etc/rabbitmq/rabbitmq.conf
+    - source: rabbitmq_definitions
+      target: /etc/rabbitmq/definitions.json
+  healthcheck:
+    test: ["CMD-SHELL", "rabbitmq-diagnostics -q ping"]
+    interval: 15s
+    timeout: 10s
+    retries: 5
+  restart: unless-stopped
+  networks:
+    - rabbitmq-cluster
+
+services:
+  rabbitmq1:
+    <<: *rabbitmq-common
+    hostname: rabbitmq1
+    container_name: agri-fi-rabbitmq1
+    environment:
+      <<: *rabbitmq-env
+      RABBITMQ_NODENAME: rabbit@rabbitmq1
+    ports:
+      - '5672:5672'    # AMQP
+      - '15672:15672'  # management UI
+      - '15692:15692'  # prometheus metrics
+    volumes:
+      - ./enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
+      - rabbitmq1-data:/var/lib/rabbitmq
+
+  rabbitmq2:
+    <<: *rabbitmq-common
+    hostname: rabbitmq2
+    container_name: agri-fi-rabbitmq2
+    environment:
+      <<: *rabbitmq-env
+      RABBITMQ_NODENAME: rabbit@rabbitmq2
+    ports:
+      - '5673:5672'
+      - '15673:15672'
+    volumes:
+      - ./enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
+      - rabbitmq2-data:/var/lib/rabbitmq
+    depends_on:
+      rabbitmq1:
+        condition: service_healthy
+
+  rabbitmq3:
+    <<: *rabbitmq-common
+    hostname: rabbitmq3
+    container_name: agri-fi-rabbitmq3
+    environment:
+      <<: *rabbitmq-env
+      RABBITMQ_NODENAME: rabbit@rabbitmq3
+    ports:
+      - '5674:5672'
+      - '15674:15672'
+    volumes:
+      - ./enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
+      - rabbitmq3-data:/var/lib/rabbitmq
+    depends_on:
+      rabbitmq1:
+        condition: service_healthy
+
+configs:
+  # Cluster configuration: classic config-based peer discovery lists every node
+  # so they auto-form a single cluster on boot. Prometheus/management/logging
+  # mirror the standalone rabbitmq.conf in this directory.
+  rabbitmq_cluster_conf:
+    content: |
+      # Cluster formation via classic (static) peer discovery.
+      cluster_formation.peer_discovery_backend = classic_config
+      cluster_formation.classic_config.nodes.1 = rabbit@rabbitmq1
+      cluster_formation.classic_config.nodes.2 = rabbit@rabbitmq2
+      cluster_formation.classic_config.nodes.3 = rabbit@rabbitmq3
+
+      # Re-join the cluster cleanly after a restart / network partition.
+      cluster_partition_handling = autoheal
+
+      # Load the mirroring (HA) policy at boot.
+      load_definitions = /etc/rabbitmq/definitions.json
+
+      # Prometheus metrics endpoint.
+      prometheus.tcp.port = 15692
+      prometheus.path = /metrics
+      prometheus.return_per_object_metrics = true
+
+      # Management plugin.
+      management.tcp.port = 15672
+      management.tcp.ip = 0.0.0.0
+
+      # Logging.
+      log.console = true
+      log.console.level = info
+
+  # Mirror every queue across all nodes so a queue survives losing any node.
+  rabbitmq_definitions:
+    content: |
+      {
+        "vhosts": [{ "name": "/" }],
+        "policies": [
+          {
+            "vhost": "/",
+            "name": "ha-all",
+            "pattern": ".*",
+            "apply-to": "queues",
+            "priority": 0,
+            "definition": {
+              "ha-mode": "all",
+              "ha-sync-mode": "automatic"
+            }
+          }
+        ]
+      }
+
+volumes:
+  rabbitmq1-data:
+  rabbitmq2-data:
+  rabbitmq3-data:
+
+networks:
+  rabbitmq-cluster:
+    driver: bridge

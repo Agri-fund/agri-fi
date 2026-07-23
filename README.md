@@ -1,6 +1,5 @@
-# agri-fi
-# agri-fi
-eates a trade deal for agricultural produce (e.g. 10 tons of cocoa) and uploads supporting documents
+# Agri-fi
+Creates a trade deal for agricultural produce (e.g. 10 tons of cocoa) and uploads supporting documents
 2. The platform issues a **Stellar asset** (Trade_Token) representing fractional ownership — each token = $100 USD
 3. **Investors** fund the deal by purchasing tokens; funds are held in a **Stellar escrow account**
 4. The trader records **shipment milestones** (Farm → Warehouse → Port → Importer) on-chain

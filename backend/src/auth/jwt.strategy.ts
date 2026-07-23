@@ -10,6 +10,8 @@ export interface JwtPayload {
   sub: string;
   email: string;
   role: string;
+  tokenVersion?: number;
+  typ?: 'access' | 'refresh';
 }
 
 @Injectable()
@@ -21,13 +23,21 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: config.get<string>('JWT_SECRET', 'change_me'),
+      secretOrKey: config.getOrThrow<string>('JWT_SECRET'),
     });
   }
 
   async validate(payload: JwtPayload): Promise<User> {
+    if (payload.typ === 'refresh') {
+      throw new UnauthorizedException(
+        'Refresh tokens cannot be used as access tokens.',
+      );
+    }
     const user = await this.userRepo.findOne({ where: { id: payload.sub } });
     if (!user) throw new UnauthorizedException();
+    if ((payload.tokenVersion ?? 0) !== (user.tokenVersion ?? 0)) {
+      throw new UnauthorizedException('Token no longer valid.');
+    }
     return user;
   }
 }

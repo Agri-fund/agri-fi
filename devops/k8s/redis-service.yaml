@@ -1,0 +1,21 @@
+# Redis Service for Agri-fi
+# This service provides internal DNS resolution for the Redis deployment
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: agri-fi-redis
+  namespace: default
+  labels:
+    app: agri-fi
+    component: redis
+spec:
+  selector:
+    app: agri-fi
+    component: redis
+  ports:
+  - name: redis
+    port: 6379
+    targetPort: 6379
+    protocol: TCP
+  type: ClusterIP

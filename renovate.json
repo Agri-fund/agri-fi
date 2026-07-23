@@ -1,0 +1,43 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:base"
+  ],
+  "schedule": ["at any time on the weekend"],
+  "timezone": "UTC",
+  "automerge": false,
+  "packageRules": [
+    {
+      "matchPackagePatterns": ["^@nestjs/"],
+      "groupName": "nestjs packages"
+    },
+    {
+      "matchPackagePatterns": ["^react", "^@types/react"],
+      "groupName": "react packages"
+    },
+    {
+      "matchPackagePatterns": ["^stellar-sdk", "^@stellar/"],
+      "groupName": "stellar packages"
+    },
+    {
+      "matchPackagePatterns": ["^@types/"],
+      "groupName": "types packages"
+    },
+    {
+      "matchManagers": ["npm"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "non-major npm dependencies"
+    },
+    {
+      "matchManagers": ["cargo"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "non-major cargo dependencies"
+    }
+  ],
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "addLabels": ["security"]
+  },
+  "labels": ["dependencies"],
+  "rangeStrategy": "bump"
+}

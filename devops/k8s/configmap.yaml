@@ -1,0 +1,47 @@
+# Non-sensitive application configuration for the Agri-fi backend and frontend.
+# Sensitive values (DB credentials, JWT/Stellar/encryption keys) live in
+# secrets.yaml — never put passwords or keys in this ConfigMap.
+#
+# Consume in a Deployment with `envFrom`:
+#   envFrom:
+#     - configMapRef:
+#         name: agri-fi-config
+#     - secretRef:
+#         name: agri-fi-secrets
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agri-fi-config
+  namespace: default
+  labels:
+    app: agri-fi
+data:
+  # Runtime
+  NODE_ENV: "production"
+  PORT: "3001"
+  LOG_LEVEL: "info"
+
+  # Database connection (non-secret parts; credentials are in the Secret)
+  DATABASE_HOST: "agri-fi-postgres"
+  DATABASE_PORT: "5432"
+  DATABASE_NAME: "agrifi"
+
+  # Message broker (non-secret parts; credentials are in the Secret)
+  RABBITMQ_HOST: "agri-fi-rabbitmq"
+  RABBITMQ_PORT: "5672"
+
+  # Redis cache
+  REDIS_HOST: "agri-fi-redis"
+  REDIS_PORT: "6379"
+  REDIS_DB: "0"
+
+  # Stellar network
+  STELLAR_NETWORK: "testnet"
+  STELLAR_HORIZON_URL: "https://horizon-testnet.stellar.org"
+
+  # Notifications
+  NOTIFICATIONS_ENABLED: "true"
+
+  # Frontend
+  NEXT_PUBLIC_API_URL: "https://api.agri-fi.example.com"
+  BACKEND_URL: "https://api.agri-fi.example.com"

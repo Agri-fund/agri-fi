@@ -3,14 +3,22 @@ import {
   NotFoundException,
   BadRequestException,
   UnprocessableEntityException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { PinoLogger } from 'nestjs-pino';
 import { TradeDeal, TradeDealStatus } from './entities/trade-deal.entity';
 import { Document, DocumentType } from './entities/document.entity';
 import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.entity';
 import { CreateTradeDealDto } from './dto/create-trade-deal.dto';
 import { User } from '../auth/entities/user.entity';
+import {
+  Investment,
+  InvestmentStatus,
+} from '../investments/entities/investment.entity';
+import { StellarService } from '../stellar/stellar.service';
+import { QueueService } from '../queue/queue.service';
 
 const VALID_DOC_TYPES: DocumentType[] = [
   'purchase_agreement',
@@ -28,6 +36,8 @@ export interface AddDocumentDto {
   storageUrl: string;
   stellarTxId?: string | null;
   fileSizeBytes?: number;
+  memoText?: string | null;
+  signatureVerified?: boolean;
 }
 
 @Injectable()
@@ -41,15 +51,25 @@ export class TradeDealsService {
     private readonly milestoneRepo: Repository<ShipmentMilestone>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
-  ) {}
+    @InjectRepository(Investment)
+    private readonly investmentRepo: Repository<Investment>,
+    private readonly stellarService: StellarService,
+    private readonly queueService: QueueService,
+    private readonly logger: PinoLogger,
+  ) {
+    this.logger.setContext(TradeDealsService.name);
+  }
 
   async updateDealStatus(
     dealId: string,
     status: TradeDealStatus,
     stellarAssetTxId?: string,
   ): Promise<void> {
+    // Generate an application trace ID for authorized updates
+    const appTraceId = `app-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 10)}`;
     await this.tradeDealRepo.update(dealId, {
       status,
+      appTraceId,
       ...(stellarAssetTxId && { stellarAssetTxId }),
     });
   }
@@ -58,14 +78,11 @@ export class TradeDealsService {
     traderId: string,
     dto: CreateTradeDealDto,
   ): Promise<TradeDeal> {
-    const farmer = await this.userRepo.findOne({
-      where: { id: dto.farmer_id },
-    });
+    const farmerId = dto.farmer_id ?? traderId;
+    const effectiveTraderId = dto.trader_id ?? traderId;
 
-    if (!farmer) {
-      throw new NotFoundException('Farmer not found.');
-    }
-
+    const farmer = await this.userRepo.findOne({ where: { id: farmerId } });
+    if (!farmer) throw new NotFoundException('Farmer not found.');
     if (farmer.role !== 'farmer') {
       throw new BadRequestException({
         code: 'INVALID_FARMER',
@@ -91,13 +108,14 @@ export class TradeDealsService {
       tokenCount,
       tokenSymbol: 'PENDING',
       status: 'draft',
-      farmerId: dto.farmer_id,
-      traderId,
+      farmerId,
+      traderId: effectiveTraderId,
       totalInvested: 0,
       deliveryDate: new Date(dto.delivery_date),
       escrowPublicKey: null,
       escrowSecretKey: null,
       issuerPublicKey: null,
+      issuerSecretKey: null,
       stellarAssetTxId: null,
     });
 
@@ -115,10 +133,14 @@ export class TradeDealsService {
     commodity?: string;
     page?: number;
     limit?: number;
-  }): Promise<any[]> {
+  }): Promise<{ data: any[]; total: number; page: number; limit: number }> {
     const page = query.page ?? 1;
-    const limit = query.limit ?? 20;
+    const limit = query.limit ?? 12;
     const skip = (page - 1) * limit;
+
+    if (query.commodity && !/^[a-zA-Z0-9 _-]{1,100}$/.test(query.commodity)) {
+      throw new BadRequestException('Invalid commodity search term.');
+    }
 
     const qb = this.tradeDealRepo
       .createQueryBuilder('deal')
@@ -145,25 +167,34 @@ export class TradeDealsService {
       });
     }
 
-    const deals = await qb.getMany();
+    const [deals, total] = await qb.getManyAndCount();
 
-    return deals.map((deal) => ({
-      id: deal.id,
-      commodity: deal.commodity,
-      quantity: deal.quantity,
-      quantity_unit: deal.quantityUnit,
-      total_value: deal.totalValue,
-      total_invested: deal.totalInvested,
-      token_count: deal.tokenCount,
-      token_symbol: deal.tokenSymbol,
-      delivery_date: deal.deliveryDate,
-      farmer_id: deal.farmerId,
-      trader_id: deal.traderId,
-      remaining_funding: Number(deal.totalValue) - Number(deal.totalInvested),
-    }));
+    return {
+      data: deals.map((deal) => ({
+        id: deal.id,
+        commodity: deal.commodity,
+        quantity: deal.quantity,
+        quantity_unit: deal.quantityUnit,
+        total_value: deal.totalValue,
+        total_invested: deal.totalInvested,
+        funded_amount: deal.totalInvested,
+        token_count: deal.tokenCount,
+        token_symbol: deal.tokenSymbol,
+        delivery_date: deal.deliveryDate,
+        farmer_id: deal.farmerId,
+        trader_id: deal.traderId,
+        remaining_funding: Number(deal.totalValue) - Number(deal.totalInvested),
+      })),
+      total,
+      page,
+      limit,
+    };
   }
 
-  async findOne(id: string): Promise<any> {
+  async findOne(
+    id: string,
+    access?: { canViewSensitive?: boolean },
+  ): Promise<any> {
     const deal = await this.tradeDealRepo.findOne({
       where: { id },
       relations: ['farmer', 'trader', 'documents', 'investments'],
@@ -186,32 +217,44 @@ export class TradeDealsService {
     );
     const tokensRemaining = Number(deal.tokenCount) - tokensSold;
 
-    return {
+    const canViewSensitive = !!access?.canViewSensitive;
+    const publicDetail = {
       id: deal.id,
       commodity: deal.commodity,
       quantity: deal.quantity,
-      unit: deal.quantityUnit,
-      totalValue: deal.totalValue,
-      deliveryDate: deal.deliveryDate,
+      quantity_unit: deal.quantityUnit,
+      total_value: deal.totalValue,
+      delivery_date: deal.deliveryDate,
       status: deal.status,
-      tokenCount: deal.tokenCount,
-      tokenSymbol: deal.tokenSymbol,
-      totalInvested: deal.totalInvested,
-      farmerId: deal.farmerId,
-      traderId: deal.traderId,
-      tokensRemaining,
-      traderName: deal.trader?.email || 'Unknown Trader',
+      token_count: deal.tokenCount,
+      token_symbol: deal.tokenSymbol,
+      total_invested: deal.totalInvested,
+      funded_amount: deal.totalInvested,
+      tokens_remaining: tokensRemaining,
+      trader_name: deal.trader?.email || 'Unknown Trader',
       description: `${deal.quantity} ${deal.quantityUnit} of ${deal.commodity} for delivery by ${new Date(
         deal.deliveryDate,
       ).toLocaleDateString()}`,
+    };
+
+    if (!canViewSensitive) {
+      return publicDetail;
+    }
+
+    return {
+      ...publicDetail,
+      farmer_id: deal.farmerId,
+      trader_id: deal.traderId,
+      escrow_public_key: deal.escrowPublicKey,
+      issuer_public_key: deal.issuerPublicKey,
       documents: deal.documents ?? [],
       milestones: milestones.map((milestone) => ({
         id: milestone.id,
         milestone: milestone.milestone,
         notes: milestone.notes,
-        stellarTxId: milestone.stellarTxId,
-        recordedBy: milestone.recordedBy,
-        recordedAt: milestone.recordedAt,
+        stellar_tx_id: milestone.stellarTxId,
+        recorded_by: milestone.recordedBy,
+        recorded_at: milestone.recordedAt,
       })),
     };
   }
@@ -227,7 +270,7 @@ export class TradeDealsService {
     }
 
     if (deal.traderId !== traderId) {
-      throw new BadRequestException({
+      throw new ForbiddenException({
         code: 'NOT_ASSIGNED_TRADER',
         message: 'Only the assigned trader can publish this deal.',
       });
@@ -247,7 +290,53 @@ export class TradeDealsService {
       });
     }
 
-    return deal;
+    try {
+      // Create escrow account synchronously (fast operation)
+      this.logger.info({ dealId }, 'Creating escrow account for deal');
+      const { publicKey: escrowPublicKey, secretKey: escrowSecretKey } =
+        await this.stellarService.createEscrowAccount(dealId);
+
+      // Encrypt the escrow secret
+      const encryptedEscrowSecret = await this.stellarService.encryptSecret(escrowSecretKey);
+
+      // Update deal with escrow data
+      await this.tradeDealRepo.update(dealId, {
+        escrowPublicKey,
+        escrowSecretKey: encryptedEscrowSecret,
+      });
+
+      this.logger.info(
+        { dealId, escrowPublicKey },
+        'Escrow account created, enqueuing token issuance',
+      );
+
+      // Enqueue the token issuance job
+      await this.queueService.enqueueDealPublish({
+        dealId,
+        tokenSymbol: deal.tokenSymbol,
+        escrowPublicKey,
+        encryptedEscrowSecret,
+        tokenCount: deal.tokenCount,
+      });
+
+      // Return deal with escrow data (status still draft, will be updated by queue processor)
+      return {
+        ...deal,
+        escrowPublicKey,
+        escrowSecretKey: encryptedEscrowSecret,
+      };
+    } catch (error) {
+      this.logger.error(
+        { dealId, error: error.message },
+        'Failed to publish deal - escrow account creation failed',
+      );
+
+      // Deal remains in draft status on Stellar failure
+      throw new UnprocessableEntityException({
+        code: 'STELLAR_OPERATION_FAILED',
+        message: 'Failed to create escrow account. Please try again.',
+      });
+    }
   }
 
   async addDocument(dto: AddDocumentDto): Promise<Document> {
@@ -282,9 +371,256 @@ export class TradeDealsService {
       ipfsHash: dto.ipfsHash,
       storageUrl: dto.storageUrl,
       stellarTxId: dto.stellarTxId ?? null,
+      memoText: dto.memoText ?? null,
+      signatureVerified: dto.signatureVerified ?? false,
     });
 
     return this.documentRepo.save(doc);
+  }
+
+  async cancelDeal(dealId: string, traderId: string): Promise<TradeDeal> {
+    const deal = await this.tradeDealRepo.findOne({
+      where: { id: dealId },
+      relations: ['investments', 'investments.investor'],
+    });
+
+    if (!deal) {
+      throw new NotFoundException('Trade deal not found.');
+    }
+
+    if (deal.traderId !== traderId) {
+      throw new ForbiddenException({
+        code: 'NOT_ASSIGNED_TRADER',
+        message: 'Only the assigned trader can cancel this deal.',
+      });
+    }
+
+    if (deal.status === 'canceled') {
+      return deal;
+    }
+
+    const cancellableStatuses: TradeDealStatus[] = ['draft', 'open'];
+    if (!cancellableStatuses.includes(deal.status)) {
+      throw new UnprocessableEntityException({
+        code: 'DEAL_NOT_CANCELABLE',
+        message: `Cannot cancel a deal in "${deal.status}" status. Only draft or open deals can be canceled.`,
+      });
+    }
+
+    const confirmedInvestments =
+      deal.investments?.filter(
+        (inv) => inv.status === InvestmentStatus.CONFIRMED,
+      ) || [];
+
+    if (
+      deal.status === 'open' &&
+      deal.issuerPublicKey &&
+      deal.issuerSecretKey &&
+      deal.stellarAssetTxId
+    ) {
+      const investorShares: { walletAddress: string; tokenAmount: number }[] =
+        confirmedInvestments
+          .filter((inv) => inv.investor?.walletAddress)
+          .map((inv) => ({
+            walletAddress: inv.investor.walletAddress as string,
+            tokenAmount: Number(inv.tokenAmount),
+          }));
+
+      const tokensSold = investorShares.reduce(
+        (acc, curr) => acc + curr.tokenAmount,
+        0,
+      );
+      const unsoldTokens = Number(deal.tokenCount) - tokensSold;
+
+      if (unsoldTokens > 0 && deal.escrowPublicKey) {
+        investorShares.push({
+          walletAddress: deal.escrowPublicKey,
+          tokenAmount: unsoldTokens,
+        });
+      }
+
+      if (investorShares.length > 0) {
+        const issuerSecret = this.stellarService.decryptSecret(
+          deal.issuerSecretKey,
+        );
+
+        this.logger.info(
+          {
+            dealId,
+            tokenCount: deal.tokenCount,
+            holders: investorShares.length,
+          },
+          'Initiating clawback for canceled deal',
+        );
+
+        await this.stellarService.clawbackTokens(
+          deal.tokenSymbol,
+          deal.issuerPublicKey,
+          issuerSecret,
+          investorShares,
+        );
+      }
+    }
+
+    if (confirmedInvestments.length > 0) {
+      await this.investmentRepo.update(
+        confirmedInvestments.map((inv) => inv.id),
+        { status: InvestmentStatus.REFUNDED },
+      );
+      this.logger.info(
+        { dealId, refundedCount: confirmedInvestments.length },
+        'Refunded confirmed investments for canceled deal',
+      );
+    }
+
+    deal.status = 'canceled';
+    // Set appTraceId for this authorized update
+    deal.appTraceId = `app-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 10)}`;
+    return this.tradeDealRepo.save(deal);
+  }
+
+  async expireDeal(dealId: string): Promise<TradeDeal> {
+    const deal = await this.tradeDealRepo.findOne({
+      where: { id: dealId },
+      relations: ['investments', 'investments.investor'],
+    });
+
+    if (!deal) {
+      throw new NotFoundException('Trade deal not found.');
+    }
+
+    if (deal.status !== 'open') {
+      throw new UnprocessableEntityException({
+        code: 'DEAL_NOT_OPEN',
+        message: `Cannot expire a deal in "${deal.status}" status. Only open deals can be expired.`,
+      });
+    }
+
+    const confirmedInvestments =
+      deal.investments?.filter(
+        (inv) => inv.status === InvestmentStatus.CONFIRMED,
+      ) || [];
+
+    if (
+      deal.issuerPublicKey &&
+      deal.issuerSecretKey &&
+      deal.stellarAssetTxId
+    ) {
+      const investorShares: { walletAddress: string; tokenAmount: number }[] =
+        confirmedInvestments
+          .filter((inv) => inv.investor?.walletAddress)
+          .map((inv) => ({
+            walletAddress: inv.investor.walletAddress as string,
+            tokenAmount: Number(inv.tokenAmount),
+          }));
+
+      const tokensSold = investorShares.reduce(
+        (acc, curr) => acc + curr.tokenAmount,
+        0,
+      );
+      const unsoldTokens = Number(deal.tokenCount) - tokensSold;
+
+      if (unsoldTokens > 0 && deal.escrowPublicKey) {
+        investorShares.push({
+          walletAddress: deal.escrowPublicKey,
+          tokenAmount: unsoldTokens,
+        });
+      }
+
+      if (investorShares.length > 0) {
+        const issuerSecret = await this.stellarService.decryptSecret(
+          deal.issuerSecretKey,
+        );
+
+        this.logger.info(
+          {
+            dealId,
+            tokenCount: deal.tokenCount,
+            holders: investorShares.length,
+          },
+          'Initiating clawback for expired deal',
+        );
+
+        await this.stellarService.clawbackTokens(
+          deal.tokenSymbol,
+          deal.issuerPublicKey,
+          issuerSecret,
+          investorShares,
+        );
+      }
+    }
+
+    if (confirmedInvestments.length > 0) {
+      await this.investmentRepo.update(
+        confirmedInvestments.map((inv) => inv.id),
+        { status: InvestmentStatus.REFUNDED },
+      );
+      this.logger.info(
+        { dealId, refundedCount: confirmedInvestments.length },
+        'Refunded confirmed investments for expired deal',
+      );
+    }
+
+    deal.status = 'expired';
+    deal.appTraceId = `app-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 10)}`;
+
+    const saved = await this.tradeDealRepo.save(deal);
+
+    this.queueService.emit('email.notification', {
+      type: 'deal_expired',
+      dealId,
+      commodity: deal.commodity,
+      traderId: deal.traderId,
+      farmerId: deal.farmerId,
+    });
+
+    this.queueService.emit('admin.alert', {
+      type: 'deal_expired',
+      dealId,
+      commodity: deal.commodity,
+      timestamp: new Date().toISOString(),
+    });
+
+    return saved;
+  }
+
+  async findByUser(userId: string, role: string): Promise<any[]>{
+    if (role !== 'farmer' && role !== 'trader') {
+      return [];
+    }
+
+    const whereCondition =
+      role === 'farmer' ? { farmerId: userId } : { traderId: userId };
+
+    const deals = await this.tradeDealRepo.find({
+      where: whereCondition,
+      relations: ['farmer', 'trader', 'milestones'],
+    });
+
+    // Get document count for each deal (placeholder - would need documents entity)
+    const dealsWithCounts = await Promise.all(
+      deals.map(async (deal) => {
+        const latestMilestone = await this.milestoneRepo.findOne({
+          where: { tradeDealId: deal.id },
+          order: { recordedAt: 'DESC' },
+        });
+
+        return {
+          id: deal.id,
+          commodity: deal.commodity,
+          quantity: deal.quantity,
+          total_value: deal.totalValue,
+          total_invested: deal.totalInvested,
+          funded_amount: deal.totalInvested,
+          status: deal.status,
+          delivery_date: deal.deliveryDate,
+          latest_milestone: latestMilestone || null,
+          document_count: 0, // TODO: Implement when documents entity is available
+        };
+      }),
+    );
+
+    return dealsWithCounts;
   }
 
   private generateTokenSymbol(commodity: string, dealId: string): string {

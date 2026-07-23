@@ -127,8 +127,28 @@ Copy `backend/.env.example` to `backend/.env` and update the values:
 | `AWS_ACCESS_KEY_ID` | S3 access key | optional |
 | `AWS_SECRET_ACCESS_KEY` | S3 secret key | optional |
 | `AWS_S3_BUCKET` | S3 bucket name | optional |
+| `NOTIFICATIONS_ENABLED` | Set to false to disable sending emails | optional |
+| `SMTP_HOST` | SMTP server host for sending emails | optional |
+| `SMTP_PORT` | SMTP server port | optional |
+| `SMTP_USER` | SMTP authentication user | optional |
+| `SMTP_PASS` | SMTP authentication password | optional |
+| `EMAIL_FROM` | Sender address for emails | optional |
 
 For Stellar work, generate a testnet keypair at https://laboratory.stellar.org and fund it via [Friendbot](https://friendbot.stellar.org).
+
+### Stellar CI testnet key
+
+Repository CI expects a funded Stellar testnet secret named `STELLAR_PLATFORM_SECRET_TESTNET` in GitHub Actions secrets. Use a dedicated testnet-only keypair and keep it funded with Friendbot so Stellar-dependent integration tests can create escrow accounts and submit transactions without falling back to an unfunded random account.
+
+When the secret is not configured, CI sets `STELLAR_INTEGRATION_TESTS=false` and logs a notice. Any test that requires Stellar testnet access should check that flag and skip itself when the flag is false. Unit tests that mock Stellar behavior still run normally.
+
+### Frontend env vars
+
+| Variable | Description | Required |
+|---|---|---|
+| `NEXT_PUBLIC_API_URL` | Base URL of the backend the frontend talks to (e.g. `http://localhost:3001` for local dev). Baked into the client bundle at `next build` time. | yes for `next build` |
+
+The marketplace pages (`src/app/marketplace/**`) are rendered on demand (`export const dynamic = 'force-dynamic'`) so `pnpm run build` does not require a reachable backend. If you add new server components that fetch from the API, either mark them `force-dynamic` or wrap the fetch in `try/catch` so the build can continue on transient failures.
 
 ---
 
@@ -148,6 +168,18 @@ npm run typeorm migration:generate -- -d src/database/data-source.ts src/databas
 ```
 
 Migration file naming convention: `{timestamp}-{PascalCaseName}.ts`
+
+### Index Review Guidelines
+
+**Important**: New query patterns require index review to prevent performance degradation as tables grow.
+
+- **Before adding new queries**: Consider if they need indexes, especially for `WHERE`, `JOIN`, and `ORDER BY` clauses
+- **Composite indexes**: Create for multi-column filters (e.g., `(trade_deal_id, status)` for investment availability queries)
+- **Foreign key indexes**: Ensure all foreign key columns have indexes for efficient joins
+- **Pessimistic locks**: Queries under `pessimistic_write` locks must use indexes to avoid full table scans
+- **Test with EXPLAIN ANALYZE**: Verify queries use index scans, not sequential scans
+
+When in doubt, add the index — PostgreSQL query planner will choose the most efficient execution path.
 
 ---
 
@@ -187,6 +219,27 @@ npm run test:cov
 - Entities use TypeORM decorators; no raw SQL outside migrations.
 - Keep services free of HTTP concerns (`HttpException` is fine, but no `Request`/`Response` imports in services).
 - Stellar interactions go through `StellarService` only — never call the SDK directly from other services.
+
+### Logging Conventions
+
+The project uses structured logging with `nestjs-pino` for better observability and debugging:
+
+- **Use PinoLogger**: Inject `PinoLogger` instead of NestJS `Logger` in all services
+- **Set context**: Always call `this.logger.setContext(ServiceName.name)` in constructors
+- **Structured data**: Use objects for log data, strings for messages:
+  ```ts
+  // Good
+  this.logger.info({ userId, dealId, amount }, 'Investment created successfully');
+  
+  // Bad
+  this.logger.info(`Investment created for user ${userId} deal ${dealId} amount ${amount}`);
+  ```
+- **Log levels**:
+  - `info`: Normal operations (deal created, payment processed)
+  - `warn`: Recoverable issues (retry attempts, validation warnings)
+  - `error`: Failures that require attention (Stellar errors, database failures)
+- **Correlation IDs**: All logs automatically include correlation IDs for request tracing
+- **No console.log**: Never use `console.log` in service files — always use the injected logger
 
 Run the linter before committing:
 

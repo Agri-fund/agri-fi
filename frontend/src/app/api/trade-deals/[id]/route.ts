@@ -1,21 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { fetchBackend } from '@/config/backend';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const authHeader = request.headers.get('authorization');
+    const id = params.id;
 
-    const response = await fetch(
-      `${process.env.BACKEND_URL || 'http://localhost:3001'}/trade-deals/${params.id}`,
-      {
-        method: 'GET',
-        headers: {
-          'Authorization': authHeader || '',
-        },
-      }
-    );
+    const response = await fetchBackend(`/trade-deals/${id}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
 
     const data = await response.json();
 
@@ -24,7 +22,13 @@ export async function GET(
     }
 
     return NextResponse.json(data);
-  } catch (error) {
+  } catch (error: any) {
+    if (error?.isBackendUnreachable) {
+      return NextResponse.json(
+        { message: 'Backend service is unavailable' },
+        { status: 503 }
+      );
+    }
     return NextResponse.json(
       { message: 'Internal server error' },
       { status: 500 }

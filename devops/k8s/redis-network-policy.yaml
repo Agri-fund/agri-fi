@@ -1,0 +1,24 @@
+# Network Policy for Redis
+# This policy allows traffic from backend pods to Redis
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-redis-ingress
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app: agri-fi
+      component: redis
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: agri-fi
+              component: backend
+      ports:
+        - protocol: TCP
+          port: 6379

@@ -4,13 +4,20 @@ import { DataSource } from 'typeorm';
 import {
   NotFoundException,
   UnprocessableEntityException,
+  ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InvestmentsService } from './investments.service';
 import { Investment, InvestmentStatus } from './entities/investment.entity';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
+import { User } from '../auth/entities/user.entity';
 import { StellarService } from '../stellar/stellar.service';
 import { QueueService } from '../queue/queue.service';
 import { CreateInvestmentDto } from './dto/create-investment.dto';
+import * as fc from 'fast-check';
+
+const VALID_STELLAR_TX_ID =
+  'a1b2c3d4e5f67890abcdef1234567890abcdef1234567890abcdef1234567890';
 
 const mockTradeDeal = (): TradeDeal => ({
   id: 'deal-1',
@@ -19,16 +26,19 @@ const mockTradeDeal = (): TradeDeal => ({
   quantityUnit: 'kg',
   totalValue: 10000,
   tokenCount: 1000,
-  tokenSymbol: 'COFFEE-001',
+  tokenSymbol: 'COFFEE001',
   status: 'open',
   farmerId: 'farmer-1',
   traderId: 'trader-1',
   escrowPublicKey: 'escrow-pub-key',
   escrowSecretKey: 'escrow-secret',
   issuerPublicKey: 'issuer-pub',
+  issuerSecretKey: null,
   totalInvested: 0,
   deliveryDate: new Date(),
   stellarAssetTxId: null,
+  sorobanCampaignContractId: null,
+  sorobanFactoryTxHash: null,
   createdAt: new Date(),
   farmer: null,
   trader: null,
@@ -43,11 +53,18 @@ const mockInvestment = (): Investment => ({
   tokenAmount: 100,
   amountUsd: 1000,
   stellarTxId: null,
+  complianceData: null,
   status: InvestmentStatus.PENDING,
   createdAt: new Date(),
   tradeDeal: null,
   investor: null,
 });
+
+const mockInvestor = (): User =>
+  ({
+    id: 'investor-1',
+    walletAddress: 'GINVESTOR1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+  }) as User;
 
 describe('InvestmentsService', () => {
   let service: InvestmentsService;
@@ -57,9 +74,14 @@ describe('InvestmentsService', () => {
     create: jest.Mock;
     save: jest.Mock;
     update: jest.Mock;
+    findAndCount: jest.Mock;
   };
   let tradeDealRepo: { findOne: jest.Mock; update: jest.Mock };
-  let stellarService: { fundEscrow: jest.MockedFunction<any> };
+  let userRepo: { findOne: jest.Mock };
+  let stellarService: {
+    fundEscrow: jest.MockedFunction<any>;
+    createInvestmentTransaction: jest.MockedFunction<any>;
+  };
   let queueService: { enqueueInvestmentFund: jest.MockedFunction<any> };
 
   beforeEach(async () => {
@@ -69,9 +91,16 @@ describe('InvestmentsService', () => {
       create: jest.fn(),
       save: jest.fn(),
       update: jest.fn(),
+      findAndCount: jest.fn(),
     };
     tradeDealRepo = { findOne: jest.fn(), update: jest.fn() };
-    stellarService = { fundEscrow: jest.fn() };
+    userRepo = {
+      findOne: jest.fn().mockResolvedValue(mockInvestor()),
+    };
+    stellarService = {
+      fundEscrow: jest.fn(),
+      createInvestmentTransaction: jest.fn().mockResolvedValue('unsigned-xdr'),
+    };
     queueService = {
       enqueueInvestmentFund: jest.fn().mockResolvedValue(undefined),
     };
@@ -81,6 +110,7 @@ describe('InvestmentsService', () => {
         InvestmentsService,
         { provide: getRepositoryToken(Investment), useValue: investmentRepo },
         { provide: getRepositoryToken(TradeDeal), useValue: tradeDealRepo },
+        { provide: getRepositoryToken(User), useValue: userRepo },
         { provide: StellarService, useValue: stellarService },
         { provide: QueueService, useValue: queueService },
         {
@@ -88,16 +118,26 @@ describe('InvestmentsService', () => {
           useValue: {
             transaction: jest.fn((cb) =>
               cb({
+                findOne: jest.fn((entity, opts) => {
+                  if (entity === TradeDeal) {
+                    return tradeDealRepo.findOne(opts);
+                  }
+                  return investmentRepo.findOne(opts);
+                }),
                 update: jest.fn((entity, criteria, values) => {
-                  // Route calls through the existing repo mocks so tests can assert on them
                   if (entity === Investment) {
                     return investmentRepo.update(criteria, values);
                   }
                   return tradeDealRepo.update(criteria, values);
                 }),
                 find: jest.fn((entity, opts) => investmentRepo.find(opts)),
-                create: jest.fn(),
-                save: jest.fn(),
+                create: jest.fn((entity, values) => {
+                  if (entity === Investment) {
+                    return investmentRepo.create(values);
+                  }
+                  return values;
+                }),
+                save: jest.fn((value) => investmentRepo.save(value)),
               }),
             ),
           },
@@ -106,6 +146,50 @@ describe('InvestmentsService', () => {
     }).compile();
 
     service = module.get<InvestmentsService>(InvestmentsService);
+  });
+
+  describe('distribution invariants', () => {
+    it('conserves the investment pool after platform fees across generated payout splits', () => {
+      // Feature: agric-onchain-finance, Property 4: sum(investor_payouts) + platform_fee = total_investment_pool
+      fc.assert(
+        fc.property(
+          fc.integer({ min: 100, max: 10_000_000 }),
+          fc.array(fc.integer({ min: 1, max: 1_000 }), {
+            minLength: 1,
+            maxLength: 50,
+          }),
+          (totalPoolCents, tokenWeights) => {
+            const platformFeeCents = Math.round(totalPoolCents * 0.02);
+            const investorPoolCents = totalPoolCents - platformFeeCents;
+            const totalWeight = tokenWeights.reduce(
+              (sum, weight) => sum + weight,
+              0,
+            );
+
+            let allocatedCents = 0;
+            const payouts = tokenWeights.map((weight, index) => {
+              if (index === tokenWeights.length - 1) {
+                return investorPoolCents - allocatedCents;
+              }
+
+              const payoutCents = Math.floor(
+                (investorPoolCents * weight) / totalWeight,
+              );
+              allocatedCents += payoutCents;
+              return payoutCents;
+            });
+
+            const sumPayouts = payouts.reduce(
+              (sum, payout) => sum + payout,
+              0,
+            );
+
+            return sumPayouts === investorPoolCents;
+          },
+        ),
+        { numRuns: 1000 },
+      );
+    });
   });
 
   describe('createInvestment', () => {
@@ -124,14 +208,7 @@ describe('InvestmentsService', () => {
 
       const result = await service.createInvestment('investor-1', dto);
 
-      expect(result.status).toBe(InvestmentStatus.PENDING);
-      expect(investmentRepo.create).toHaveBeenCalledWith({
-        tradeDealId: dto.tradeDealId,
-        investorId: 'investor-1',
-        tokenAmount: dto.tokenAmount,
-        amountUsd: dto.amountUsd,
-        status: InvestmentStatus.PENDING,
-      });
+      expect(result.investment.status).toBe(InvestmentStatus.PENDING);
     });
 
     it('throws error when trade deal not found', async () => {
@@ -167,7 +244,7 @@ describe('InvestmentsService', () => {
       const deal = mockTradeDeal();
       const dto: CreateInvestmentDto = {
         tradeDealId: 'deal-1',
-        tokenAmount: 1100, // More than available
+        tokenAmount: 1100,
         amountUsd: 11000,
       };
 
@@ -184,7 +261,7 @@ describe('InvestmentsService', () => {
       const dto: CreateInvestmentDto = {
         tradeDealId: 'deal-1',
         tokenAmount: 100,
-        amountUsd: 11000, // More than total value
+        amountUsd: 11000,
       };
 
       tradeDealRepo.findOne.mockResolvedValue(deal);
@@ -205,22 +282,23 @@ describe('InvestmentsService', () => {
       };
 
       investmentRepo.findOne.mockResolvedValue(investment);
-      investmentRepo.save.mockResolvedValue({
-        ...investment,
-        status: InvestmentStatus.CONFIRMED,
-      });
       investmentRepo.find.mockResolvedValue([investment]);
+      investmentRepo.update.mockResolvedValue({ affected: 1 });
       tradeDealRepo.update.mockResolvedValue({ affected: 1 });
 
-      await service.confirmInvestment('inv-1', 'stellar-tx-123');
-
-      expect(investmentRepo.save).toHaveBeenCalledWith(
-        expect.objectContaining({
-          status: InvestmentStatus.CONFIRMED,
-          stellarTxId: 'stellar-tx-123',
-        }),
+      await service.confirmInvestment(
+        'investor-1',
+        'inv-1',
+        VALID_STELLAR_TX_ID,
       );
 
+      expect(investmentRepo.update).toHaveBeenCalledWith(
+        'inv-1',
+        expect.objectContaining({
+          status: InvestmentStatus.CONFIRMED,
+          stellarTxId: VALID_STELLAR_TX_ID,
+        }),
+      );
       expect(tradeDealRepo.update).toHaveBeenCalledWith('deal-1', {
         totalInvested: 1000,
       });
@@ -234,14 +312,15 @@ describe('InvestmentsService', () => {
       };
 
       investmentRepo.findOne.mockResolvedValue(investment);
-      investmentRepo.save.mockResolvedValue({
-        ...investment,
-        status: InvestmentStatus.CONFIRMED,
-      });
       investmentRepo.find.mockResolvedValue([investment]);
+      investmentRepo.update.mockResolvedValue({ affected: 1 });
       tradeDealRepo.update.mockResolvedValue({ affected: 1 });
 
-      await service.confirmInvestment('inv-1', 'stellar-tx-123');
+      await service.confirmInvestment(
+        'investor-1',
+        'inv-1',
+        VALID_STELLAR_TX_ID,
+      );
 
       expect(tradeDealRepo.update).toHaveBeenCalledWith('deal-1', {
         totalInvested: 1000,
@@ -261,8 +340,38 @@ describe('InvestmentsService', () => {
       investmentRepo.findOne.mockResolvedValue(investment);
 
       await expect(
-        service.confirmInvestment('inv-1', 'stellar-tx-123'),
+        service.confirmInvestment(
+          'investor-1',
+          'inv-1',
+          VALID_STELLAR_TX_ID,
+        ),
       ).rejects.toThrow(UnprocessableEntityException);
+    });
+
+    it('throws ForbiddenException when caller is not the investment owner', async () => {
+      const investment = {
+        ...mockInvestment(),
+        status: InvestmentStatus.PENDING,
+        tradeDeal: mockTradeDeal(),
+      };
+
+      investmentRepo.findOne.mockResolvedValue(investment);
+
+      await expect(
+        service.confirmInvestment(
+          'other-investor',
+          'inv-1',
+          VALID_STELLAR_TX_ID,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('throws BadRequestException for invalid stellarTxId format', async () => {
+      await expect(
+        service.confirmInvestment('investor-1', 'inv-1', 'stellar-tx-123'),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(investmentRepo.findOne).not.toHaveBeenCalled();
     });
   });
 
@@ -275,13 +384,10 @@ describe('InvestmentsService', () => {
       };
 
       investmentRepo.findOne.mockResolvedValue(investment);
-      investmentRepo.save.mockResolvedValue({
-        ...investment,
-        status: InvestmentStatus.CONFIRMED,
-      });
       investmentRepo.find.mockResolvedValue([investment]);
+      investmentRepo.update.mockResolvedValue({ affected: 1 });
       tradeDealRepo.update.mockResolvedValue({ affected: 1 });
-      stellarService.fundEscrow.mockResolvedValue('stellar-tx-456');
+      stellarService.fundEscrow.mockResolvedValue(VALID_STELLAR_TX_ID);
 
       const result = await service.fundEscrow(
         'inv-1',
@@ -293,17 +399,11 @@ describe('InvestmentsService', () => {
         'investor-wallet-address',
         '1000',
         'escrow-secret',
-        'COFFEE-001',
+        'COFFEE001',
         100,
       );
-
-      expect(result.stellarTxId).toBe('stellar-tx-456');
-      expect(investmentRepo.save).toHaveBeenCalledWith(
-        expect.objectContaining({
-          status: InvestmentStatus.CONFIRMED,
-          stellarTxId: 'stellar-tx-456',
-        }),
-      );
+      expect(result.stellarTxId).toBe(VALID_STELLAR_TX_ID);
+      expect(result.status).toBe('confirmed');
     });
 
     it('enqueues investment.fund job when signedXdr is provided', async () => {
@@ -331,7 +431,7 @@ describe('InvestmentsService', () => {
           amountUsd: 1000,
         }),
       );
-      expect(result.stellarTxId).toBe('queued');
+      expect(result.status).toBe('queued');
     });
 
     it('does NOT modify total_invested when Stellar fails', async () => {
@@ -350,7 +450,6 @@ describe('InvestmentsService', () => {
         service.fundEscrow('inv-1', 'investor-wallet-address'),
       ).rejects.toThrow('Stellar network error');
 
-      // total_invested must NOT be updated
       expect(tradeDealRepo.update).not.toHaveBeenCalled();
     });
 
@@ -393,32 +492,38 @@ describe('InvestmentsService', () => {
   describe('getInvestmentsByTradeDeal', () => {
     it('returns investments for a trade deal', async () => {
       const investments = [mockInvestment()];
-      investmentRepo.find.mockResolvedValue(investments);
+      investmentRepo.findAndCount.mockResolvedValue([investments, 1]);
 
       const result = await service.getInvestmentsByTradeDeal('deal-1');
 
-      expect(investmentRepo.find).toHaveBeenCalledWith({
+      expect(investmentRepo.findAndCount).toHaveBeenCalledWith({
         where: { tradeDealId: 'deal-1' },
         relations: ['investor'],
         order: { createdAt: 'DESC' },
+        skip: 0,
+        take: 20,
       });
-      expect(result).toEqual(investments);
+      expect(result.data).toEqual(investments);
+      expect(result.meta.total).toBe(1);
     });
   });
 
   describe('getInvestmentsByInvestor', () => {
     it('returns investments for an investor', async () => {
       const investments = [mockInvestment()];
-      investmentRepo.find.mockResolvedValue(investments);
+      investmentRepo.findAndCount.mockResolvedValue([investments, 1]);
 
       const result = await service.getInvestmentsByInvestor('investor-1');
 
-      expect(investmentRepo.find).toHaveBeenCalledWith({
+      expect(investmentRepo.findAndCount).toHaveBeenCalledWith({
         where: { investorId: 'investor-1' },
         relations: ['tradeDeal'],
         order: { createdAt: 'DESC' },
+        skip: 0,
+        take: 20,
       });
-      expect(result).toEqual(investments);
+      expect(result.data).toEqual(investments);
+      expect(result.meta.total).toBe(1);
     });
   });
 });

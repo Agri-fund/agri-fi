@@ -1,0 +1,19 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Backend: Jest watch",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "npm run test:watch",
+      "cwd": "${workspaceFolder}/backend"
+    },
+    {
+      "name": "Backend: Jest e2e watch",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "npm run test:e2e -- --watch",
+      "cwd": "${workspaceFolder}/backend"
+    }
+  ]
+}

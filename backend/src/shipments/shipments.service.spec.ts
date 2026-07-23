@@ -5,6 +5,7 @@ import {
   ForbiddenException,
   UnprocessableEntityException,
 } from '@nestjs/common';
+import { PinoLogger } from 'nestjs-pino';
 import { ShipmentsService } from './shipments.service';
 import {
   ShipmentMilestone,
@@ -15,9 +16,17 @@ import { ConfigService } from '@nestjs/config';
 import { CreateMilestoneDto } from './dto/create-milestone.dto';
 import { QueueService } from '../queue/queue.service';
 import { DataSource } from 'typeorm';
+import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
 
 let queueService: { enqueueDealDelivered: jest.Mock };
 let dataSource: { transaction: jest.Mock };
+
+const mockDeal = {
+  id: 'deal-1',
+  status: 'funded',
+  traderId: 'trader-1',
+  escrowSecretKey: 'escrow-secret',
+};
 
 const mockMilestone = (): ShipmentMilestone => ({
   id: 'milestone-1',
@@ -26,6 +35,9 @@ const mockMilestone = (): ShipmentMilestone => ({
   recordedBy: 'trader-1',
   notes: 'Goods received at farm',
   stellarTxId: 'stellar-tx-123',
+  memoText: 'AGRIC:MILESTONE:deal1:farm:1700000000',
+  latitude: null,
+  longitude: null,
   recordedAt: new Date(),
 });
 
@@ -37,7 +49,7 @@ describe('ShipmentsService', () => {
     save: jest.Mock;
     manager: { query: jest.Mock };
   };
-  let stellarService: { recordMemo: jest.Mock };
+  let stellarService: { recordMemo: jest.Mock; decryptSecret: jest.Mock };
   let config: { get: jest.Mock };
 
   beforeEach(async () => {
@@ -47,7 +59,7 @@ describe('ShipmentsService', () => {
       save: jest.fn(),
       manager: { query: jest.fn() },
     };
-    stellarService = { recordMemo: jest.fn() };
+    stellarService = { recordMemo: jest.fn(), decryptSecret: jest.fn() };
     config = { get: jest.fn() };
 
     queueService = { enqueueDealDelivered: jest.fn() };
@@ -55,10 +67,11 @@ describe('ShipmentsService', () => {
     dataSource = {
       transaction: jest.fn(async (cb) =>
         cb({
-          query: milestoneRepo.manager.query,
+          findOne: jest.fn(),
           find: milestoneRepo.find,
           create: milestoneRepo.create,
           save: milestoneRepo.save,
+          update: jest.fn(),
         }),
       ),
     };
@@ -67,8 +80,21 @@ describe('ShipmentsService', () => {
       providers: [
         ShipmentsService,
         {
+          provide: PinoLogger,
+          useValue: {
+            setContext: jest.fn(),
+            info: jest.fn(),
+            warn: jest.fn(),
+            error: jest.fn(),
+          },
+        },
+        {
           provide: getRepositoryToken(ShipmentMilestone),
           useValue: milestoneRepo,
+        },
+        {
+          provide: getRepositoryToken(TradeDeal),
+          useValue: { findOne: jest.fn(), update: jest.fn() },
         },
         { provide: StellarService, useValue: stellarService },
         { provide: QueueService, useValue: queueService },
@@ -81,13 +107,6 @@ describe('ShipmentsService', () => {
   });
 
   describe('recordMilestone', () => {
-    const mockDeal = {
-      id: 'deal-1',
-      status: 'funded',
-      trader_id: 'trader-1',
-      escrow_secret_key: 'escrow-secret',
-    };
-
     it('records first milestone (farm) for funded deal', async () => {
       const dto: CreateMilestoneDto = {
         trade_deal_id: 'deal-1',
@@ -95,20 +114,22 @@ describe('ShipmentsService', () => {
         notes: 'Goods received at farm',
       };
 
-      milestoneRepo.manager.query.mockResolvedValue([mockDeal]);
+      (dataSource.transaction as jest.Mock).mockImplementation(async (cb) =>
+        cb({
+          findOne: jest.fn().mockResolvedValue(mockDeal),
+          find: milestoneRepo.find,
+          create: milestoneRepo.create,
+          save: milestoneRepo.save,
+          update: jest.fn(),
+        }),
+      );
       milestoneRepo.find.mockResolvedValue([]);
       milestoneRepo.create.mockReturnValue(mockMilestone());
       milestoneRepo.save.mockResolvedValue(mockMilestone());
       stellarService.recordMemo.mockResolvedValue('stellar-tx-123');
+      stellarService.decryptSecret.mockReturnValue('decrypted-escrow-secret');
 
       const result = await service.recordMilestone('trader-1', dto);
-
-      expect(milestoneRepo.manager.query).toHaveBeenCalledWith(
-        expect.stringContaining(
-          'SELECT id, status, trader_id, escrow_secret_key FROM trade_deals',
-        ),
-        ['deal-1'],
-      );
 
       expect(milestoneRepo.create).toHaveBeenCalledWith(ShipmentMilestone, {
         tradeDealId: 'deal-1',
@@ -116,8 +137,19 @@ describe('ShipmentsService', () => {
         recordedBy: 'trader-1',
         notes: 'Goods received at farm',
         stellarTxId: 'stellar-tx-123',
+        memoText: expect.stringMatching(/^AGRIC:MILESTONE:deal1:farm:\d+$/),
+        latitude: null,
+        longitude: null,
       });
 
+      expect(stellarService.decryptSecret).toHaveBeenCalledWith(
+        'escrow-secret',
+      );
+      expect(stellarService.recordMemo).toHaveBeenCalledWith(
+        expect.any(String),
+        'decrypted-escrow-secret',
+        'hash',
+      );
       expect(result.milestone).toBe('farm');
     });
 
@@ -128,7 +160,15 @@ describe('ShipmentsService', () => {
         notes: 'Goods at port',
       };
 
-      milestoneRepo.manager.query.mockResolvedValue([mockDeal]);
+      (dataSource.transaction as jest.Mock).mockImplementation(async (cb) =>
+        cb({
+          findOne: jest.fn().mockResolvedValue(mockDeal),
+          find: milestoneRepo.find,
+          create: milestoneRepo.create,
+          save: milestoneRepo.save,
+          update: jest.fn(),
+        }),
+      );
       milestoneRepo.find.mockResolvedValue([
         { ...mockMilestone(), milestone: 'farm' },
       ]);
@@ -145,7 +185,15 @@ describe('ShipmentsService', () => {
         notes: 'Goods at port',
       };
 
-      milestoneRepo.manager.query.mockResolvedValue([mockDeal]);
+      (dataSource.transaction as jest.Mock).mockImplementation(async (cb) =>
+        cb({
+          findOne: jest.fn().mockResolvedValue(mockDeal),
+          find: milestoneRepo.find,
+          create: milestoneRepo.create,
+          save: milestoneRepo.save,
+          update: jest.fn(),
+        }),
+      );
       milestoneRepo.find.mockResolvedValue([
         { ...mockMilestone(), milestone: 'farm' },
       ]);
@@ -173,18 +221,31 @@ describe('ShipmentsService', () => {
 
       const importerMilestone = { ...mockMilestone(), milestone: 'importer' };
 
-      milestoneRepo.manager.query.mockResolvedValue([mockDeal]);
+      (dataSource.transaction as jest.Mock).mockImplementation(async (cb) =>
+        cb({
+          findOne: jest.fn().mockResolvedValue(mockDeal),
+          find: milestoneRepo.find,
+          create: milestoneRepo.create,
+          save: milestoneRepo.save,
+          update: jest.fn(),
+        }),
+      );
       milestoneRepo.find.mockResolvedValue(existingMilestones);
       milestoneRepo.create.mockReturnValue(importerMilestone);
       milestoneRepo.save.mockResolvedValue(importerMilestone);
       stellarService.recordMemo.mockResolvedValue('stellar-tx-final');
+      stellarService.decryptSecret.mockReturnValue('decrypted-escrow-secret');
 
       const result = await service.recordMilestone('trader-1', dto);
 
       expect(result.milestone).toBe('importer');
+      expect(stellarService.decryptSecret).toHaveBeenCalledWith(
+        'escrow-secret',
+      );
       expect(stellarService.recordMemo).toHaveBeenCalledWith(
         expect.stringContaining('AGRIC:MILESTONE:'),
-        'escrow-secret',
+        'decrypted-escrow-secret',
+        'hash',
       );
     });
 
@@ -195,7 +256,15 @@ describe('ShipmentsService', () => {
         notes: 'Goods received at farm',
       };
 
-      milestoneRepo.manager.query.mockResolvedValue([]);
+      (dataSource.transaction as jest.Mock).mockImplementation(async (cb) =>
+        cb({
+          findOne: jest.fn().mockResolvedValue(null),
+          find: milestoneRepo.find,
+          create: milestoneRepo.create,
+          save: milestoneRepo.save,
+          update: jest.fn(),
+        }),
+      );
 
       await expect(service.recordMilestone('trader-1', dto)).rejects.toThrow(
         NotFoundException,
@@ -210,7 +279,15 @@ describe('ShipmentsService', () => {
       };
 
       const unfundedDeal = { ...mockDeal, status: 'open' };
-      milestoneRepo.manager.query.mockResolvedValue([unfundedDeal]);
+      (dataSource.transaction as jest.Mock).mockImplementation(async (cb) =>
+        cb({
+          findOne: jest.fn().mockResolvedValue(unfundedDeal),
+          find: milestoneRepo.find,
+          create: milestoneRepo.create,
+          save: milestoneRepo.save,
+          update: jest.fn(),
+        }),
+      );
 
       await expect(service.recordMilestone('trader-1', dto)).rejects.toThrow(
         UnprocessableEntityException,
@@ -224,7 +301,15 @@ describe('ShipmentsService', () => {
         notes: 'Goods received at farm',
       };
 
-      milestoneRepo.manager.query.mockResolvedValue([mockDeal]);
+      (dataSource.transaction as jest.Mock).mockImplementation(async (cb) =>
+        cb({
+          findOne: jest.fn().mockResolvedValue(mockDeal),
+          find: milestoneRepo.find,
+          create: milestoneRepo.create,
+          save: milestoneRepo.save,
+          update: jest.fn(),
+        }),
+      );
 
       await expect(
         service.recordMilestone('other-trader', dto),
@@ -246,7 +331,15 @@ describe('ShipmentsService', () => {
         { ...mockMilestone(), milestone: 'importer' },
       ];
 
-      milestoneRepo.manager.query.mockResolvedValue([mockDeal]);
+      (dataSource.transaction as jest.Mock).mockImplementation(async (cb) =>
+        cb({
+          findOne: jest.fn().mockResolvedValue(mockDeal),
+          find: milestoneRepo.find,
+          create: milestoneRepo.create,
+          save: milestoneRepo.save,
+          update: jest.fn(),
+        }),
+      );
       milestoneRepo.find.mockResolvedValue(allMilestones);
 
       await expect(service.recordMilestone('trader-1', dto)).rejects.toThrow(
@@ -261,8 +354,16 @@ describe('ShipmentsService', () => {
         notes: 'Goods received at farm',
       };
 
-      const dealWithoutSecret = { ...mockDeal, escrow_secret_key: null };
-      milestoneRepo.manager.query.mockResolvedValue([dealWithoutSecret]);
+      const dealWithoutSecret = { ...mockDeal, escrowSecretKey: null };
+      (dataSource.transaction as jest.Mock).mockImplementation(async (cb) =>
+        cb({
+          findOne: jest.fn().mockResolvedValue(dealWithoutSecret),
+          find: milestoneRepo.find,
+          create: milestoneRepo.create,
+          save: milestoneRepo.save,
+          update: jest.fn(),
+        }),
+      );
       milestoneRepo.find.mockResolvedValue([]);
       milestoneRepo.create.mockReturnValue(mockMilestone());
       milestoneRepo.save.mockResolvedValue(mockMilestone());
@@ -274,6 +375,7 @@ describe('ShipmentsService', () => {
       expect(stellarService.recordMemo).toHaveBeenCalledWith(
         expect.any(String),
         'platform-secret',
+        'hash',
       );
     });
 
@@ -287,17 +389,30 @@ describe('ShipmentsService', () => {
       const existingMilestones = [{ ...mockMilestone(), milestone: 'farm' }];
       const warehouseMilestone = { ...mockMilestone(), milestone: 'warehouse' };
 
-      milestoneRepo.manager.query.mockResolvedValue([mockDeal]);
+      (dataSource.transaction as jest.Mock).mockImplementation(async (cb) =>
+        cb({
+          findOne: jest.fn().mockResolvedValue(mockDeal),
+          find: milestoneRepo.find,
+          create: milestoneRepo.create,
+          save: milestoneRepo.save,
+          update: jest.fn(),
+        }),
+      );
       milestoneRepo.find.mockResolvedValue(existingMilestones);
       milestoneRepo.create.mockReturnValue(warehouseMilestone);
       milestoneRepo.save.mockResolvedValue(warehouseMilestone);
       stellarService.recordMemo.mockResolvedValue('stellar-tx-456');
+      stellarService.decryptSecret.mockReturnValue('decrypted-escrow-secret');
 
       await service.recordMilestone('trader-1', dto);
 
+      expect(stellarService.decryptSecret).toHaveBeenCalledWith(
+        'escrow-secret',
+      );
       expect(stellarService.recordMemo).toHaveBeenCalledWith(
         expect.stringMatching(/^AGRIC:MILESTONE:deal1:warehouse:\d+$/),
-        'escrow-secret',
+        'decrypted-escrow-secret',
+        'hash',
       );
     });
   });
