@@ -4,18 +4,21 @@ import { apiClient } from '../lib/api';
 
 jest.mock('../lib/api', () => ({
   apiClient: {
+    getCurrentUser: jest.fn(),
     refreshCurrentUser: jest.fn(),
     getInvestorInvestments: jest.fn(),
   },
 }));
 
+const mockGetCurrentUser = apiClient.getCurrentUser as jest.Mock;
 const mockRefreshUser = apiClient.refreshCurrentUser as jest.Mock;
 const mockGetInvestments = apiClient.getInvestorInvestments as jest.Mock;
 
-const CACHE_KEY = 'dashboard_data';
+const USER_ID = 'user-1';
+const CACHE_KEY = `dashboard_data_${USER_ID}`;
 
 const mockUser = {
-  id: 'user-1',
+  id: USER_ID,
   email: 'investor@example.com',
   role: 'investor' as const,
   name: 'Test Investor',
@@ -25,7 +28,7 @@ const mockInvestments = [
   {
     id: 'inv-1',
     trade_deal_id: 'deal-1',
-    investor_id: 'user-1',
+    investor_id: USER_ID,
     token_amount: 10,
     amount_usd: 1000,
     amount_invested: 1000,
@@ -57,6 +60,7 @@ const mockInvestments = [
 describe('useDashboardData', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockGetCurrentUser.mockReturnValue(mockUser);
     (localStorage.getItem as jest.Mock).mockReturnValue(null);
     (localStorage.setItem as jest.Mock).mockImplementation(() => {});
   });
@@ -76,7 +80,7 @@ describe('useDashboardData', () => {
     expect(result.current.error).toBeNull();
   });
 
-  it('caches successful API response in localStorage', async () => {
+  it('caches a successful API response in localStorage keyed by user ID', async () => {
     mockRefreshUser.mockResolvedValue(mockUser);
     mockGetInvestments.mockResolvedValue(mockInvestments);
 
@@ -90,7 +94,55 @@ describe('useDashboardData', () => {
     );
   });
 
-  it('loads cached data from localStorage when API fetch fails', async () => {
+  it('loads cached data immediately on mount, before the API resolves', async () => {
+    const cachedData = { user: mockUser, investments: mockInvestments };
+    (localStorage.getItem as jest.Mock).mockImplementation((key: string) =>
+      key === CACHE_KEY ? JSON.stringify(cachedData) : null,
+    );
+
+    let resolveUser: (value: typeof mockUser) => void;
+    mockRefreshUser.mockReturnValue(new Promise((resolve) => { resolveUser = resolve; }));
+    mockGetInvestments.mockResolvedValue(mockInvestments);
+
+    const { result } = renderHook(() => useDashboardData());
+
+    // Cache is served synchronously on mount, without waiting for the
+    // (still-pending) API call to resolve.
+    await waitFor(() => expect(result.current.data).toEqual(cachedData));
+    expect(result.current.loading).toBe(false);
+    expect(result.current.isOffline).toBe(false);
+
+    // Let the background revalidation finish so no state update leaks past
+    // this test's lifetime.
+    resolveUser!(mockUser);
+    await waitFor(() => expect(result.current.data).toEqual({ user: mockUser, investments: mockInvestments }));
+  });
+
+  it('revalidates in the background and replaces cached data with the fresh API response', async () => {
+    const staleData = {
+      user: mockUser,
+      investments: [{ ...mockInvestments[0], amount_invested: 1 }],
+    };
+    (localStorage.getItem as jest.Mock).mockImplementation((key: string) =>
+      key === CACHE_KEY ? JSON.stringify(staleData) : null,
+    );
+
+    mockRefreshUser.mockResolvedValue(mockUser);
+    mockGetInvestments.mockResolvedValue(mockInvestments);
+
+    const { result } = renderHook(() => useDashboardData());
+
+    // Stale cache shown first.
+    await waitFor(() => expect(result.current.data).toEqual(staleData));
+
+    // Fresh data replaces it once the background revalidation resolves.
+    await waitFor(() =>
+      expect(result.current.data).toEqual({ user: mockUser, investments: mockInvestments }),
+    );
+    expect(result.current.isOffline).toBe(false);
+  });
+
+  it('keeps showing cached data and flags it as offline when revalidation fails', async () => {
     const cachedData = { user: mockUser, investments: mockInvestments };
     (localStorage.getItem as jest.Mock).mockImplementation((key: string) =>
       key === CACHE_KEY ? JSON.stringify(cachedData) : null,
@@ -101,15 +153,13 @@ describe('useDashboardData', () => {
 
     const { result } = renderHook(() => useDashboardData());
 
-    await waitFor(() => expect(result.current.loading).toBe(false));
+    await waitFor(() => expect(result.current.isOffline).toBe(true));
 
     expect(result.current.data).toEqual(cachedData);
-    expect(result.current.isOffline).toBe(true);
     expect(result.current.error).toBeNull();
   });
 
-  it('returns error when API fails and no cached data exists', async () => {
-    (localStorage.getItem as jest.Mock).mockReturnValue(null);
+  it('returns an error when the API fails and no cached data exists', async () => {
     mockRefreshUser.mockRejectedValue(new Error('Service Unavailable'));
     mockGetInvestments.mockRejectedValue(new Error('Service Unavailable'));
 
@@ -122,7 +172,7 @@ describe('useDashboardData', () => {
     expect(result.current.error).toBe('Service Unavailable');
   });
 
-  it('starts in loading state', () => {
+  it('starts in loading state when there is no cached data', () => {
     mockRefreshUser.mockResolvedValue(mockUser);
     mockGetInvestments.mockResolvedValue([]);
 
@@ -132,5 +182,18 @@ describe('useDashboardData', () => {
     expect(result.current.data).toBeNull();
     expect(result.current.error).toBeNull();
     expect(result.current.isOffline).toBe(false);
+  });
+
+  it('skips the cache lookup when no user is logged in yet', async () => {
+    mockGetCurrentUser.mockReturnValue(null);
+    mockRefreshUser.mockResolvedValue(mockUser);
+    mockGetInvestments.mockResolvedValue(mockInvestments);
+
+    const { result } = renderHook(() => useDashboardData());
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(localStorage.getItem).not.toHaveBeenCalled();
+    expect(result.current.data).toEqual({ user: mockUser, investments: mockInvestments });
   });
 });
