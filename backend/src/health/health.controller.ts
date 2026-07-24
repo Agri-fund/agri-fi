@@ -10,9 +10,11 @@ import {
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { Transport } from '@nestjs/microservices';
 import { ConfigService } from '@nestjs/config';
+import { SkipThrottle } from '@nestjs/throttler';
 
 @ApiTags('health')
 @Controller('health')
+@SkipThrottle() // Health check is called by Kubernetes liveness/readiness probes — exempt from rate limiting
 export class HealthController {
   constructor(
     private health: HealthCheckService,
