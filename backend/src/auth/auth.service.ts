@@ -26,7 +26,7 @@ import { User } from './entities/user.entity';
 import { KycSubmission } from './entities/kyc-submission.entity';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
-import { KycDto } from './dto/kyc.dto';
+import { SubmitKycDto } from './dto/submit-kyc.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { QueueService } from '../queue/queue.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -354,7 +354,10 @@ export class AuthService {
 
   // ── KYC ───────────────────────────────────────────────────────────────────
 
-  async submitKyc(userId: string, dto: KycDto): Promise<{ kycStatus: string }> {
+  async submitKyc(
+    userId: string,
+    dto: SubmitKycDto,
+  ): Promise<{ kycStatus: string }> {
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found.');
 

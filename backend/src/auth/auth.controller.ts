@@ -27,7 +27,7 @@ import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { WalletDto } from './dto/wallet.dto';
-import { KycDto } from './dto/kyc.dto';
+import { SubmitKycDto } from './dto/submit-kyc.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { Sep10ChallengeDto } from './dto/sep10-challenge.dto';
@@ -125,7 +125,7 @@ export class AuthController {
   @ApiResponse({ status: 400, description: 'Validation error' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 422, description: 'Unsupported document type' })
-  submitKyc(@Request() req: AuthRequest, @Body() dto: KycDto) {
+  submitKyc(@Request() req: AuthRequest, @Body() dto: SubmitKycDto) {
     return this.authService.submitKyc(req.user.id, dto);
   }
 
