@@ -21,6 +21,7 @@ import {
 import {
   DEFAULT_QUEUE_MAX_RETRIES,
   getExponentialBackoffDelayMs,
+  getDeliveryAttempt,
 } from './retry-policy';
 import { decryptPayload } from './queue.crypto';
 
@@ -60,11 +61,42 @@ export class QueueProcessor {
     } catch (err: any) {
       this.logger.error(
         { event: pattern, error: err.message },
-        `${pattern} decryption failed — nacking message`,
+        `${pattern} decryption failed — routing to DLQ`,
       );
+      // Undecryptable payloads can never succeed on retry — send straight to DLQ.
       channel.nack(msg, false, false);
       return null;
     }
+  }
+
+  /**
+   * Nack a message that failed processing. Requeues while under
+   * MAX_DELIVERY_ATTEMPTS so the broker's retry/backoff can kick in; once
+   * exhausted, nacks without requeue so RabbitMQ dead-letters it to the
+   * queue's configured DLX (see queue.dlq.constants.ts).
+   */
+  private nackWithRetryLimit(
+    channel: any,
+    msg: any,
+    pattern: string,
+    context: Record<string, unknown>,
+  ): void {
+    const attempt = getDeliveryAttempt(msg);
+    const exhausted = attempt >= DEFAULT_QUEUE_MAX_RETRIES;
+
+    this.logger.warn(
+      {
+        ...context,
+        event: pattern,
+        attempt,
+        maxRetries: DEFAULT_QUEUE_MAX_RETRIES,
+      },
+      exhausted
+        ? `${pattern} exhausted ${DEFAULT_QUEUE_MAX_RETRIES} attempts — routing to DLQ`
+        : `${pattern} attempt ${attempt}/${DEFAULT_QUEUE_MAX_RETRIES} failed — requeueing`,
+    );
+
+    channel.nack(msg, false, !exhausted);
   }
 
   @EventPattern('deal.publish')
@@ -139,7 +171,15 @@ export class QueueProcessor {
 
       // On Stellar failure: mark deal status = 'failed'
       const appTraceId = `app-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 10)}`;
-      await this.tradeDealRepo.update(data.dealId, { status: 'failed', appTraceId });
+      await this.tradeDealRepo.update(data.dealId, {
+        status: 'failed',
+        appTraceId,
+      });
+
+      this.nackWithRetryLimit(channel, originalMsg, 'deal.publish', {
+        dealId: data.dealId,
+      });
+      return;
     }
 
     // Acknowledge the message
@@ -228,7 +268,9 @@ export class QueueProcessor {
       }
     }
 
-    // All retries exhausted — mark investment as failed
+    // In-process retries exhausted — mark investment as failed and route the
+    // message to the DLQ (rather than ack-and-forget) so it's visible for
+    // manual inspection/retry.
     this.logger.error(
       {
         investmentId: data.investmentId,
@@ -241,7 +283,7 @@ export class QueueProcessor {
       status: 'failed' as any,
     });
 
-    channel.ack(originalMsg);
+    channel.nack(originalMsg, false, false);
   }
 
   @EventPattern('deal.funded')

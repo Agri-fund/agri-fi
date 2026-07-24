@@ -25,6 +25,9 @@ export class AuditLog {
   @Column({ name: 'new_values', type: 'jsonb', nullable: true })
   newValues: Record<string, unknown> | null;
 
+  @Column({ type: 'text', nullable: true })
+  changes: string | null;
+
   @Column({ name: 'user_id', nullable: true })
   userId: string | null;
 
