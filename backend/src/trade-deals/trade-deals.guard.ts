@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   CanActivate,
   ExecutionContext,
   ForbiddenException,
@@ -16,7 +17,11 @@ import { TradeDeal } from './entities/trade-deal.entity';
 
 export interface TradeDealAccessRequest {
   user?: User;
-  params?: { id?: string };
+  params?: { 
+    id?: string; 
+    trade_deal_id?: string; 
+    tradeDealId?: string 
+  };
   tradeDealAccess?: {
     isOwner: boolean;
     isInvestedInvestor: boolean;
@@ -35,7 +40,14 @@ export class TradeDealsGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest<TradeDealAccessRequest>();
-    const id = req.params?.id;
+    const id = 
+      req.params?.id || 
+      req.params?.trade_deal_id || 
+      req.params?.tradeDealId;
+
+    if (!id) {
+      throw new BadRequestException('Trade deal ID is required');
+    }
 
     const deal = await this.tradeDealRepo.findOne({ where: { id } });
     if (!deal) {
@@ -59,17 +71,16 @@ export class TradeDealsGuard implements CanActivate {
       isInvestedInvestor = investmentCount > 0;
     }
 
-    const isPublicDeal = ['open', 'funded', 'delivered', 'completed'].includes(
-      deal.status,
-    );
-    const canViewSensitive = isOwner || isAdmin || isInvestedInvestor;
-
-    if (!isPublicDeal && !canViewSensitive) {
+    // Enforce that authenticated users can only access deals they own, have invested in, or are admin
+    // Keep public marketplace (GET /trade-deals) open, but deal detail requires access
+    if (user && !isOwner && !isAdmin && !isInvestedInvestor) {
       throw new ForbiddenException({
         code: 'DEAL_ACCESS_DENIED',
         message: 'You do not have access to this trade deal.',
       });
     }
+
+    const canViewSensitive = isOwner || isAdmin || isInvestedInvestor;
 
     req.tradeDealAccess = {
       isOwner: isOwner || isAdmin,
