@@ -1,6 +1,17 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+} from 'typeorm';
 
-export type AdminActionType = 'approve_kyc' | 'approve_corporate_kyc' | 'update_user_role' | 'freeze_asset';
+export type AdminActionType =
+  | 'approve_kyc'
+  | 'approve_corporate_kyc'
+  | 'update_user_role'
+  | 'freeze_asset'
+  | 'verify_document'
+  | 'reject_document';
 
 @Entity('admin_actions')
 export class AdminAction {
