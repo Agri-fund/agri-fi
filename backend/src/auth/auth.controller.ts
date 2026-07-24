@@ -27,7 +27,7 @@ import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { WalletDto } from './dto/wallet.dto';
-import { KycDto } from './dto/kyc.dto';
+import { SubmitKycDto } from './dto/submit-kyc.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { Sep10ChallengeDto } from './dto/sep10-challenge.dto';
@@ -45,7 +45,7 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('register')
-  @Throttle({ default: { limit: 3, ttl: 3600000 } })
+  @Throttle({ login: { limit: 5, ttl: 60000 } })
   @ApiOperation({ summary: 'Register a new user' })
   @ApiResponse({ status: 201, description: 'User created successfully' })
   @ApiResponse({ status: 400, description: 'Validation error' })
@@ -64,7 +64,7 @@ export class AuthController {
   }
 
   @Post('login')
-  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @Throttle({ login: { limit: 5, ttl: 60000 } })
   @ApiOperation({ summary: 'Authenticate and receive a JWT' })
   @ApiResponse({ status: 200, description: 'Returns access and refresh JWTs' })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
@@ -81,7 +81,7 @@ export class AuthController {
   }
 
   @Post('refresh')
-  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @Throttle({ login: { limit: 5, ttl: 60000 } })
   @ApiOperation({ summary: 'Exchange a refresh token for a new access token' })
   @ApiResponse({
     status: 200,
@@ -118,6 +118,7 @@ export class AuthController {
   }
 
   @Post('kyc')
+  @Throttle({ kyc: { limit: 3, ttl: 60000 } })
   @UseGuards(AuthGuard('jwt'))
   @ApiBearerAuth('jwt')
   @ApiOperation({ summary: 'Submit a KYC document' })
@@ -125,7 +126,7 @@ export class AuthController {
   @ApiResponse({ status: 400, description: 'Validation error' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 422, description: 'Unsupported document type' })
-  submitKyc(@Request() req: AuthRequest, @Body() dto: KycDto) {
+  submitKyc(@Request() req: AuthRequest, @Body() dto: SubmitKycDto) {
     return this.authService.submitKyc(req.user.id, dto);
   }
 
@@ -185,12 +186,7 @@ export class AuthController {
 
   @Post('stellar-login')
   @HttpCode(HttpStatus.OK)
-  @Throttle({
-    default: {
-      limit: parseInt(process.env.RATE_LIMIT_LOGIN || '5'),
-      ttl: parseInt(process.env.RATE_LIMIT_TTL || '60000'),
-    },
-  })
+  @Throttle({ login: { limit: 5, ttl: 60000 } })
   @ApiOperation({
     summary: 'Authenticate via SEP-10 by submitting a signed challenge transaction',
   })

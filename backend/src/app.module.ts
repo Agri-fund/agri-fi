@@ -18,6 +18,7 @@ import { DocumentsModule } from './documents/documents.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { QueueProcessorModule } from './queue/queue-processor.module';
 import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
+import { HttpLoggerMiddleware } from './common/middleware/http-logger.middleware';
 import { loggingConfig } from './common/logging/logging.config';
 import { HealthModule } from './health/health.module';
 import { TerminusModule } from '@nestjs/terminus';
@@ -36,8 +37,24 @@ import { ScheduleModule } from '@nestjs/schedule';
     ScheduleModule.forRoot(),
     ThrottlerModule.forRoot([
       {
+        name: 'default',
         ttl: parseInt(process.env.RATE_LIMIT_TTL || '60000'),
         limit: parseInt(process.env.RATE_LIMIT_GLOBAL || '100'),
+      },
+      {
+        name: 'login',
+        ttl: 60000,
+        limit: 5,
+      },
+      {
+        name: 'kyc',
+        ttl: 60000,
+        limit: 3,
+      },
+      {
+        name: 'marketplace',
+        ttl: 60000,
+        limit: 60,
       },
     ]),
     LoggerModule.forRoot(loggingConfig),
@@ -70,8 +87,10 @@ import { ScheduleModule } from '@nestjs/schedule';
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    // ClsMiddleware MUST run first to establish the async context,
-    // then CorrelationIdMiddleware can safely call cls.set()
-    consumer.apply(ClsMiddleware, CorrelationIdMiddleware).forRoutes('*');
+    // HttpLoggerMiddleware runs first so its timer covers the full request lifecycle.
+    // ClsMiddleware MUST run before CorrelationIdMiddleware so it can safely call cls.set()
+    consumer
+      .apply(HttpLoggerMiddleware, ClsMiddleware, CorrelationIdMiddleware)
+      .forRoutes('*');
   }
 }
