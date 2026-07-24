@@ -375,6 +375,7 @@ export class AuthService {
       registrationNumber: dto.registrationNumber,
       businessLicenseUrl: dto.businessLicenseUrl,
       articlesOfIncorporationUrl: dto.articlesOfIncorporationUrl,
+      documentExpiresAt: dto.documentExpiresAt ? new Date(dto.documentExpiresAt) : null,
       status: automatedApproval ? 'approved' : 'pending_review',
     });
 

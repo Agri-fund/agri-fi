@@ -17,6 +17,7 @@ import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
 import { OfacSanctionsCheckService } from './utils/ofac-sanctions-check';
 import { LoginLog } from '../database/entities/login-log.entity';
 import { AdminAction } from '../database/entities/admin-action.entity';
+import { KycCronService } from './kyc-cron.service';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { AdminAction } from '../database/entities/admin-action.entity';
     KycGuard,
     RolesGuard,
     OfacSanctionsCheckService,
+    KycCronService,
   ],
   exports: [AuthService, JwtModule, TypeOrmModule, KycGuard, RolesGuard],
 })

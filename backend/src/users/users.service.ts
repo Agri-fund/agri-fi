@@ -5,7 +5,7 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import { Repository, In, DataSource } from 'typeorm';
 import { randomBytes } from 'crypto';
 import { User, UserRole } from '../auth/entities/user.entity';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
@@ -28,6 +28,10 @@ export interface CurrentUserProfile {
 
 export type DashboardDealRole = 'farmer' | 'trader';
 
+function generateRandomString(length: number): string {
+  return randomBytes(Math.ceil(length / 2)).toString('hex').slice(0, length);
+}
+
 @Injectable()
 export class UsersService {
   constructor(
@@ -43,6 +47,7 @@ export class UsersService {
     private readonly paymentDistributionRepository: Repository<PaymentDistribution>,
     @InjectRepository(KycSubmission)
     private readonly kycSubmissionRepository: Repository<KycSubmission>,
+    private readonly dataSource: DataSource,
   ) {}
 
   async getProfile(userId: string): Promise<CurrentUserProfile> {
@@ -63,6 +68,57 @@ export class UsersService {
       country: user.country,
       createdAt: user.createdAt,
     };
+  }
+
+  async deleteAccount(userId: string): Promise<void> {
+    await this.dataSource.transaction(async (manager) => {
+      const user = await manager.findOne(User, { where: { id: userId } });
+      if (!user) {
+        throw new NotFoundException('User not found.');
+      }
+
+      // Anonymize user PII
+      const anonymizedUser = manager.create(User, {
+        id: user.id,
+        email: `deleted-${generateRandomString(16)}@example.com`,
+        passwordHash: generateRandomString(64),
+        tokenVersion: user.tokenVersion + 1, // Invalidate all JWTs
+        walletAddress: null,
+        fullName: null,
+        birthdate: null,
+        taxId: null,
+        isEmailVerified: false,
+        emailVerificationToken: null,
+        companyDetails: user.isCompany
+          ? {
+              companyName: `Deleted Company ${generateRandomString(8)}`,
+              registrationNumber: null,
+              articlesOfIncorporationUrl: null,
+            }
+          : null,
+      });
+      await manager.save(User, anonymizedUser);
+
+      // Anonymize KYC submissions
+      const kycSubmissions = await manager.find(KycSubmission, {
+        where: { userId },
+      });
+      for (const kyc of kycSubmissions) {
+        await manager.update(KycSubmission, kyc.id, {
+          governmentIdUrl: null,
+          proofOfAddressUrl: null,
+          companyName: kyc.isCorporate
+            ? `Deleted Company ${generateRandomString(8)}`
+            : null,
+          registrationNumber: null,
+          businessLicenseUrl: null,
+          articlesOfIncorporationUrl: null,
+        });
+      }
+
+      // Soft delete the user
+      await manager.softDelete(User, userId);
+    });
   }
 
   async getUserDeals(
