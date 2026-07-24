@@ -21,7 +21,8 @@
     "dotenv-vault:pull": "dotenv-vault pull",
     "dotenv-vault:keys": "dotenv-vault keys",
     "dotenv-vault:open": "dotenv-vault open",
-    "db:seed": "ts-node scripts/seed.ts"
+    "db:seed": "ts-node scripts/seed.ts",
+    "queue:retry-dlq": "ts-node scripts/retry-dlq.ts"
   },
   "dependencies": {
     "@aws-sdk/client-kms": "^3.1075.0",

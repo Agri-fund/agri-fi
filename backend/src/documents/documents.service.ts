@@ -1,5 +1,7 @@
 import { BadGatewayException, Injectable } from '@nestjs/common';
+import { LazyModuleLoader } from '@nestjs/core';
 import { StorageService } from '../storage/storage.service';
+import { StorageModule } from '../storage/storage.module';
 import { StellarService } from '../stellar/stellar.service';
 import { TradeDealsService } from '../trade-deals/trade-deals.service';
 import { ConfigService } from '@nestjs/config';
@@ -13,12 +15,28 @@ import { PDFDocument } from 'pdf-lib';
 
 @Injectable()
 export class DocumentsService {
+  private storageServicePromise: Promise<StorageService> | null = null;
+
   constructor(
-    private readonly storageService: StorageService,
+    private readonly lazyModuleLoader: LazyModuleLoader,
     private readonly stellarService: StellarService,
     private readonly tradeDealsService: TradeDealsService,
     private readonly config: ConfigService,
   ) {}
+
+  /**
+   * StorageModule constructs an S3Client on init, so it's excluded from
+   * DocumentsModule's static imports and loaded on first use instead —
+   * document upload is the only feature that needs it.
+   */
+  private async getStorageService(): Promise<StorageService> {
+    if (!this.storageServicePromise) {
+      this.storageServicePromise = this.lazyModuleLoader
+        .load(() => StorageModule)
+        .then((moduleRef) => moduleRef.get(StorageService));
+    }
+    return this.storageServicePromise;
+  }
 
   async handleUpload({
     file,
@@ -38,18 +56,17 @@ export class DocumentsService {
       await this.compressFile(file.buffer, file.mimetype);
 
     // 1. Upload (IPFS → S3 fallback handled internally)
-    const { hash, url } = await this.storageService.upload(
+    const storageService = await this.getStorageService();
+    const { hash, url } = await storageService.upload(
       compressedBuffer,
       compressedMimeType,
     );
 
     if (!isValidIpfsCid(hash)) {
-      throw new BadGatewayException('Storage provider returned an invalid IPFS CID.');
+      throw new BadGatewayException(
+        'Storage provider returned an invalid IPFS CID.',
+      );
     }
-
-    // 2. Calculate SHA-256 of the stored (compressed) file for Stellar Anchoring
-    const fileHash = createHash('sha256').update(compressedBuffer).digest('hex');
-    const memo = buildDocumentMemo(tradeDealId, fileHash);
 
     // 2. Anchor the IPFS CID on Stellar via Memo.hash(SHA-256(CID))
     const signerSecret = this.config.get<string>('STELLAR_PLATFORM_SECRET', '');
@@ -118,7 +135,10 @@ export class DocumentsService {
     fileBuffer: Buffer,
     armoredSig: string,
   ): Promise<boolean> {
-    const trustedKeysRaw = this.config.get<string>('TRUSTED_AUTHORITY_KEYS', '');
+    const trustedKeysRaw = this.config.get<string>(
+      'TRUSTED_AUTHORITY_KEYS',
+      '',
+    );
     if (!trustedKeysRaw) return false;
     try {
       const publicKeys: openpgp.key.Key[] = [];

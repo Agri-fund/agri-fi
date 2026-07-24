@@ -17,12 +17,14 @@ import {
   BadRequestException,
   VersioningType,
 } from '@nestjs/common';
-import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
-import { Transport, MicroserviceOptions } from '@nestjs/microservices';
+import { SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import { buildOpenApiConfig } from './common/swagger/swagger.config';
 import { applySecurityHeaders } from './common/middleware/security-headers.middleware';
 import { CustomLogger } from './common/logger/custom-logger.service';
 import { JsonBigIntInterceptor } from './common/interceptors/json-bigint.interceptor';
+import { UserContextInterceptor } from './common/interceptors/user-context.interceptor';
+import { ClsService } from 'nestjs-cls';
 import * as cookieParser from 'cookie-parser';
 import * as csrf from 'csurf';
 
@@ -35,20 +37,22 @@ async function bootstrap() {
   });
 
   app.getHttpAdapter().getInstance().disable('x-powered-by');
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'"],
-      styleSrc: ["'self'", "https:"],
-      imgSrc: ["'self'", "data:"],
-      connectSrc: ["'self'"],
-      fontSrc: ["'self'", "https:"],
-      objectSrc: ["'none'"],
-    },
-  },
-  frameguard: { action: 'deny' },
-}));
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'"],
+          styleSrc: ["'self'", 'https:'],
+          imgSrc: ["'self'", 'data:'],
+          connectSrc: ["'self'"],
+          fontSrc: ["'self'", 'https:'],
+          objectSrc: ["'none'"],
+        },
+      },
+      frameguard: { action: 'deny' },
+    }),
+  );
 
   // DNS rebinding protection: reject requests whose Host header does not match
   // a known domain. /health is exempted so kubelet liveness/readiness probes
@@ -76,7 +80,9 @@ app.use(helmet({
 
   // CSRF protection for cookie-based (session) endpoints.
   // JWT-only routes are unaffected; the token is exposed via GET /csrf-token.
-  const csrfProtection = csrf({ cookie: { httpOnly: true, sameSite: 'strict' } });
+  const csrfProtection = csrf({
+    cookie: { httpOnly: true, sameSite: 'strict' },
+  });
   app.use(csrfProtection);
 
   // Expose CSRF token so clients can fetch it before mutating requests
@@ -86,7 +92,10 @@ app.use(helmet({
 
   // Global interceptor to convert BigInt values (Stellar ledger amounts, sequence numbers)
   // to strings in JSON responses, preventing precision loss and serialization errors.
-  app.useGlobalInterceptors(new JsonBigIntInterceptor());
+  app.useGlobalInterceptors(
+    new JsonBigIntInterceptor(),
+    new UserContextInterceptor(app.get(ClsService)),
+  );
 
   app.useGlobalPipes(
     new ValidationPipe({
@@ -112,7 +121,9 @@ app.use(helmet({
 
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
 
-  const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? 'http://localhost:3000')
+  const allowedOrigins = (
+    process.env.ALLOWED_ORIGINS ?? 'http://localhost:3000'
+  )
     .split(',')
     .map((origin) => origin.trim())
     .filter((origin) => origin.length > 0);
@@ -168,25 +179,7 @@ function setupSwagger(app: any) {
     );
   }
 
-  const config = new DocumentBuilder()
-    .setTitle('Agri-Fi API')
-    .setDescription(
-      'REST API for the Agri-Fi agricultural trade finance platform. ' +
-        'Farmers list produce, traders create deals, investors fund them via Stellar escrow.',
-    )
-    .setVersion('1.0')
-    .addBearerAuth(
-      { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
-      'jwt',
-    )
-    .addTag('auth', 'Registration, login, KYC, and wallet linking')
-    .addTag('trade-deals', 'Create and browse agricultural trade deals')
-    .addTag('investments', 'Fund trade deals and manage investments')
-    .addTag('shipments', 'Record and query shipment milestones')
-    .addTag('documents', 'Upload trade documents to IPFS')
-    .addTag('users', 'User dashboard data')
-    .addTag('sep24', 'SEP-24 interactive deposit and withdrawal')
-    .build();
+  const config = buildOpenApiConfig().build();
 
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api/docs', app, document, {
