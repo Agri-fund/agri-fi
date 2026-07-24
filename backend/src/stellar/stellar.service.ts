@@ -865,17 +865,15 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       throw new Error('Invalid totalValue');
     }
 
-    // Calculate platform + farmer using BigNumber
+    // Calculate platform fee (2%) and investor pool (98%) using BigNumber
     const platformStroopsBN = totalStroopsBN.multipliedBy(0.02).integerValue(
       BigNumber.ROUND_FLOOR,
     );
-    const farmerStroopsBN = totalStroopsBN.multipliedBy(0.98).integerValue(
-      BigNumber.ROUND_FLOOR,
-    );
+    const investorPoolStroopsBN = totalStroopsBN.minus(platformStroopsBN);
 
     const totalStroops = totalStroopsBN.toNumber();
     const platformStroops = platformStroopsBN.toNumber();
-    const farmerStroops = farmerStroopsBN.toNumber();
+    const investorPoolStroops = investorPoolStroopsBN.toNumber();
 
     // Compute total tokens safely
     const totalTokens = investorShares.reduce(
@@ -928,29 +926,15 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         networkPassphrase: this.networkPassphrase,
       });
 
-      if (batchIdx === 0) {
-        txBuilder.addOperation(
-          Operation.payment({
-            destination: farmerWallet,
-            asset: this.usdcAsset,
-            amount: new BigNumber(farmerStroops)
-              .dividedBy(1e7)
-              .toFixed(7),
-          }),
-        );
-      }
-
       batch.forEach((share, localIdx) => {
         const globalIdx = batchStart + localIdx;
         let shareStroops = Math.floor(
-          (share.tokenAmount / totalTokens) * totalStroops,
+          (share.tokenAmount / totalTokens) * investorPoolStroops,
         );
 
         if (globalIdx === investorShares.length - 1) {
           shareStroops =
-            totalStroops -
-            farmerStroops -
-            platformStroops -
+            investorPoolStroops -
             distributedToInvestors;
         }
 

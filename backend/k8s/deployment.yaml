@@ -66,3 +66,8 @@ data:
   STELLAR_HORIZON_URL: "https://horizon-testnet.stellar.org"
   ALLOWED_ORIGINS: "http://agri-fi-frontend"
   ALLOWED_HOSTS: "agri-fi.local,api.agri-fi.local"
+  
+  # IPFS/Storage Configuration (non-sensitive)
+  IPFS_GATEWAY: "https://api.web3.storage"
+  AWS_REGION: "us-east-1"
+  AWS_S3_BUCKET: "your-s3-bucket-name"
