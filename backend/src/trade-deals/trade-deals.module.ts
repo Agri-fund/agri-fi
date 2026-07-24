@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { CacheModule } from '@nestjs/cache-manager';
 import { TradeDealsController } from './trade-deals.controller';
 import { TradeDealsService } from './trade-deals.service';
 import { TradeDeal } from './entities/trade-deal.entity';
@@ -23,6 +24,9 @@ import { TradeDealsCronService } from './trade-deals-cron.service';
     ]),
     StellarModule,
     QueueModule,
+    CacheModule.register({
+      ttl: 30000, // 30 seconds, for the public marketplace listing endpoint
+    }),
   ],
   controllers: [TradeDealsController],
   providers: [TradeDealsService, TradeDealsGuard, TradeDealsCronService],
