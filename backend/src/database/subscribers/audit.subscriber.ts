@@ -24,7 +24,9 @@ const SENSITIVE_FIELDS = new Set([
   'private_key',
 ]);
 
-function sanitize(obj: Record<string, unknown> | null | undefined): Record<string, unknown> | null {
+function sanitize(
+  obj: Record<string, unknown> | null | undefined,
+): Record<string, unknown> | null {
   if (!obj) return null;
   return Object.fromEntries(
     Object.entries(obj).filter(([key]) => !SENSITIVE_FIELDS.has(key)),
@@ -56,7 +58,9 @@ export class AuditSubscriber implements EntitySubscriberInterface {
 
   async afterUpdate(event: UpdateEvent<any>): Promise<void> {
     const entity = event.entity as Record<string, unknown> | undefined;
-    const databaseEntity = event.databaseEntity as Record<string, unknown> | undefined;
+    const databaseEntity = event.databaseEntity as
+      | Record<string, unknown>
+      | undefined;
     await event.manager.save(AuditLog, {
       entityName: event.metadata.name,
       entityId: entity?.['id'] ? String(entity['id']) : null,
@@ -69,7 +73,9 @@ export class AuditSubscriber implements EntitySubscriberInterface {
 
   async afterRemove(event: RemoveEvent<any>): Promise<void> {
     const entity = event.entity as Record<string, unknown> | undefined;
-    const databaseEntity = event.databaseEntity as Record<string, unknown> | undefined;
+    const databaseEntity = event.databaseEntity as
+      | Record<string, unknown>
+      | undefined;
     await event.manager.save(AuditLog, {
       entityName: event.metadata.name,
       entityId: entity?.['id'] ? String(entity['id']) : null,

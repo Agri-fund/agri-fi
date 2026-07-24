@@ -139,7 +139,10 @@ export class QueueProcessor {
 
       // On Stellar failure: mark deal status = 'failed'
       const appTraceId = `app-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 10)}`;
-      await this.tradeDealRepo.update(data.dealId, { status: 'failed', appTraceId });
+      await this.tradeDealRepo.update(data.dealId, {
+        status: 'failed',
+        appTraceId,
+      });
     }
 
     // Acknowledge the message

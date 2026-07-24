@@ -42,7 +42,10 @@ export class StellarMonitorService {
       50,
     );
 
-    const platformSecret = this.config.get<string>('STELLAR_PLATFORM_SECRET', '');
+    const platformSecret = this.config.get<string>(
+      'STELLAR_PLATFORM_SECRET',
+      '',
+    );
     if (platformSecret) {
       try {
         const keypair = Keypair.fromSecret(platformSecret);
@@ -52,7 +55,9 @@ export class StellarMonitorService {
       }
     }
 
-    this.logger.log(`StellarMonitorService initialized with balance threshold: ${this.BALANCE_THRESHOLD_XLM} XLM`);
+    this.logger.log(
+      `StellarMonitorService initialized with balance threshold: ${this.BALANCE_THRESHOLD_XLM} XLM`,
+    );
   }
 
   /**
@@ -64,7 +69,9 @@ export class StellarMonitorService {
     this.logger.log('Starting platform wallet health check...');
 
     if (!this.platformAccountId) {
-      this.logger.warn('No platform account configured. Skipping balance check.');
+      this.logger.warn(
+        'No platform account configured. Skipping balance check.',
+      );
       return;
     }
 
@@ -72,7 +79,8 @@ export class StellarMonitorService {
       const account = await this.server.loadAccount(this.platformAccountId);
 
       // Find native XLM balance
-      const nativeBalanceStr = account.balances.find((b) => b.asset_type === 'native')?.balance || '0';
+      const nativeBalanceStr =
+        account.balances.find((b) => b.asset_type === 'native')?.balance || '0';
       const nativeBalance = parseFloat(nativeBalanceStr);
 
       // Get sequence number and subentry count for activity metrics
@@ -103,7 +111,9 @@ export class StellarMonitorService {
         await this.triggerLowBalanceAlert(nativeBalance, feeMetrics);
       } else if (this.lastAlertTime > 0) {
         // Reset cooldown if balance is restored above threshold
-        this.logger.log('Balance restored above threshold, resetting alert cooldown.');
+        this.logger.log(
+          'Balance restored above threshold, resetting alert cooldown.',
+        );
         this.lastAlertTime = 0;
       }
     } catch (error: any) {
@@ -153,18 +163,23 @@ export class StellarMonitorService {
     }
 
     // Convert stroops (1 XLM = 10,000,000 stroops) to XLM
-    const feesInXlm = transactions.map((tx) => parseFloat(tx.fee_charged) / 10_000_000);
+    const feesInXlm = transactions.map(
+      (tx) => parseFloat(tx.fee_charged) / 10_000_000,
+    );
     const totalFeesXlm = feesInXlm.reduce((sum, fee) => sum + fee, 0);
     const avgFeeXlm = totalFeesXlm / transactions.length;
 
     // Calculate time span of transactions
     const oldestTx = transactions[transactions.length - 1];
     const newestTx = transactions[0];
-    const timeSpanMs = new Date(newestTx.created_at).getTime() - new Date(oldestTx.created_at).getTime();
+    const timeSpanMs =
+      new Date(newestTx.created_at).getTime() -
+      new Date(oldestTx.created_at).getTime();
     const timeSpanDays = timeSpanMs / (1000 * 60 * 60 * 24);
 
     // Project monthly burn (30 days)
-    const projectedMonthlyBurnXlm = timeSpanDays > 0 ? (totalFeesXlm / timeSpanDays) * 30 : 0;
+    const projectedMonthlyBurnXlm =
+      timeSpanDays > 0 ? (totalFeesXlm / timeSpanDays) * 30 : 0;
 
     return {
       avgFeeXlm: Math.round(avgFeeXlm * 1_000_000) / 1_000_000,
@@ -194,9 +209,10 @@ export class StellarMonitorService {
     }
 
     const webhookUrl = this.config.get<string>('ALERT_WEBHOOK_URL');
-    const daysUntilEmpty = feeMetrics.projectedMonthlyBurnXlm > 0
-      ? Math.floor((balance / feeMetrics.projectedMonthlyBurnXlm) * 30)
-      : -1;
+    const daysUntilEmpty =
+      feeMetrics.projectedMonthlyBurnXlm > 0
+        ? Math.floor((balance / feeMetrics.projectedMonthlyBurnXlm) * 30)
+        : -1;
 
     const alertMessage = {
       // Discord embed format

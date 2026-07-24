@@ -164,7 +164,8 @@ export class AuthController {
 
   @Get('stellar-challenge')
   @ApiOperation({
-    summary: 'Get a SEP-10 challenge transaction for Stellar Web Authentication',
+    summary:
+      'Get a SEP-10 challenge transaction for Stellar Web Authentication',
     description:
       'Returns an XDR challenge transaction that the client must sign with their Stellar wallet key',
   })
@@ -192,7 +193,8 @@ export class AuthController {
     },
   })
   @ApiOperation({
-    summary: 'Authenticate via SEP-10 by submitting a signed challenge transaction',
+    summary:
+      'Authenticate via SEP-10 by submitting a signed challenge transaction',
   })
   @ApiResponse({
     status: 200,
@@ -210,7 +212,8 @@ export class AuthController {
   @UseGuards(WebhookSignatureGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Receive third-party webhook events (payment / KYC status updates)',
+    summary:
+      'Receive third-party webhook events (payment / KYC status updates)',
     description:
       'Caller must include an `x-webhook-signature` header containing ' +
       'the HMAC-SHA256 hex digest of the raw request body, signed with ' +

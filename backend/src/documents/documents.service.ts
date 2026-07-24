@@ -44,11 +44,15 @@ export class DocumentsService {
     );
 
     if (!isValidIpfsCid(hash)) {
-      throw new BadGatewayException('Storage provider returned an invalid IPFS CID.');
+      throw new BadGatewayException(
+        'Storage provider returned an invalid IPFS CID.',
+      );
     }
 
     // 2. Calculate SHA-256 of the stored (compressed) file for Stellar Anchoring
-    const fileHash = createHash('sha256').update(compressedBuffer).digest('hex');
+    const fileHash = createHash('sha256')
+      .update(compressedBuffer)
+      .digest('hex');
     const memo = buildDocumentMemo(tradeDealId, fileHash);
 
     // 2. Anchor the IPFS CID on Stellar via Memo.hash(SHA-256(CID))
@@ -118,7 +122,10 @@ export class DocumentsService {
     fileBuffer: Buffer,
     armoredSig: string,
   ): Promise<boolean> {
-    const trustedKeysRaw = this.config.get<string>('TRUSTED_AUTHORITY_KEYS', '');
+    const trustedKeysRaw = this.config.get<string>(
+      'TRUSTED_AUTHORITY_KEYS',
+      '',
+    );
     if (!trustedKeysRaw) return false;
     try {
       const publicKeys: openpgp.key.Key[] = [];

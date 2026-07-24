@@ -202,7 +202,10 @@ export class EscrowService {
 
         // Update deal status to completed
         const appTraceId = `app-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 10)}`;
-        await manager.update(TradeDeal, tradeDealId, { status: 'completed', appTraceId });
+        await manager.update(TradeDeal, tradeDealId, {
+          status: 'completed',
+          appTraceId,
+        });
 
         this.logger.info(
           `Deal ${tradeDealId} completed successfully. Stellar TX: ${stellarTxId}`,

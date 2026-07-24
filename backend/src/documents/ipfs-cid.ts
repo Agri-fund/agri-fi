@@ -1,4 +1,5 @@
-const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+const BASE58_ALPHABET =
+  '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
 
 function decodeBase58(value: string): Uint8Array | null {
   const bytes = [0];
@@ -48,15 +49,17 @@ function decodeBase32(value: string): Uint8Array | null {
   return Uint8Array.from(bytes);
 }
 
+// Returns the offset just past the varint starting at `offset`, or null if
+// the byte array ends before a terminating byte (top bit unset) is found.
+// Only the end offset is needed by callers — the decoded value itself is
+// never used.
 function readVarint(bytes: Uint8Array, offset: number): number | null {
-  let value = 0;
-  let shift = 0;
-
-  for (let index = offset; index < bytes.length && shift < 35; index += 1) {
-    const byte = bytes[index];
-    value |= (byte & 0x7f) << shift;
-    if ((byte & 0x80) === 0) return index + 1;
-    shift += 7;
+  for (
+    let index = offset;
+    index < bytes.length && index - offset < 5;
+    index += 1
+  ) {
+    if ((bytes[index] & 0x80) === 0) return index + 1;
   }
 
   return null;

@@ -260,7 +260,9 @@ describe('StellarController', () => {
         ),
       );
 
-      expect(mockStellarService.getPlatformMultiSigConfig).not.toHaveBeenCalled();
+      expect(
+        mockStellarService.getPlatformMultiSigConfig,
+      ).not.toHaveBeenCalled();
     });
 
     it('should handle retrieval errors', async () => {
