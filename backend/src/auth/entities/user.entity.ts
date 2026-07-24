@@ -141,4 +141,14 @@ export class User {
   @Exclude()
   @Column({ name: 'tax_id', nullable: true, transformer: encryptionTransformer })
   taxId: string | null;
+
+  /** Phone number — stored AES-256-GCM encrypted */
+  @Exclude()
+  @Column({ name: 'phone', nullable: true, transformer: encryptionTransformer })
+  phone: string | null;
+
+  /** Physical / mailing address — stored AES-256-GCM encrypted */
+  @Exclude()
+  @Column({ name: 'physical_address', nullable: true, transformer: encryptionTransformer })
+  physicalAddress: string | null;
 }

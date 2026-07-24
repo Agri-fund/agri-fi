@@ -70,6 +70,18 @@ export class InvestmentsService {
       });
     }
 
+    // Block investments from wallets that cannot hold USDC (#670).
+    const hasTrustline = await this.stellarService.checkUsdcTrustline(
+      investor.walletAddress,
+    );
+    if (!hasTrustline) {
+      throw new UnprocessableEntityException({
+        code: 'NO_USDC_TRUSTLINE',
+        message:
+          'Investor wallet has not established a USDC trustline. Please add a USDC trustline to your Stellar wallet before investing.',
+      });
+    }
+
     const investment = await this.dataSource.transaction(async (manager) => {
       // Load and lock the trade deal
       const tradeDeal = await manager.findOne(TradeDeal, {

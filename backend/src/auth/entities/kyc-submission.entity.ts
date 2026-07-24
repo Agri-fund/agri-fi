@@ -6,7 +6,9 @@ import {
   ManyToOne,
   JoinColumn,
 } from 'typeorm';
+import { Exclude } from 'class-transformer';
 import { User } from './user.entity';
+import { encryptionTransformer } from '../../common/encryption.transformer';
 
 export type KycSubmissionStatus = 'pending_review' | 'approved' | 'rejected' | 'expired';
 
@@ -31,10 +33,14 @@ export class KycSubmission {
   @Column({ name: 'is_corporate', default: false })
   isCorporate: boolean;
 
-  @Column({ name: 'company_name', nullable: true })
+  /** Company / business name — stored encrypted (PII) */
+  @Exclude()
+  @Column({ name: 'company_name', nullable: true, transformer: encryptionTransformer })
   companyName: string;
 
-  @Column({ name: 'registration_number', nullable: true })
+  /** Company registration number — stored encrypted (PII) */
+  @Exclude()
+  @Column({ name: 'registration_number', nullable: true, transformer: encryptionTransformer })
   registrationNumber: string;
 
   @Column({ name: 'business_license_url', nullable: true })

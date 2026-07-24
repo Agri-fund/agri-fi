@@ -34,6 +34,7 @@ import {
   planTransactionBatches,
   generateBatchMemo,
 } from './utils/transaction-chunker';
+import { HorizonFailoverClient } from './horizon-failover';
 
 export const SEQUENCE_REDIS_CLIENT = 'SEQUENCE_REDIS_CLIENT';
 const SEQUENCE_CACHE_TTL = 5; // seconds
@@ -58,7 +59,8 @@ export interface SignatureValidationResult {
 
 @Injectable()
 export class StellarService implements OnModuleInit, OnModuleDestroy {
-  private readonly server: Horizon.Server;
+  private readonly horizonClient: HorizonFailoverClient;
+  private get server(): Horizon.Server { return this.horizonClient.activeServer; }
   private readonly networkPassphrase: string;
   private readonly platformKeypair: Keypair;
   private readonly multiSigSigners: Keypair[];
@@ -80,13 +82,18 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     this.enableSequenceCache = true;
     this.logger.setContext(StellarService.name);
 
-    const horizonUrl = config.get<string>(
-      'STELLAR_HORIZON_URL',
-      'https://horizon-testnet.stellar.org',
+    // Support a comma-separated list of Horizon URLs for failover.
+    const horizonUrlsRaw = config.get<string>(
+      'STELLAR_HORIZON_URLS',
+      config.get<string>('STELLAR_HORIZON_URL', 'https://horizon-testnet.stellar.org'),
     );
+    const horizonUrls = horizonUrlsRaw!
+      .split(',')
+      .map((u) => u.trim())
+      .filter(Boolean);
     const network = config.get<string>('STELLAR_NETWORK', 'testnet');
 
-    this.server = new Horizon.Server(horizonUrl, { timeout: 30000 });
+    this.horizonClient = new HorizonFailoverClient(horizonUrls, this.logger, { timeout: 30000 });
     this.networkPassphrase =
       network === 'mainnet' ? Networks.PUBLIC : Networks.TESTNET;
 
@@ -865,17 +872,18 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       throw new Error('Invalid totalValue');
     }
 
-    // Calculate platform + farmer using BigNumber
+    // Platform takes 2%; the remaining 98% is the investor pool.
+    // Farmer does not receive a direct escrow payout — their return is handled
+    // off-chain between the trader and the farmer.
     const platformStroopsBN = totalStroopsBN.multipliedBy(0.02).integerValue(
       BigNumber.ROUND_FLOOR,
     );
-    const farmerStroopsBN = totalStroopsBN.multipliedBy(0.98).integerValue(
-      BigNumber.ROUND_FLOOR,
-    );
+    // investorPool = totalStroops - platformFee (98% of total, rounded down so
+    // any leftover stroop goes to the final investor via the remainder path).
+    const investorPoolBN = totalStroopsBN.minus(platformStroopsBN);
 
-    const totalStroops = totalStroopsBN.toNumber();
     const platformStroops = platformStroopsBN.toNumber();
-    const farmerStroops = farmerStroopsBN.toNumber();
+    const investorPool = investorPoolBN.toNumber();
 
     // Compute total tokens safely
     const totalTokens = investorShares.reduce(
@@ -928,30 +936,21 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         networkPassphrase: this.networkPassphrase,
       });
 
-      if (batchIdx === 0) {
-        txBuilder.addOperation(
-          Operation.payment({
-            destination: farmerWallet,
-            asset: this.usdcAsset,
-            amount: new BigNumber(farmerStroops)
-              .dividedBy(1e7)
-              .toFixed(7),
-          }),
-        );
-      }
-
       batch.forEach((share, localIdx) => {
         const globalIdx = batchStart + localIdx;
-        let shareStroops = Math.floor(
-          (share.tokenAmount / totalTokens) * totalStroops,
-        );
+        // Use BigNumber division against the investor pool (not totalStroops) to
+        // avoid accumulating float error across investors.
+        let shareStroops = investorPoolBN
+          .multipliedBy(share.tokenAmount)
+          .dividedBy(totalTokens)
+          .integerValue(BigNumber.ROUND_FLOOR)
+          .toNumber();
 
         if (globalIdx === investorShares.length - 1) {
-          shareStroops =
-            totalStroops -
-            farmerStroops -
-            platformStroops -
-            distributedToInvestors;
+          // Give the last investor all remaining stroops so the sum is exact.
+          // Because shareStroops so far = sum of floor()-rounded prior investors,
+          // the remainder is always >= 0.
+          shareStroops = investorPool - distributedToInvestors;
         }
 
         distributedToInvestors += shareStroops;
@@ -1336,6 +1335,19 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         b.asset_code === asset.getCode() &&
         b.asset_issuer === asset.getIssuer(),
     );
+  }
+
+  /**
+   * Returns true when the given wallet has established a USDC trustline.
+   * Returns false if the account does not exist or the trustline is absent.
+   */
+  async checkUsdcTrustline(walletAddress: string): Promise<boolean> {
+    try {
+      const account = await this.server.loadAccount(walletAddress);
+      return this.hasTrustline(account, this.usdcAsset);
+    } catch {
+      return false;
+    }
   }
 
   /**
