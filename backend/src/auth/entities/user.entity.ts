@@ -15,7 +15,7 @@ export type UserRole =
   | 'investor'
   | 'company_admin'
   | 'admin';
-export type KycStatus = 'pending' | 'verified' | 'rejected';
+export type KycStatus = 'pending' | 'verified' | 'rejected' | 'expired';
 
 export interface CompanyDetails {
   companyName?: string;
@@ -61,7 +61,7 @@ export class User {
   @Column({ name: 'kyc_status', default: 'pending' })
   @ApiProperty({
     description: 'KYC verification status',
-    enum: ['pending', 'verified', 'rejected'],
+    enum: ['pending', 'verified', 'rejected', 'expired'],
     example: 'verified',
   })
   kycStatus: KycStatus;

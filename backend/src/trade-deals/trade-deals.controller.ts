@@ -18,6 +18,7 @@ import {
   ApiParam,
 } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
+import { Throttle } from '@nestjs/throttler';
 import { TradeDealsService } from './trade-deals.service';
 import { TradeDeal } from './entities/trade-deal.entity';
 import { User } from '../auth/entities/user.entity';
@@ -89,6 +90,7 @@ export class TradeDealsController {
   }
 
   @Get()
+  @Throttle({ marketplace: { limit: 60, ttl: 60000 } })
   @ApiOperation({ summary: 'List open trade deals (marketplace)' })
   @ApiQuery({ name: 'commodity', required: false, example: 'Cocoa' })
   @ApiQuery({ name: 'page', required: false, example: 1 })
@@ -107,6 +109,7 @@ export class TradeDealsController {
   }
 
   @Get(':id')
+  @Throttle({ marketplace: { limit: 60, ttl: 60000 } })
   @UseGuards(OptionalJwtGuard, TradeDealsGuard)
   @ApiOperation({
     summary: 'Get trade deal detail including documents and milestones',

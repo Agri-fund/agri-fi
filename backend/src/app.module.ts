@@ -35,8 +35,24 @@ import { ScheduleModule } from '@nestjs/schedule';
     ScheduleModule.forRoot(),
     ThrottlerModule.forRoot([
       {
+        name: 'default',
         ttl: parseInt(process.env.RATE_LIMIT_TTL || '60000'),
         limit: parseInt(process.env.RATE_LIMIT_GLOBAL || '100'),
+      },
+      {
+        name: 'login',
+        ttl: 60000,
+        limit: 5,
+      },
+      {
+        name: 'kyc',
+        ttl: 60000,
+        limit: 3,
+      },
+      {
+        name: 'marketplace',
+        ttl: 60000,
+        limit: 60,
       },
     ]),
     LoggerModule.forRoot(loggingConfig),

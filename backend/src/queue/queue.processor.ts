@@ -325,6 +325,22 @@ export class QueueProcessor {
           subject = 'KYC Verification Approved';
           text = `Your KYC verification has been approved. You can now participate in investments.`;
           html = `<h3>KYC Approved</h3><p>Your KYC verification has been approved. You can now participate in investments.</p>`;
+        } else if (data.type === 'kyc_expiration_30') {
+          subject = 'KYC Document Expiring in 30 Days';
+          text = `Your KYC documents will expire in 30 days. Please update them to continue using our services.`;
+          html = `<h3>KYC Documents Expiring Soon</h3><p>Your KYC documents will expire in 30 days. Please update them to continue using our services.</p>`;
+        } else if (data.type === 'kyc_expiration_15') {
+          subject = 'KYC Document Expiring in 15 Days';
+          text = `Your KYC documents will expire in 15 days. Please update them to continue using our services.`;
+          html = `<h3>KYC Documents Expiring Soon</h3><p>Your KYC documents will expire in 15 days. Please update them to continue using our services.</p>`;
+        } else if (data.type === 'kyc_expiration_3') {
+          subject = 'KYC Document Expiring in 3 Days';
+          text = `Your KYC documents will expire in 3 days. Please update them immediately to continue using our services.`;
+          html = `<h3>KYC Documents Expiring Soon</h3><p>Your KYC documents will expire in 3 days. Please update them immediately to continue using our services.</p>`;
+        } else if (data.type === 'kyc_expired') {
+          subject = 'KYC Documents Expired';
+          text = `Your KYC documents have expired. Your account has been restricted. Please update your documents to restore access.`;
+          html = `<h3>KYC Documents Expired</h3><p>Your KYC documents have expired. Your account has been restricted. Please update your documents to restore access.</p>`;
         } else if (data.type === 'deal_completed') {
           subject = `Deal Completed: ${data.dealDetails?.commodity}`;
           text = `The deal you participated in (${data.dealDetails?.commodity}) has been completed.`;

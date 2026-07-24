@@ -9,6 +9,8 @@ import {
   ForbiddenException,
   Res,
   Header,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import { Response } from 'express';
 import {
@@ -46,6 +48,19 @@ export class UsersController {
   @ApiResponse({ status: 404, description: 'User not found' })
   async getCurrentUser(@Request() req: AuthRequest) {
     return this.usersService.getProfile(req.user.id);
+  }
+
+  @Delete('me')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Delete the authenticated user account (GDPR Right to be Forgotten)' })
+  @ApiResponse({
+    status: 204,
+    description: 'Account deleted successfully',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'User not found' })
+  async deleteAccount(@Request() req: AuthRequest) {
+    await this.usersService.deleteAccount(req.user.id);
   }
 
   @Get('me/deals')

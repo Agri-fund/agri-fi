@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsOptional, IsString, IsUrl } from 'class-validator';
+import { IsBoolean, IsOptional, IsString, IsUrl, IsDateString } from 'class-validator';
 
 export class KycDto {
   @ApiPropertyOptional({
@@ -28,7 +28,7 @@ export class KycDto {
   @IsOptional()
   isCorporate?: boolean;
 
-  @ApiPropertyOptional({ example: 'AgriCorp Ltd', description: 'Company Name' })
+  @ApiPropertyOptional({ example: 'Agri Corp Ltd', description: 'Company Name' })
   @IsString()
   @IsOptional()
   companyName?: string;
@@ -58,4 +58,12 @@ export class KycDto {
   @IsOptional()
   @IsUrl()
   articlesOfIncorporationUrl?: string;
+
+  @ApiPropertyOptional({
+    example: '2025-12-31',
+    description: 'Document expiration date (ISO 8601)',
+  })
+  @IsDateString()
+  @IsOptional()
+  documentExpiresAt?: string;
 }
