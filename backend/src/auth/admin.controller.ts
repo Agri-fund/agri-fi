@@ -20,7 +20,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { User } from './entities/user.entity';
 import { ApiBody } from '@nestjs/swagger';
-import { IsIn, IsString, IsBoolean, IsUUID, IsOptional } from 'class-validator';
+import { IsIn, IsString, IsBoolean, IsUUID } from 'class-validator';
 import { Roles } from './decorators/roles.decorator';
 import { RolesGuard } from './roles.guard';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -94,7 +94,11 @@ export class AdminController {
     @Param('id') id: string,
     @Query('reason') reason?: string,
   ) {
-    return this.authService.approveCorporateKycSubmission(id, req.user.id, reason);
+    return this.authService.approveCorporateKycSubmission(
+      id,
+      req.user.id,
+      reason,
+    );
   }
 
   @Post('users/:userId/role')
@@ -105,12 +109,18 @@ export class AdminController {
     @Param('userId') userId: string,
     @Body() dto: UpdateUserRoleDto,
   ) {
-    return this.authService.updateUserRole(userId, dto.role, req.user.id, dto.reason);
+    return this.authService.updateUserRole(
+      userId,
+      dto.role,
+      req.user.id,
+      dto.reason,
+    );
   }
 
   @Post('freeze-asset')
   @ApiOperation({
-    summary: 'Freeze or unfreeze an investor trustline for a trade asset (AML compliance)',
+    summary:
+      'Freeze or unfreeze an investor trustline for a trade asset (AML compliance)',
   })
   @ApiBody({ type: FreezeAssetDto })
   @ApiResponse({

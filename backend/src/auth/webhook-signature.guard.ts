@@ -22,9 +22,7 @@ const SIGNATURE_HEADER = 'x-webhook-signature';
 @Injectable()
 export class WebhookSignatureGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
-    const req = context
-      .switchToHttp()
-      .getRequest<RawBodyRequest<Request>>();
+    const req = context.switchToHttp().getRequest<RawBodyRequest<Request>>();
 
     const secret = process.env.WEBHOOK_SECRET;
     if (!secret) {
@@ -43,9 +41,7 @@ export class WebhookSignatureGuard implements CanActivate {
       throw new UnauthorizedException('Request body is empty.');
     }
 
-    const expected = createHmac('sha256', secret)
-      .update(rawBody)
-      .digest('hex');
+    const expected = createHmac('sha256', secret).update(rawBody).digest('hex');
 
     const expectedBuf = Buffer.from(expected, 'utf8');
     const incomingBuf = Buffer.from(incomingSignature, 'utf8');

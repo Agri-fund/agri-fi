@@ -20,7 +20,6 @@ import {
 } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { AuthGuard } from '@nestjs/passport';
-import { unlink } from 'fs/promises';
 import { DocumentsService } from './documents.service';
 import { ClamScanService } from './clam-scan.service';
 import { User } from '../auth/entities/user.entity';
@@ -78,11 +77,15 @@ export class DocumentsController {
   })
   @ApiResponse({
     status: 400,
-    description: 'Missing file, unsupported type, file too large, or virus detected',
+    description:
+      'Missing file, unsupported type, file too large, or virus detected',
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'Trade deal not found' })
-  @ApiResponse({ status: 429, description: 'Too Many Requests – IPFS proxy limit is 20 per minute' })
+  @ApiResponse({
+    status: 429,
+    description: 'Too Many Requests – IPFS proxy limit is 20 per minute',
+  })
   async uploadDocument(
     @UploadedFile() file: Express.Multer.File,
     @Body()

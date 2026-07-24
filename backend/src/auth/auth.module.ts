@@ -20,7 +20,13 @@ import { AdminAction } from '../database/entities/admin-action.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, KycSubmission, TradeDeal, LoginLog, AdminAction]),
+    TypeOrmModule.forFeature([
+      User,
+      KycSubmission,
+      TradeDeal,
+      LoginLog,
+      AdminAction,
+    ]),
     QueueModule,
     NotificationsModule,
     PassportModule,

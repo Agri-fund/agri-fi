@@ -38,7 +38,6 @@ import {
 export const SEQUENCE_REDIS_CLIENT = 'SEQUENCE_REDIS_CLIENT';
 const SEQUENCE_CACHE_TTL = 5; // seconds
 
-
 export interface InvestorShare {
   walletAddress: string;
   tokenAmount: number;
@@ -63,7 +62,10 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
   private readonly platformKeypair: Keypair;
   private readonly multiSigSigners: Keypair[];
   private readonly usdcAsset: Asset;
-  private readonly localSequenceCache: Map<string, { seq: string; expiresAt: number }>;
+  private readonly localSequenceCache: Map<
+    string,
+    { seq: string; expiresAt: number }
+  >;
   private readonly enableSequenceCache: boolean;
 
   constructor(
@@ -111,7 +113,6 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     // Removed ENCRYPTION_KEY validation as KMS handles encryption.
     // Ensure KMS_KEY_ID is set via environment.
 
-
     const usdcAssetCode = config.get<string>('USDC_ASSET_CODE', 'USDC');
     const usdcIssuer = config.get<string>('USDC_ISSUER', '');
     this.usdcAsset = usdcIssuer
@@ -140,7 +141,10 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     const maxSigners = 2; // We'll have 3 total: platform key + 2 additional signers
 
     for (let i = 1; i <= maxSigners; i++) {
-      const secretKey = config.get<string>(`STELLAR_MULTISIG_SIGNER_${i}_SECRET`, '');
+      const secretKey = config.get<string>(
+        `STELLAR_MULTISIG_SIGNER_${i}_SECRET`,
+        '',
+      );
       if (secretKey) {
         try {
           signers.push(Keypair.fromSecret(secretKey));
@@ -238,7 +242,8 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     await this.submitWithRetry(tx);
 
     // Add second signer in a separate transaction
-    const updatedPlatformAccount = await this.server.loadAccount(platformPublicKey);
+    const updatedPlatformAccount =
+      await this.server.loadAccount(platformPublicKey);
 
     const secondSignerOp = Operation.setOptions({
       signer: {
@@ -393,7 +398,10 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     return null;
   }
 
-  private async setCachedSequence(publicKey: string, seq: string): Promise<void> {
+  private async setCachedSequence(
+    publicKey: string,
+    seq: string,
+  ): Promise<void> {
     const expiresAt = Date.now() + SEQUENCE_CACHE_TTL * 1000;
     this.localSequenceCache.set(publicKey, { seq, expiresAt });
 
@@ -471,7 +479,10 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     try {
       tx = TransactionBuilder.fromXDR(signedXdr, this.networkPassphrase);
     } catch {
-      return { valid: false, reason: 'Invalid XDR: could not decode transaction' };
+      return {
+        valid: false,
+        reason: 'Invalid XDR: could not decode transaction',
+      };
     }
 
     const opTypeMap: Record<number, string> = {
@@ -866,12 +877,12 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     }
 
     // Calculate platform + farmer using BigNumber
-    const platformStroopsBN = totalStroopsBN.multipliedBy(0.02).integerValue(
-      BigNumber.ROUND_FLOOR,
-    );
-    const farmerStroopsBN = totalStroopsBN.multipliedBy(0.98).integerValue(
-      BigNumber.ROUND_FLOOR,
-    );
+    const platformStroopsBN = totalStroopsBN
+      .multipliedBy(0.02)
+      .integerValue(BigNumber.ROUND_FLOOR);
+    const farmerStroopsBN = totalStroopsBN
+      .multipliedBy(0.98)
+      .integerValue(BigNumber.ROUND_FLOOR);
 
     const totalStroops = totalStroopsBN.toNumber();
     const platformStroops = platformStroopsBN.toNumber();
@@ -933,9 +944,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
           Operation.payment({
             destination: farmerWallet,
             asset: this.usdcAsset,
-            amount: new BigNumber(farmerStroops)
-              .dividedBy(1e7)
-              .toFixed(7),
+            amount: new BigNumber(farmerStroops).dividedBy(1e7).toFixed(7),
           }),
         );
       }
@@ -995,9 +1004,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
           Operation.payment({
             destination: platformWallet,
             asset: this.usdcAsset,
-            amount: new BigNumber(platformStroops)
-              .dividedBy(1e7)
-              .toFixed(7),
+            amount: new BigNumber(platformStroops).dividedBy(1e7).toFixed(7),
           }),
         );
       }
@@ -1264,7 +1271,8 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       return {
         ...base,
         valid: false,
-        error: 'Failed to parse XDR envelope. Ensure the transaction was built for the correct network.',
+        error:
+          'Failed to parse XDR envelope. Ensure the transaction was built for the correct network.',
       };
     }
 
@@ -1358,20 +1366,15 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
    * Verifies an account's XLM balance exceeds the minimum base reserve
    * before sending transactions. Returns the balance and minimum required.
    */
-  async checkMinimumReserve(
-    publicKey: string,
-  ): Promise<{
+  async checkMinimumReserve(publicKey: string): Promise<{
     sufficient: boolean;
     balance: string;
     minimumRequired: string;
   }> {
     const account = await this.server.loadAccount(publicKey);
     const xlmBalance =
-      (
-        account.balances.find(
-          (b: any) => b.asset_type === 'native',
-        ) as any
-      )?.balance ?? '0';
+      (account.balances.find((b: any) => b.asset_type === 'native') as any)
+        ?.balance ?? '0';
     const minRequired = await this.getMinimumBalance(account);
     return {
       sufficient: new BigNumber(xlmBalance).gte(minRequired),
@@ -1517,7 +1520,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     if (!pathResult) {
       throw new Error(
         `No path found from ${sourceAsset.getCode()} to USDC for ${sendAmount} ${sourceAsset.getCode()}. ` +
-        'Ensure the Stellar DEX has sufficient liquidity for this conversion.',
+          'Ensure the Stellar DEX has sufficient liquidity for this conversion.',
       );
     }
 
@@ -1539,7 +1542,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       if (xlmBalance < minRequired) {
         throw new Error(
           `Insufficient XLM balance for trustline base reserve. ` +
-          `Need at least ${minRequired.toFixed(3)} XLM, have ${xlmBalance} XLM.`,
+            `Need at least ${minRequired.toFixed(3)} XLM, have ${xlmBalance} XLM.`,
         );
       }
     }
@@ -1852,7 +1855,11 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     const tradeAsset = createAsset(assetCode, issuerPublicKey);
 
     const LIMIT = 200;
-    let page = await this.server.accounts().forAsset(tradeAsset).limit(LIMIT).call();
+    let page = await this.server
+      .accounts()
+      .forAsset(tradeAsset)
+      .limit(LIMIT)
+      .call();
 
     const holders: Array<{ walletAddress: string; tokenAmount: number }> = [];
 
@@ -1869,7 +1876,10 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         if (balanceEntry) {
           const bal = parseFloat(balanceEntry.balance || '0');
           if (bal > 0) {
-            holders.push({ walletAddress: acc.account_id ?? acc.id, tokenAmount: bal });
+            holders.push({
+              walletAddress: acc.account_id ?? acc.id,
+              tokenAmount: bal,
+            });
           }
         }
       }
@@ -1879,7 +1889,10 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         try {
           page = await (page as any).next();
         } catch (e) {
-          this.logger.warn({ err: e }, 'Failed to fetch next page of asset holders');
+          this.logger.warn(
+            { err: e },
+            'Failed to fetch next page of asset holders',
+          );
           break;
         }
       } else {
@@ -2140,7 +2153,10 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     }
 
     if (operations.length > MAX_OPERATIONS_PER_TX) {
-      const plan = planTransactionBatches(operations.length, MAX_OPERATIONS_PER_TX);
+      const plan = planTransactionBatches(
+        operations.length,
+        MAX_OPERATIONS_PER_TX,
+      );
       this.logger.info(
         {
           totalOperations: operations.length,
@@ -2158,7 +2174,11 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     const txHashes: string[] = [];
 
     // Submit transactions sequentially with correct sequence numbers
-    for (let chunkIndex = 0; chunkIndex < operationChunks.length; chunkIndex++) {
+    for (
+      let chunkIndex = 0;
+      chunkIndex < operationChunks.length;
+      chunkIndex++
+    ) {
       const chunk = operationChunks[chunkIndex];
       const totalChunks = operationChunks.length;
 

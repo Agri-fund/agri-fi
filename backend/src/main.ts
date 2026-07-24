@@ -18,7 +18,6 @@ import {
   VersioningType,
 } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
-import { Transport, MicroserviceOptions } from '@nestjs/microservices';
 import { AppModule } from './app.module';
 import { applySecurityHeaders } from './common/middleware/security-headers.middleware';
 import { CustomLogger } from './common/logger/custom-logger.service';
@@ -35,20 +34,22 @@ async function bootstrap() {
   });
 
   app.getHttpAdapter().getInstance().disable('x-powered-by');
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'"],
-      styleSrc: ["'self'", "https:"],
-      imgSrc: ["'self'", "data:"],
-      connectSrc: ["'self'"],
-      fontSrc: ["'self'", "https:"],
-      objectSrc: ["'none'"],
-    },
-  },
-  frameguard: { action: 'deny' },
-}));
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'"],
+          styleSrc: ["'self'", 'https:'],
+          imgSrc: ["'self'", 'data:'],
+          connectSrc: ["'self'"],
+          fontSrc: ["'self'", 'https:'],
+          objectSrc: ["'none'"],
+        },
+      },
+      frameguard: { action: 'deny' },
+    }),
+  );
 
   // DNS rebinding protection: reject requests whose Host header does not match
   // a known domain. /health is exempted so kubelet liveness/readiness probes
@@ -76,7 +77,9 @@ app.use(helmet({
 
   // CSRF protection for cookie-based (session) endpoints.
   // JWT-only routes are unaffected; the token is exposed via GET /csrf-token.
-  const csrfProtection = csrf({ cookie: { httpOnly: true, sameSite: 'strict' } });
+  const csrfProtection = csrf({
+    cookie: { httpOnly: true, sameSite: 'strict' },
+  });
   app.use(csrfProtection);
 
   // Expose CSRF token so clients can fetch it before mutating requests
@@ -112,7 +115,9 @@ app.use(helmet({
 
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
 
-  const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? 'http://localhost:3000')
+  const allowedOrigins = (
+    process.env.ALLOWED_ORIGINS ?? 'http://localhost:3000'
+  )
     .split(',')
     .map((origin) => origin.trim())
     .filter((origin) => origin.length > 0);

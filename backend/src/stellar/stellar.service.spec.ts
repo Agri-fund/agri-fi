@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { StellarService, InvestorShare } from './stellar.service';
 import { PinoLogger } from 'nestjs-pino';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { TransactionLog, TxStatus } from './entities/transaction-log.entity';
+import { TransactionLog } from './entities/transaction-log.entity';
 import {
   Keypair,
   TransactionBuilder,
@@ -256,7 +256,10 @@ describe('StellarService', () => {
       const signer = Keypair.random();
       const xdr = buildSignedXdr(signer);
 
-      const result = service.validateTransactionSignatures(xdr, signer.publicKey());
+      const result = service.validateTransactionSignatures(
+        xdr,
+        signer.publicKey(),
+      );
 
       expect(result.valid).toBe(true);
       expect(result.publicKey).toBe(signer.publicKey());
@@ -270,7 +273,10 @@ describe('StellarService', () => {
       const unrelated = Keypair.random();
       const xdr = buildSignedXdr(signer);
 
-      const result = service.validateTransactionSignatures(xdr, unrelated.publicKey());
+      const result = service.validateTransactionSignatures(
+        xdr,
+        unrelated.publicKey(),
+      );
 
       expect(result.valid).toBe(false);
       expect(result.signatureCount).toBe(1);
@@ -306,7 +312,10 @@ describe('StellarService', () => {
         .setTimeout(30)
         .build();
 
-      const result = service.validateTransactionSignatures(tx.toXDR(), signer.publicKey());
+      const result = service.validateTransactionSignatures(
+        tx.toXDR(),
+        signer.publicKey(),
+      );
 
       expect(result.valid).toBe(false);
       expect(result.signatureCount).toBe(0);
@@ -317,7 +326,10 @@ describe('StellarService', () => {
       const signer = Keypair.random();
       const xdr = buildSignedXdr(signer);
 
-      const result = service.validateTransactionSignatures(xdr, 'not-a-public-key');
+      const result = service.validateTransactionSignatures(
+        xdr,
+        'not-a-public-key',
+      );
 
       expect(result.valid).toBe(false);
       expect(result.error).toMatch(/Invalid public key/i);
@@ -576,7 +588,7 @@ describe('StellarService', () => {
     it('should handle batching for large investor lists', async () => {
       const investorShares: InvestorShare[] = Array.from(
         { length: 150 },
-        (_, i) => ({
+        (_, _i) => ({
           walletAddress: Keypair.random().publicKey(),
           tokenAmount: 1,
           totalTokens: 150,
@@ -863,7 +875,9 @@ describe('StellarService', () => {
 
     describe('initializeMultiSigSigners', () => {
       it('should load multi-sig signers from environment variables', () => {
-        const result = (service as any).initializeMultiSigSigners(mockConfigWithSigners);
+        const result = (service as any).initializeMultiSigSigners(
+          mockConfigWithSigners,
+        );
 
         expect(result).toHaveLength(2);
         expect(result[0].publicKey()).toBe(signer1.publicKey());
@@ -876,16 +890,22 @@ describe('StellarService', () => {
 
         try {
           const testConfig = {
-            get: jest.fn((key: string, defaultVal?: string) => defaultVal ?? ''),
+            get: jest.fn(
+              (key: string, defaultVal?: string) => defaultVal ?? '',
+            ),
           };
 
           (service as any).initializeMultiSigSigners(testConfig);
 
           expect(mockLogger.warn).toHaveBeenCalledWith(
-            expect.stringContaining('STELLAR_MULTISIG_SIGNER_1_SECRET not configured'),
+            expect.stringContaining(
+              'STELLAR_MULTISIG_SIGNER_1_SECRET not configured',
+            ),
           );
           expect(mockLogger.warn).toHaveBeenCalledWith(
-            expect.stringContaining('STELLAR_MULTISIG_SIGNER_2_SECRET not configured'),
+            expect.stringContaining(
+              'STELLAR_MULTISIG_SIGNER_2_SECRET not configured',
+            ),
           );
         } finally {
           process.env.NODE_ENV = originalEnv;
@@ -947,7 +967,9 @@ describe('StellarService', () => {
         });
 
         // Verify two transactions were submitted (one per signer)
-        expect(mockServer.submitTransaction.mock.calls.length).toBeGreaterThanOrEqual(1);
+        expect(
+          mockServer.submitTransaction.mock.calls.length,
+        ).toBeGreaterThanOrEqual(1);
       });
 
       it('should log multi-sig configuration', async () => {
@@ -964,13 +986,18 @@ describe('StellarService', () => {
         expect(mockLogger.info).toHaveBeenCalledWith(
           expect.objectContaining({
             platformPublicKey,
-            signers: expect.arrayContaining([signer1.publicKey(), signer2.publicKey()]),
+            signers: expect.arrayContaining([
+              signer1.publicKey(),
+              signer2.publicKey(),
+            ]),
             masterWeight: 1,
             lowThreshold: 1,
             medThreshold: 2,
             highThreshold: 2,
           }),
-          expect.stringContaining('Platform wallet multi-sig configuration completed'),
+          expect.stringContaining(
+            'Platform wallet multi-sig configuration completed',
+          ),
         );
       });
 
@@ -1039,9 +1066,9 @@ describe('StellarService', () => {
 
         const config = await service.getPlatformMultiSigConfig();
 
-        expect(config.signers.every((s) => s.key && typeof s.weight === 'number')).toBe(
-          true,
-        );
+        expect(
+          config.signers.every((s) => s.key && typeof s.weight === 'number'),
+        ).toBe(true);
       });
 
       it('should handle empty signer list', async () => {

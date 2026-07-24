@@ -297,7 +297,8 @@ export class TradeDealsService {
         await this.stellarService.createEscrowAccount(dealId);
 
       // Encrypt the escrow secret
-      const encryptedEscrowSecret = await this.stellarService.encryptSecret(escrowSecretKey);
+      const encryptedEscrowSecret =
+        await this.stellarService.encryptSecret(escrowSecretKey);
 
       // Update deal with escrow data
       await this.tradeDealRepo.update(dealId, {
@@ -501,11 +502,7 @@ export class TradeDealsService {
         (inv) => inv.status === InvestmentStatus.CONFIRMED,
       ) || [];
 
-    if (
-      deal.issuerPublicKey &&
-      deal.issuerSecretKey &&
-      deal.stellarAssetTxId
-    ) {
+    if (deal.issuerPublicKey && deal.issuerSecretKey && deal.stellarAssetTxId) {
       const investorShares: { walletAddress: string; tokenAmount: number }[] =
         confirmedInvestments
           .filter((inv) => inv.investor?.walletAddress)
@@ -584,7 +581,7 @@ export class TradeDealsService {
     return saved;
   }
 
-  async findByUser(userId: string, role: string): Promise<any[]>{
+  async findByUser(userId: string, role: string): Promise<any[]> {
     if (role !== 'farmer' && role !== 'trader') {
       return [];
     }

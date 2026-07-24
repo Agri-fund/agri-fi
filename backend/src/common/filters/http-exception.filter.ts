@@ -44,7 +44,9 @@ export class HttpExceptionFilter implements ExceptionFilter {
     } else {
       message = IS_PROD
         ? 'Internal Server Error'
-        : (exception instanceof Error ? exception.message : String(exception));
+        : exception instanceof Error
+          ? exception.message
+          : String(exception);
     }
 
     response.status(status).json({
