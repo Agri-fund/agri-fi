@@ -2,7 +2,8 @@ module.exports = {
   moduleFileExtensions: ['js', 'json', 'ts'],
   rootDir: '.',
   roots: ['<rootDir>/src', '<rootDir>/test'],
-  testRegex: '.*\\.(spec|e2e-spec)\\.ts$',
+  // Unit tests only - exclude E2E tests which should be run separately with jest.e2e.config.js
+  testRegex: '.*\\.spec\\.ts$',
   transform: {
     '^.+\\.(t|j)s$': [
       'ts-jest',
