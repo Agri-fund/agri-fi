@@ -6,9 +6,17 @@ import {
   Query,
   Body,
   UseGuards,
+  UseInterceptors,
   Request,
   HttpCode,
+  Inject,
 } from '@nestjs/common';
+import {
+  CACHE_MANAGER,
+  CacheInterceptor,
+  CacheTTL,
+} from '@nestjs/cache-manager';
+import type { Cache } from 'cache-manager';
 import {
   ApiTags,
   ApiOperation,
@@ -18,11 +26,13 @@ import {
   ApiParam,
 } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
+import { Throttle } from '@nestjs/throttler';
 import { TradeDealsService } from './trade-deals.service';
 import { TradeDeal } from './entities/trade-deal.entity';
 import { User } from '../auth/entities/user.entity';
 import { KycGuard } from '../auth/kyc.guard';
-import { Roles, RolesGuard } from '../auth/roles.guard';
+import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
 import { OptionalJwtGuard } from '../auth/optional-jwt.guard';
 import { CreateTradeDealDto } from './dto/create-trade-deal.dto';
 
@@ -35,7 +45,10 @@ interface AuthRequest extends Request {
 @ApiTags('trade-deals')
 @Controller('trade-deals')
 export class TradeDealsController {
-  constructor(private readonly tradeDealsService: TradeDealsService) {}
+  constructor(
+    private readonly tradeDealsService: TradeDealsService,
+    @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
+  ) {}
 
   @Post()
   @UseGuards(AuthGuard('jwt'), RolesGuard, KycGuard)
@@ -84,10 +97,15 @@ export class TradeDealsController {
     @Param('id') id: string,
     @Request() req: AuthRequest,
   ): Promise<TradeDeal> {
-    return this.tradeDealsService.publishDeal(id, req.user.id);
+    const deal = await this.tradeDealsService.publishDeal(id, req.user.id);
+    await this.cacheManager.reset();
+    return deal;
   }
 
   @Get()
+  @Throttle({ marketplace: { limit: 60, ttl: 60000 } })
+  @UseInterceptors(CacheInterceptor)
+  @CacheTTL(30000)
   @ApiOperation({ summary: 'List open trade deals (marketplace)' })
   @ApiQuery({ name: 'commodity', required: false, example: 'Cocoa' })
   @ApiQuery({ name: 'page', required: false, example: 1 })
@@ -106,6 +124,7 @@ export class TradeDealsController {
   }
 
   @Get(':id')
+  @Throttle({ marketplace: { limit: 60, ttl: 60000 } })
   @UseGuards(OptionalJwtGuard, TradeDealsGuard)
   @ApiOperation({
     summary: 'Get trade deal detail including documents and milestones',

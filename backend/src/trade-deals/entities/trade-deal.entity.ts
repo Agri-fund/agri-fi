@@ -20,7 +20,8 @@ export type TradeDealStatus =
   | 'delivered'
   | 'completed'
   | 'failed'
-  | 'canceled';
+  | 'canceled'
+  | 'expired';
 
 @Entity('trade_deals')
 export class TradeDeal {
@@ -38,7 +39,7 @@ export class TradeDeal {
   })
   commodity: string;
 
-  @Column({ type: 'numeric', precision: 10, scale: 2 })
+  @Column({ type: 'decimal', precision: 18, scale: 2 })
   @ApiProperty({
     description: 'Quantity of the commodity',
     example: '1000.00',
@@ -53,7 +54,7 @@ export class TradeDeal {
   })
   quantityUnit: string;
 
-  @Column({ name: 'total_value', type: 'numeric', precision: 10, scale: 2 })
+  @Column({ name: 'total_value', type: 'decimal', precision: 18, scale: 2 })
   @ApiProperty({
     description: 'Total deal value in USD',
     example: '50000.00',
@@ -88,6 +89,7 @@ export class TradeDeal {
       'completed',
       'failed',
       'canceled',
+      'expired',
     ],
     example: 'open',
   })
@@ -141,8 +143,8 @@ export class TradeDeal {
 
   @Column({
     name: 'total_invested',
-    type: 'numeric',
-    precision: 10,
+    type: 'decimal',
+    precision: 18,
     scale: 2,
     default: 0,
   })
@@ -194,4 +196,13 @@ export class TradeDeal {
     example: '2024-01-15T10:30:00Z',
   })
   createdAt: Date;
+
+  @Column({ name: 'app_trace_id', nullable: true })
+  @ApiProperty({
+    description: 'Application-generated trace ID for authorized updates',
+    example: 'app-1234567890abcdef',
+    required: false,
+    nullable: true,
+  })
+  appTraceId: string | null;
 }

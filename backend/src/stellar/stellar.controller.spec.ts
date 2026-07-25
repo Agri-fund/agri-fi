@@ -15,6 +15,8 @@ import {
 
 const mockStellarService = {
   submitTransaction: jest.fn(),
+  setupPlatformMultiSig: jest.fn(),
+  getPlatformMultiSigConfig: jest.fn(),
 };
 
 const mockConfigService = {
@@ -26,8 +28,8 @@ const mockConfigService = {
   }),
 };
 
-const mockRequest = (walletAddress: string | null) => ({
-  user: { walletAddress },
+const mockRequest = (walletAddress: string | null, role: string = 'user') => ({
+  user: { walletAddress, role },
 });
 
 describe('StellarController', () => {
@@ -135,5 +137,176 @@ describe('StellarController', () => {
 
     expect(result).toEqual({ hash: 'abc123', success: true });
     expect(mockStellarService.submitTransaction).toHaveBeenCalledWith(xdr);
+  });
+
+  describe('setupPlatformMultiSig (Issue #352)', () => {
+    it('should setup multi-sig for admin users', async () => {
+      const signer1 = Keypair.random();
+      const signer2 = Keypair.random();
+      const platformPublicKey = Keypair.random().publicKey();
+
+      mockStellarService.setupPlatformMultiSig.mockResolvedValue({
+        platformPublicKey,
+        signers: [signer1.publicKey(), signer2.publicKey()],
+        transactionThreshold: 2,
+      });
+
+      const result = await controller.setupPlatformMultiSig(
+        mockRequest(platformPublicKey, 'admin') as any,
+      );
+
+      expect(result).toEqual({
+        success: true,
+        data: {
+          platformPublicKey,
+          signers: [signer1.publicKey(), signer2.publicKey()],
+          transactionThreshold: 2,
+        },
+      });
+      expect(mockStellarService.setupPlatformMultiSig).toHaveBeenCalled();
+    });
+
+    it('should throw 403 if user is not admin', async () => {
+      const platformPublicKey = Keypair.random().publicKey();
+
+      await expect(
+        controller.setupPlatformMultiSig(
+          mockRequest(platformPublicKey, 'user') as any,
+        ),
+      ).rejects.toThrow(
+        new HttpException(
+          'Only admins can configure platform wallet security',
+          HttpStatus.FORBIDDEN,
+        ),
+      );
+
+      expect(mockStellarService.setupPlatformMultiSig).not.toHaveBeenCalled();
+    });
+
+    it('should handle setup errors', async () => {
+      const platformPublicKey = Keypair.random().publicKey();
+
+      mockStellarService.setupPlatformMultiSig.mockRejectedValue(
+        new Error('Multi-sig setup failed: signers not configured'),
+      );
+
+      await expect(
+        controller.setupPlatformMultiSig(
+          mockRequest(platformPublicKey, 'admin') as any,
+        ),
+      ).rejects.toThrow(
+        new HttpException(
+          'Multi-sig setup failed: signers not configured',
+          HttpStatus.BAD_REQUEST,
+        ),
+      );
+    });
+  });
+
+  describe('getPlatformMultiSigConfig (Issue #352)', () => {
+    it('should retrieve multi-sig config for admin users', async () => {
+      const signer1 = Keypair.random();
+      const signer2 = Keypair.random();
+      const platformPublicKey = Keypair.random().publicKey();
+
+      mockStellarService.getPlatformMultiSigConfig.mockResolvedValue({
+        publicKey: platformPublicKey,
+        signers: [
+          { key: platformPublicKey, weight: 1 },
+          { key: signer1.publicKey(), weight: 1 },
+          { key: signer2.publicKey(), weight: 1 },
+        ],
+        thresholds: {
+          low: 1,
+          med: 2,
+          high: 2,
+        },
+      });
+
+      const result = await controller.getPlatformMultiSigConfig(
+        mockRequest(platformPublicKey, 'admin') as any,
+      );
+
+      expect(result).toEqual({
+        success: true,
+        data: {
+          publicKey: platformPublicKey,
+          signers: [
+            { key: platformPublicKey, weight: 1 },
+            { key: signer1.publicKey(), weight: 1 },
+            { key: signer2.publicKey(), weight: 1 },
+          ],
+          thresholds: {
+            low: 1,
+            med: 2,
+            high: 2,
+          },
+        },
+      });
+      expect(mockStellarService.getPlatformMultiSigConfig).toHaveBeenCalled();
+    });
+
+    it('should throw 403 if user is not admin', async () => {
+      const platformPublicKey = Keypair.random().publicKey();
+
+      await expect(
+        controller.getPlatformMultiSigConfig(
+          mockRequest(platformPublicKey, 'user') as any,
+        ),
+      ).rejects.toThrow(
+        new HttpException(
+          'Only admins can view platform wallet configuration',
+          HttpStatus.FORBIDDEN,
+        ),
+      );
+
+      expect(mockStellarService.getPlatformMultiSigConfig).not.toHaveBeenCalled();
+    });
+
+    it('should handle retrieval errors', async () => {
+      const platformPublicKey = Keypair.random().publicKey();
+
+      mockStellarService.getPlatformMultiSigConfig.mockRejectedValue(
+        new Error('Failed to load account from Horizon'),
+      );
+
+      await expect(
+        controller.getPlatformMultiSigConfig(
+          mockRequest(platformPublicKey, 'admin') as any,
+        ),
+      ).rejects.toThrow(
+        new HttpException(
+          'Failed to load account from Horizon',
+          HttpStatus.BAD_REQUEST,
+        ),
+      );
+    });
+
+    it('should verify 2-of-3 multi-sig configuration', async () => {
+      const platformPublicKey = Keypair.random().publicKey();
+
+      mockStellarService.getPlatformMultiSigConfig.mockResolvedValue({
+        publicKey: platformPublicKey,
+        signers: [
+          { key: platformPublicKey, weight: 1 },
+          { key: Keypair.random().publicKey(), weight: 1 },
+          { key: Keypair.random().publicKey(), weight: 1 },
+        ],
+        thresholds: {
+          low: 1,
+          med: 2,
+          high: 2,
+        },
+      });
+
+      const result = await controller.getPlatformMultiSigConfig(
+        mockRequest(platformPublicKey, 'admin') as any,
+      );
+
+      const config = result.data;
+      expect(config.signers).toHaveLength(3);
+      expect(config.thresholds.med).toBe(2);
+      expect(config.thresholds.high).toBe(2);
+    });
   });
 });

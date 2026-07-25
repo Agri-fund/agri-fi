@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { CacheModule } from '@nestjs/cache-manager';
 import { TradeDealsController } from './trade-deals.controller';
 import { TradeDealsService } from './trade-deals.service';
 import { TradeDeal } from './entities/trade-deal.entity';
@@ -10,6 +11,7 @@ import { User } from '../auth/entities/user.entity';
 import { StellarModule } from '../stellar/stellar.module';
 import { QueueModule } from '../queue/queue.module';
 import { TradeDealsGuard } from './trade-deals.guard';
+import { TradeDealsCronService } from './trade-deals-cron.service';
 
 @Module({
   imports: [
@@ -22,9 +24,12 @@ import { TradeDealsGuard } from './trade-deals.guard';
     ]),
     StellarModule,
     QueueModule,
+    CacheModule.register({
+      ttl: 30000, // 30 seconds, for the public marketplace listing endpoint
+    }),
   ],
   controllers: [TradeDealsController],
-  providers: [TradeDealsService, TradeDealsGuard],
+  providers: [TradeDealsService, TradeDealsGuard, TradeDealsCronService],
   exports: [TradeDealsService],
 })
 export class TradeDealsModule {}

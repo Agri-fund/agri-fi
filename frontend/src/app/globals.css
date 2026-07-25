@@ -377,6 +377,24 @@
   border-radius: inherit;
 }
 
+/* ── Portfolio chart — Issue #273 ─────────────────────────────────────────── */
+.portfolio-chart {
+  --chart-grid: #f1f5f9;
+  --chart-axis: #94a3b8;
+  --chart-line: #16a34a;
+}
+html.dark .portfolio-chart {
+  --chart-grid: #1e293b;
+  --chart-axis: #64748b;
+  --chart-line: #4ade80;
+}
+.portfolio-chart-tooltip {
+  @apply rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 shadow-card-md;
+}
+html.dark .portfolio-chart-tooltip {
+  @apply border-slate-700 bg-slate-900;
+}
+
 /* ── Leaflet map — Issue #247 ─────────────────────────────────────────────── */
 /* Prevent Leaflet controls from inheriting global styles and breaking layout */
 .leaflet-container {

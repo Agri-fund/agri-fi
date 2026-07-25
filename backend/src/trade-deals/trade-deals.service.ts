@@ -6,7 +6,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { PinoLogger } from 'nestjs-pino';
 import { TradeDeal, TradeDealStatus } from './entities/trade-deal.entity';
 import { Document, DocumentType } from './entities/document.entity';
@@ -37,6 +37,7 @@ export interface AddDocumentDto {
   stellarTxId?: string | null;
   fileSizeBytes?: number;
   memoText?: string | null;
+  signatureVerified?: boolean;
 }
 
 @Injectable()
@@ -55,6 +56,7 @@ export class TradeDealsService {
     private readonly stellarService: StellarService,
     private readonly queueService: QueueService,
     private readonly logger: PinoLogger,
+    private readonly dataSource: DataSource,
   ) {
     this.logger.setContext(TradeDealsService.name);
   }
@@ -64,8 +66,11 @@ export class TradeDealsService {
     status: TradeDealStatus,
     stellarAssetTxId?: string,
   ): Promise<void> {
+    // Generate an application trace ID for authorized updates
+    const appTraceId = `app-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 10)}`;
     await this.tradeDealRepo.update(dealId, {
       status,
+      appTraceId,
       ...(stellarAssetTxId && { stellarAssetTxId }),
     });
   }
@@ -133,6 +138,10 @@ export class TradeDealsService {
     const page = query.page ?? 1;
     const limit = query.limit ?? 12;
     const skip = (page - 1) * limit;
+
+    if (query.commodity && !/^[a-zA-Z0-9 _-]{1,100}$/.test(query.commodity)) {
+      throw new BadRequestException('Invalid commodity search term.');
+    }
 
     const qb = this.tradeDealRepo
       .createQueryBuilder('deal')
@@ -290,26 +299,30 @@ export class TradeDealsService {
 
       // Encrypt the escrow secret
       const encryptedEscrowSecret =
-        this.stellarService.encryptSecret(escrowSecretKey);
+        await this.stellarService.encryptSecret(escrowSecretKey);
 
-      // Update deal with escrow data
-      await this.tradeDealRepo.update(dealId, {
-        escrowPublicKey,
-        escrowSecretKey: encryptedEscrowSecret,
-      });
+      // Update deal with escrow data and enqueue token issuance atomically:
+      // if enqueueing fails, the escrow-key write must roll back too, since
+      // the deal would otherwise be stuck holding an escrow account no job
+      // will ever process.
+      await this.dataSource.transaction(async (manager) => {
+        await manager.update(TradeDeal, dealId, {
+          escrowPublicKey,
+          escrowSecretKey: encryptedEscrowSecret,
+        });
 
-      this.logger.info(
-        { dealId, escrowPublicKey },
-        'Escrow account created, enqueuing token issuance',
-      );
+        this.logger.info(
+          { dealId, escrowPublicKey },
+          'Escrow account created, enqueuing token issuance',
+        );
 
-      // Enqueue the token issuance job
-      await this.queueService.enqueueDealPublish({
-        dealId,
-        tokenSymbol: deal.tokenSymbol,
-        escrowPublicKey,
-        encryptedEscrowSecret,
-        tokenCount: deal.tokenCount,
+        await this.queueService.enqueueDealPublish({
+          dealId,
+          tokenSymbol: deal.tokenSymbol,
+          escrowPublicKey,
+          encryptedEscrowSecret,
+          tokenCount: deal.tokenCount,
+        });
       });
 
       // Return deal with escrow data (status still draft, will be updated by queue processor)
@@ -365,6 +378,7 @@ export class TradeDealsService {
       storageUrl: dto.storageUrl,
       stellarTxId: dto.stellarTxId ?? null,
       memoText: dto.memoText ?? null,
+      signatureVerified: dto.signatureVerified ?? false,
     });
 
     return this.documentRepo.save(doc);
@@ -454,6 +468,97 @@ export class TradeDealsService {
       }
     }
 
+    deal.status = 'canceled';
+    // Set appTraceId for this authorized update
+    deal.appTraceId = `app-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 10)}`;
+
+    // Refunding investments and updating deal status must succeed or fail
+    // together, since the Stellar clawback above has already moved funds and
+    // a partial DB write here would leave local state inconsistent with it.
+    return this.dataSource.transaction(async (manager) => {
+      if (confirmedInvestments.length > 0) {
+        await manager.update(
+          Investment,
+          confirmedInvestments.map((inv) => inv.id),
+          { status: InvestmentStatus.REFUNDED },
+        );
+        this.logger.info(
+          { dealId, refundedCount: confirmedInvestments.length },
+          'Refunded confirmed investments for canceled deal',
+        );
+      }
+
+      return manager.save(deal);
+    });
+  }
+
+  async expireDeal(dealId: string): Promise<TradeDeal> {
+    const deal = await this.tradeDealRepo.findOne({
+      where: { id: dealId },
+      relations: ['investments', 'investments.investor'],
+    });
+
+    if (!deal) {
+      throw new NotFoundException('Trade deal not found.');
+    }
+
+    if (deal.status !== 'open') {
+      throw new UnprocessableEntityException({
+        code: 'DEAL_NOT_OPEN',
+        message: `Cannot expire a deal in "${deal.status}" status. Only open deals can be expired.`,
+      });
+    }
+
+    const confirmedInvestments =
+      deal.investments?.filter(
+        (inv) => inv.status === InvestmentStatus.CONFIRMED,
+      ) || [];
+
+    if (deal.issuerPublicKey && deal.issuerSecretKey && deal.stellarAssetTxId) {
+      const investorShares: { walletAddress: string; tokenAmount: number }[] =
+        confirmedInvestments
+          .filter((inv) => inv.investor?.walletAddress)
+          .map((inv) => ({
+            walletAddress: inv.investor.walletAddress as string,
+            tokenAmount: Number(inv.tokenAmount),
+          }));
+
+      const tokensSold = investorShares.reduce(
+        (acc, curr) => acc + curr.tokenAmount,
+        0,
+      );
+      const unsoldTokens = Number(deal.tokenCount) - tokensSold;
+
+      if (unsoldTokens > 0 && deal.escrowPublicKey) {
+        investorShares.push({
+          walletAddress: deal.escrowPublicKey,
+          tokenAmount: unsoldTokens,
+        });
+      }
+
+      if (investorShares.length > 0) {
+        const issuerSecret = await this.stellarService.decryptSecret(
+          deal.issuerSecretKey,
+        );
+
+        this.logger.info(
+          {
+            dealId,
+            tokenCount: deal.tokenCount,
+            holders: investorShares.length,
+          },
+          'Initiating clawback for expired deal',
+        );
+
+        await this.stellarService.clawbackTokens(
+          deal.tokenSymbol,
+          deal.issuerPublicKey,
+          issuerSecret,
+          investorShares,
+        );
+      }
+    }
+
     if (confirmedInvestments.length > 0) {
       await this.investmentRepo.update(
         confirmedInvestments.map((inv) => inv.id),
@@ -461,12 +566,31 @@ export class TradeDealsService {
       );
       this.logger.info(
         { dealId, refundedCount: confirmedInvestments.length },
-        'Refunded confirmed investments for canceled deal',
+        'Refunded confirmed investments for expired deal',
       );
     }
 
-    deal.status = 'canceled';
-    return this.tradeDealRepo.save(deal);
+    deal.status = 'expired';
+    deal.appTraceId = `app-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 10)}`;
+
+    const saved = await this.tradeDealRepo.save(deal);
+
+    this.queueService.emit('email.notification', {
+      type: 'deal_expired',
+      dealId,
+      commodity: deal.commodity,
+      traderId: deal.traderId,
+      farmerId: deal.farmerId,
+    });
+
+    this.queueService.emit('admin.alert', {
+      type: 'deal_expired',
+      dealId,
+      commodity: deal.commodity,
+      timestamp: new Date().toISOString(),
+    });
+
+    return saved;
   }
 
   async findByUser(userId: string, role: string): Promise<any[]> {

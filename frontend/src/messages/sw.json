@@ -148,6 +148,7 @@
   },
   "deals": {
     "createTitle": "Unda Mkataba Mpya wa Biashara",
+    "draftRestored": "Rasimu imerejeshwa kutoka {time}",
     "commodity": "Jina la Bidhaa",
     "quantity": "Kiasi",
     "unit": "Kitengo",

@@ -11,7 +11,7 @@ import {
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../auth/roles.guard';
-import { Roles } from '../auth/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
 import { SorobanService } from './soroban.service';
 import { ReleaseMilestoneDto } from './dto/release-milestone.dto';
 import { DistributeRevenueDto } from './dto/distribute-revenue.dto';

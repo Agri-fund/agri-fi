@@ -222,12 +222,25 @@ jobs:
         run: |
           echo "Running database migrations..."
           
-          # Create a temporary pod to run migrations
+          # Create a temporary pod to run migrations with config/secrets injected
           kubectl -n default run migration-runner-${GITHUB_SHA::12} \
             --image="${IMAGE_PREFIX}/backend:${TAG}" \
             --restart=Never \
-            --command -- \
-            npm run migration:run
+            --overrides='{
+              "spec": {
+                "containers": [
+                  {
+                    "name": "migration-runner",
+                    "image": "'"${IMAGE_PREFIX}/backend:${TAG}"'",
+                    "command": ["npm", "run", "migration:run"],
+                    "envFrom": [
+                      {"configMapRef": {"name": "agri-fi-config"}},
+                      {"secretRef": {"name": "agri-fi-secrets"}}
+                    ]
+                  }
+                ]
+              }
+            }'
           
           # Wait for the migration pod to complete
           kubectl -n default wait pod/migration-runner-${GITHUB_SHA::12} \

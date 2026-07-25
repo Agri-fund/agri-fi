@@ -15,6 +15,17 @@ export type DocumentType =
   | 'export_certificate'
   | 'warehouse_receipt';
 
+export interface DocumentMetadata {
+  dimensions?: {
+    width: number;
+    height: number;
+    unit?: string;
+  };
+  pageCount?: number;
+  detectedLanguages?: string[];
+  [key: string]: any; // Allow additional metadata fields
+}
+
 @Entity('documents')
 export class Document {
   @PrimaryGeneratedColumn('uuid')
@@ -40,6 +51,24 @@ export class Document {
 
   @Column({ name: 'memo_text', nullable: true })
   memoText: string | null;
+
+  @Column({ name: 'signature_verified', default: false })
+  signatureVerified: boolean;
+
+  @Column({ name: 'metadata', type: 'jsonb', default: {} })
+  metadata: DocumentMetadata;
+
+  @Column({ name: 'verification_status', length: 20, default: 'pending' })
+  verificationStatus: 'pending' | 'approved' | 'rejected';
+
+  @Column({ name: 'rejection_reason', type: 'text', nullable: true })
+  rejectionReason: string | null;
+
+  @Column({ name: 'reviewed_by', nullable: true })
+  reviewedBy: string | null;
+
+  @Column({ name: 'reviewed_at', type: 'timestamptz', nullable: true })
+  reviewedAt: Date | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

@@ -12,12 +12,26 @@ import { KycSubmission } from './entities/kyc-submission.entity';
 import { KycGuard } from './kyc.guard';
 import { RolesGuard } from './roles.guard';
 import { QueueModule } from '../queue/queue.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
+import { Document } from '../trade-deals/entities/document.entity';
+import { OfacSanctionsCheckService } from './utils/ofac-sanctions-check';
+import { LoginLog } from '../database/entities/login-log.entity';
+import { AdminAction } from '../database/entities/admin-action.entity';
+import { KycCronService } from './kyc-cron.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, KycSubmission, TradeDeal]),
+    TypeOrmModule.forFeature([
+      User,
+      KycSubmission,
+      TradeDeal,
+      Document,
+      LoginLog,
+      AdminAction,
+    ]),
     QueueModule,
+    NotificationsModule,
     PassportModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
@@ -29,7 +43,14 @@ import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
     }),
   ],
   controllers: [AuthController, AdminController],
-  providers: [AuthService, JwtStrategy, KycGuard, RolesGuard],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    KycGuard,
+    RolesGuard,
+    OfacSanctionsCheckService,
+    KycCronService,
+  ],
   exports: [AuthService, JwtModule, TypeOrmModule, KycGuard, RolesGuard],
 })
 export class AuthModule {}

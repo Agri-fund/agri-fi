@@ -4,19 +4,14 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { SorobanService } from './soroban.service';
 import { SorobanEventIndexer } from './soroban-event-indexer.service';
 import { SorobanController } from './soroban.controller';
-import { TransactionLog } from '../stellar/entities/transaction-log.entity';
-import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.entity';
+import { SorobanListenerService } from './soroban-listener.service';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
-import { QueueService } from '../queue/queue.service';
 
 @Global()
 @Module({
-  imports: [
-    ConfigModule,
-    TypeOrmModule.forFeature([TransactionLog, ShipmentMilestone, TradeDeal]),
-  ],
+  imports: [ConfigModule, TypeOrmModule.forFeature([TradeDeal])],
   controllers: [SorobanController],
-  providers: [SorobanService, SorobanEventIndexer, QueueService],
-  exports: [SorobanService, SorobanEventIndexer],
+  providers: [SorobanService, SorobanListenerService],
+  exports: [SorobanService],
 })
 export class SorobanModule {}

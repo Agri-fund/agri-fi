@@ -14,6 +14,7 @@ import { User } from '../auth/entities/user.entity';
 import { StellarService } from '../stellar/stellar.service';
 import { QueueService } from '../queue/queue.service';
 import { CreateInvestmentDto } from './dto/create-investment.dto';
+import * as fc from 'fast-check';
 
 const VALID_STELLAR_TX_ID =
   'a1b2c3d4e5f67890abcdef1234567890abcdef1234567890abcdef1234567890';
@@ -145,6 +146,50 @@ describe('InvestmentsService', () => {
     }).compile();
 
     service = module.get<InvestmentsService>(InvestmentsService);
+  });
+
+  describe('distribution invariants', () => {
+    it('conserves the investment pool after platform fees across generated payout splits', () => {
+      // Feature: agric-onchain-finance, Property 4: sum(investor_payouts) + platform_fee = total_investment_pool
+      fc.assert(
+        fc.property(
+          fc.integer({ min: 100, max: 10_000_000 }),
+          fc.array(fc.integer({ min: 1, max: 1_000 }), {
+            minLength: 1,
+            maxLength: 50,
+          }),
+          (totalPoolCents, tokenWeights) => {
+            const platformFeeCents = Math.round(totalPoolCents * 0.02);
+            const investorPoolCents = totalPoolCents - platformFeeCents;
+            const totalWeight = tokenWeights.reduce(
+              (sum, weight) => sum + weight,
+              0,
+            );
+
+            let allocatedCents = 0;
+            const payouts = tokenWeights.map((weight, index) => {
+              if (index === tokenWeights.length - 1) {
+                return investorPoolCents - allocatedCents;
+              }
+
+              const payoutCents = Math.floor(
+                (investorPoolCents * weight) / totalWeight,
+              );
+              allocatedCents += payoutCents;
+              return payoutCents;
+            });
+
+            const sumPayouts = payouts.reduce(
+              (sum, payout) => sum + payout,
+              0,
+            );
+
+            return sumPayouts === investorPoolCents;
+          },
+        ),
+        { numRuns: 1000 },
+      );
+    });
   });
 
   describe('createInvestment', () => {
