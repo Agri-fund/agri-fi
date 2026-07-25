@@ -12,6 +12,7 @@ import { PinoLogger } from 'nestjs-pino';
 import { createHash } from 'crypto';
 import axios from 'axios';
 import { TransactionLog, TxStatus } from './entities/transaction-log.entity';
+import { CursorPaginatedResult, decodeCursor, encodeCursor } from '../common/pagination';
 import { KmsService } from '../kms/kms.service';
 import {
   Horizon,
@@ -2297,5 +2298,52 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       this.logger.error(`Clawback failed: ${err.message}`, err.stack);
       throw new Error(`Clawback failed: ${err.message}`);
     }
+  }
+
+  /**
+   * Retrieves transaction logs using cursor-based pagination.
+   * Issue #740 — Cursor-Based Pagination for Transaction Logs
+   */
+  async getTransactionLogs(
+    userId?: string,
+    limitParam?: number,
+    cursorParam?: string,
+  ): Promise<CursorPaginatedResult<TransactionLog>> {
+    const limit = Math.min(
+      Number.isFinite(limitParam) && limitParam! > 0 ? Number(limitParam) : 20,
+      100,
+    );
+
+    const qb = this.txLogRepo.createQueryBuilder('log');
+
+    if (userId) {
+      qb.andWhere('log.userId = :userId', { userId });
+    }
+
+    if (cursorParam) {
+      const decoded = decodeCursor(cursorParam);
+      qb.andWhere('log.createdAt < :cursor', { cursor: new Date(decoded) });
+    }
+
+    qb.orderBy('log.createdAt', 'DESC')
+      .addOrderBy('log.id', 'DESC')
+      .take(limit + 1);
+
+    const items = await qb.getMany();
+    const hasMore = items.length > limit;
+    const data = hasMore ? items.slice(0, limit) : items;
+
+    const lastItem = data[data.length - 1];
+    const nextCursor =
+      hasMore && lastItem ? encodeCursor(lastItem.createdAt) : null;
+
+    return {
+      data,
+      meta: {
+        limit,
+        nextCursor,
+        hasMore,
+      },
+    };
   }
 }

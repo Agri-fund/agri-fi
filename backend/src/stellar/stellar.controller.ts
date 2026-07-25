@@ -3,6 +3,7 @@ import {
   Post,
   Get,
   Body,
+  Query,
   UseGuards,
   HttpCode,
   HttpStatus,
@@ -13,6 +14,7 @@ import {
   ApiTags,
   ApiOperation,
   ApiBody,
+  ApiQuery,
   ApiResponse,
   ApiBearerAuth,
 } from '@nestjs/swagger';
@@ -250,5 +252,27 @@ export class StellarController {
         HttpStatus.BAD_REQUEST,
       );
     }
+  }
+
+  /**
+   * Returns paginated transaction logs using cursor-based pagination.
+   * Issue #740 — Cursor-Based Pagination for Transaction Logs
+   */
+  @Get('logs')
+  @ApiOperation({
+    summary: 'Get transaction logs with cursor-based pagination',
+    description: 'Returns paginated transaction logs using limit and cursor parameters.',
+  })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Number of logs to return (default 20, max 100)' })
+  @ApiQuery({ name: 'cursor', required: false, type: String, description: 'Cursor token for pagination' })
+  @ApiResponse({ status: 200, description: 'Transaction logs retrieved successfully' })
+  async getTransactionLogs(
+    @Req() req: Request,
+    @Query('limit') limit?: number,
+    @Query('cursor') cursor?: string,
+  ) {
+    const caller = req.user as User;
+    const userId = caller.role === 'admin' ? undefined : caller.id;
+    return this.stellarService.getTransactionLogs(userId, limit, cursor);
   }
 }

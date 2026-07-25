@@ -13,6 +13,7 @@ import { Investment } from '../investments/entities/investment.entity';
 import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.entity';
 import { PaymentDistribution } from '../escrow/entities/payment-distribution.entity';
 import { KycSubmission } from '../auth/entities/kyc-submission.entity';
+import { Document } from '../trade-deals/entities/document.entity';
 
 export interface CurrentUserProfile {
   id: string;
@@ -47,6 +48,8 @@ export class UsersService {
     private readonly paymentDistributionRepository: Repository<PaymentDistribution>,
     @InjectRepository(KycSubmission)
     private readonly kycSubmissionRepository: Repository<KycSubmission>,
+    @InjectRepository(Document)
+    private readonly documentRepository: Repository<Document>,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -139,12 +142,16 @@ export class UsersService {
       relations: ['farmer', 'trader', 'milestones'],
     });
 
-    // Get document count for each deal (placeholder - would need documents entity)
+    // Get document count for each deal
     const dealsWithCounts = await Promise.all(
       deals.map(async (deal) => {
         const latestMilestone = await this.milestoneRepository.findOne({
           where: { tradeDealId: deal.id },
           order: { recordedAt: 'DESC' },
+        });
+
+        const documentCount = await this.documentRepository.count({
+          where: { tradeDealId: deal.id },
         });
 
         return {
@@ -156,7 +163,7 @@ export class UsersService {
           status: deal.status,
           delivery_date: deal.deliveryDate,
           latest_milestone: latestMilestone || null,
-          document_count: 0, // TODO: Implement when documents entity is available
+          document_count: documentCount,
         };
       }),
     );

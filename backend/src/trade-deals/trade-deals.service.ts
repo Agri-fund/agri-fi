@@ -606,12 +606,16 @@ export class TradeDealsService {
       relations: ['farmer', 'trader', 'milestones'],
     });
 
-    // Get document count for each deal (placeholder - would need documents entity)
+    // Get document count for each deal
     const dealsWithCounts = await Promise.all(
       deals.map(async (deal) => {
         const latestMilestone = await this.milestoneRepo.findOne({
           where: { tradeDealId: deal.id },
           order: { recordedAt: 'DESC' },
+        });
+
+        const documentCount = await this.documentRepo.count({
+          where: { tradeDealId: deal.id },
         });
 
         return {
@@ -624,7 +628,7 @@ export class TradeDealsService {
           status: deal.status,
           delivery_date: deal.deliveryDate,
           latest_milestone: latestMilestone || null,
-          document_count: 0, // TODO: Implement when documents entity is available
+          document_count: documentCount,
         };
       }),
     );
