@@ -47,7 +47,7 @@ pub enum DataKey {
     DeliveryApproved,
     MilestonesCount,     // Total number of milestones for this deal
     MilestonesCompleted, // Number of completed milestones
-    Investors,           // Vec of investor addresses
+    Investors,           // Map of investor addresses to their investment amounts
     MilestoneData,       // Map of milestone ID to Milestone struct
 }
 
@@ -103,7 +103,13 @@ impl EscrowContract {
         env.storage().instance().set(&DataKey::DeliveryApproved, &false);
         env.storage().instance().set(&DataKey::MilestonesCount, &milestone_count);
         env.storage().instance().set(&DataKey::MilestonesCompleted, &0u32);
-        env.storage().instance().set(&DataKey::Investors, &investors);
+
+        // Store investors as a Map for O(1) lookups and better gas efficiency
+        let investors_map: Map<Address, i128> = Map::new(&env);
+        for investor in investors.iter() {
+            investors_map.set(investor, 0i128);
+        }
+        env.storage().instance().set(&DataKey::Investors, &investors_map);
 
         // Initialize empty milestone data map
         let milestone_map: Map<u32, Milestone> = Map::new(&env);
@@ -545,10 +551,12 @@ impl EscrowContract {
 
     /// Returns the list of investor addresses
     pub fn get_investors(env: Env) -> Vec<Address> {
-        env.storage()
+        let investors_map: Map<Address, i128> = env
+            .storage()
             .instance()
             .get(&DataKey::Investors)
-            .unwrap_or(Vec::new(&env))
+            .unwrap_or(Map::new(&env));
+        investors_map.keys()
     }
 
     /// Checks if a specific milestone has been completed and recorded
