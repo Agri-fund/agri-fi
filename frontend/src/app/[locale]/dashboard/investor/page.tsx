@@ -9,6 +9,7 @@ import StatCard from '../../../../components/StatCard';
 import { InvestmentCertificate } from '../../../../components/InvestmentCertificate';
 import { AnchorWidget } from '../../../../components/AnchorWidget';
 import PortfolioChart from '../../../../components/dashboard/PortfolioChart';
+import { usePushNotifications } from '../../../../hooks/usePushNotifications';
 
 const INV_STATUS: Record<string, string> = {
   confirmed: 'badge-green', pending: 'badge-yellow', failed: 'badge-red', refunded: 'badge-gray',
@@ -23,6 +24,9 @@ type Tab = 'portfolio' | 'certificates' | 'fiat';
 export default function InvestorDashboard() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
+
+  // Request push notification permission once the user is authenticated
+  usePushNotifications(!!user);
   const [investments, setInvestments] = useState<Investment[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'confirmed' | 'pending'>('all');
