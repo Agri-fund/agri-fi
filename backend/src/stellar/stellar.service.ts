@@ -34,6 +34,7 @@ import {
   planTransactionBatches,
   generateBatchMemo,
 } from './utils/transaction-chunker';
+import { HorizonFailoverClient } from './horizon-failover';
 
 export const SEQUENCE_REDIS_CLIENT = 'SEQUENCE_REDIS_CLIENT';
 const SEQUENCE_CACHE_TTL = 5; // seconds
@@ -58,7 +59,8 @@ export interface SignatureValidationResult {
 
 @Injectable()
 export class StellarService implements OnModuleInit, OnModuleDestroy {
-  private readonly server: Horizon.Server;
+  private readonly horizonClient: HorizonFailoverClient;
+  private get server(): Horizon.Server { return this.horizonClient.activeServer; }
   private readonly networkPassphrase: string;
   private readonly platformKeypair: Keypair;
   private readonly multiSigSigners: Keypair[];
@@ -80,13 +82,18 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     this.enableSequenceCache = true;
     this.logger.setContext(StellarService.name);
 
-    const horizonUrl = config.get<string>(
-      'STELLAR_HORIZON_URL',
-      'https://horizon-testnet.stellar.org',
+    // Support a comma-separated list of Horizon URLs for failover.
+    const horizonUrlsRaw = config.get<string>(
+      'STELLAR_HORIZON_URLS',
+      config.get<string>('STELLAR_HORIZON_URL', 'https://horizon-testnet.stellar.org'),
     );
+    const horizonUrls = horizonUrlsRaw!
+      .split(',')
+      .map((u) => u.trim())
+      .filter(Boolean);
     const network = config.get<string>('STELLAR_NETWORK', 'testnet');
 
-    this.server = new Horizon.Server(horizonUrl, { timeout: 30000 });
+    this.horizonClient = new HorizonFailoverClient(horizonUrls, this.logger, { timeout: 30000 });
     this.networkPassphrase =
       network === 'mainnet' ? Networks.PUBLIC : Networks.TESTNET;
 
@@ -871,7 +878,6 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     );
     const investorPoolStroopsBN = totalStroopsBN.minus(platformStroopsBN);
 
-    const totalStroops = totalStroopsBN.toNumber();
     const platformStroops = platformStroopsBN.toNumber();
     const investorPoolStroops = investorPoolStroopsBN.toNumber();
 
@@ -1320,6 +1326,19 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         b.asset_code === asset.getCode() &&
         b.asset_issuer === asset.getIssuer(),
     );
+  }
+
+  /**
+   * Returns true when the given wallet has established a USDC trustline.
+   * Returns false if the account does not exist or the trustline is absent.
+   */
+  async checkUsdcTrustline(walletAddress: string): Promise<boolean> {
+    try {
+      const account = await this.server.loadAccount(walletAddress);
+      return this.hasTrustline(account, this.usdcAsset);
+    } catch {
+      return false;
+    }
   }
 
   /**
