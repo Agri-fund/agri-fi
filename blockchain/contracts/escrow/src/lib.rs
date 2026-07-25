@@ -136,7 +136,6 @@ impl EscrowContract {
         let usdc = token::Client::new(&env, &usdc_token);
 
         caller.require_auth();
-        usdc.transfer(&caller, &env.current_contract_address(), &amount);
 
         let prev: i128 = env
             .storage()
@@ -146,6 +145,9 @@ impl EscrowContract {
         env.storage()
             .instance()
             .set(&DataKey::TotalFunded, &(prev + amount));
+
+        usdc.transfer(&caller, &env.current_contract_address(), &amount);
+
         env.events()
             .publish((symbol_short!("funded"),), amount);
         Ok(())
@@ -255,6 +257,12 @@ impl EscrowContract {
         let farmer_amount = (total_funded * 98) / 100;
         let platform_amount = total_funded - farmer_amount;
 
+        // Lock settlement state before invoking external transfers so a
+        // reentrant call sees `Released == true` and is rejected immediately.
+        env.storage()
+            .instance()
+            .set(&DataKey::Released, &true);
+
         if farmer_amount > 0 {
             usdc.transfer(
                 &env.current_contract_address(),
@@ -270,9 +278,6 @@ impl EscrowContract {
             );
         }
 
-        env.storage()
-            .instance()
-            .set(&DataKey::Released, &true);
         env.events()
             .publish((symbol_short!("release"),), total_funded);
         Ok(())
@@ -456,6 +461,12 @@ impl EscrowContract {
         let farmer_amount = (total_funded * 98) / 100;
         let platform_amount = total_funded - farmer_amount;
 
+        // Mark as released before invoking external transfers so a reentrant
+        // call sees `Released == true` and is rejected immediately.
+        env.storage()
+            .instance()
+            .set(&DataKey::Released, &true);
+
         // Execute transfers
         if farmer_amount > 0 {
             usdc.transfer(
@@ -471,11 +482,6 @@ impl EscrowContract {
                 &platform_amount,
             );
         }
-
-        // Mark as released
-        env.storage()
-            .instance()
-            .set(&DataKey::Released, &true);
 
         env.events()
             .publish((symbol_short!("settled"),), total_funded);

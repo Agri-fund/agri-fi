@@ -137,9 +137,6 @@ impl FarmCampaignContract {
         let remaining = config.funding_target - state.total_raised;
         if amount > remaining { return Err(Error::TargetExceeded); }
 
-        let usdc = token::Client::new(&env, &config.usdc_token);
-        usdc.transfer(&investor, &env.current_contract_address(), &amount);
-
         let mut investments: Map<Address, i128> = env.storage().instance()
             .get(&DataKey::Investments).unwrap_or_else(|| Map::new(&env));
         let existing = investments.get(investor.clone()).unwrap_or(0);
@@ -152,6 +149,12 @@ impl FarmCampaignContract {
             env.events().publish((symbol_short!("funded"), investor.clone()), state.total_raised);
         }
         env.storage().instance().set(&DataKey::State, &state);
+
+        // Persist investment state before the external transfer so a
+        // reentrant call reads the updated `total_raised`/`state.status`.
+        let usdc = token::Client::new(&env, &config.usdc_token);
+        usdc.transfer(&investor, &env.current_contract_address(), &amount);
+
         env.events().publish((symbol_short!("invested"), investor), amount);
         Ok(())
     }
@@ -192,15 +195,18 @@ impl FarmCampaignContract {
         let farmer_pool  = state.total_raised - platform_fee;
         let tranche      = farmer_pool / config.milestone_count as i128;
 
-        let usdc = token::Client::new(&env, &config.usdc_token);
-        usdc.transfer(&env.current_contract_address(), &config.farmer, &tranche);
-
+        // Lock this milestone before invoking the external transfer so a
+        // reentrant call sees it already released and errors out.
         env.storage().instance().set(&DataKey::MilestoneReleased(milestone_index), &true);
         state.milestones_released += 1;
         if state.milestones_released >= config.milestone_count {
             state.status = CampaignStatus::Delivered;
         }
         env.storage().instance().set(&DataKey::State, &state);
+
+        let usdc = token::Client::new(&env, &config.usdc_token);
+        usdc.transfer(&env.current_contract_address(), &config.farmer, &tranche);
+
         env.events().publish((symbol_short!("milestone"), milestone_index), tranche);
         Ok(())
     }
@@ -210,7 +216,7 @@ impl FarmCampaignContract {
         let config: Config = env.storage().instance().get(&DataKey::Config)
             .ok_or(Error::NotInitialized)?;
         if admin != config.admin { return Err(Error::Unauthorized); }
-        let state: State = env.storage().instance().get(&DataKey::State)
+        let mut state: State = env.storage().instance().get(&DataKey::State)
             .ok_or(Error::NotInitialized)?;
         if state.status != CampaignStatus::Delivered { return Err(Error::NotFunded); }
         if env.storage().instance().has(&DataKey::Distributed) { return Err(Error::AlreadyDistributed); }
@@ -223,6 +229,12 @@ impl FarmCampaignContract {
         let investments: Map<Address, i128> = env.storage().instance()
             .get(&DataKey::Investments).unwrap_or_else(|| Map::new(&env));
         let total_raised = state.total_raised;
+
+        // Lock distribution state before invoking external transfers so a
+        // reentrant call sees `Distributed == true` and is rejected immediately.
+        env.storage().instance().set(&DataKey::Distributed, &true);
+        state.status = CampaignStatus::Completed;
+        env.storage().instance().set(&DataKey::State, &state);
 
         // Iterate directly over the Map for better gas efficiency
         for (investor, invested) in investments.iter() {
@@ -238,11 +250,6 @@ impl FarmCampaignContract {
             usdc.transfer(&env.current_contract_address(), &config.admin, &platform_fee);
         }
 
-        env.storage().instance().set(&DataKey::Distributed, &true);
-        let mut final_state: State = env.storage().instance().get(&DataKey::State)
-            .ok_or(Error::NotInitialized)?;
-        final_state.status = CampaignStatus::Completed;
-        env.storage().instance().set(&DataKey::State, &final_state);
         env.events().publish((symbol_short!("complete"),), revenue_amount);
         Ok(())
     }
@@ -369,15 +376,18 @@ impl FarmCampaignContract {
             let farmer_pool  = state.total_raised - platform_fee;
             let tranche      = farmer_pool / config.milestone_count as i128;
 
-            let usdc = token::Client::new(&env, &config.usdc_token);
-            usdc.transfer(&env.current_contract_address(), &config.farmer, &tranche);
-
+            // Lock this milestone before invoking the external transfer so a
+            // reentrant call sees it already released and errors out.
             env.storage().instance().set(&DataKey::MilestoneReleased(milestone_index), &true);
             state.milestones_released += 1;
             if state.milestones_released >= config.milestone_count {
                 state.status = CampaignStatus::Delivered;
             }
             env.storage().instance().set(&DataKey::State, &state);
+
+            let usdc = token::Client::new(&env, &config.usdc_token);
+            usdc.transfer(&env.current_contract_address(), &config.farmer, &tranche);
+
             env.events().publish((symbol_short!("milestone"), milestone_index), tranche);
         }
         
