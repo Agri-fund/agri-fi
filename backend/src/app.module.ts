@@ -5,6 +5,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { LoggerModule } from 'nestjs-pino';
 import { ClsModule, ClsMiddleware } from 'nestjs-cls';
 import { DatabaseConfig } from './database/database.config';
+import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './auth/auth.module';
 import { StellarModule } from './stellar/stellar.module';
 import { ShipmentsModule } from './shipments/shipments.module';
@@ -66,6 +67,7 @@ import { ScheduleModule } from '@nestjs/schedule';
       imports: [ConfigModule],
       useClass: DatabaseConfig,
     }),
+    DatabaseModule,
     AuthModule,
     StellarModule,
     ShipmentsModule,

@@ -148,6 +148,7 @@
   },
   "deals": {
     "createTitle": "Create New Trade Deal",
+    "draftRestored": "Restored draft from {time}",
     "commodity": "Commodity Name",
     "quantity": "Quantity",
     "unit": "Unit",

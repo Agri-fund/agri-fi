@@ -58,6 +58,18 @@ export class Document {
   @Column({ name: 'metadata', type: 'jsonb', default: {} })
   metadata: DocumentMetadata;
 
+  @Column({ name: 'verification_status', length: 20, default: 'pending' })
+  verificationStatus: 'pending' | 'approved' | 'rejected';
+
+  @Column({ name: 'rejection_reason', type: 'text', nullable: true })
+  rejectionReason: string | null;
+
+  @Column({ name: 'reviewed_by', nullable: true })
+  reviewedBy: string | null;
+
+  @Column({ name: 'reviewed_at', type: 'timestamptz', nullable: true })
+  reviewedAt: Date | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

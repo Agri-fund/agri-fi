@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { apiClient, Investment, User } from '../../../../lib/api';
@@ -8,6 +8,7 @@ import DashboardLayout from '../../../../components/DashboardLayout';
 import StatCard from '../../../../components/StatCard';
 import { InvestmentCertificate } from '../../../../components/InvestmentCertificate';
 import { AnchorWidget } from '../../../../components/AnchorWidget';
+import PortfolioChart from '../../../../components/dashboard/PortfolioChart';
 
 const INV_STATUS: Record<string, string> = {
   confirmed: 'badge-green', pending: 'badge-yellow', failed: 'badge-red', refunded: 'badge-gray',
@@ -60,6 +61,20 @@ export default function InvestorDashboard() {
 
   const filtered = filter === 'all' ? investments
     : investments.filter(i => i.status === filter);
+
+  // Derive a portfolio-value-over-time trend from confirmed investments —
+  // running total of invested capital, ordered by when each was made.
+  const portfolioHistory = useMemo(() => {
+    let running = 0;
+    return investments
+      .filter(i => i.status === 'confirmed')
+      .slice()
+      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+      .map(i => {
+        running += Number(i.amount_invested);
+        return { date: i.created_at, value: running };
+      });
+  }, [investments]);
 
   const confirmedInvestments = investments.filter(i => i.status === 'confirmed');
 
@@ -123,6 +138,10 @@ export default function InvestorDashboard() {
         {/* ── Portfolio tab ── */}
         {tab === 'portfolio' && (
           <>
+            {!loading && investments.length > 0 && (
+              <PortfolioChart data={portfolioHistory} />
+            )}
+
             {investments.length > 0 && (
               <div className="flex gap-1 bg-slate-100 rounded-xl p-1 w-fit">
                 {(['all', 'confirmed', 'pending'] as const).map(f => (

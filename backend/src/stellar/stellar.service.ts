@@ -872,18 +872,14 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       throw new Error('Invalid totalValue');
     }
 
-    // Platform takes 2%; the remaining 98% is the investor pool.
-    // Farmer does not receive a direct escrow payout — their return is handled
-    // off-chain between the trader and the farmer.
+    // Calculate platform fee (2%) and investor pool (98%) using BigNumber
     const platformStroopsBN = totalStroopsBN.multipliedBy(0.02).integerValue(
       BigNumber.ROUND_FLOOR,
     );
-    // investorPool = totalStroops - platformFee (98% of total, rounded down so
-    // any leftover stroop goes to the final investor via the remainder path).
-    const investorPoolBN = totalStroopsBN.minus(platformStroopsBN);
+    const investorPoolStroopsBN = totalStroopsBN.minus(platformStroopsBN);
 
     const platformStroops = platformStroopsBN.toNumber();
-    const investorPool = investorPoolBN.toNumber();
+    const investorPoolStroops = investorPoolStroopsBN.toNumber();
 
     // Compute total tokens safely
     const totalTokens = investorShares.reduce(
@@ -938,19 +934,14 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
 
       batch.forEach((share, localIdx) => {
         const globalIdx = batchStart + localIdx;
-        // Use BigNumber division against the investor pool (not totalStroops) to
-        // avoid accumulating float error across investors.
-        let shareStroops = investorPoolBN
-          .multipliedBy(share.tokenAmount)
-          .dividedBy(totalTokens)
-          .integerValue(BigNumber.ROUND_FLOOR)
-          .toNumber();
+        let shareStroops = Math.floor(
+          (share.tokenAmount / totalTokens) * investorPoolStroops,
+        );
 
         if (globalIdx === investorShares.length - 1) {
-          // Give the last investor all remaining stroops so the sum is exact.
-          // Because shareStroops so far = sum of floor()-rounded prior investors,
-          // the remainder is always >= 0.
-          shareStroops = investorPool - distributedToInvestors;
+          shareStroops =
+            investorPoolStroops -
+            distributedToInvestors;
         }
 
         distributedToInvestors += shareStroops;

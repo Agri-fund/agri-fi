@@ -151,22 +151,10 @@ export class EscrowService {
         // Create payment distribution records using cent-safe arithmetic.
         const paymentDistributions: PaymentDistribution[] = [];
         const totalValue = Number(deal.totalValue);
-        const [farmerAmount, platformAmount] = this.splitTotalValue(totalValue);
+        const [platformAmount, investorPool] = this.splitTotalValue(totalValue);
         const investorAmounts = this.allocateProportionalAmounts(
-          totalValue,
+          investorPool,
           investments.map((investment) => investment.tokenAmount),
-        );
-
-        paymentDistributions.push(
-          manager.create(PaymentDistribution, {
-            tradeDealId,
-            recipientType: 'farmer',
-            recipientId: deal.farmerId,
-            walletAddress: deal.farmer.walletAddress,
-            amountUsd: farmerAmount,
-            stellarTxId,
-            status: 'confirmed',
-          }),
         );
 
         // Investor payments (proportional)
@@ -327,8 +315,8 @@ export class EscrowService {
   private splitTotalValue(totalValue: number): [number, number] {
     const totalCents = this.toCents(totalValue);
     const platformCents = Math.round(totalCents * 0.02);
-    const farmerCents = totalCents - platformCents;
-    return [this.fromCents(farmerCents), this.fromCents(platformCents)];
+    const investorPoolCents = totalCents - platformCents;
+    return [this.fromCents(platformCents), this.fromCents(investorPoolCents)];
   }
 
   private allocateProportionalAmounts(

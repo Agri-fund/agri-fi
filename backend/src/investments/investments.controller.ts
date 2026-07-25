@@ -28,6 +28,7 @@ import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { StellarService } from '../stellar/stellar.service';
 import { PaginatedResult } from '../common/pagination';
+import { TradeDealsGuard } from '../trade-deals/trade-deals.guard';
 
 @ApiTags('investments')
 @ApiBearerAuth('jwt')
@@ -179,12 +180,14 @@ export class InvestmentsController {
   }
 
   @Get('trade-deal/:tradeDealId')
+  @UseGuards(TradeDealsGuard)
   @ApiOperation({ summary: 'List all investments for a trade deal' })
   @ApiParam({ name: 'tradeDealId', description: 'Trade deal UUID' })
   @ApiQuery({ name: 'page', required: false, example: 1 })
   @ApiQuery({ name: 'limit', required: false, example: 20 })
   @ApiResponse({ status: 200, description: 'List of investments' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
   @ApiResponse({ status: 404, description: 'Trade deal not found' })
   async getInvestmentsByTradeDeal(
     @Param('tradeDealId') tradeDealId: string,

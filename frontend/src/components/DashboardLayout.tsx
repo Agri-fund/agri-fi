@@ -23,6 +23,7 @@ const investorNav: NavItem[] = [
 ];
 const adminNav: NavItem[] = [
   { label: 'Dashboard',   href: '/dashboard/admin',   icon: <HomeIcon />,   exact: true },
+  { label: 'Verify Documents', href: '/dashboard/admin/documents', icon: <DocsIcon /> },
   { label: 'Marketplace', href: '/marketplace',        icon: <ShopIcon /> },
 ];
 
