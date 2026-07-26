@@ -156,6 +156,10 @@ export class TradeDealsController {
     @Param('id') id: string,
     @Request() req: AuthRequest,
   ): Promise<TradeDeal> {
-    return this.tradeDealsService.cancelDeal(id, req.user.id);
+    const deal = await this.tradeDealsService.cancelDeal(id, req.user.id);
+    // Invalidate the marketplace listing cache so cancelled deals disappear
+    // from the active-deals list immediately (#743).
+    await this.cacheManager.reset();
+    return deal;
   }
 }
