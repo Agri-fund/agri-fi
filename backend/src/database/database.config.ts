@@ -24,34 +24,30 @@ export class DatabaseConfig
   constructor(private readonly config: ConfigService) {}
 
   createTypeOrmOptions(): TypeOrmModuleOptions {
-    const isProduction =
-      this.config.get<string>('NODE_ENV') === 'production';
-
-    /**
-     * Pool sizing rationale
-     * ─────────────────────
-     * max         – hard ceiling on open connections. At 50 for prod / 10 for
-     *               dev this stays well within Postgres's default max_connections
-     *               (100) even when running multiple app replicas.
-     * min         – keep a warm floor of 2 connections so the first request
-     *               after an idle period doesn't pay the TCP/TLS handshake cost.
-     * idleTimeout – 30 s matches the Postgres `tcp_keepalives_idle` default;
-     *               connections idle longer than this are returned to the OS.
-     * connectionTimeout – 5 s is aggressive enough to surface outages quickly
-     *               without blocking the request queue indefinitely.
-     * statementTimeout – 30 s hard cap prevents runaway queries from holding
-     *               connections and starving the rest of the pool (#742).
-     * allowExitOnIdle – let the pool drain cleanly on process exit so no
-     *               connections remain open in the Postgres `pg_stat_activity`
-     *               view after a graceful shutdown.
-     */
-    return {
-      type: 'postgres',
+    const masterConnection = {
       host: this.config.get<string>('DATABASE_HOST', 'localhost'),
       port: this.config.get<number>('DATABASE_PORT', 5432),
       username: this.config.get<string>('DATABASE_USER', 'postgres'),
       password: this.config.get<string>('DATABASE_PASSWORD', 'postgres'),
       database: this.config.get<string>('DATABASE_NAME', 'agric_onchain'),
+    };
+
+    // Falls back to the primary when no replica is configured, so read
+    // queries stay correct in environments without one (local/dev).
+    const replicaConnection = {
+      ...masterConnection,
+      host: this.config.get<string>(
+        'DATABASE_REPLICA_HOST',
+        masterConnection.host,
+      ),
+    };
+
+    return {
+      type: 'postgres',
+      replication: {
+        master: masterConnection,
+        slaves: [replicaConnection],
+      },
       entities: [join(__dirname, '..', '**', '*.entity.{ts,js}')],
       migrations: [join(__dirname, 'migrations', '*.{ts,js}')],
       synchronize: false,
