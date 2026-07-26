@@ -36,6 +36,10 @@ async function bootstrap() {
     logger: new CustomLogger(),
   });
 
+  // Enable graceful shutdown (#696): NestJS will call OnApplicationShutdown
+  // hooks on SIGTERM/SIGINT so in-flight queue jobs can drain before exit.
+  app.enableShutdownHooks();
+
   app.getHttpAdapter().getInstance().disable('x-powered-by');
   app.getHttpAdapter().getInstance().set('etag', 'strong');
   app.use(

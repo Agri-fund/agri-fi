@@ -1,4 +1,4 @@
-import { Controller, Logger } from '@nestjs/common';
+import { Controller, Logger, OnApplicationShutdown } from '@nestjs/common';
 import { Ctx, EventPattern, Payload, RmqContext } from '@nestjs/microservices';
 import { EscrowService } from './escrow.service';
 import {
@@ -6,31 +6,100 @@ import {
   getExponentialBackoffDelayMs,
   isTransientQueueError,
 } from '../queue/retry-policy';
+import { IdempotencyService } from '../queue/idempotency.service';
 
 interface DealDeliveredPayload {
   tradeDealId: string;
 }
 
 @Controller()
-export class EscrowConsumer {
+export class EscrowConsumer implements OnApplicationShutdown {
   private readonly logger = new Logger(EscrowConsumer.name);
   private readonly maxRetries = DEFAULT_QUEUE_MAX_RETRIES;
 
-  constructor(private readonly escrowService: EscrowService) {}
+  /**
+   * Tracks all in-flight handler promises so onApplicationShutdown can await
+   * them before the process exits, satisfying #696.
+   */
+  private readonly activeJobs = new Set<Promise<void>>();
+
+  /** Set to true once shutdown is signalled — new messages are nacked. */
+  private shuttingDown = false;
+
+  constructor(
+    private readonly escrowService: EscrowService,
+    private readonly idempotency: IdempotencyService,
+  ) {}
+
+  // ── Shutdown hook (#696) ────────────────────────────────────────────────────
+
+  /**
+   * Called by NestJS when the application receives a shutdown signal.
+   * Stops accepting new messages and waits for in-flight handlers to complete.
+   */
+  async onApplicationShutdown(signal?: string): Promise<void> {
+    this.shuttingDown = true;
+    this.logger.log(
+      `EscrowConsumer shutting down (signal: ${signal ?? 'unknown'}) — waiting for ${this.activeJobs.size} in-flight job(s)`,
+    );
+
+    if (this.activeJobs.size > 0) {
+      await Promise.allSettled(Array.from(this.activeJobs));
+    }
+
+    this.logger.log('EscrowConsumer shutdown complete — all jobs finished');
+  }
+
+  // ── Event handler ────────────────────────────────────────────────────────────
 
   @EventPattern('deal.delivered')
-  async handleDealDelivered(
+  handleDealDelivered(
     @Payload() payload: DealDeliveredPayload,
     @Ctx() context: RmqContext,
+  ): void {
+    const channel = context.getChannelRef();
+    const originalMsg = context.getMessage();
+
+    if (this.shuttingDown) {
+      // Return message to queue so the next healthy replica picks it up
+      this.logger.warn(
+        `deal.delivered received during shutdown — requeueing message for deal ${payload?.tradeDealId}`,
+      );
+      channel.nack(originalMsg, false, true);
+      return;
+    }
+
+    const job = this.processDealDelivered(
+      payload,
+      channel,
+      originalMsg,
+    ).finally(() => this.activeJobs.delete(job));
+
+    this.activeJobs.add(job);
+  }
+
+  private async processDealDelivered(
+    payload: DealDeliveredPayload,
+    channel: any,
+    originalMsg: any,
   ): Promise<void> {
     const { tradeDealId } = payload;
 
     this.logger.log(`Received deal.delivered event for deal ${tradeDealId}`);
 
+    // ── Idempotency check (#687) ───────────────────────────────────────────
+    const idemKey = IdempotencyService.buildKey('deal.delivered', tradeDealId);
+    const lease = await this.idempotency.acquireLease(idemKey);
+    if (!lease.acquired) {
+      this.logger.log(
+        `deal.delivered duplicate for deal ${tradeDealId} (status: ${lease.status}) — acking without reprocessing`,
+      );
+      channel.ack(originalMsg);
+      return;
+    }
+
     let attempt = 0;
     let lastError: Error | null = null;
-    const channel = context.getChannelRef();
-    const originalMsg = context.getMessage();
 
     while (attempt < this.maxRetries) {
       attempt++;
@@ -40,6 +109,8 @@ export class EscrowConsumer {
         this.logger.log(
           `Successfully processed deal.delivered for deal ${tradeDealId} on attempt ${attempt}`,
         );
+
+        await this.idempotency.markDone(idemKey);
         channel.ack(originalMsg);
         return;
       } catch (error) {
@@ -56,7 +127,7 @@ export class EscrowConsumer {
             continue;
           }
         } else {
-          // Non-transient error, don't retry
+          // Non-transient error — stop retrying immediately
           this.logger.error(
             `Non-transient error processing deal ${tradeDealId}: ${error.message}`,
             error.stack,
@@ -72,8 +143,10 @@ export class EscrowConsumer {
       lastError?.stack,
     );
 
-    // The error handling (admin alerts, etc.) is already done in EscrowService
-    // We don't re-throw here to prevent the message from being requeued indefinitely
+    // Release the idempotency lease so a future redelivery can retry
+    await this.idempotency.releaseLease(idemKey);
+
+    // Nack without requeue — RabbitMQ will dead-letter the message to the DLX
     channel.nack(originalMsg, false, false);
   }
 

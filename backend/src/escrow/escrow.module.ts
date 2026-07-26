@@ -8,6 +8,7 @@ import { Investment } from '../investments/entities/investment.entity';
 import { User } from '../auth/entities/user.entity';
 import { StellarModule } from '../stellar/stellar.module';
 import { QueueModule } from '../queue/queue.module';
+import { IdempotencyService } from '../queue/idempotency.service';
 
 @Module({
   imports: [
@@ -21,7 +22,7 @@ import { QueueModule } from '../queue/queue.module';
     QueueModule,
   ],
   controllers: [EscrowConsumer],
-  providers: [EscrowService],
+  providers: [EscrowService, IdempotencyService],
   exports: [EscrowService],
 })
 export class EscrowModule {}
