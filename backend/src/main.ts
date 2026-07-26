@@ -21,7 +21,7 @@ import { SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { buildOpenApiConfig } from './common/swagger/swagger.config';
 import { applySecurityHeaders } from './common/middleware/security-headers.middleware';
-import { CustomLogger } from './common/logger/custom-logger.service';
+import { Logger } from 'nestjs-pino';
 import { JsonBigIntInterceptor } from './common/interceptors/json-bigint.interceptor';
 import { UserContextInterceptor } from './common/interceptors/user-context.interceptor';
 import { ClsService } from 'nestjs-cls';
@@ -31,10 +31,18 @@ import * as csrf from 'csurf';
 async function bootstrap() {
   // rawBody: true preserves the unparsed request buffer on req.rawBody,
   // which is required by WebhookSignatureGuard for HMAC verification.
+  //
+  // bufferLogs: true — buffer bootstrap log lines until the Pino logger is
+  // wired up, ensuring early startup messages are also structured JSON.
   const app = await NestFactory.create(AppModule, {
     rawBody: true,
-    logger: new CustomLogger(),
+    bufferLogs: true,
   });
+
+  // Replace the default NestJS ConsoleLogger with the Pino-backed Logger so
+  // every log line (including NestJS framework messages) is structured JSON.
+  // This is the canonical way recommended by nestjs-pino.
+  app.useLogger(app.get(Logger));
 
   app.getHttpAdapter().getInstance().disable('x-powered-by');
   app.getHttpAdapter().getInstance().set('etag', 'strong');
