@@ -27,6 +27,8 @@ import { SorobanModule } from './soroban/soroban.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { validateEnvironment } from './config/env.validation';
 import { ScheduleModule } from '@nestjs/schedule';
+import { APP_FILTER } from '@nestjs/core';
+import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 
 @Module({
   controllers: [AppController],
@@ -83,6 +85,12 @@ import { ScheduleModule } from '@nestjs/schedule';
     TerminusModule,
     SorobanModule,
     MetricsModule,
+  ],
+  providers: [
+    {
+      provide: APP_FILTER,
+      useClass: HttpExceptionFilter,
+    },
   ],
 })
 export class AppModule implements NestModule {

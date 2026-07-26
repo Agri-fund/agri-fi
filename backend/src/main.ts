@@ -37,6 +37,7 @@ async function bootstrap() {
   });
 
   app.getHttpAdapter().getInstance().disable('x-powered-by');
+  app.getHttpAdapter().getInstance().set('etag', 'strong');
   app.use(
     helmet({
       contentSecurityPolicy: {

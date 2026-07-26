@@ -46,3 +46,31 @@ export function toPaginatedResult<T>(
     },
   };
 }
+
+export interface CursorPaginationQuery {
+  cursor?: string;
+  limit?: number;
+}
+
+export interface CursorPaginatedResult<T> {
+  data: T[];
+  meta: {
+    limit: number;
+    nextCursor: string | null;
+    hasMore: boolean;
+  };
+}
+
+export function encodeCursor(value: string | Date | number): string {
+  const strVal = value instanceof Date ? value.toISOString() : String(value);
+  return Buffer.from(strVal).toString('base64');
+}
+
+export function decodeCursor(cursor: string): string {
+  try {
+    return Buffer.from(cursor, 'base64').toString('utf8');
+  } catch {
+    return cursor;
+  }
+}
+

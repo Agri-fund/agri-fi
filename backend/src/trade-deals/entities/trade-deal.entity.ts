@@ -6,6 +6,7 @@ import {
   JoinColumn,
   CreateDateColumn,
   OneToMany,
+  Index,
 } from 'typeorm';
 import { ApiProperty } from '@nestjs/swagger';
 import { Exclude } from 'class-transformer';
@@ -24,6 +25,8 @@ export type TradeDealStatus =
   | 'expired';
 
 @Entity('trade_deals')
+@Index(['farmerId', 'status'])
+@Index(['traderId', 'status'])
 export class TradeDeal {
   @PrimaryGeneratedColumn('uuid')
   @ApiProperty({
@@ -75,6 +78,7 @@ export class TradeDeal {
   })
   tokenSymbol: string;
 
+  @Index()
   @Column({
     type: 'text',
     default: 'draft',
@@ -99,6 +103,7 @@ export class TradeDeal {
   @JoinColumn({ name: 'farmer_id' })
   farmer: User;
 
+  @Index()
   @Column({ name: 'farmer_id' })
   @ApiProperty({
     description: 'Farmer user UUID',
@@ -110,6 +115,7 @@ export class TradeDeal {
   @JoinColumn({ name: 'trader_id' })
   trader: User;
 
+  @Index()
   @Column({ name: 'trader_id' })
   @ApiProperty({
     description: 'Trader user UUID',
