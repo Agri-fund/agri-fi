@@ -32,6 +32,7 @@ import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { Sep10ChallengeDto } from './dto/sep10-challenge.dto';
 import { Sep10ResponseDto } from './dto/sep10-response.dto';
+import { EnableMfaDto } from './dto/mfa.dto';
 import { WebhookSignatureGuard } from './webhook-signature.guard';
 import { User } from './entities/user.entity';
 
@@ -159,8 +160,46 @@ export class AuthController {
   @ApiOperation({ summary: 'Logout and invalidate the current JWT token' })
   @ApiResponse({ status: 200, description: 'Logged out successfully' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  logout(@Request() req: AuthRequest) {
-    return this.authService.logout(req.user.id);
+  logout(
+    @Request() req: AuthRequest,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const authHeader = req.headers.authorization;
+    const token =
+      authHeader && authHeader.startsWith('Bearer ')
+        ? authHeader.substring(7).trim()
+        : undefined;
+
+    res.clearCookie('access_token');
+    res.clearCookie('refresh_token');
+    return this.authService.logout(req.user.id, token);
+  }
+
+  @Get('mfa/setup')
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth('jwt')
+  @ApiOperation({
+    summary: 'Get MFA TOTP provisioning secret, URI, and QR code',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns secret, otpauthUrl, and base64 qrCodeUrl',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  setupMfa(@Request() req: AuthRequest) {
+    return this.authService.setupMfa(req.user.id);
+  }
+
+  @Post('mfa/enable')
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth('jwt')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Verify test token and enable MFA for account' })
+  @ApiResponse({ status: 200, description: 'MFA enabled successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid verification token' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  enableMfa(@Request() req: AuthRequest, @Body() dto: EnableMfaDto) {
+    return this.authService.enableMfa(req.user.id, dto.token);
   }
 
   @Get('stellar-challenge')
