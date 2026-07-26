@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { EscrowService } from './escrow.service';
 import { EscrowConsumer } from './escrow.consumer';
+import { EscrowDlqModule } from './escrow-dlq.module';
 import { PaymentDistribution } from './entities/payment-distribution.entity';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
 import { Investment } from '../investments/entities/investment.entity';
@@ -19,6 +20,7 @@ import { QueueModule } from '../queue/queue.module';
     ]),
     StellarModule,
     QueueModule,
+    EscrowDlqModule,
   ],
   controllers: [EscrowConsumer],
   providers: [EscrowService],
