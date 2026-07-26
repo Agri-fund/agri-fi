@@ -336,16 +336,19 @@ export class InvestmentsService {
 
     // If a signed XDR is provided (investor signed via Freighter), enqueue async job
     if (signedXdr) {
-      await this.queueService.enqueueInvestmentFund({
-        investmentId,
-        signedXdr,
-        escrowPublicKey: deal.escrowPublicKey,
-        encryptedEscrowSecret: deal.escrowSecretKey ?? '',
-        assetCode: deal.tokenSymbol,
-        tokenAmount: investment.tokenAmount,
-        investorWallet: investorWalletAddress,
-        amountUsd: Number(investment.amountUsd),
-      });
+      await this.queueService.enqueueInvestmentFundTransactional(
+        this.dataSource.createQueryRunner(),
+        {
+          investmentId,
+          signedXdr,
+          escrowPublicKey: deal.escrowPublicKey,
+          encryptedEscrowSecret: deal.escrowSecretKey ?? '',
+          assetCode: deal.tokenSymbol,
+          tokenAmount: investment.tokenAmount,
+          investorWallet: investorWalletAddress,
+          amountUsd: Number(investment.amountUsd),
+        },
+      );
       // Return queued status — actual txId will be set when job completes
       return { status: 'queued', investmentId };
     }
@@ -378,15 +381,18 @@ export class InvestmentsService {
         },
         relations: ['investor'],
       });
-      await this.queueService.enqueueDealFunded({
-        tradeDealId: tradeDeal.id,
-        commodity: tradeDeal.commodity,
-        totalValue: Number(tradeDeal.totalValue),
-        investors: investments.map((inv) => ({
-          email: inv.investor?.email ?? '',
-          tokenAmount: inv.tokenAmount,
-        })),
-      });
+      await this.queueService.enqueueDealFundedTransactional(
+        this.dataSource.createQueryRunner(),
+        {
+          tradeDealId: tradeDeal.id,
+          commodity: tradeDeal.commodity,
+          totalValue: Number(tradeDeal.totalValue),
+          investors: investments.map((inv) => ({
+            email: inv.investor?.email ?? '',
+            tokenAmount: inv.tokenAmount,
+          })),
+        },
+      );
     } catch (err) {
       // non-critical — log and swallow
     }
