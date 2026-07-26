@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CacheModule } from '@nestjs/cache-manager';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { HttpModule } from '@nestjs/axios';
 import { TradeDealsController } from './trade-deals.controller';
 import { TradeDealsService } from './trade-deals.service';
 import { TradeDeal } from './entities/trade-deal.entity';
@@ -13,6 +14,7 @@ import { StellarModule } from '../stellar/stellar.module';
 import { QueueModule } from '../queue/queue.module';
 import { TradeDealsGuard } from './trade-deals.guard';
 import { TradeDealsCronService } from './trade-deals-cron.service';
+import { DealFundingAlertService } from './deal-funding-alert.service';
 import { redisCacheStore } from '../config/redis-cache.store';
 
 /**
@@ -32,6 +34,7 @@ const DEALS_CACHE_TTL_MS = 30_000;
     ]),
     StellarModule,
     QueueModule,
+    HttpModule,
     /**
      * #743 — Cache active deals list in Redis.
      *
@@ -64,7 +67,7 @@ const DEALS_CACHE_TTL_MS = 30_000;
     }),
   ],
   controllers: [TradeDealsController],
-  providers: [TradeDealsService, TradeDealsGuard, TradeDealsCronService],
+  providers: [TradeDealsService, TradeDealsGuard, TradeDealsCronService, DealFundingAlertService],
   exports: [TradeDealsService],
 })
 export class TradeDealsModule {}
