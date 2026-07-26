@@ -27,8 +27,10 @@ import { SorobanModule } from './soroban/soroban.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { validateEnvironment } from './config/env.validation';
 import { ScheduleModule } from '@nestjs/schedule';
-import { APP_FILTER } from '@nestjs/core';
+import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { DatabaseTransactionInterceptor } from './common/filters/database-transaction.interceptor';
+import { SentryModule } from './common/logger/sentry.module';
 
 @Module({
   controllers: [AppController],
@@ -85,11 +87,16 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
     TerminusModule,
     SorobanModule,
     MetricsModule,
+    SentryModule,
   ],
   providers: [
     {
       provide: APP_FILTER,
       useClass: HttpExceptionFilter,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: DatabaseTransactionInterceptor,
     },
   ],
 })
