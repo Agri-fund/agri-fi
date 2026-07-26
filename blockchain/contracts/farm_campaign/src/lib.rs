@@ -117,6 +117,7 @@ impl FarmCampaignContract {
         env.storage().instance().set(&DataKey::State, &state);
         env.storage().instance().set(&DataKey::Investments, &Map::<Address, i128>::new(&env));
         env.storage().instance().set(&DataKey::Arbitrator, &arbitrator);
+        env.events().publish((symbol_short!("initialized"),), ());
         Ok(())
     }
 
@@ -149,7 +150,7 @@ impl FarmCampaignContract {
         state.total_raised += amount;
         if state.total_raised >= config.funding_target {
             state.status = CampaignStatus::Funded;
-            env.events().publish((symbol_short!("funded"), investor.clone()), state.total_raised);
+            env.events().publish((symbol_short!("status_changed"), symbol_short!("funded")), state.total_raised);
         }
         env.storage().instance().set(&DataKey::State, &state);
         env.events().publish((symbol_short!("invested"), investor), amount);
@@ -166,7 +167,7 @@ impl FarmCampaignContract {
         if state.status != CampaignStatus::Funded { return Err(Error::NotFunded); }
         state.status = CampaignStatus::Active;
         env.storage().instance().set(&DataKey::State, &state);
-        env.events().publish((symbol_short!("approved"),), ());
+        env.events().publish((symbol_short!("status_changed"), symbol_short!("active")), ());
         Ok(())
     }
 
@@ -199,9 +200,10 @@ impl FarmCampaignContract {
         state.milestones_released += 1;
         if state.milestones_released >= config.milestone_count {
             state.status = CampaignStatus::Delivered;
+            env.events().publish((symbol_short!("status_changed"), symbol_short!("delivered")), ());
         }
         env.storage().instance().set(&DataKey::State, &state);
-        env.events().publish((symbol_short!("milestone"), milestone_index), tranche);
+        env.events().publish((symbol_short!("milestone_released"), milestone_index), tranche);
         Ok(())
     }
 
@@ -243,7 +245,7 @@ impl FarmCampaignContract {
             .ok_or(Error::NotInitialized)?;
         final_state.status = CampaignStatus::Completed;
         env.storage().instance().set(&DataKey::State, &final_state);
-        env.events().publish((symbol_short!("complete"),), revenue_amount);
+        env.events().publish((symbol_short!("status_changed"), symbol_short!("completed")), revenue_amount);
         Ok(())
     }
 
@@ -282,7 +284,7 @@ impl FarmCampaignContract {
             .ok_or(Error::NotInitialized)?;
         state.status = CampaignStatus::Paused;
         env.storage().instance().set(&DataKey::State, &state);
-        env.events().publish((symbol_short!("paused"),), ());
+        env.events().publish((symbol_short!("status_changed"), symbol_short!("paused")), ());
         Ok(())
     }
 
@@ -295,7 +297,7 @@ impl FarmCampaignContract {
             .ok_or(Error::NotInitialized)?;
         state.status = CampaignStatus::Open;
         env.storage().instance().set(&DataKey::State, &state);
-        env.events().publish((symbol_short!("unpaused"),), ());
+        env.events().publish((symbol_short!("status_changed"), symbol_short!("open")), ());
         Ok(())
     }
 
@@ -308,7 +310,7 @@ impl FarmCampaignContract {
             .ok_or(Error::NotInitialized)?;
         state.status = CampaignStatus::Failed;
         env.storage().instance().set(&DataKey::State, &state);
-        env.events().publish((symbol_short!("failed"),), ());
+        env.events().publish((symbol_short!("status_changed"), symbol_short!("failed")), ());
         Ok(())
     }
 
@@ -376,9 +378,10 @@ impl FarmCampaignContract {
             state.milestones_released += 1;
             if state.milestones_released >= config.milestone_count {
                 state.status = CampaignStatus::Delivered;
+                env.events().publish((symbol_short!("status_changed"), symbol_short!("delivered")), ());
             }
             env.storage().instance().set(&DataKey::State, &state);
-            env.events().publish((symbol_short!("milestone"), milestone_index), tranche);
+            env.events().publish((symbol_short!("milestone_released"), milestone_index), tranche);
         }
         
         env.events().publish((symbol_short!("dispute_resolved"), milestone_index), approve);
@@ -386,12 +389,19 @@ impl FarmCampaignContract {
     }
 
     /// Update the arbitrator address
-    /// Can only be called by admin
+    /// Can only be called by admin before campaign is funded
     pub fn update_arbitrator(env: Env, admin: Address, new_arbitrator: Address) -> Result<(), Error> {
         admin.require_auth();
         let config: Config = env.storage().instance().get(&DataKey::Config)
             .ok_or(Error::NotInitialized)?;
         if admin != config.admin { return Err(Error::Unauthorized); }
+        
+        // Prevent modification after funding has started
+        let state: State = env.storage().instance().get(&DataKey::State)
+            .ok_or(Error::NotInitialized)?;
+        if state.status != CampaignStatus::Open {
+            return Err(Error::Unauthorized);
+        }
         
         env.storage().instance().set(&DataKey::Arbitrator, &new_arbitrator);
         env.events().publish((symbol_short!("arbitrator_updated"),), new_arbitrator);
