@@ -22,6 +22,10 @@ async function bootstrap() {
         ],
         queue: ESCROW_QUEUE_NAME,
         queueOptions: dlxQueueOptions(ESCROW_QUEUE_DLX),
+        prefetchCount: parseInt(
+          new ConfigService().get<string>('RABBITMQ_PREFETCH_COUNT', '10'),
+          10,
+        ),
       },
     },
   );
