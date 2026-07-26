@@ -15,6 +15,16 @@ const nextConfig = {
     NEXT_PUBLIC_API_URL:
       process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001',
   },
+  // react-pdf (pdfjs-dist) ships a canvas dependency that is only needed in
+  // Node.js environments; in the browser the browser's native Canvas API is
+  // used instead. Mark both as external so Next.js doesn't try to bundle them.
+  webpack: (config) => {
+    config.externals = [
+      ...(config.externals || []),
+      { canvas: 'canvas' },
+    ];
+    return config;
+  },
   async headers() {
     return [
       {
