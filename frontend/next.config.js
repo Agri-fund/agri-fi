@@ -9,7 +9,19 @@ const nextConfig = {
   output: 'standalone',
   trailingSlash: true,
   images: {
-    unoptimized: true,
+    // Issue #266 — serve trader-uploaded cover photos as optimized/cached
+    // webp instead of shipping the original high-resolution upload.
+    formats: ['image/webp'],
+    remotePatterns: [
+      // S3 bucket that document/photo uploads are stored in (any region).
+      { protocol: 'https', hostname: '*.s3.*.amazonaws.com' },
+      // IPFS gateways used for on-chain document/photo hashes (see
+      // IPFS_GATEWAYS in backend/.env.example).
+      { protocol: 'https', hostname: 'ipfs.io' },
+      { protocol: 'https', hostname: 'cloudflare-ipfs.com' },
+      { protocol: 'https', hostname: 'gateway.pinata.cloud' },
+      { protocol: 'https', hostname: 'dweb.link' },
+    ],
   },
   env: {
     NEXT_PUBLIC_API_URL:

@@ -62,6 +62,7 @@ export interface Deal {
   created_at: string;
   documents?: Document[];
   milestones?: Milestone[];
+  cover_image_url?: string | null;
 }
 
 export type TradeDeal = Deal;
@@ -179,6 +180,7 @@ function normalizeDeal(raw: any): Deal {
     created_at: raw.created_at ?? raw.createdAt ?? "",
     documents: raw.documents,
     milestones: raw.milestones,
+    cover_image_url: raw.cover_image_url ?? raw.coverImageUrl ?? null,
   };
 }
 
