@@ -1907,9 +1907,9 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Submits a transaction with exponential backoff retry for transient Horizon errors.
+   * Submits a transaction with exponential backoff retry and random jitter for transient Horizon errors.
+   * Formula: base_delay * 2^attempt + random_jitter.
    * Retries on HTTP 429, 503, 504, and network timeout errors.
-   * Waits 1s → 2s → 4s before each retry; throws after 3 failed attempts.
    */
   private async submitWithRetry(tx: any): Promise<any> {
     const RETRYABLE = new Set([429, 503, 504]);
@@ -1929,10 +1929,12 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
           throw err;
         }
 
-        const delayMs = 1000 * Math.pow(2, attempt); // 1s, 2s, 4s
+        const baseDelayMs = 1000;
+        const randomJitter = Math.floor(Math.random() * 500);
+        const delayMs = baseDelayMs * Math.pow(2, attempt) + randomJitter;
         this.logger.warn(
-          { attempt, status, delayMs },
-          `Transient Horizon error (${status ?? 'timeout'}); retrying in ${delayMs}ms`,
+          { attempt, status, delayMs, jitter: randomJitter },
+          `Transient Horizon error (${status ?? 'timeout'}); retrying with exponential backoff and jitter in ${delayMs}ms`,
         );
         await new Promise((resolve) => setTimeout(resolve, delayMs));
       }
