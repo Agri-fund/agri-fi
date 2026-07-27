@@ -82,6 +82,14 @@
 }
 
 @layer components {
+  /* ── PDF Viewer toolbar button (#721) ────────────────────────────────── */
+  .toolbar-btn {
+    @apply inline-flex items-center justify-center rounded-lg p-1.5 text-slate-500
+           hover:bg-slate-200 hover:text-slate-700 disabled:opacity-40
+           disabled:cursor-not-allowed transition-colors duration-150
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400;
+  }
+
   /* ── Buttons ──────────────────────────────────────────────────────────── */
   .btn {
     @apply inline-flex items-center justify-center gap-2 font-semibold text-sm
