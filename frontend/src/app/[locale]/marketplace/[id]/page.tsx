@@ -1,13 +1,29 @@
 import { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import { getDealById, Milestone } from '@/lib/api';
 import FundingProgressBar from '@/components/FundingProgressBar';
 import StatusBadge from '@/components/StatusBadge';
-import { ShipmentTimeline } from '@/components/ShipmentTimeline';
-import { ShipmentMap } from '@/components/dashboard/ShipmentMap';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import InvestmentSection from '@/components/InvestmentSection';
+
+// Heavy client components — loaded as separate chunks that are only fetched
+// when the browser renders this page, not included in the shared JS bundle.
+const ShipmentTimeline = dynamic(
+  () => import('@/components/ShipmentTimeline').then(m => ({ default: m.ShipmentTimeline })),
+  {
+    loading: () => <div className="h-40 skeleton rounded-2xl" aria-label="Loading timeline…" />,
+  },
+);
+
+const ShipmentMap = dynamic(
+  () => import('@/components/dashboard/ShipmentMap').then(m => ({ default: m.ShipmentMap })),
+  {
+    ssr: false,
+    loading: () => <div className="h-64 skeleton rounded-2xl" aria-label="Loading map…" />,
+  },
+);
 
 export const dynamic = 'force-static';
 export const dynamicParams = false;

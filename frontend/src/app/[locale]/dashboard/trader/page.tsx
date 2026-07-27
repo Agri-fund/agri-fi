@@ -73,7 +73,7 @@ export default function TraderDashboard() {
           <h1 className="page-title">Trader Dashboard</h1>
         </div>
 
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard label="Total Deals"  value={deals.length}                        icon="📋" color="bg-blue-50" />
           <StatCard label="Funded"       value={funded}                              icon="✅" color="bg-emerald-50" />
           <StatCard label="Completed"    value={completed}                           icon="🏆" color="bg-amber-50" />
@@ -97,7 +97,7 @@ export default function TraderDashboard() {
               <h2 className="section-title">Your Deals</h2>
               <span className="muted">{deals.length} total</span>
             </div>
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            <div className="grid sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-5">
               {deals.map(deal => {
                 const pct = deal.total_value > 0
                   ? Math.min((Number(deal.total_invested) / Number(deal.total_value)) * 100, 100) : 0;

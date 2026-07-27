@@ -178,7 +178,13 @@
     "error": "Error",
     "success": "Success",
     "processing": "Processing...",
-    "dismiss": "Dismiss"
+    "dismiss": "Dismiss",
+    "network": {
+      "offline": {
+        "title": "You are offline.",
+        "description": "Actions requiring internet access are disabled until connection is restored."
+      }
+    }
   },
   "format": {
     "currency": "{value, number, currency}",

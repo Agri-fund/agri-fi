@@ -9,6 +9,7 @@ import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.enti
 import { PaymentDistribution } from '../escrow/entities/payment-distribution.entity';
 import { KycSubmission } from '../auth/entities/kyc-submission.entity';
 import { Document } from '../trade-deals/entities/document.entity';
+import { AuditLog } from '../database/entities/audit-log.entity';
 import { TradeDealsModule } from '../trade-deals/trade-deals.module';
 
 @Module({
@@ -21,6 +22,7 @@ import { TradeDealsModule } from '../trade-deals/trade-deals.module';
       PaymentDistribution,
       KycSubmission,
       Document,
+      AuditLog,
     ]),
     TradeDealsModule,
   ],
