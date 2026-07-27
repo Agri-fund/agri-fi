@@ -106,6 +106,13 @@ function parsePageParam(raw: string | null): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
 }
 
+const SORT_OPTIONS = [
+  { value: 'created_at', label: 'Launch Date' },
+  { value: 'roi', label: 'Yield Rate' },
+  { value: 'total_value', label: 'Total Value' },
+  { value: 'progress', label: 'Progress' },
+] as const;
+
 function MarketplaceContent() {
   const router = useRouter();
   const pathname = usePathname();
@@ -113,6 +120,8 @@ function MarketplaceContent() {
 
   const urlPage = parsePageParam(searchParams.get('page'));
   const urlSearch = searchParams.get('q') ?? '';
+  const urlSortBy = searchParams.get('sortBy') ?? 'created_at';
+  const urlSortOrder = (searchParams.get('sortOrder') ?? 'DESC') as 'ASC' | 'DESC';
 
   const [deals, setDeals] = useState<Deal[]>([]);
   const [total, setTotal] = useState(0);
@@ -151,14 +160,14 @@ function MarketplaceContent() {
 
   useEffect(() => {
     setLoading(true);
-    getOpenDeals(urlPage, LIMIT)
+    getOpenDeals(urlPage, LIMIT, urlSortBy, urlSortOrder)
       .then((res) => {
         setDeals(res.data);
         setTotal(res.total);
       })
       .catch(() => setDeals([]))
       .finally(() => setLoading(false));
-  }, [urlPage]);
+  }, [urlPage, urlSortBy, urlSortOrder]);
 
   const filtered = useMemo(() => {
     if (!debouncedSearch) return deals;
@@ -181,6 +190,21 @@ function MarketplaceContent() {
   };
 
   const clearSearch = () => setSearchInput('');
+
+  const handleSortChange = (sortBy: string) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('sortBy', sortBy);
+    const query = params.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  };
+
+  const toggleSortOrder = () => {
+    const newOrder = urlSortOrder === 'ASC' ? 'DESC' : 'ASC';
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('sortOrder', newOrder);
+    const query = params.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  };
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -224,6 +248,46 @@ function MarketplaceContent() {
               aria-label="Search deals by commodity"
             />
           </div>
+          
+          {/* Sort dropdown */}
+          <div className="relative">
+            <select
+              className="input pr-8 appearance-none cursor-pointer"
+              value={urlSortBy}
+              onChange={(e) => handleSortChange(e.target.value)}
+              aria-label="Sort deals by"
+            >
+              {SORT_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </span>
+          </div>
+
+          {/* Sort order toggle */}
+          <button
+            onClick={toggleSortOrder}
+            className="btn-secondary text-sm px-4 flex items-center gap-2"
+            aria-label={`Sort ${urlSortOrder === 'ASC' ? 'ascending' : 'descending'}`}
+          >
+            {urlSortOrder === 'ASC' ? (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 4h13M3 8h9m-9 4h9m5-4v12m0 0l-4-4m4 4l4-4" />
+              </svg>
+            )}
+            {urlSortOrder}
+          </button>
+
           {searchInput && (
             <button onClick={clearSearch} className="btn-secondary text-sm px-4">
               Clear ×

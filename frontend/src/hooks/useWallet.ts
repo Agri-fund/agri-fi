@@ -36,14 +36,14 @@ export const useWallet = (): UseWalletReturn => {
     publicKey: null,
     provider: null,
     availableWallets: [],
-    isLoading: false,
+    isLoading: true,
     error: null,
   });
 
   // Detect available wallets on mount
   useEffect(() => {
     detectAvailableWallets().then((wallets) => {
-      setState((prev) => ({ ...prev, availableWallets: wallets }));
+      setState((prev) => ({ ...prev, availableWallets: wallets, isLoading: false }));
     });
   }, []);
 
