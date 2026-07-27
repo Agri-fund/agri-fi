@@ -24,6 +24,7 @@
     "dotenv-vault:keys": "dotenv-vault keys",
     "dotenv-vault:open": "dotenv-vault open",
     "db:seed": "ts-node scripts/seed.ts",
+    "db:seed:batch": "ts-node -r tsconfig-paths/register scripts/batch-seed.ts",
     "queue:retry-dlq": "ts-node scripts/retry-dlq.ts"
   },
   "dependencies": {
