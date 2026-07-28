@@ -9,6 +9,7 @@ export enum TxStatus {
   PENDING = 'pending',
   SUCCESS = 'success',
   FAILED = 'failed',
+  PENDING_CLAIM = 'pending_claim',
 }
 
 @Entity('transaction_logs')

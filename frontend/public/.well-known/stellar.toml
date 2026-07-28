@@ -1,0 +1,38 @@
+# Agri-fi Stellar SEP-0001 Configuration
+# See: https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md
+
+NETWORK_PASSPHRASE="Test SDF Network ; September 2015"
+FEDERATION_SERVER="https://agri-fi.io/federation"
+AUTH_SERVER="https://agri-fi.io/auth"
+TRANSFER_SERVER="https://agri-fi.io/transfer"
+TRANSFER_SERVER_SEP0024="https://agri-fi.io/sep24"
+KYC_SERVER="https://agri-fi.io/kyc"
+WEB_AUTH_ENDPOINT="https://agri-fi.io/auth"
+
+[DOCUMENTATION]
+ORG_NAME="Agri-fi"
+ORG_URL="https://agri-fi.io"
+ORG_DESCRIPTION="Decentralised agricultural finance platform built on Stellar"
+ORG_GITHUB="https://github.com/Agri-fund/agri-fi"
+
+[[PRINCIPALS]]
+name="Agri-fi Team"
+email="team@agri-fi.io"
+
+[[CURRENCIES]]
+code="USDC"
+issuer="GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"
+display_decimals=6
+name="USD Coin"
+desc="Circle USDC on Stellar testnet"
+is_asset_anchored=true
+anchor_asset_type="fiat"
+anchor_asset="USD"
+status="test"
+
+[[VALIDATORS]]
+ALIAS="agri-fi-testnet"
+DISPLAY_NAME="Agri-fi Testnet Validator"
+HOST="validator.agri-fi.io:11625"
+PUBLIC_KEY="GCEZWKCA5VLDNRLN3RPRJMRZOX3Z6G5CHCGWKX2ZVBFGCNX5J3MHAQX"
+HISTORY="https://validator.agri-fi.io/history"

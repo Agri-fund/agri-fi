@@ -102,9 +102,6 @@ impl MarketplaceSettlementContract {
         let platform_fee_bps: u32 = env.storage().instance()
             .get(&DataKey::PlatformFeeBps).unwrap_or(200);
 
-        let usdc = token::Client::new(&env, &usdc_token);
-        usdc.transfer(&buyer, &env.current_contract_address(), &amount);
-
         let order = Order {
             order_id: order_id.clone(),
             buyer: buyer.clone(),
@@ -115,10 +112,16 @@ impl MarketplaceSettlementContract {
             created_at: env.ledger().timestamp(),
             investor_shares,
         };
+        // Persist the order before the external transfer so a reentrant
+        // call with the same order_id is rejected by the `has(&key)` check.
         env.storage().instance().set(&key, &order);
 
         let count: u32 = env.storage().instance().get(&DataKey::OrderCount).unwrap_or(0);
         env.storage().instance().set(&DataKey::OrderCount, &(count + 1));
+
+        let usdc = token::Client::new(&env, &usdc_token);
+        usdc.transfer(&buyer, &env.current_contract_address(), &amount);
+
         env.events().publish((symbol_short!("order"), buyer), amount);
         Ok(())
     }
@@ -150,6 +153,11 @@ impl MarketplaceSettlementContract {
         };
         let farmer_amount = distributable - investor_pool;
 
+        // Lock settlement state before invoking external transfers so a
+        // reentrant call sees the order is no longer Pending and errors out.
+        order.status = OrderStatus::Completed;
+        env.storage().instance().set(&key, &order);
+
         if farmer_amount > 0 {
             usdc.transfer(&env.current_contract_address(), &order.farmer, &farmer_amount);
         }
@@ -174,8 +182,6 @@ impl MarketplaceSettlementContract {
             usdc.transfer(&env.current_contract_address(), &stored_admin, &platform_fee);
         }
 
-        order.status = OrderStatus::Completed;
-        env.storage().instance().set(&key, &order);
         env.events().publish((symbol_short!("settled"), order_id), total);
         Ok(())
     }
@@ -193,11 +199,14 @@ impl MarketplaceSettlementContract {
 
         let usdc_token: Address = env.storage().instance().get(&DataKey::UsdcToken)
             .ok_or(Error::NotInitialized)?;
+        // Lock settlement state before invoking the external transfer so a
+        // reentrant call sees the order is no longer Pending and errors out.
+        order.status = OrderStatus::Refunded;
+        env.storage().instance().set(&key, &order);
+
         let usdc = token::Client::new(&env, &usdc_token);
         usdc.transfer(&env.current_contract_address(), &order.buyer, &order.amount);
 
-        order.status = OrderStatus::Refunded;
-        env.storage().instance().set(&key, &order);
         env.events().publish((symbol_short!("refund"), order_id), order.amount);
         Ok(())
     }

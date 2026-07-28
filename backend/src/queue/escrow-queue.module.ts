@@ -1,6 +1,11 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ClientsModule, Transport } from '@nestjs/microservices';
+import {
+  ESCROW_QUEUE_NAME,
+  ESCROW_QUEUE_DLX,
+  dlxQueueOptions,
+} from './queue.dlq.constants';
 
 export const ESCROW_QUEUE_SERVICE = 'ESCROW_QUEUE_SERVICE';
 
@@ -19,8 +24,8 @@ export const ESCROW_QUEUE_SERVICE = 'ESCROW_QUEUE_SERVICE';
                 'amqp://guest:guest@localhost:5672',
               ),
             ],
-            queue: 'agric_onchain_escrow_queue',
-            queueOptions: { durable: true },
+            queue: ESCROW_QUEUE_NAME,
+            queueOptions: dlxQueueOptions(ESCROW_QUEUE_DLX),
           },
         }),
         inject: [ConfigService],

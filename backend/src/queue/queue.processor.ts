@@ -21,7 +21,9 @@ import {
 import {
   DEFAULT_QUEUE_MAX_RETRIES,
   getExponentialBackoffDelayMs,
+  getDeliveryAttempt,
 } from './retry-policy';
+import { decryptPayload } from './queue.crypto';
 
 @Controller()
 export class QueueProcessor {
@@ -48,11 +50,70 @@ export class QueueProcessor {
     }
   }
 
+  private unwrap<T>(
+    encrypted: string,
+    pattern: string,
+    channel: any,
+    msg: any,
+  ): T | null {
+    try {
+      return decryptPayload<T>(encrypted);
+    } catch (err: any) {
+      this.logger.error(
+        { event: pattern, error: err.message },
+        `${pattern} decryption failed — routing to DLQ`,
+      );
+      // Undecryptable payloads can never succeed on retry — send straight to DLQ.
+      channel.nack(msg, false, false);
+      return null;
+    }
+  }
+
+  /**
+   * Nack a message that failed processing. Requeues while under
+   * MAX_DELIVERY_ATTEMPTS so the broker's retry/backoff can kick in; once
+   * exhausted, nacks without requeue so RabbitMQ dead-letters it to the
+   * queue's configured DLX (see queue.dlq.constants.ts).
+   */
+  private nackWithRetryLimit(
+    channel: any,
+    msg: any,
+    pattern: string,
+    context: Record<string, unknown>,
+  ): void {
+    const attempt = getDeliveryAttempt(msg);
+    const exhausted = attempt >= DEFAULT_QUEUE_MAX_RETRIES;
+
+    this.logger.warn(
+      {
+        ...context,
+        event: pattern,
+        attempt,
+        maxRetries: DEFAULT_QUEUE_MAX_RETRIES,
+      },
+      exhausted
+        ? `${pattern} exhausted ${DEFAULT_QUEUE_MAX_RETRIES} attempts — routing to DLQ`
+        : `${pattern} attempt ${attempt}/${DEFAULT_QUEUE_MAX_RETRIES} failed — requeueing`,
+    );
+
+    channel.nack(msg, false, !exhausted);
+  }
+
   @EventPattern('deal.publish')
   async handleDealPublish(
-    @Payload() data: DealPublishPayload,
+    @Payload() encrypted: string,
     @Ctx() context: RmqContext,
   ) {
+    const channel = context.getChannelRef();
+    const originalMsg = context.getMessage();
+    const data = this.unwrap<DealPublishPayload>(
+      encrypted,
+      'deal.publish',
+      channel,
+      originalMsg,
+    );
+    if (!data) return;
+
     this.setCorrelationId(data);
     this.logger.info(
       { dealId: data.dealId },
@@ -61,7 +122,7 @@ export class QueueProcessor {
 
     try {
       // Call StellarService.issueTradeToken
-      const escrowSecretKey = this.stellarService.decryptSecret(
+      const escrowSecretKey = await this.stellarService.decryptSecret(
         data.encryptedEscrowSecret,
       );
       const result = await this.stellarService.issueTradeToken(
@@ -72,7 +133,7 @@ export class QueueProcessor {
       );
 
       // Encrypt the issuer secret
-      const encryptedIssuerSecret = this.stellarService.encryptSecret(
+      const encryptedIssuerSecret = await this.stellarService.encryptSecret(
         result.issuerSecret,
       );
       if (encryptedIssuerSecret === result.issuerSecret) {
@@ -80,8 +141,10 @@ export class QueueProcessor {
       }
 
       // Update deal with issuer keys and status to open
+      const appTraceId = `app-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 10)}`;
       await this.tradeDealRepo.update(data.dealId, {
         status: 'open',
+        appTraceId,
         stellarAssetTxId: result.txId,
         issuerPublicKey: result.issuerPublicKey,
         issuerSecretKey: encryptedIssuerSecret,
@@ -107,20 +170,37 @@ export class QueueProcessor {
       );
 
       // On Stellar failure: mark deal status = 'failed'
-      await this.tradeDealRepo.update(data.dealId, { status: 'failed' });
+      const appTraceId = `app-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 10)}`;
+      await this.tradeDealRepo.update(data.dealId, {
+        status: 'failed',
+        appTraceId,
+      });
+
+      this.nackWithRetryLimit(channel, originalMsg, 'deal.publish', {
+        dealId: data.dealId,
+      });
+      return;
     }
 
     // Acknowledge the message
-    const channel = context.getChannelRef();
-    const originalMsg = context.getMessage();
     channel.ack(originalMsg);
   }
 
   @EventPattern('investment.fund')
   async handleInvestmentFund(
-    @Payload() data: InvestmentFundPayload,
+    @Payload() encrypted: string,
     @Ctx() context: RmqContext,
   ) {
+    const channel = context.getChannelRef();
+    const originalMsg = context.getMessage();
+    const data = this.unwrap<InvestmentFundPayload>(
+      encrypted,
+      'investment.fund',
+      channel,
+      originalMsg,
+    );
+    if (!data) return;
+
     this.setCorrelationId(data);
     this.logger.info(
       { investmentId: data.investmentId },
@@ -129,8 +209,6 @@ export class QueueProcessor {
 
     let attempt = 0;
     let lastError: Error | null = null;
-    const channel = context.getChannelRef();
-    const originalMsg = context.getMessage();
 
     while (attempt < DEFAULT_QUEUE_MAX_RETRIES) {
       try {
@@ -145,7 +223,7 @@ export class QueueProcessor {
         // InvestmentFundPayload fields directly — the previously referenced
         // variables (escrowSecret, deal, investment) were never declared in
         // this method and would cause a ReferenceError at runtime.
-        const escrowSecret = this.stellarService.decryptSecret(
+        const escrowSecret = await this.stellarService.decryptSecret(
           data.encryptedEscrowSecret,
         );
         await this.stellarService.transferTradeTokens(
@@ -190,7 +268,9 @@ export class QueueProcessor {
       }
     }
 
-    // All retries exhausted — mark investment as failed
+    // In-process retries exhausted — mark investment as failed and route the
+    // message to the DLQ (rather than ack-and-forget) so it's visible for
+    // manual inspection/retry.
     this.logger.error(
       {
         investmentId: data.investmentId,
@@ -203,14 +283,24 @@ export class QueueProcessor {
       status: 'failed' as any,
     });
 
-    channel.ack(originalMsg);
+    channel.nack(originalMsg, false, false);
   }
 
   @EventPattern('deal.funded')
   async handleDealFunded(
-    @Payload() data: DealFundedPayload,
+    @Payload() encrypted: string,
     @Ctx() context: RmqContext,
   ) {
+    const channel = context.getChannelRef();
+    const originalMsg = context.getMessage();
+    const data = this.unwrap<DealFundedPayload>(
+      encrypted,
+      'deal.funded',
+      channel,
+      originalMsg,
+    );
+    if (!data) return;
+
     this.setCorrelationId(data);
     this.logger.info(
       { tradeDealId: data.tradeDealId },
@@ -233,15 +323,24 @@ export class QueueProcessor {
       );
     }
 
-    const channel = context.getChannelRef();
-    channel.ack(context.getMessage());
+    channel.ack(originalMsg);
   }
 
   @EventPattern('email.notification')
   async handleEmailNotification(
-    @Payload() data: any,
+    @Payload() encrypted: string,
     @Ctx() context: RmqContext,
   ) {
+    const channel = context.getChannelRef();
+    const originalMsg = context.getMessage();
+    const data = this.unwrap<any>(
+      encrypted,
+      'email.notification',
+      channel,
+      originalMsg,
+    );
+    if (!data) return;
+
     this.setCorrelationId(data);
     this.logger.info(
       { type: data.type },
@@ -268,6 +367,22 @@ export class QueueProcessor {
           subject = 'KYC Verification Approved';
           text = `Your KYC verification has been approved. You can now participate in investments.`;
           html = `<h3>KYC Approved</h3><p>Your KYC verification has been approved. You can now participate in investments.</p>`;
+        } else if (data.type === 'kyc_expiration_30') {
+          subject = 'KYC Document Expiring in 30 Days';
+          text = `Your KYC documents will expire in 30 days. Please update them to continue using our services.`;
+          html = `<h3>KYC Documents Expiring Soon</h3><p>Your KYC documents will expire in 30 days. Please update them to continue using our services.</p>`;
+        } else if (data.type === 'kyc_expiration_15') {
+          subject = 'KYC Document Expiring in 15 Days';
+          text = `Your KYC documents will expire in 15 days. Please update them to continue using our services.`;
+          html = `<h3>KYC Documents Expiring Soon</h3><p>Your KYC documents will expire in 15 days. Please update them to continue using our services.</p>`;
+        } else if (data.type === 'kyc_expiration_3') {
+          subject = 'KYC Document Expiring in 3 Days';
+          text = `Your KYC documents will expire in 3 days. Please update them immediately to continue using our services.`;
+          html = `<h3>KYC Documents Expiring Soon</h3><p>Your KYC documents will expire in 3 days. Please update them immediately to continue using our services.</p>`;
+        } else if (data.type === 'kyc_expired') {
+          subject = 'KYC Documents Expired';
+          text = `Your KYC documents have expired. Your account has been restricted. Please update your documents to restore access.`;
+          html = `<h3>KYC Documents Expired</h3><p>Your KYC documents have expired. Your account has been restricted. Please update your documents to restore access.</p>`;
         } else if (data.type === 'deal_completed') {
           subject = `Deal Completed: ${data.dealDetails?.commodity}`;
           text = `The deal you participated in (${data.dealDetails?.commodity}) has been completed.`;
@@ -303,15 +418,24 @@ export class QueueProcessor {
       );
     }
 
-    const channel = context.getChannelRef();
-    channel.ack(context.getMessage());
+    channel.ack(originalMsg);
   }
 
   @EventPattern('deal.cleanup')
   async handleDealCleanup(
-    @Payload() data: DealCleanupPayload,
+    @Payload() encrypted: string,
     @Ctx() context: RmqContext,
   ) {
+    const channel = context.getChannelRef();
+    const originalMsg = context.getMessage();
+    const data = this.unwrap<DealCleanupPayload>(
+      encrypted,
+      'deal.cleanup',
+      channel,
+      originalMsg,
+    );
+    if (!data) return;
+
     this.setCorrelationId(data);
     this.logger.info(
       { dealId: data.tradeDealId },
@@ -322,8 +446,7 @@ export class QueueProcessor {
       const deal = await this.tradeDealsService.findOne(data.tradeDealId);
       if (!deal) {
         this.logger.warn(`Deal ${data.tradeDealId} not found for cleanup`);
-        const channel = context.getChannelRef();
-        channel.ack(context.getMessage());
+        channel.ack(originalMsg);
         return;
       }
 
@@ -339,7 +462,7 @@ export class QueueProcessor {
       // Cleanup escrow account
       if (deal.escrowPublicKey && deal.escrowSecretKey) {
         try {
-          const escrowSecret = this.stellarService.decryptSecret(
+          const escrowSecret = await this.stellarService.decryptSecret(
             deal.escrowSecretKey,
           );
           await this.stellarService.closeAccount(
@@ -358,7 +481,7 @@ export class QueueProcessor {
       // Cleanup issuer account
       if (deal.issuerPublicKey && deal.issuerSecretKey) {
         try {
-          const issuerSecret = this.stellarService.decryptSecret(
+          const issuerSecret = await this.stellarService.decryptSecret(
             deal.issuerSecretKey,
           );
           await this.stellarService.closeAccount(
@@ -386,8 +509,7 @@ export class QueueProcessor {
       // We still ack the message, it's a best-effort cleanup
     }
 
-    const channel = context.getChannelRef();
-    channel.ack(context.getMessage());
+    channel.ack(originalMsg);
   }
 
   // ── Private helpers ─────────────────────────────────────────────────────────

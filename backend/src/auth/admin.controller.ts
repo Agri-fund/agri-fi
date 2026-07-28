@@ -20,16 +20,29 @@ import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { User } from './entities/user.entity';
 import { ApiBody } from '@nestjs/swagger';
-import { IsIn, IsString, IsBoolean, IsUUID } from 'class-validator';
-import { Roles, RolesGuard } from './roles.guard';
+import {
+  IsIn,
+  IsString,
+  IsBoolean,
+  IsUUID,
+  IsOptional,
+  MinLength,
+} from 'class-validator';
+import { Roles } from './decorators/roles.decorator';
+import { RolesGuard } from './roles.guard';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
+import { Document } from '../trade-deals/entities/document.entity';
 import { StellarService } from '../stellar/stellar.service';
+import { AdminAction } from '../database/entities/admin-action.entity';
 
 class UpdateUserRoleDto {
   @IsIn(['farmer', 'trader', 'investor', 'company_admin', 'admin'])
   role: 'farmer' | 'trader' | 'investor' | 'company_admin' | 'admin';
+
+  @IsString()
+  reason: string;
 }
 
 class FreezeAssetDto {
@@ -41,6 +54,12 @@ class FreezeAssetDto {
 
   @IsBoolean()
   freeze: boolean;
+}
+
+class RejectDocumentDto {
+  @IsString()
+  @MinLength(3)
+  reason: string;
 }
 
 interface AuthRequest extends Request {
@@ -58,7 +77,102 @@ export class AdminController {
     private readonly stellarService: StellarService,
     @InjectRepository(TradeDeal)
     private readonly tradeDealRepo: Repository<TradeDeal>,
+    @InjectRepository(Document)
+    private readonly documentRepo: Repository<Document>,
+    @InjectRepository(AdminAction)
+    private readonly adminActionRepo: Repository<AdminAction>,
   ) {}
+
+  @Get('documents')
+  @ApiOperation({ summary: 'List uploaded documents for admin verification' })
+  @ApiResponse({ status: 200, description: 'List of documents' })
+  async listDocuments(
+    @Query('status') status?: 'pending' | 'approved' | 'rejected',
+  ) {
+    return this.documentRepo.find({
+      where: status ? { verificationStatus: status } : {},
+      relations: ['tradeDeal', 'uploader'],
+      // Explicitly whitelist relation columns — `uploader` is a full User
+      // entity and must never expose passwordHash or other PII by default.
+      select: {
+        id: true,
+        tradeDealId: true,
+        uploaderId: true,
+        docType: true,
+        ipfsHash: true,
+        storageUrl: true,
+        stellarTxId: true,
+        signatureVerified: true,
+        verificationStatus: true,
+        rejectionReason: true,
+        reviewedBy: true,
+        reviewedAt: true,
+        createdAt: true,
+        tradeDeal: { id: true, commodity: true },
+        uploader: { id: true, email: true, role: true },
+      },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  @Post('documents/:id/verify')
+  @ApiOperation({ summary: 'Approve an uploaded document' })
+  @ApiResponse({ status: 200, description: 'Document approved' })
+  @ApiResponse({ status: 404, description: 'Document not found' })
+  async verifyDocument(@Request() req: AuthRequest, @Param('id') id: string) {
+    const document = await this.documentRepo.findOne({ where: { id } });
+    if (!document) throw new NotFoundException('Document not found');
+
+    document.verificationStatus = 'approved';
+    document.rejectionReason = null;
+    document.reviewedBy = req.user.id;
+    document.reviewedAt = new Date();
+    await this.documentRepo.save(document);
+
+    await this.adminActionRepo.save(
+      this.adminActionRepo.create({
+        adminId: req.user.id,
+        targetUserId: document.uploaderId,
+        action: 'verify_document',
+        payload: { documentId: document.id },
+        reason: null,
+      }),
+    );
+
+    return document;
+  }
+
+  @Post('documents/:id/reject')
+  @ApiOperation({ summary: 'Reject an uploaded document with a reason' })
+  @ApiBody({ type: RejectDocumentDto })
+  @ApiResponse({ status: 200, description: 'Document rejected' })
+  @ApiResponse({ status: 404, description: 'Document not found' })
+  async rejectDocument(
+    @Request() req: AuthRequest,
+    @Param('id') id: string,
+    @Body() dto: RejectDocumentDto,
+  ) {
+    const document = await this.documentRepo.findOne({ where: { id } });
+    if (!document) throw new NotFoundException('Document not found');
+
+    document.verificationStatus = 'rejected';
+    document.rejectionReason = dto.reason;
+    document.reviewedBy = req.user.id;
+    document.reviewedAt = new Date();
+    await this.documentRepo.save(document);
+
+    await this.adminActionRepo.save(
+      this.adminActionRepo.create({
+        adminId: req.user.id,
+        targetUserId: document.uploaderId,
+        action: 'reject_document',
+        payload: { documentId: document.id },
+        reason: dto.reason,
+      }),
+    );
+
+    return document;
+  }
 
   @Get('users')
   @ApiOperation({ summary: 'List all users (admin only)' })
@@ -75,8 +189,9 @@ export class AdminController {
   async approveKyc(
     @Request() req: AuthRequest,
     @Param('userId') userId: string,
+    @Query('reason') reason?: string,
   ) {
-    return this.authService.approveKyc(userId);
+    return this.authService.approveKyc(userId, req.user.id, reason);
   }
 
   @Post('kyc/:id/approve-corporate')
@@ -87,8 +202,13 @@ export class AdminController {
   async approveCorporateKyc(
     @Request() req: AuthRequest,
     @Param('id') id: string,
+    @Query('reason') reason?: string,
   ) {
-    return this.authService.approveCorporateKycSubmission(id);
+    return this.authService.approveCorporateKycSubmission(
+      id,
+      req.user.id,
+      reason,
+    );
   }
 
   @Post('users/:userId/role')
@@ -99,16 +219,29 @@ export class AdminController {
     @Param('userId') userId: string,
     @Body() dto: UpdateUserRoleDto,
   ) {
-    return this.authService.updateUserRole(userId, dto.role);
+    return this.authService.updateUserRole(
+      userId,
+      dto.role,
+      req.user.id,
+      dto.reason,
+    );
   }
 
   @Post('freeze-asset')
   @ApiOperation({
-    summary: 'Freeze or unfreeze an investor trustline for a trade asset (AML compliance)',
+    summary:
+      'Freeze or unfreeze an investor trustline for a trade asset (AML compliance)',
   })
   @ApiBody({ type: FreezeAssetDto })
-  @ApiResponse({ status: 201, description: 'Trustline freeze/unfreeze submitted', schema: { properties: { txId: { type: 'string' } } } })
-  @ApiResponse({ status: 400, description: 'Issuer keys not available for this deal' })
+  @ApiResponse({
+    status: 201,
+    description: 'Trustline freeze/unfreeze submitted',
+    schema: { properties: { txId: { type: 'string' } } },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Issuer keys not available for this deal',
+  })
   @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
   @ApiResponse({ status: 404, description: 'Trade deal not found' })
   async freezeAsset(@Body() dto: FreezeAssetDto) {
@@ -124,7 +257,9 @@ export class AdminController {
       );
     }
 
-    const issuerSecret = this.stellarService.decryptSecret(deal.issuerSecretKey);
+    const issuerSecret = this.stellarService.decryptSecret(
+      deal.issuerSecretKey,
+    );
     const txId = await this.stellarService.freezeAsset(
       issuerSecret,
       deal.tokenSymbol,

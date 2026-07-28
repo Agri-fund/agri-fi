@@ -87,87 +87,34 @@ groups:
             The postgres_exporter instance {{ $labels.instance }} has been
             unreachable for more than 1 minute. Connection pool alerts may not fire.
 
-  - name: agri_fi_rabbitmq_queues
+  - name: agri_fi_database_replication
     interval: 30s
     rules:
 
-      # ── Queue depth warning: >100 messages for 5 minutes ─────────────────
-      - alert: RabbitMQQueueDepthWarning
-        expr: |
-          rabbitmq_queue_messages{vhost="/"}  > 100
-        for: 5m
-        labels:
-          severity: warning
-          team: backend
-        annotations:
-          summary: "RabbitMQ queue {{ $labels.queue }} depth above 100 messages"
-          description: >
-            Queue {{ $labels.queue }} on vhost {{ $labels.vhost }} has had
-            more than 100 unprocessed messages for over 5 minutes.
-            Current depth: {{ $value }}. This may indicate a consumer crash
-            or processing bottleneck.
-
-      # ── Queue depth critical: >500 messages for 5 minutes ────────────────
-      - alert: RabbitMQQueueDepthCritical
-        expr: |
-          rabbitmq_queue_messages{vhost="/"} > 500
-        for: 5m
-        labels:
-          severity: critical
-          team: backend
-          pagerduty: "true"
-        annotations:
-          summary: "RabbitMQ queue {{ $labels.queue }} depth critically high (>500)"
-          description: >
-            Queue {{ $labels.queue }} on vhost {{ $labels.vhost }} has exceeded
-            500 unprocessed messages for over 5 minutes.
-            Current depth: {{ $value }}. Consumer processes may have crashed.
-            Immediate investigation required.
-
-      # ── No active consumers on a queue ───────────────────────────────────
-      - alert: RabbitMQQueueNoConsumers
-        expr: |
-          rabbitmq_queue_consumers{vhost="/"} == 0
-            and
-          rabbitmq_queue_messages{vhost="/"} > 0
+      # ── Read replica falling behind the primary (warning) ───────────────────
+      - alert: DatabaseReplicationLagHigh
+        expr: pg_replication_lag_seconds > 5
         for: 2m
         labels:
-          severity: critical
-          team: backend
-          pagerduty: "true"
-        annotations:
-          summary: "RabbitMQ queue {{ $labels.queue }} has no consumers"
-          description: >
-            Queue {{ $labels.queue }} on vhost {{ $labels.vhost }} has
-            {{ $value }} messages pending but zero active consumers.
-            The consumer process has likely crashed or disconnected.
-
-      # ── Messages being published but not consumed (growing backlog) ───────
-      - alert: RabbitMQQueueGrowingBacklog
-        expr: |
-          increase(rabbitmq_queue_messages{vhost="/"}[10m]) > 50
-        for: 5m
-        labels:
           severity: warning
           team: backend
         annotations:
-          summary: "RabbitMQ queue {{ $labels.queue }} backlog is growing"
+          summary: "Read replica lag above 5 seconds"
           description: >
-            Queue {{ $labels.queue }} on vhost {{ $labels.vhost }} grew by
-            more than 50 messages in the last 10 minutes and continues to grow.
-            Consumer throughput may be insufficient for current load.
+            Replica {{ $labels.instance }} is {{ $value | printf "%.1f" }}s
+            behind the primary for more than 2 minutes. Reads routed to this
+            replica may return stale data.
 
-      # ── RabbitMQ node down ────────────────────────────────────────────────
-      - alert: RabbitMQNodeDown
-        expr: up{job="rabbitmq"} == 0
+      # ── Read replica critically behind the primary ─────────────────────────
+      - alert: DatabaseReplicationLagCritical
+        expr: pg_replication_lag_seconds > 30
         for: 1m
         labels:
           severity: critical
-          team: platform
+          team: backend
           pagerduty: "true"
         annotations:
-          summary: "RabbitMQ node is unreachable — metrics unavailable"
+          summary: "Read replica lag critically high"
           description: >
-            The RabbitMQ Prometheus endpoint at {{ $labels.instance }} has
-            been unreachable for more than 1 minute.
-            All queue-depth alerts may be suppressed while the node is down.
+            Replica {{ $labels.instance }} is {{ $value | printf "%.1f" }}s
+            behind the primary for more than 1 minute.

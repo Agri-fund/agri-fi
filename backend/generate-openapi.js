@@ -24,37 +24,22 @@ async function generateOpenApiSpec() {
 
     // Import after env vars set
     const { NestFactory } = require('@nestjs/core');
-    const { SwaggerModule, DocumentBuilder } = require('@nestjs/swagger');
+    const { SwaggerModule } = require('@nestjs/swagger');
     const { AppModule } = require('./dist/src/app.module');
+    const {
+      buildOpenApiConfig,
+    } = require('./dist/src/common/swagger/swagger.config');
 
     // Create app without starting it
     const app = await NestFactory.create(AppModule, {
       logger: ['error'],
     });
 
-    // Configure Swagger (same as in main.ts)
-    const config = new DocumentBuilder()
-      .setTitle('Agri-Fi API')
-      .setDescription(
-        'REST API for the Agri-Fi agricultural trade finance platform. ' +
-          'Farmers list produce, traders create deals, investors fund them via Stellar escrow.',
-      )
-      .setVersion('1.0')
+    // Configure Swagger using the same shared config as main.ts, plus
+    // server URLs which only make sense for the static export.
+    const config = buildOpenApiConfig()
       .addServer('http://localhost:3001', 'Development Server')
       .addServer('https://api.agri-fi.example.com', 'Production Server')
-      .addBearerAuth(
-        { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
-        'jwt',
-      )
-      .addTag('auth', 'Registration, login, KYC, and wallet linking')
-      .addTag('trade-deals', 'Create and browse agricultural trade deals')
-      .addTag('investments', 'Fund trade deals and manage investments')
-      .addTag('shipments', 'Record and query shipment milestones')
-      .addTag('documents', 'Upload trade documents to IPFS')
-      .addTag('users', 'User dashboard data')
-      .addTag('health', 'System health status')
-      .addTag('stellar', 'Stellar network integration')
-      .addTag('admin', 'Admin operations')
       .build();
 
     // Generate the document

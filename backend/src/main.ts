@@ -1,20 +1,110 @@
-import 'dotenv/config';
+import 'dotenv-vault/config';
+
+// Shim BigInt JSON serialization globally.
+// Stellar ledger amounts (stroops, sequence numbers) can exceed Number.MAX_SAFE_INTEGER.
+// Without this, JSON.stringify throws: "TypeError: Do not know how to serialize a BigInt".
+// This ensures any BigInt that slips through the interceptor is still safely serialized as a string.
+if (!(BigInt.prototype as any).toJSON) {
+  (BigInt.prototype as any).toJSON = function () {
+    return this.toString();
+  };
+}
+
 import { NestFactory } from '@nestjs/core';
+import helmet from 'helmet';
 import {
   ValidationPipe,
   BadRequestException,
   VersioningType,
 } from '@nestjs/common';
-import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import { buildOpenApiConfig } from './common/swagger/swagger.config';
 import { applySecurityHeaders } from './common/middleware/security-headers.middleware';
+import { Logger } from 'nestjs-pino';
+import { JsonBigIntInterceptor } from './common/interceptors/json-bigint.interceptor';
+import { UserContextInterceptor } from './common/interceptors/user-context.interceptor';
+import { ClsService } from 'nestjs-cls';
+import * as cookieParser from 'cookie-parser';
+import * as csrf from 'csurf';
 
 async function bootstrap() {
   // rawBody: true preserves the unparsed request buffer on req.rawBody,
   // which is required by WebhookSignatureGuard for HMAC verification.
-  const app = await NestFactory.create(AppModule, { rawBody: true });
+  //
+  // bufferLogs: true — buffer bootstrap log lines until the Pino logger is
+  // wired up, ensuring early startup messages are also structured JSON.
+  const app = await NestFactory.create(AppModule, {
+    rawBody: true,
+    bufferLogs: true,
+  });
+
+  // Replace the default NestJS ConsoleLogger with the Pino-backed Logger so
+  // every log line (including NestJS framework messages) is structured JSON.
+  // This is the canonical way recommended by nestjs-pino.
+  app.useLogger(app.get(Logger));
+
+  app.getHttpAdapter().getInstance().disable('x-powered-by');
+  app.getHttpAdapter().getInstance().set('etag', 'strong');
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'"],
+          styleSrc: ["'self'", 'https:'],
+          imgSrc: ["'self'", 'data:'],
+          connectSrc: ["'self'"],
+          fontSrc: ["'self'", 'https:'],
+          objectSrc: ["'none'"],
+        },
+      },
+      frameguard: { action: 'deny' },
+    }),
+  );
+
+  // DNS rebinding protection: reject requests whose Host header does not match
+  // a known domain. /health is exempted so kubelet liveness/readiness probes
+  // (which use the pod IP as Host) never get blocked.
+  const allowedHosts = (process.env.ALLOWED_HOSTS ?? 'localhost')
+    .split(',')
+    .map((h) => h.trim().toLowerCase());
+
+  app.use((req: any, res: any, next: () => void) => {
+    if (req.path === '/health' || req.path === '/v1/health') {
+      return next();
+    }
+    const host = (req.headers['host'] ?? '').split(':')[0].toLowerCase();
+    if (!allowedHosts.includes(host)) {
+      res.status(421).end('Misdirected Request');
+      return;
+    }
+    next();
+  });
 
   app.use(applySecurityHeaders);
+
+  // Cookie parser is required by csurf
+  app.use(cookieParser());
+
+  // CSRF protection for cookie-based (session) endpoints.
+  // JWT-only routes are unaffected; the token is exposed via GET /csrf-token.
+  const csrfProtection = csrf({
+    cookie: { httpOnly: true, sameSite: 'strict' },
+  });
+  app.use(csrfProtection);
+
+  // Expose CSRF token so clients can fetch it before mutating requests
+  app.use('/csrf-token', (req: any, res: any) => {
+    res.json({ csrfToken: req.csrfToken() });
+  });
+
+  // Global interceptor to convert BigInt values (Stellar ledger amounts, sequence numbers)
+  // to strings in JSON responses, preventing precision loss and serialization errors.
+  app.useGlobalInterceptors(
+    new JsonBigIntInterceptor(),
+    new UserContextInterceptor(app.get(ClsService)),
+  );
 
   app.useGlobalPipes(
     new ValidationPipe({
@@ -40,10 +130,25 @@ async function bootstrap() {
 
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
 
+  const allowedOrigins = (
+    process.env.ALLOWED_ORIGINS ?? 'http://localhost:3000'
+  )
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0);
+
   app.enableCors({
-    origin: process.env.ALLOWED_ORIGINS?.split(',') ?? [
-      'http://localhost:3000',
-    ],
+    origin: (origin, callback) => {
+      if (!origin) {
+        return callback(null, true);
+      }
+
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('Origin not allowed by CORS policy'));
+      }
+    },
     credentials: true,
   });
 
@@ -83,24 +188,7 @@ function setupSwagger(app: any) {
     );
   }
 
-  const config = new DocumentBuilder()
-    .setTitle('Agri-Fi API')
-    .setDescription(
-      'REST API for the Agri-Fi agricultural trade finance platform. ' +
-        'Farmers list produce, traders create deals, investors fund them via Stellar escrow.',
-    )
-    .setVersion('1.0')
-    .addBearerAuth(
-      { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
-      'jwt',
-    )
-    .addTag('auth', 'Registration, login, KYC, and wallet linking')
-    .addTag('trade-deals', 'Create and browse agricultural trade deals')
-    .addTag('investments', 'Fund trade deals and manage investments')
-    .addTag('shipments', 'Record and query shipment milestones')
-    .addTag('documents', 'Upload trade documents to IPFS')
-    .addTag('users', 'User dashboard data')
-    .build();
+  const config = buildOpenApiConfig().build();
 
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api/docs', app, document, {

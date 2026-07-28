@@ -6,9 +6,11 @@ import {
   ManyToOne,
   JoinColumn,
 } from 'typeorm';
+import { Exclude } from 'class-transformer';
 import { User } from './user.entity';
+import { encryptionTransformer } from '../../common/encryption.transformer';
 
-export type KycSubmissionStatus = 'pending_review' | 'approved' | 'rejected';
+export type KycSubmissionStatus = 'pending_review' | 'approved' | 'rejected' | 'expired';
 
 @Entity('kyc_submissions')
 export class KycSubmission {
@@ -31,10 +33,14 @@ export class KycSubmission {
   @Column({ name: 'is_corporate', default: false })
   isCorporate: boolean;
 
-  @Column({ name: 'company_name', nullable: true })
+  /** Company / business name — stored encrypted (PII) */
+  @Exclude()
+  @Column({ name: 'company_name', nullable: true, transformer: encryptionTransformer })
   companyName: string;
 
-  @Column({ name: 'registration_number', nullable: true })
+  /** Company registration number — stored encrypted (PII) */
+  @Exclude()
+  @Column({ name: 'registration_number', nullable: true, transformer: encryptionTransformer })
   registrationNumber: string;
 
   @Column({ name: 'business_license_url', nullable: true })
@@ -42,6 +48,18 @@ export class KycSubmission {
 
   @Column({ name: 'articles_of_incorporation_url', nullable: true })
   articlesOfIncorporationUrl: string;
+
+  @Column({ name: 'document_expires_at', type: 'timestamptz', nullable: true })
+  documentExpiresAt: Date | null;
+
+  @Column({ name: 'alert_30_sent_at', type: 'timestamptz', nullable: true })
+  alert30SentAt: Date | null;
+
+  @Column({ name: 'alert_15_sent_at', type: 'timestamptz', nullable: true })
+  alert15SentAt: Date | null;
+
+  @Column({ name: 'alert_3_sent_at', type: 'timestamptz', nullable: true })
+  alert3SentAt: Date | null;
 
   @Column({ default: 'pending_review' })
   status: KycSubmissionStatus;
