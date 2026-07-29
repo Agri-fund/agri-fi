@@ -4,6 +4,7 @@ import { StellarService, InvestorShare } from './stellar.service';
 import { PinoLogger } from 'nestjs-pino';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { TransactionLog, TxStatus } from './entities/transaction-log.entity';
+import { KmsService } from '../kms/kms.service';
 import {
   Keypair,
   TransactionBuilder,
@@ -91,11 +92,30 @@ describe('StellarService', () => {
           provide: getRepositoryToken(TransactionLog),
           useValue: txLogRepo,
         },
+        {
+          provide: KmsService,
+          useValue: {
+            // Simple symmetric stub: prefix-tag so decrypt can validate the input
+            encrypt: jest.fn(async (plainText: string) =>
+              'mock:' + Buffer.from(plainText).toString('base64'),
+            ),
+            decrypt: jest.fn(async (cipherText: string) => {
+              if (!cipherText.startsWith('mock:')) {
+                throw new Error('Invalid encrypted payload format');
+              }
+              return Buffer.from(cipherText.slice(5), 'base64').toString('utf8');
+            }),
+          },
+        },
       ],
     }).compile();
 
     service = module.get<StellarService>(StellarService);
-    (service as any).server = mockServer;
+    // `server` is a getter delegating to horizonClient.activeServer — mock via the client
+    Object.defineProperty((service as any).horizonClient, 'activeServer', {
+      get: () => mockServer,
+      configurable: true,
+    });
   });
 
   it('should be defined', () => {
@@ -137,9 +157,9 @@ describe('StellarService', () => {
     });
 
     it('should build a single-op XDR when trustline already exists', async () => {
-      (service as any).server = {
+      Object.defineProperty((service as any).horizonClient, 'activeServer', { get: () => ({
         loadAccount: jest.fn().mockResolvedValue(makeAccount('100', 1, true)),
-      };
+      }), configurable: true });
 
       const xdr = await service.createInvestmentTransaction(
         investorWallet,
@@ -154,9 +174,9 @@ describe('StellarService', () => {
     });
 
     it('should prepend changeTrust op when trustline is missing', async () => {
-      (service as any).server = {
+      Object.defineProperty((service as any).horizonClient, 'activeServer', { get: () => ({
         loadAccount: jest.fn().mockResolvedValue(makeAccount('10', 0, false)),
-      };
+      }), configurable: true });
 
       const xdr = await service.createInvestmentTransaction(
         investorWallet,
@@ -170,9 +190,9 @@ describe('StellarService', () => {
     });
 
     it('should throw when XLM balance is insufficient for trustline reserve', async () => {
-      (service as any).server = {
+      Object.defineProperty((service as any).horizonClient, 'activeServer', { get: () => ({
         loadAccount: jest.fn().mockResolvedValue(makeAccount('1', 0, false)),
-      };
+      }), configurable: true });
 
       await expect(
         service.createInvestmentTransaction(
@@ -188,44 +208,190 @@ describe('StellarService', () => {
   });
 
   describe('getTransactionStatus', () => {
-    it('should return "pending" for a 404 response', async () => {
-      const mockError = { response: { status: 404 } };
-      (service as any).server = {
-        transactions: () => ({
-          transaction: () => ({
-            call: jest.fn().mockRejectedValue(mockError),
-          }),
+    // Helper: build a mock Horizon server that resolves / rejects on `.call()`.
+    const makeHorizonServer = (resolvedValue?: any, rejectedWith?: any) => ({
+      transactions: () => ({
+        transaction: () => ({
+          call: resolvedValue !== undefined
+            ? jest.fn().mockResolvedValue(resolvedValue)
+            : jest.fn().mockRejectedValue(rejectedWith),
         }),
-      };
-
-      const status = await service.getTransactionStatus('nonexistent-tx-id');
-      expect(status).toBe('pending');
+      }),
     });
 
-    it('should return "success" for a successful transaction', async () => {
-      (service as any).server = {
-        transactions: () => ({
-          transaction: () => ({
-            call: jest.fn().mockResolvedValue({ successful: true }),
-          }),
-        }),
-      };
+    describe('cache miss — no Redis client', () => {
+      it('should return "pending" for a 404 response', async () => {
+        (service as any).sequenceRedis = null;
+        Object.defineProperty((service as any).horizonClient, 'activeServer', { get: () => makeHorizonServer(
+          undefined,
+          { response: { status: 404 } },
+        ), configurable: true });
 
-      const status = await service.getTransactionStatus('some-tx-id');
-      expect(status).toBe('success');
+        const status = await service.getTransactionStatus('nonexistent-tx-id');
+        expect(status).toBe('pending');
+      });
+
+      it('should return "success" for a successful transaction', async () => {
+        (service as any).sequenceRedis = null;
+        Object.defineProperty((service as any).horizonClient, 'activeServer', { get: () => makeHorizonServer({ successful: true }), configurable: true });
+
+        const status = await service.getTransactionStatus('some-tx-id');
+        expect(status).toBe('success');
+      });
+
+      it('should return "failed" for an unsuccessful transaction', async () => {
+        (service as any).sequenceRedis = null;
+        Object.defineProperty((service as any).horizonClient, 'activeServer', { get: () => makeHorizonServer({ successful: false }), configurable: true });
+
+        const status = await service.getTransactionStatus('some-tx-id');
+        expect(status).toBe('failed');
+      });
     });
 
-    it('should return "failed" for an unsuccessful transaction', async () => {
-      (service as any).server = {
-        transactions: () => ({
-          transaction: () => ({
-            call: jest.fn().mockResolvedValue({ successful: false }),
+    describe('cache hit — Redis has a terminal status', () => {
+      it('should return "success" directly from cache without hitting Horizon', async () => {
+        const mockCall = jest.fn();
+        Object.defineProperty((service as any).horizonClient, 'activeServer', { get: () => ({
+          transactions: () => ({
+            transaction: () => ({ call: mockCall }),
           }),
-        }),
-      };
+        }), configurable: true });
+        (service as any).sequenceRedis = {
+          get: jest.fn().mockResolvedValue('success'),
+          setEx: jest.fn().mockResolvedValue('OK'),
+          isOpen: true,
+        };
 
-      const status = await service.getTransactionStatus('some-tx-id');
-      expect(status).toBe('failed');
+        const status = await service.getTransactionStatus('cached-success-tx');
+
+        expect(status).toBe('success');
+        expect(mockCall).not.toHaveBeenCalled();
+      });
+
+      it('should return "failed" directly from cache without hitting Horizon', async () => {
+        const mockCall = jest.fn();
+        Object.defineProperty((service as any).horizonClient, 'activeServer', { get: () => ({
+          transactions: () => ({
+            transaction: () => ({ call: mockCall }),
+          }),
+        }), configurable: true });
+        (service as any).sequenceRedis = {
+          get: jest.fn().mockResolvedValue('failed'),
+          setEx: jest.fn().mockResolvedValue('OK'),
+          isOpen: true,
+        };
+
+        const status = await service.getTransactionStatus('cached-failed-tx');
+
+        expect(status).toBe('failed');
+        expect(mockCall).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('cache miss — Redis returns null, Horizon queried (write-through)', () => {
+      it('should write "success" to Redis after a successful Horizon response', async () => {
+        const mockSetEx = jest.fn().mockResolvedValue('OK');
+        (service as any).sequenceRedis = {
+          get: jest.fn().mockResolvedValue(null),
+          setEx: mockSetEx,
+          isOpen: true,
+        };
+        Object.defineProperty((service as any).horizonClient, 'activeServer', { get: () => makeHorizonServer({ successful: true }), configurable: true });
+
+        const status = await service.getTransactionStatus('new-success-tx');
+
+        expect(status).toBe('success');
+        expect(mockSetEx).toHaveBeenCalledWith(
+          'stellar:tx:new-success-tx',
+          3600,
+          'success',
+        );
+      });
+
+      it('should write "failed" to Redis after a failed Horizon response', async () => {
+        const mockSetEx = jest.fn().mockResolvedValue('OK');
+        (service as any).sequenceRedis = {
+          get: jest.fn().mockResolvedValue(null),
+          setEx: mockSetEx,
+          isOpen: true,
+        };
+        Object.defineProperty((service as any).horizonClient, 'activeServer', { get: () => makeHorizonServer({ successful: false }), configurable: true });
+
+        const status = await service.getTransactionStatus('new-failed-tx');
+
+        expect(status).toBe('failed');
+        expect(mockSetEx).toHaveBeenCalledWith(
+          'stellar:tx:new-failed-tx',
+          3600,
+          'failed',
+        );
+      });
+
+      it('should NOT write to Redis for a pending (404) transaction', async () => {
+        const mockSetEx = jest.fn().mockResolvedValue('OK');
+        (service as any).sequenceRedis = {
+          get: jest.fn().mockResolvedValue(null),
+          setEx: mockSetEx,
+          isOpen: true,
+        };
+        Object.defineProperty((service as any).horizonClient, 'activeServer', { get: () => makeHorizonServer(
+          undefined,
+          { response: { status: 404 } },
+        ), configurable: true });
+
+        const status = await service.getTransactionStatus('pending-tx');
+
+        expect(status).toBe('pending');
+        expect(mockSetEx).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('Redis error resilience', () => {
+      it('should fall through to Horizon when Redis GET throws', async () => {
+        (service as any).sequenceRedis = {
+          get: jest.fn().mockRejectedValue(new Error('Redis connection lost')),
+          setEx: jest.fn().mockResolvedValue('OK'),
+          isOpen: true,
+        };
+        Object.defineProperty((service as any).horizonClient, 'activeServer', { get: () => makeHorizonServer({ successful: true }), configurable: true });
+
+        const status = await service.getTransactionStatus('tx-redis-get-error');
+
+        expect(status).toBe('success');
+      });
+
+      it('should still return the correct status when Redis SETEX throws', async () => {
+        (service as any).sequenceRedis = {
+          get: jest.fn().mockResolvedValue(null),
+          setEx: jest.fn().mockRejectedValue(new Error('Redis write error')),
+          isOpen: true,
+        };
+        Object.defineProperty((service as any).horizonClient, 'activeServer', { get: () => makeHorizonServer({ successful: true }), configurable: true });
+
+        const status = await service.getTransactionStatus('tx-redis-set-error');
+
+        expect(status).toBe('success');
+      });
+
+      it('should ignore unknown values stored in Redis and fall back to Horizon', async () => {
+        const mockSetEx = jest.fn().mockResolvedValue('OK');
+        (service as any).sequenceRedis = {
+          get: jest.fn().mockResolvedValue('corrupted-value'),
+          setEx: mockSetEx,
+          isOpen: true,
+        };
+        Object.defineProperty((service as any).horizonClient, 'activeServer', { get: () => makeHorizonServer({ successful: true }), configurable: true });
+
+        const status = await service.getTransactionStatus('tx-corrupted-cache');
+
+        expect(status).toBe('success');
+        // Write-through should correct the cache.
+        expect(mockSetEx).toHaveBeenCalledWith(
+          'stellar:tx:tx-corrupted-cache',
+          3600,
+          'success',
+        );
+      });
     });
   });
 
@@ -334,10 +500,14 @@ describe('StellarService', () => {
           'GDBLLCURMIMOM2YIQHHL7KVDDG4VUNXPRVVGTRS6GMJA47FLCX5NGSME',
       };
 
-      (service as any).server = {
+      const mockTxServer = {
         loadAccount: jest.fn().mockResolvedValue(mockAccount),
         submitTransaction: jest.fn().mockResolvedValue(mockTxResult),
       };
+      Object.defineProperty((service as any).horizonClient, 'activeServer', {
+        get: () => mockTxServer,
+        configurable: true,
+      });
 
       const secret = 'SCM3CKKHLKTXOMML76C77C4OTVNE74CPUJJL32KNO3JAYZFVO544ENRP';
       const result = await service.transferTradeTokens(
@@ -349,10 +519,10 @@ describe('StellarService', () => {
       );
 
       expect(result).toBe('mock-tx-hash');
-      expect((service as any).server.loadAccount).toHaveBeenCalledWith(
+      expect(mockTxServer.loadAccount).toHaveBeenCalledWith(
         'GDBLLCURMIMOM2YIQHHL7KVDDG4VUNXPRVVGTRS6GMJA47FLCX5NGSME',
       );
-      expect((service as any).server.submitTransaction).toHaveBeenCalled();
+      expect(mockTxServer.submitTransaction).toHaveBeenCalled();
     });
   });
 
@@ -364,14 +534,17 @@ describe('StellarService', () => {
       incrementSequenceNumber: jest.fn(),
       accountId: () => issuerKeypair.publicKey(),
     };
+    let freezeMockServer: any;
 
     beforeEach(() => {
-      (service as any).server = {
+      freezeMockServer = {
         loadAccount: jest.fn().mockResolvedValue(mockAccount),
-        submitTransaction: jest
-          .fn()
-          .mockResolvedValue({ hash: 'freeze-tx-hash' }),
+        submitTransaction: jest.fn().mockResolvedValue({ hash: 'freeze-tx-hash' }),
       };
+      Object.defineProperty((service as any).horizonClient, 'activeServer', {
+        get: () => freezeMockServer,
+        configurable: true,
+      });
     });
 
     it('freezes a trustline by setting authorized:false', async () => {
@@ -384,10 +557,10 @@ describe('StellarService', () => {
       );
 
       expect(txId).toBe('freeze-tx-hash');
-      expect((service as any).server.loadAccount).toHaveBeenCalledWith(
+      expect(freezeMockServer.loadAccount).toHaveBeenCalledWith(
         issuerKeypair.publicKey(),
       );
-      expect((service as any).server.submitTransaction).toHaveBeenCalled();
+      expect(freezeMockServer.submitTransaction).toHaveBeenCalled();
     });
 
     it('unfreezes a trustline by setting authorized:true', async () => {
@@ -400,11 +573,11 @@ describe('StellarService', () => {
       );
 
       expect(txId).toBe('freeze-tx-hash');
-      expect((service as any).server.submitTransaction).toHaveBeenCalled();
+      expect(freezeMockServer.submitTransaction).toHaveBeenCalled();
     });
 
     it('throws when Stellar submission fails', async () => {
-      (service as any).server.submitTransaction = jest
+      freezeMockServer.submitTransaction = jest
         .fn()
         .mockRejectedValue(new Error('tx_failed'));
 
@@ -763,7 +936,7 @@ describe('StellarService', () => {
 
     it('should transfer tokens to investor if escrow secret provided', async () => {
       const amountUSD = '500';
-      const encryptedEscrowSecret = service.encryptSecret(
+      const encryptedEscrowSecret = await service.encryptSecret(
         Keypair.random().secret(),
       );
       const assetCode = 'COCOA001';
@@ -808,30 +981,28 @@ describe('StellarService', () => {
   });
 
   describe('encryptSecret / decryptSecret', () => {
-    it('should encrypt and decrypt a secret symmetrically', () => {
+    it('should encrypt and decrypt a secret symmetrically', async () => {
       const originalSecret = Keypair.random().secret();
-      const encrypted = service.encryptSecret(originalSecret);
+      const encrypted = await service.encryptSecret(originalSecret);
 
       expect(encrypted).not.toBe(originalSecret);
-      expect(encrypted).toContain(':');
 
-      const decrypted = service.decryptSecret(encrypted);
+      const decrypted = await service.decryptSecret(encrypted);
       expect(decrypted).toBe(originalSecret);
     });
 
-    it('should produce different ciphertext for same secret (random IV)', () => {
+    it('should produce a non-empty ciphertext string', async () => {
       const secret = Keypair.random().secret();
-      const encrypted1 = service.encryptSecret(secret);
-      const encrypted2 = service.encryptSecret(secret);
+      const encrypted = await service.encryptSecret(secret);
 
-      expect(encrypted1).not.toBe(encrypted2);
-      expect(service.decryptSecret(encrypted1)).toBe(secret);
-      expect(service.decryptSecret(encrypted2)).toBe(secret);
+      expect(typeof encrypted).toBe('string');
+      expect(encrypted.length).toBeGreaterThan(0);
+      expect(await service.decryptSecret(encrypted)).toBe(secret);
     });
 
-    it('should throw on decrypt with corrupted ciphertext', () => {
-      const corrupted = 'invalid:hex:format';
-      expect(() => service.decryptSecret(corrupted)).toThrow();
+    it('should throw on decrypt with corrupted ciphertext', async () => {
+      const corrupted = 'not-valid-base64-kms-payload!!@#';
+      await expect(service.decryptSecret(corrupted)).rejects.toThrow();
     });
   });
 

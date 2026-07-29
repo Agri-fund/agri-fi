@@ -19,6 +19,9 @@ import { OfacSanctionsCheckService } from './utils/ofac-sanctions-check';
 import { LoginLog } from '../database/entities/login-log.entity';
 import { AdminAction } from '../database/entities/admin-action.entity';
 import { KycCronService } from './kyc-cron.service';
+import { RedisConfig } from '../config/redis.config';
+import { TokenBlocklistService } from './token-blocklist.service';
+import { MfaGuard } from './guards/mfa.guard';
 
 @Module({
   imports: [
@@ -48,9 +51,21 @@ import { KycCronService } from './kyc-cron.service';
     JwtStrategy,
     KycGuard,
     RolesGuard,
+    MfaGuard,
+    RedisConfig,
+    TokenBlocklistService,
     OfacSanctionsCheckService,
     KycCronService,
   ],
-  exports: [AuthService, JwtModule, TypeOrmModule, KycGuard, RolesGuard],
+  exports: [
+    AuthService,
+    JwtModule,
+    TypeOrmModule,
+    KycGuard,
+    RolesGuard,
+    MfaGuard,
+    RedisConfig,
+    TokenBlocklistService,
+  ],
 })
 export class AuthModule {}

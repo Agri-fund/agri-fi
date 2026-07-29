@@ -221,8 +221,10 @@ jobs:
           TAG: ${{ needs.prepare.outputs.tag }}
         run: |
           echo "Running database migrations..."
-          
-          # Create a temporary pod to run migrations with config/secrets injected
+
+          # Create a temporary pod to run migrations against the same
+          # ConfigMap/Secret as the agri-fi-backend Deployment (backend/k8s/deployment.yaml),
+          # so migrations always target the database the app is about to use.
           kubectl -n default run migration-runner-${GITHUB_SHA::12} \
             --image="${IMAGE_PREFIX}/backend:${TAG}" \
             --restart=Never \
@@ -234,9 +236,13 @@ jobs:
                     "image": "'"${IMAGE_PREFIX}/backend:${TAG}"'",
                     "command": ["npm", "run", "migration:run"],
                     "envFrom": [
-                      {"configMapRef": {"name": "agri-fi-config"}},
-                      {"secretRef": {"name": "agri-fi-secrets"}}
-                    ]
+                      {"configMapRef": {"name": "agri-fi-backend-config"}},
+                      {"secretRef": {"name": "agri-fi-backend-secrets"}}
+                    ],
+                    "resources": {
+                      "requests": {"cpu": "250m", "memory": "256Mi"},
+                      "limits": {"cpu": "500m", "memory": "512Mi"}
+                    }
                   }
                 ]
               }
