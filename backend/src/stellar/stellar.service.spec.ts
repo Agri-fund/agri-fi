@@ -1234,5 +1234,34 @@ describe('StellarService', () => {
         expect(config.thresholds.med).toBe(0);
       });
     });
+
+    describe('submitWithRetry Exponential Backoff and Jitter', () => {
+      it('retries transient Horizon errors with exponential backoff and random jitter', async () => {
+        const transientErr = { response: { status: 429 } };
+        mockServer.submitTransaction
+          .mockRejectedValueOnce(transientErr)
+          .mockRejectedValueOnce({ response: { status: 503 } })
+          .mockResolvedValueOnce({ hash: 'tx-hash-success' });
+
+        const spySetTimeout = jest.spyOn(global, 'setTimeout');
+
+        const result = await (service as any).submitWithRetry({ id: 'mock-tx' });
+
+        expect(result).toEqual({ hash: 'tx-hash-success' });
+        expect(mockServer.submitTransaction).toHaveBeenCalledTimes(3);
+
+        // Check that delay includes base * 2^attempt (>= 1000 for attempt 0, >= 2000 for attempt 1)
+        expect(spySetTimeout).toHaveBeenCalledTimes(2);
+        const firstDelay = spySetTimeout.mock.calls[0][1];
+        const secondDelay = spySetTimeout.mock.calls[1][1];
+
+        expect(firstDelay).toBeGreaterThanOrEqual(1000); // 1000 * 2^0 + jitter
+        expect(firstDelay).toBeLessThan(1500);
+        expect(secondDelay).toBeGreaterThanOrEqual(2000); // 1000 * 2^1 + jitter
+        expect(secondDelay).toBeLessThan(2500);
+
+        spySetTimeout.mockRestore();
+      });
+    });
   });
 });

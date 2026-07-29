@@ -124,6 +124,18 @@ export class UsersController {
     return this.usersService.getUserInvestments(id, role);
   }
 
+  @Get('me/activity')
+  @ApiOperation({ summary: "Get the authenticated user's chronological activity log" })
+  @ApiResponse({ status: 200, description: 'List of activity events, newest first' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async getActivityLog(
+    @Request() req: AuthRequest,
+    @Query('limit') limit?: string,
+  ) {
+    const parsedLimit = limit ? Math.min(parseInt(limit, 10), 200) : 50;
+    return this.usersService.getActivityLog(req.user.id, parsedLimit);
+  }
+
   @Get('me/export')
   @ApiOperation({ summary: 'Export all user data (GDPR compliance)' })
   @ApiResponse({

@@ -5,6 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { ReactNode, useState } from 'react';
 import { apiClient, User } from '@/lib/api';
 import { Header } from './navigation/Header';
+import KycStatusBanner from './dashboard/KycStatusBanner';
 
 /* ── Nav config ───────────────────────────────────────────────────────────── */
 interface NavItem { label: string; href: string; icon: ReactNode; exact?: boolean; }
@@ -145,6 +146,9 @@ export default function DashboardLayout({ user, children }: Props) {
 
         {/* Page content */}
         <main className="flex-1 overflow-y-auto">
+          <div className="px-6 pt-6 max-w-7xl mx-auto">
+            <KycStatusBanner />
+          </div>
           {children}
         </main>
       </div>
