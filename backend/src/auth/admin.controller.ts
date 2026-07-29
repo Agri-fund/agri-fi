@@ -9,12 +9,15 @@ import {
   Query,
   NotFoundException,
   BadRequestException,
+  ParseIntPipe,
+  DefaultValuePipe,
 } from '@nestjs/common';
 import {
   ApiTags,
   ApiOperation,
   ApiResponse,
   ApiBearerAuth,
+  ApiQuery,
 } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from './auth.service';
@@ -36,6 +39,7 @@ import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
 import { Document } from '../trade-deals/entities/document.entity';
 import { StellarService } from '../stellar/stellar.service';
 import { AdminAction } from '../database/entities/admin-action.entity';
+import { FailedPaymentsService } from '../escrow/failed-payments.service';
 
 class UpdateUserRoleDto {
   @IsIn(['farmer', 'trader', 'investor', 'company_admin', 'admin'])
@@ -75,6 +79,7 @@ export class AdminController {
   constructor(
     private readonly authService: AuthService,
     private readonly stellarService: StellarService,
+    private readonly failedPaymentsService: FailedPaymentsService,
     @InjectRepository(TradeDeal)
     private readonly tradeDealRepo: Repository<TradeDeal>,
     @InjectRepository(Document)
@@ -269,5 +274,53 @@ export class AdminController {
     );
 
     return { txId };
+  }
+
+  // ── Failed Payment Alerts ─────────────────────────────────────────────────
+
+  /**
+   * GET /admin/payments/failed
+   *
+   * Returns a paginated list of escrow transactions that have status='failed',
+   * ordered by creation date descending. Each entry includes the deal commodity
+   * and error code so admins can quickly triage issues.
+   */
+  @Get('payments/failed')
+  @ApiOperation({
+    summary: 'List failed escrow payment transactions for admin review',
+  })
+  @ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number (default 1)' })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Items per page (default 20, max 100)' })
+  @ApiResponse({ status: 200, description: 'Paginated list of failed payments' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
+  async getFailedPayments(
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+  ) {
+    return this.failedPaymentsService.getFailedPayments(page, limit);
+  }
+
+  /**
+   * POST /admin/payments/failed/:id/retry
+   *
+   * Manually re-enqueues the `deal.delivered` event for the deal associated
+   * with the failed transaction, allowing the escrow release to be retried.
+   *
+   * Acceptance criterion: "Admins can trigger manual retries directly from the UI."
+   */
+  @Post('payments/failed/:id/retry')
+  @ApiOperation({
+    summary: 'Trigger a manual retry for a failed escrow payment',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Retry event enqueued',
+    schema: { properties: { queued: { type: 'boolean' }, dealId: { type: 'string' } } },
+  })
+  @ApiResponse({ status: 400, description: 'Transaction not in failed state or has no deal' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
+  @ApiResponse({ status: 404, description: 'Transaction log not found' })
+  async retryFailedPayment(@Param('id') id: string) {
+    return this.failedPaymentsService.retryFailedPayment(id);
   }
 }

@@ -22,6 +22,7 @@ import { KycCronService } from './kyc-cron.service';
 import { RedisConfig } from '../config/redis.config';
 import { TokenBlocklistService } from './token-blocklist.service';
 import { MfaGuard } from './guards/mfa.guard';
+import { EscrowModule } from '../escrow/escrow.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { MfaGuard } from './guards/mfa.guard';
     QueueModule,
     NotificationsModule,
     PassportModule,
+    EscrowModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
