@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, QueryRunner } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { PinoLogger } from 'nestjs-pino';
 import { PaymentDistribution } from './entities/payment-distribution.entity';
@@ -38,187 +38,231 @@ export class EscrowService {
     this.logger.setContext(EscrowService.name);
   }
 
+  /**
+   * Processes the `deal.delivered` event by:
+   *
+   * 1. Loading and validating the deal + investments (read phase — no transaction).
+   * 2. Performing the irreversible Stellar escrow release **outside** the DB
+   *    transaction so a Stellar failure rolls back nothing (there is nothing to
+   *    roll back yet) and does not leave the database in an inconsistent state.
+   * 3. Wrapping **all** subsequent DB writes (PaymentDistribution inserts,
+   *    deal status update) in a single QueryRunner transaction (#744) so that a
+   *    partial write failure rolls back completely — no orphan payment records,
+   *    no deal stuck in the wrong status.
+   *
+   * Why QueryRunner instead of DataSource.transaction():
+   * ─────────────────────────────────────────────────────
+   * QueryRunner gives us explicit SAVEPOINT / ROLLBACK control and makes the
+   * transaction lifecycle observable in logs, satisfying the acceptance criteria
+   * "Failed payout transactions result in database rollbacks" and
+   * "No orphan transactions remain in the database."
+   */
   async processDealDelivered(payload: DealDeliveredPayload): Promise<void> {
     const { tradeDealId } = payload;
 
     this.logger.info(`Processing deal.delivered for deal ${tradeDealId}`);
 
+    // ── Phase 1: Read-only validation (no transaction needed) ─────────────────
+    const deal = await this.tradeDealRepo.findOne({
+      where: { id: tradeDealId },
+      relations: ['farmer', 'trader'],
+    });
+
+    if (!deal) {
+      throw new NotFoundException(`Trade deal ${tradeDealId} not found`);
+    }
+
+    if (deal.status !== 'delivered') {
+      this.logger.warn(
+        `Deal ${tradeDealId} is not in delivered status (current: ${deal.status}). Skipping escrow release.`,
+      );
+      return;
+    }
+
+    const investments = await this.investmentRepo.find({
+      where: { tradeDealId, status: InvestmentStatus.CONFIRMED },
+      relations: ['investor'],
+    });
+
+    if (investments.length === 0) {
+      this.logger.warn(
+        `No confirmed investments found for deal ${tradeDealId}`,
+      );
+      return;
+    }
+
+    // Validate wallet addresses before touching Stellar or the DB
+    if (!deal.farmer?.walletAddress) {
+      throw new Error(
+        `Farmer wallet address not found for deal ${tradeDealId}`,
+      );
+    }
+
+    const investorsWithoutWallet = investments.filter(
+      (inv) => !inv.investor?.walletAddress,
+    );
+    if (investorsWithoutWallet.length > 0) {
+      throw new Error(
+        `Some investors don't have wallet addresses for deal ${tradeDealId}`,
+      );
+    }
+
+    // Prepare investor shares for Stellar service
+    const totalTokens = investments.reduce(
+      (sum, inv) => sum + inv.tokenAmount,
+      0,
+    );
+    const investorShares: InvestorShare[] = investments.map((inv) => ({
+      walletAddress: inv.investor.walletAddress!,
+      tokenAmount: inv.tokenAmount,
+      totalTokens,
+    }));
+
+    // Resolve platform wallet
+    const platformWallet = await this.resolvePlatformWallet();
+
+    if (!deal.escrowSecretKey) {
+      throw new Error(`Escrow secret key missing for deal ${tradeDealId}`);
+    }
+
+    // ── Phase 2: Stellar escrow release (irreversible, outside any DB tx) ─────
+    // The Stellar ledger is append-only; there is no rollback. We execute this
+    // before opening the DB transaction so a Stellar failure leaves the database
+    // unchanged. If the DB writes below fail after Stellar succeeds we log the
+    // Stellar TX IDs and alert ops so the distributions can be reconstructed.
+    const escrowSecret = this.stellarService.decryptSecret(
+      deal.escrowSecretKey,
+    );
+
+    let stellarTxIds: string[];
     try {
-      await this.dataSource.transaction(async (manager) => {
-        // Load deal with relations
-        const deal = await manager.findOne(TradeDeal, {
-          where: { id: tradeDealId },
-          relations: ['farmer', 'trader'],
-        });
+      stellarTxIds = await this.stellarService.releaseEscrow(
+        escrowSecret,
+        deal.farmer.walletAddress,
+        investorShares,
+        platformWallet,
+        deal.totalValue,
+      );
+    } catch (stellarError) {
+      this.logger.error(
+        { tradeDealId, error: stellarError.message },
+        'Stellar escrow release failed — no DB writes were made',
+      );
+      await this.handleEscrowFailure(tradeDealId, stellarError);
+      throw stellarError;
+    }
 
-        if (!deal) {
-          throw new NotFoundException(`Trade deal ${tradeDealId} not found`);
-        }
+    const stellarTxId = stellarTxIds[0];
 
-        if (deal.status !== 'delivered') {
-          this.logger.warn(
-            `Deal ${tradeDealId} is not in delivered status (current: ${deal.status}). Skipping escrow release.`,
-          );
-          return;
-        }
+    // ── Phase 3: DB transaction — all writes commit or roll back together ──────
+    // Uses an explicit QueryRunner so the transaction lifecycle (BEGIN / COMMIT /
+    // ROLLBACK) is fully visible and controllable (#744).
+    const qr: QueryRunner = this.dataSource.createQueryRunner();
+    await qr.connect();
+    await qr.startTransaction();
 
-        // Load confirmed investments with investor details
-        const investments = await manager.find(Investment, {
-          where: { tradeDealId, status: InvestmentStatus.CONFIRMED },
-          relations: ['investor'],
-        });
+    try {
+      const totalValue = Number(deal.totalValue);
+      const [platformAmount, investorPool] = this.splitTotalValue(totalValue);
+      const investorAmounts = this.allocateProportionalAmounts(
+        investorPool,
+        investments.map((inv) => inv.tokenAmount),
+      );
 
-        if (investments.length === 0) {
-          this.logger.warn(
-            `No confirmed investments found for deal ${tradeDealId}`,
-          );
-          return;
-        }
+      // Build PaymentDistribution records for all investors
+      const paymentDistributions: PaymentDistribution[] = [];
 
-        // Validate wallet addresses
-        if (!deal.farmer?.walletAddress) {
-          throw new Error(
-            `Farmer wallet address not found for deal ${tradeDealId}`,
-          );
-        }
-
-        const investorsWithoutWallet = investments.filter(
-          (inv) => !inv.investor?.walletAddress,
-        );
-        if (investorsWithoutWallet.length > 0) {
-          throw new Error(
-            `Some investors don't have wallet addresses for deal ${tradeDealId}`,
-          );
-        }
-
-        // Prepare investor shares for Stellar service
-        const totalTokens = investments.reduce(
-          (sum, inv) => sum + inv.tokenAmount,
-          0,
-        );
-        const investorShares: InvestorShare[] = investments.map((inv) => ({
-          walletAddress: inv.investor.walletAddress!,
-          tokenAmount: inv.tokenAmount,
-          totalTokens,
-        }));
-
-        // Get platform wallet address
-        let platformWallet = this.config.get<string>('STELLAR_PLATFORM_WALLET');
-
-        if (!platformWallet) {
-          const platformSecret = this.config.get<string>(
-            'STELLAR_PLATFORM_SECRET',
-          );
-          if (!platformSecret) {
-            throw new Error(
-              'Neither STELLAR_PLATFORM_WALLET nor STELLAR_PLATFORM_SECRET are configured.',
-            );
-          }
-          try {
-            platformWallet = Keypair.fromSecret(platformSecret).publicKey();
-          } catch (e) {
-            throw new Error(
-              'Invalid STELLAR_PLATFORM_SECRET provided for deriving platform wallet.',
-            );
-          }
-        }
-
-        if (!platformWallet) {
-          throw new Error(
-            'Platform wallet address not configured or derivable',
-          );
-        }
-
-        // Release escrow funds via Stellar
-        if (!deal.escrowSecretKey) {
-          throw new Error(`Escrow secret key missing for deal ${tradeDealId}`);
-        }
-
-        const escrowSecret = this.stellarService.decryptSecret(
-          deal.escrowSecretKey,
-        );
-        const stellarTxIds = await this.stellarService.releaseEscrow(
-          escrowSecret,
-          deal.farmer.walletAddress,
-          investorShares,
-          platformWallet,
-          deal.totalValue,
-        );
-
-        // The current implementation returns a single transaction ID
-        const stellarTxId = stellarTxIds[0];
-
-        // Create payment distribution records using cent-safe arithmetic.
-        const paymentDistributions: PaymentDistribution[] = [];
-        const totalValue = Number(deal.totalValue);
-        const [farmerAmount, platformAmount] = this.splitTotalValue(totalValue);
-        const investorAmounts = this.allocateProportionalAmounts(
-          totalValue,
-          investments.map((investment) => investment.tokenAmount),
-        );
-
+      for (const [index, investment] of investments.entries()) {
         paymentDistributions.push(
-          manager.create(PaymentDistribution, {
+          qr.manager.create(PaymentDistribution, {
             tradeDealId,
-            recipientType: 'farmer',
-            recipientId: deal.farmerId,
-            walletAddress: deal.farmer.walletAddress,
-            amountUsd: farmerAmount,
+            recipientType: 'investor',
+            recipientId: investment.investorId,
+            walletAddress: investment.investor.walletAddress!,
+            amountUsd: investorAmounts[index],
             stellarTxId,
             status: 'confirmed',
           }),
         );
+      }
 
-        // Investor payments (proportional)
-        for (const [index, investment] of investments.entries()) {
-          const investorAmount = investorAmounts[index];
-          paymentDistributions.push(
-            manager.create(PaymentDistribution, {
-              tradeDealId,
-              recipientType: 'investor',
-              recipientId: investment.investorId,
-              walletAddress: investment.investor.walletAddress!,
-              amountUsd: investorAmount,
-              stellarTxId,
-              status: 'confirmed',
-            }),
-          );
-        }
+      // Platform fee distribution record
+      paymentDistributions.push(
+        qr.manager.create(PaymentDistribution, {
+          tradeDealId,
+          recipientType: 'platform',
+          recipientId: null,
+          walletAddress: platformWallet,
+          amountUsd: platformAmount,
+          stellarTxId,
+          status: 'confirmed',
+        }),
+      );
 
-        paymentDistributions.push(
-          manager.create(PaymentDistribution, {
-            tradeDealId,
-            recipientType: 'platform',
-            recipientId: null,
-            walletAddress: platformWallet,
-            amountUsd: platformAmount,
-            stellarTxId,
-            status: 'confirmed',
-          }),
-        );
+      // Persist all distributions atomically
+      await qr.manager.save(PaymentDistribution, paymentDistributions);
 
-        // Save all payment distribution records
-        await manager.save(PaymentDistribution, paymentDistributions);
-
-        // Update deal status to completed
-        const appTraceId = `app-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 10)}`;
-        await manager.update(TradeDeal, tradeDealId, { status: 'completed', appTraceId });
-
-        this.logger.info(
-          `Deal ${tradeDealId} completed successfully. Stellar TX: ${stellarTxId}`,
-        );
-
-        // Enqueue email notifications (outside transaction to avoid rollback issues)
-        setTimeout(() => {
-          this.sendCompletionNotifications(tradeDealId, deal, investments);
-          this.queueService.enqueueDealCleanup(tradeDealId).catch((err) => {
-            this.logger.error(`Failed to enqueue deal cleanup: ${err.message}`);
-          });
-        }, 0);
+      // Mark deal as completed
+      const appTraceId = `app-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 10)}`;
+      await qr.manager.update(TradeDeal, tradeDealId, {
+        status: 'completed',
+        appTraceId,
       });
-    } catch (error) {
-      await this.handleEscrowFailure(tradeDealId, error);
-      throw error;
+
+      // All DB writes succeeded — commit
+      await qr.commitTransaction();
+
+      this.logger.info(
+        `Deal ${tradeDealId} committed to completed. Stellar TX: ${stellarTxId}`,
+      );
+    } catch (dbError) {
+      // Roll back all DB writes atomically. The Stellar release already
+      // happened, so we log the Stellar TX ID for manual reconciliation.
+      await qr.rollbackTransaction();
+
+      this.logger.error(
+        {
+          tradeDealId,
+          stellarTxId,
+          error: dbError.message,
+        },
+        'DB transaction rolled back after successful Stellar release — ' +
+          'manual reconciliation required using the Stellar TX ID above',
+      );
+
+      await this.handleEscrowFailure(tradeDealId, dbError);
+      throw dbError;
+    } finally {
+      // Always release the QueryRunner back to the pool — prevents connection leaks.
+      await qr.release();
+    }
+
+    // ── Phase 4: Side-effects (outside transaction to avoid rollback on non-critical failures) ──
+    setTimeout(() => {
+      this.sendCompletionNotifications(tradeDealId, deal, investments);
+      this.queueService.enqueueDealCleanup(tradeDealId).catch((err: Error) => {
+        this.logger.error(`Failed to enqueue deal cleanup: ${err.message}`);
+      });
+    }, 0);
+  }
+
+  /** Resolves the platform wallet address from config. */
+  private async resolvePlatformWallet(): Promise<string> {
+    const explicit = this.config.get<string>('STELLAR_PLATFORM_WALLET');
+    if (explicit) return explicit;
+
+    const secret = this.config.get<string>('STELLAR_PLATFORM_SECRET');
+    if (!secret) {
+      throw new Error(
+        'Neither STELLAR_PLATFORM_WALLET nor STELLAR_PLATFORM_SECRET are configured.',
+      );
+    }
+    try {
+      return Keypair.fromSecret(secret).publicKey();
+    } catch {
+      throw new Error(
+        'Invalid STELLAR_PLATFORM_SECRET provided for deriving platform wallet.',
+      );
     }
   }
 
@@ -263,13 +307,12 @@ export class EscrowService {
     investments: Investment[],
   ): Promise<void> {
     try {
-      // Notify farmer
       const totalValue = Number(deal.totalValue);
-      const [farmerAmount] = this.splitTotalValue(totalValue);
-      const investorPool = farmerAmount;
+      const [platformAmount] = this.splitTotalValue(totalValue);
+      const investorPool = totalValue - platformAmount;
       const investorReturnAmounts = this.allocateProportionalAmounts(
         investorPool,
-        investments.map((investment) => investment.tokenAmount),
+        investments.map((inv) => inv.tokenAmount),
       );
 
       await this.queueService.emit('email.notification', {
@@ -280,11 +323,10 @@ export class EscrowService {
         dealDetails: {
           commodity: deal.commodity,
           totalValue,
-          farmerAmount,
+          farmerAmount: investorPool,
         },
       });
 
-      // Notify trader
       await this.queueService.emit('email.notification', {
         type: 'deal_completed',
         recipient: 'trader',
@@ -296,10 +338,7 @@ export class EscrowService {
         },
       });
 
-      // Notify all investors
       for (const [index, investment] of investments.entries()) {
-        const returnAmount = investorReturnAmounts[index];
-
         await this.queueService.emit('email.notification', {
           type: 'deal_completed',
           recipient: 'investor',
@@ -309,7 +348,7 @@ export class EscrowService {
             commodity: deal.commodity,
             totalValue,
             investmentAmount: investment.amountUsd,
-            returnAmount: returnAmount,
+            returnAmount: investorReturnAmounts[index],
             tokenAmount: investment.tokenAmount,
           },
         });
@@ -327,8 +366,8 @@ export class EscrowService {
   private splitTotalValue(totalValue: number): [number, number] {
     const totalCents = this.toCents(totalValue);
     const platformCents = Math.round(totalCents * 0.02);
-    const farmerCents = totalCents - platformCents;
-    return [this.fromCents(farmerCents), this.fromCents(platformCents)];
+    const investorPoolCents = totalCents - platformCents;
+    return [this.fromCents(platformCents), this.fromCents(investorPoolCents)];
   }
 
   private allocateProportionalAmounts(

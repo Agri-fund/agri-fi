@@ -82,6 +82,14 @@
 }
 
 @layer components {
+  /* ── PDF Viewer toolbar button (#721) ────────────────────────────────── */
+  .toolbar-btn {
+    @apply inline-flex items-center justify-center rounded-lg p-1.5 text-slate-500
+           hover:bg-slate-200 hover:text-slate-700 disabled:opacity-40
+           disabled:cursor-not-allowed transition-colors duration-150
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400;
+  }
+
   /* ── Buttons ──────────────────────────────────────────────────────────── */
   .btn {
     @apply inline-flex items-center justify-center gap-2 font-semibold text-sm
@@ -140,7 +148,7 @@
   .input {
     @apply w-full bg-surface border border-border rounded-xl px-4 py-2.5 text-sm
            text-foreground placeholder:text-muted-foreground/70
-           focus:outline-none focus:ring-2 focus:ring-primary/35 focus:border-primary
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 focus-visible:border-primary
            transition-all duration-150;
   }
   .input-error {
@@ -375,6 +383,24 @@
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
   pointer-events: none;
   border-radius: inherit;
+}
+
+/* ── Portfolio chart — Issue #273 ─────────────────────────────────────────── */
+.portfolio-chart {
+  --chart-grid: #f1f5f9;
+  --chart-axis: #94a3b8;
+  --chart-line: #16a34a;
+}
+html.dark .portfolio-chart {
+  --chart-grid: #1e293b;
+  --chart-axis: #64748b;
+  --chart-line: #4ade80;
+}
+.portfolio-chart-tooltip {
+  @apply rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 shadow-card-md;
+}
+html.dark .portfolio-chart-tooltip {
+  @apply border-slate-700 bg-slate-900;
 }
 
 /* ── Leaflet map — Issue #247 ─────────────────────────────────────────────── */

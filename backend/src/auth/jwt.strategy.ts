@@ -4,7 +4,9 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import type { Request } from 'express';
 import { User } from './entities/user.entity';
+import { TokenBlocklistService } from './token-blocklist.service';
 
 export interface JwtPayload {
   sub: string;
@@ -19,15 +21,22 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(
     config: ConfigService,
     @InjectRepository(User) private readonly userRepo: Repository<User>,
+    private readonly tokenBlocklistService: TokenBlocklistService,
   ) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
       secretOrKey: config.getOrThrow<string>('JWT_SECRET'),
+      passReqToCallback: true,
     });
   }
 
-  async validate(payload: JwtPayload): Promise<User> {
+  async validate(req: Request, payload: JwtPayload): Promise<User> {
+    const rawToken = ExtractJwt.fromAuthHeaderAsBearerToken()(req);
+    if (rawToken && (await this.tokenBlocklistService.isBlocklisted(rawToken))) {
+      throw new UnauthorizedException('Token has been revoked.');
+    }
+
     if (payload.typ === 'refresh') {
       throw new UnauthorizedException(
         'Refresh tokens cannot be used as access tokens.',
@@ -41,3 +50,4 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     return user;
   }
 }
+

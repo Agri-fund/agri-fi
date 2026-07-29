@@ -148,6 +148,7 @@
   },
   "deals": {
     "createTitle": "Créer un nouveau contrat commercial",
+    "draftRestored": "Brouillon restauré depuis {time}",
     "commodity": "Nom de la marchandise",
     "quantity": "Quantité",
     "unit": "Unité",

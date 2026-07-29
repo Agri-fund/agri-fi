@@ -26,7 +26,7 @@ import { User } from './entities/user.entity';
 import { KycSubmission } from './entities/kyc-submission.entity';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
-import { KycDto } from './dto/kyc.dto';
+import { SubmitKycDto } from './dto/submit-kyc.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { QueueService } from '../queue/queue.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -35,6 +35,9 @@ import { sanitizeRedirectUrl } from './utils/redirect-sanitizer';
 import { OfacSanctionsCheckService } from './utils/ofac-sanctions-check';
 import { LoginLog } from '../database/entities/login-log.entity';
 import { AdminAction } from '../database/entities/admin-action.entity';
+import { authenticator } from 'otplib';
+import * as QRCode from 'qrcode';
+import { TokenBlocklistService } from './token-blocklist.service';
 
 const LOCKOUT_MAX_ATTEMPTS = 5;
 const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
@@ -58,6 +61,7 @@ export class AuthService {
     private readonly configService: ConfigService,
     private readonly queueService: QueueService,
     private readonly ofacSanctionsCheck: OfacSanctionsCheckService,
+    private readonly tokenBlocklistService: TokenBlocklistService,
   ) {
     const network = this.configService.get<string>('STELLAR_NETWORK', 'testnet');
     this.networkPassphrase =
@@ -326,6 +330,83 @@ export class AuthService {
     return this.issueTokenPair(user);
   }
 
+  // ── logout & token revocation ──────────────────────────────────────────────
+
+  async logout(userId: string, token?: string): Promise<{ message: string }> {
+    if (token) {
+      try {
+        const decoded: any = this.jwtService.decode(token);
+        if (decoded && typeof decoded.exp === 'number') {
+          const remainingSeconds = decoded.exp - Math.floor(Date.now() / 1000);
+          if (remainingSeconds > 0) {
+            await this.tokenBlocklistService.blocklistToken(
+              token,
+              remainingSeconds,
+            );
+          }
+        }
+      } catch {
+        // decode error ignored
+      }
+    }
+    return { message: 'Logged out successfully' };
+  }
+
+  // ── MFA ───────────────────────────────────────────────────────────────────
+
+  async setupMfa(
+    userId: string,
+  ): Promise<{ secret: string; otpauthUrl: string; qrCodeUrl: string }> {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found.');
+
+    const secret = authenticator.generateSecret();
+    user.mfaSecret = secret;
+    await this.userRepo.save(user);
+
+    const issuer = this.configService.get<string>(
+      'MFA_ISSUER',
+      'Agri-Fi Platform',
+    );
+    const otpauthUrl = authenticator.keyuri(user.email, issuer, secret);
+    const qrCodeUrl = await QRCode.toDataURL(otpauthUrl);
+
+    return { secret, otpauthUrl, qrCodeUrl };
+  }
+
+  async enableMfa(
+    userId: string,
+    token: string,
+  ): Promise<{ success: boolean; message: string }> {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found.');
+
+    if (!user.mfaSecret) {
+      throw new BadRequestException(
+        'MFA secret not setup. Call /auth/mfa/setup first.',
+      );
+    }
+
+    let isValid = false;
+    try {
+      isValid = authenticator.verify({
+        token: token.trim(),
+        secret: user.mfaSecret,
+      });
+    } catch {
+      isValid = false;
+    }
+
+    if (!isValid) {
+      throw new BadRequestException('Invalid MFA verification code.');
+    }
+
+    user.isMfaEnabled = true;
+    await this.userRepo.save(user);
+
+    return { success: true, message: 'MFA enabled successfully.' };
+  }
+
   // ── wallet ─────────────────────────────────────────────────────────────────
 
   async linkWallet(
@@ -354,7 +435,10 @@ export class AuthService {
 
   // ── KYC ───────────────────────────────────────────────────────────────────
 
-  async submitKyc(userId: string, dto: KycDto): Promise<{ kycStatus: string }> {
+  async submitKyc(
+    userId: string,
+    dto: SubmitKycDto,
+  ): Promise<{ kycStatus: string }> {
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found.');
 
@@ -372,6 +456,7 @@ export class AuthService {
       registrationNumber: dto.registrationNumber,
       businessLicenseUrl: dto.businessLicenseUrl,
       articlesOfIncorporationUrl: dto.articlesOfIncorporationUrl,
+      documentExpiresAt: dto.documentExpiresAt ? new Date(dto.documentExpiresAt) : null,
       status: automatedApproval ? 'approved' : 'pending_review',
     });
 

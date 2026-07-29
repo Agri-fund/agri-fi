@@ -559,6 +559,18 @@ fn test_get_investors() {
 
     let investors = client.get_investors();
     assert_eq!(investors.len(), 2);
-    assert_eq!(investors.get(0).unwrap(), setup.investors.get(0).unwrap());
-    assert_eq!(investors.get(1).unwrap(), setup.investors.get(1).unwrap());
+    // Verify investors are in the map (order may vary with Map)
+    let investor1 = setup.investors.get(0).unwrap();
+    let investor2 = setup.investors.get(1).unwrap();
+    let mut found1 = false;
+    let mut found2 = false;
+    for investor in investors.iter() {
+        if investor == investor1 {
+            found1 = true;
+        }
+        if investor == investor2 {
+            found2 = true;
+        }
+    }
+    assert!(found1 && found2);
 }

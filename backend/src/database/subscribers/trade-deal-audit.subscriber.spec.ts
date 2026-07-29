@@ -1,12 +1,13 @@
-import { AuditSubscriber } from './audit.subscriber';
+import { TradeDealAuditSubscriber } from './trade-deal-audit.subscriber';
 import { AuditLog } from '../entities/audit-log.entity';
 import { TradeDeal } from '../../trade-deals/entities/trade-deal.entity';
 import { InsertEvent, UpdateEvent } from 'typeorm';
 
-describe('AuditSubscriber', () => {
-  let subscriber: AuditSubscriber;
+describe('TradeDealAuditSubscriber', () => {
+  let subscriber: TradeDealAuditSubscriber;
   let mockManager: { save: jest.Mock };
-  let mockDataSource: { subscribers: AuditSubscriber[] };
+  let mockDataSource: { subscribers: TradeDealAuditSubscriber[] };
+  let mockCls: { get: jest.Mock };
 
   const baseDeal: Partial<TradeDeal> = {
     id: 'deal-uuid',
@@ -20,7 +21,11 @@ describe('AuditSubscriber', () => {
   beforeEach(() => {
     mockManager = { save: jest.fn().mockResolvedValue({}) };
     mockDataSource = { subscribers: [] };
-    subscriber = new AuditSubscriber(mockDataSource as any);
+    mockCls = { get: jest.fn().mockReturnValue('user-uuid') };
+    subscriber = new TradeDealAuditSubscriber(
+      mockDataSource as any,
+      mockCls as any,
+    );
   });
 
   it('registers itself with the DataSource subscribers list on construction', () => {
@@ -47,6 +52,7 @@ describe('AuditSubscriber', () => {
           entityName: 'TradeDeal',
           entityId: 'deal-uuid',
           action: 'INSERT',
+          userId: 'user-uuid',
         }),
       );
     });
@@ -75,6 +81,18 @@ describe('AuditSubscriber', () => {
       const [, auditPayload] = mockManager.save.mock.calls[0];
       expect(auditPayload.entityId).toBeNull();
     });
+
+    it('excludes secret key fields from newValues', async () => {
+      const event = {
+        entity: { ...baseDeal, escrowSecretKey: 'super-secret' },
+        manager: mockManager,
+      } as unknown as InsertEvent<TradeDeal>;
+
+      await subscriber.afterInsert(event);
+
+      const [, auditPayload] = mockManager.save.mock.calls[0];
+      expect(auditPayload.newValues).not.toHaveProperty('escrowSecretKey');
+    });
   });
 
   describe('afterUpdate', () => {
@@ -94,6 +112,7 @@ describe('AuditSubscriber', () => {
           entityName: 'TradeDeal',
           entityId: 'deal-uuid',
           action: 'UPDATE',
+          userId: 'user-uuid',
         }),
       );
     });
@@ -128,6 +147,22 @@ describe('AuditSubscriber', () => {
 
       const [, auditPayload] = mockManager.save.mock.calls[0];
       expect(JSON.parse(auditPayload.changes)).toEqual([]);
+    });
+
+    it('stores a null userId when no CLS context is available', async () => {
+      mockCls.get.mockImplementation(() => {
+        throw new Error('no context');
+      });
+      const event = {
+        entity: baseDeal,
+        manager: mockManager,
+        updatedColumns: [],
+      } as unknown as UpdateEvent<TradeDeal>;
+
+      await subscriber.afterUpdate(event);
+
+      const [, auditPayload] = mockManager.save.mock.calls[0];
+      expect(auditPayload.userId).toBeNull();
     });
   });
 });

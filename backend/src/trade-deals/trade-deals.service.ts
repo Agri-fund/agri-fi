@@ -6,7 +6,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository, QueryRunner } from 'typeorm';
 import { PinoLogger } from 'nestjs-pino';
 import { TradeDeal, TradeDealStatus } from './entities/trade-deal.entity';
 import { Document, DocumentType } from './entities/document.entity';
@@ -56,6 +56,7 @@ export class TradeDealsService {
     private readonly stellarService: StellarService,
     private readonly queueService: QueueService,
     private readonly logger: PinoLogger,
+    private readonly dataSource: DataSource,
   ) {
     this.logger.setContext(TradeDealsService.name);
   }
@@ -297,34 +298,40 @@ export class TradeDealsService {
         await this.stellarService.createEscrowAccount(dealId);
 
       // Encrypt the escrow secret
-      const encryptedEscrowSecret = await this.stellarService.encryptSecret(escrowSecretKey);
+      const encryptedEscrowSecret =
+        await this.stellarService.encryptSecret(escrowSecretKey);
 
-      // Update deal with escrow data
-      await this.tradeDealRepo.update(dealId, {
-        escrowPublicKey,
-        escrowSecretKey: encryptedEscrowSecret,
+      // Update deal with escrow data and enqueue token issuance atomically:
+      // if enqueueing fails, the escrow-key write must roll back too, since
+      // the deal would otherwise be stuck holding an escrow account no job
+      // will ever process.
+      // Use transactional outbox for atomic DB update + event publish
+      return await this.dataSource.transaction(async (queryRunner: QueryRunner) => {
+        await queryRunner.manager.update(TradeDeal, dealId, {
+          escrowPublicKey,
+          escrowSecretKey: encryptedEscrowSecret,
+        });
+
+        this.logger.info(
+          { dealId, escrowPublicKey },
+          'Escrow account created, enqueuing token issuance',
+        );
+
+        await this.queueService.enqueueDealPublishTransactional(queryRunner, {
+          dealId,
+          tokenSymbol: deal.tokenSymbol,
+          escrowPublicKey,
+          encryptedEscrowSecret,
+          tokenCount: deal.tokenCount,
+        });
+
+        // Return deal with escrow data (status still draft, will be updated by queue processor)
+        return {
+          ...deal,
+          escrowPublicKey,
+          escrowSecretKey: encryptedEscrowSecret,
+        };
       });
-
-      this.logger.info(
-        { dealId, escrowPublicKey },
-        'Escrow account created, enqueuing token issuance',
-      );
-
-      // Enqueue the token issuance job
-      await this.queueService.enqueueDealPublish({
-        dealId,
-        tokenSymbol: deal.tokenSymbol,
-        escrowPublicKey,
-        encryptedEscrowSecret,
-        tokenCount: deal.tokenCount,
-      });
-
-      // Return deal with escrow data (status still draft, will be updated by queue processor)
-      return {
-        ...deal,
-        escrowPublicKey,
-        escrowSecretKey: encryptedEscrowSecret,
-      };
     } catch (error) {
       this.logger.error(
         { dealId, error: error.message },
@@ -462,21 +469,28 @@ export class TradeDealsService {
       }
     }
 
-    if (confirmedInvestments.length > 0) {
-      await this.investmentRepo.update(
-        confirmedInvestments.map((inv) => inv.id),
-        { status: InvestmentStatus.REFUNDED },
-      );
-      this.logger.info(
-        { dealId, refundedCount: confirmedInvestments.length },
-        'Refunded confirmed investments for canceled deal',
-      );
-    }
-
     deal.status = 'canceled';
     // Set appTraceId for this authorized update
     deal.appTraceId = `app-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 10)}`;
-    return this.tradeDealRepo.save(deal);
+
+    // Refunding investments and updating deal status must succeed or fail
+    // together, since the Stellar clawback above has already moved funds and
+    // a partial DB write here would leave local state inconsistent with it.
+    return this.dataSource.transaction(async (manager) => {
+      if (confirmedInvestments.length > 0) {
+        await manager.update(
+          Investment,
+          confirmedInvestments.map((inv) => inv.id),
+          { status: InvestmentStatus.REFUNDED },
+        );
+        this.logger.info(
+          { dealId, refundedCount: confirmedInvestments.length },
+          'Refunded confirmed investments for canceled deal',
+        );
+      }
+
+      return manager.save(deal);
+    });
   }
 
   async expireDeal(dealId: string): Promise<TradeDeal> {
@@ -501,11 +515,7 @@ export class TradeDealsService {
         (inv) => inv.status === InvestmentStatus.CONFIRMED,
       ) || [];
 
-    if (
-      deal.issuerPublicKey &&
-      deal.issuerSecretKey &&
-      deal.stellarAssetTxId
-    ) {
+    if (deal.issuerPublicKey && deal.issuerSecretKey && deal.stellarAssetTxId) {
       const investorShares: { walletAddress: string; tokenAmount: number }[] =
         confirmedInvestments
           .filter((inv) => inv.investor?.walletAddress)
@@ -584,7 +594,7 @@ export class TradeDealsService {
     return saved;
   }
 
-  async findByUser(userId: string, role: string): Promise<any[]>{
+  async findByUser(userId: string, role: string): Promise<any[]> {
     if (role !== 'farmer' && role !== 'trader') {
       return [];
     }
@@ -597,12 +607,16 @@ export class TradeDealsService {
       relations: ['farmer', 'trader', 'milestones'],
     });
 
-    // Get document count for each deal (placeholder - would need documents entity)
+    // Get document count for each deal
     const dealsWithCounts = await Promise.all(
       deals.map(async (deal) => {
         const latestMilestone = await this.milestoneRepo.findOne({
           where: { tradeDealId: deal.id },
           order: { recordedAt: 'DESC' },
+        });
+
+        const documentCount = await this.documentRepo.count({
+          where: { tradeDealId: deal.id },
         });
 
         return {
@@ -615,7 +629,7 @@ export class TradeDealsService {
           status: deal.status,
           delivery_date: deal.deliveryDate,
           latest_milestone: latestMilestone || null,
-          document_count: 0, // TODO: Implement when documents entity is available
+          document_count: documentCount,
         };
       }),
     );

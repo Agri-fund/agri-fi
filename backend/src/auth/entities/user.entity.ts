@@ -15,7 +15,7 @@ export type UserRole =
   | 'investor'
   | 'company_admin'
   | 'admin';
-export type KycStatus = 'pending' | 'verified' | 'rejected';
+export type KycStatus = 'pending' | 'verified' | 'rejected' | 'expired';
 
 export interface CompanyDetails {
   companyName?: string;
@@ -61,7 +61,7 @@ export class User {
   @Column({ name: 'kyc_status', default: 'pending' })
   @ApiProperty({
     description: 'KYC verification status',
-    enum: ['pending', 'verified', 'rejected'],
+    enum: ['pending', 'verified', 'rejected', 'expired'],
     example: 'verified',
   })
   kycStatus: KycStatus;
@@ -120,6 +120,15 @@ export class User {
   @Column({ name: 'lockout_until', type: 'timestamptz', nullable: true })
   lockoutUntil: Date | null;
 
+  // #652 — MFA support
+  @Exclude()
+  @Column({ name: 'mfa_secret', nullable: true })
+  mfaSecret: string | null;
+
+  @Column({ name: 'is_mfa_enabled', default: false })
+  @ApiProperty({ description: 'Whether MFA is enabled for this user', example: false })
+  isMfaEnabled: boolean;
+
   @CreateDateColumn({ name: 'created_at' })
   @ApiProperty({
     description: 'Account creation timestamp',
@@ -141,4 +150,14 @@ export class User {
   @Exclude()
   @Column({ name: 'tax_id', nullable: true, transformer: encryptionTransformer })
   taxId: string | null;
+
+  /** Phone number — stored AES-256-GCM encrypted */
+  @Exclude()
+  @Column({ name: 'phone', nullable: true, transformer: encryptionTransformer })
+  phone: string | null;
+
+  /** Physical / mailing address — stored AES-256-GCM encrypted */
+  @Exclude()
+  @Column({ name: 'physical_address', nullable: true, transformer: encryptionTransformer })
+  physicalAddress: string | null;
 }

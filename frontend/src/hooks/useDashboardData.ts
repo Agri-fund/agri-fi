@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { apiClient, Investment, User } from '../lib/api';
 
-const CACHE_KEY = 'dashboard_data';
+const CACHE_KEY_PREFIX = 'dashboard_data_';
 
 export interface DashboardData {
   user: User | null;
@@ -15,6 +15,28 @@ export interface UseDashboardDataReturn {
   isOffline: boolean;
 }
 
+function cacheKey(userId: string): string {
+  return `${CACHE_KEY_PREFIX}${userId}`;
+}
+
+function readCache(userId: string): DashboardData | null {
+  try {
+    const raw = localStorage.getItem(cacheKey(userId));
+    return raw ? (JSON.parse(raw) as DashboardData) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCache(userId: string, data: DashboardData): void {
+  try {
+    localStorage.setItem(cacheKey(userId), JSON.stringify(data));
+  } catch {
+    // Storage may be full or unavailable (e.g. private browsing) — caching
+    // is a best-effort enhancement, not required for the dashboard to work.
+  }
+}
+
 export function useDashboardData(): UseDashboardDataReturn {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -23,8 +45,18 @@ export function useDashboardData(): UseDashboardDataReturn {
 
   useEffect(() => {
     let active = true;
+    const userId = apiClient.getCurrentUser()?.id;
 
-    async function load() {
+    // 1. Serve cached data immediately so the dashboard is usable before
+    //    the network request resolves (stale-while-revalidate).
+    const cached = userId ? readCache(userId) : null;
+    if (cached && active) {
+      setData(cached);
+      setLoading(false);
+    }
+
+    // 2. Revalidate against the API in the background.
+    async function revalidate() {
       try {
         const [user, investments] = await Promise.all([
           apiClient.refreshCurrentUser(),
@@ -32,7 +64,8 @@ export function useDashboardData(): UseDashboardDataReturn {
         ]);
 
         const result: DashboardData = { user, investments };
-        localStorage.setItem(CACHE_KEY, JSON.stringify(result));
+        const resolvedUserId = user?.id ?? userId;
+        if (resolvedUserId) writeCache(resolvedUserId, result);
 
         if (active) {
           setData(result);
@@ -40,10 +73,9 @@ export function useDashboardData(): UseDashboardDataReturn {
           setError(null);
         }
       } catch (err) {
-        const cached = localStorage.getItem(CACHE_KEY);
         if (active) {
           if (cached) {
-            setData(JSON.parse(cached) as DashboardData);
+            // Keep showing the cached data; just flag it as stale.
             setIsOffline(true);
           } else {
             setError(err instanceof Error ? err.message : 'Failed to load dashboard data');
@@ -54,7 +86,7 @@ export function useDashboardData(): UseDashboardDataReturn {
       }
     }
 
-    load();
+    void revalidate();
     return () => {
       active = false;
     };

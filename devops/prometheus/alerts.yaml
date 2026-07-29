@@ -86,3 +86,35 @@ groups:
           description: >
             The postgres_exporter instance {{ $labels.instance }} has been
             unreachable for more than 1 minute. Connection pool alerts may not fire.
+
+  - name: agri_fi_database_replication
+    interval: 30s
+    rules:
+
+      # ── Read replica falling behind the primary (warning) ───────────────────
+      - alert: DatabaseReplicationLagHigh
+        expr: pg_replication_lag_seconds > 5
+        for: 2m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "Read replica lag above 5 seconds"
+          description: >
+            Replica {{ $labels.instance }} is {{ $value | printf "%.1f" }}s
+            behind the primary for more than 2 minutes. Reads routed to this
+            replica may return stale data.
+
+      # ── Read replica critically behind the primary ─────────────────────────
+      - alert: DatabaseReplicationLagCritical
+        expr: pg_replication_lag_seconds > 30
+        for: 1m
+        labels:
+          severity: critical
+          team: backend
+          pagerduty: "true"
+        annotations:
+          summary: "Read replica lag critically high"
+          description: >
+            Replica {{ $labels.instance }} is {{ $value | printf "%.1f" }}s
+            behind the primary for more than 1 minute.

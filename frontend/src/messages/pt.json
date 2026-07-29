@@ -193,6 +193,7 @@
   },
   "deals": {
     "createTitle": "Criar Novo Negócio Comercial",
+    "draftRestored": "Rascunho restaurado de {time}",
     "commodity": "Nome da Mercadoria",
     "quantity": "Quantidade",
     "unit": "Unidade",

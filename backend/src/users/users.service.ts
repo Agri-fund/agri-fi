@@ -5,7 +5,7 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import { Repository, In, DataSource } from 'typeorm';
 import { randomBytes } from 'crypto';
 import { User, UserRole } from '../auth/entities/user.entity';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
@@ -13,6 +13,7 @@ import { Investment } from '../investments/entities/investment.entity';
 import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.entity';
 import { PaymentDistribution } from '../escrow/entities/payment-distribution.entity';
 import { KycSubmission } from '../auth/entities/kyc-submission.entity';
+import { Document } from '../trade-deals/entities/document.entity';
 
 export interface CurrentUserProfile {
   id: string;
@@ -27,6 +28,10 @@ export interface CurrentUserProfile {
 }
 
 export type DashboardDealRole = 'farmer' | 'trader';
+
+function generateRandomString(length: number): string {
+  return randomBytes(Math.ceil(length / 2)).toString('hex').slice(0, length);
+}
 
 @Injectable()
 export class UsersService {
@@ -43,6 +48,9 @@ export class UsersService {
     private readonly paymentDistributionRepository: Repository<PaymentDistribution>,
     @InjectRepository(KycSubmission)
     private readonly kycSubmissionRepository: Repository<KycSubmission>,
+    @InjectRepository(Document)
+    private readonly documentRepository: Repository<Document>,
+    private readonly dataSource: DataSource,
   ) {}
 
   async getProfile(userId: string): Promise<CurrentUserProfile> {
@@ -65,6 +73,57 @@ export class UsersService {
     };
   }
 
+  async deleteAccount(userId: string): Promise<void> {
+    await this.dataSource.transaction(async (manager) => {
+      const user = await manager.findOne(User, { where: { id: userId } });
+      if (!user) {
+        throw new NotFoundException('User not found.');
+      }
+
+      // Anonymize user PII
+      const anonymizedUser = manager.create(User, {
+        id: user.id,
+        email: `deleted-${generateRandomString(16)}@example.com`,
+        passwordHash: generateRandomString(64),
+        tokenVersion: user.tokenVersion + 1, // Invalidate all JWTs
+        walletAddress: null,
+        fullName: null,
+        birthdate: null,
+        taxId: null,
+        isEmailVerified: false,
+        emailVerificationToken: null,
+        companyDetails: user.isCompany
+          ? {
+              companyName: `Deleted Company ${generateRandomString(8)}`,
+              registrationNumber: null,
+              articlesOfIncorporationUrl: null,
+            }
+          : null,
+      });
+      await manager.save(User, anonymizedUser);
+
+      // Anonymize KYC submissions
+      const kycSubmissions = await manager.find(KycSubmission, {
+        where: { userId },
+      });
+      for (const kyc of kycSubmissions) {
+        await manager.update(KycSubmission, kyc.id, {
+          governmentIdUrl: null,
+          proofOfAddressUrl: null,
+          companyName: kyc.isCorporate
+            ? `Deleted Company ${generateRandomString(8)}`
+            : null,
+          registrationNumber: null,
+          businessLicenseUrl: null,
+          articlesOfIncorporationUrl: null,
+        });
+      }
+
+      // Soft delete the user
+      await manager.softDelete(User, userId);
+    });
+  }
+
   async getUserDeals(
     userId: string,
     userRole: DashboardDealRole,
@@ -83,12 +142,16 @@ export class UsersService {
       relations: ['farmer', 'trader', 'milestones'],
     });
 
-    // Get document count for each deal (placeholder - would need documents entity)
+    // Get document count for each deal
     const dealsWithCounts = await Promise.all(
       deals.map(async (deal) => {
         const latestMilestone = await this.milestoneRepository.findOne({
           where: { tradeDealId: deal.id },
           order: { recordedAt: 'DESC' },
+        });
+
+        const documentCount = await this.documentRepository.count({
+          where: { tradeDealId: deal.id },
         });
 
         return {
@@ -100,7 +163,7 @@ export class UsersService {
           status: deal.status,
           delivery_date: deal.deliveryDate,
           latest_milestone: latestMilestone || null,
-          document_count: 0, // TODO: Implement when documents entity is available
+          document_count: documentCount,
         };
       }),
     );

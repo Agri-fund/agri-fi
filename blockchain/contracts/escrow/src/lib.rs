@@ -47,7 +47,7 @@ pub enum DataKey {
     DeliveryApproved,
     MilestonesCount,     // Total number of milestones for this deal
     MilestonesCompleted, // Number of completed milestones
-    Investors,           // Vec of investor addresses
+    Investors,           // Map of investor addresses to their investment amounts
     MilestoneData,       // Map of milestone ID to Milestone struct
 }
 
@@ -103,7 +103,13 @@ impl EscrowContract {
         env.storage().instance().set(&DataKey::DeliveryApproved, &false);
         env.storage().instance().set(&DataKey::MilestonesCount, &milestone_count);
         env.storage().instance().set(&DataKey::MilestonesCompleted, &0u32);
-        env.storage().instance().set(&DataKey::Investors, &investors);
+
+        // Store investors as a Map for O(1) lookups and better gas efficiency
+        let investors_map: Map<Address, i128> = Map::new(&env);
+        for investor in investors.iter() {
+            investors_map.set(investor, 0i128);
+        }
+        env.storage().instance().set(&DataKey::Investors, &investors_map);
 
         // Initialize empty milestone data map
         let milestone_map: Map<u32, Milestone> = Map::new(&env);
@@ -130,7 +136,6 @@ impl EscrowContract {
         let usdc = token::Client::new(&env, &usdc_token);
 
         caller.require_auth();
-        usdc.transfer(&caller, &env.current_contract_address(), &amount);
 
         let prev: i128 = env
             .storage()
@@ -140,6 +145,9 @@ impl EscrowContract {
         env.storage()
             .instance()
             .set(&DataKey::TotalFunded, &(prev + amount));
+
+        usdc.transfer(&caller, &env.current_contract_address(), &amount);
+
         env.events()
             .publish((symbol_short!("funded"),), amount);
         Ok(())
@@ -249,6 +257,12 @@ impl EscrowContract {
         let farmer_amount = (total_funded * 98) / 100;
         let platform_amount = total_funded - farmer_amount;
 
+        // Lock settlement state before invoking external transfers so a
+        // reentrant call sees `Released == true` and is rejected immediately.
+        env.storage()
+            .instance()
+            .set(&DataKey::Released, &true);
+
         if farmer_amount > 0 {
             usdc.transfer(
                 &env.current_contract_address(),
@@ -264,9 +278,6 @@ impl EscrowContract {
             );
         }
 
-        env.storage()
-            .instance()
-            .set(&DataKey::Released, &true);
         env.events()
             .publish((symbol_short!("release"),), total_funded);
         Ok(())
@@ -450,6 +461,12 @@ impl EscrowContract {
         let farmer_amount = (total_funded * 98) / 100;
         let platform_amount = total_funded - farmer_amount;
 
+        // Mark as released before invoking external transfers so a reentrant
+        // call sees `Released == true` and is rejected immediately.
+        env.storage()
+            .instance()
+            .set(&DataKey::Released, &true);
+
         // Execute transfers
         if farmer_amount > 0 {
             usdc.transfer(
@@ -465,11 +482,6 @@ impl EscrowContract {
                 &platform_amount,
             );
         }
-
-        // Mark as released
-        env.storage()
-            .instance()
-            .set(&DataKey::Released, &true);
 
         env.events()
             .publish((symbol_short!("settled"),), total_funded);
@@ -545,10 +557,12 @@ impl EscrowContract {
 
     /// Returns the list of investor addresses
     pub fn get_investors(env: Env) -> Vec<Address> {
-        env.storage()
+        let investors_map: Map<Address, i128> = env
+            .storage()
             .instance()
             .get(&DataKey::Investors)
-            .unwrap_or(Vec::new(&env))
+            .unwrap_or(Map::new(&env));
+        investors_map.keys()
     }
 
     /// Checks if a specific milestone has been completed and recorded

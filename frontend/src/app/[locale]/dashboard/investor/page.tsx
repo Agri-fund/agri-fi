@@ -1,13 +1,16 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { apiClient, Investment, User } from '../../../../lib/api';
+import { apiClient, Investment } from '../../../../lib/api';
+import { useDashboardData } from '../../../../hooks/useDashboardData';
 import DashboardLayout from '../../../../components/DashboardLayout';
 import StatCard from '../../../../components/StatCard';
 import { InvestmentCertificate } from '../../../../components/InvestmentCertificate';
 import { AnchorWidget } from '../../../../components/AnchorWidget';
+import PortfolioChart from '../../../../components/dashboard/PortfolioChart';
+import { usePushNotifications } from '../../../../hooks/usePushNotifications';
 
 const INV_STATUS: Record<string, string> = {
   confirmed: 'badge-green', pending: 'badge-yellow', failed: 'badge-red', refunded: 'badge-gray',
@@ -21,24 +24,28 @@ type Tab = 'portfolio' | 'certificates' | 'fiat';
 
 export default function InvestorDashboard() {
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
-  const [investments, setInvestments] = useState<Investment[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data, loading, isOffline } = useDashboardData();
   const [filter, setFilter] = useState<'all' | 'confirmed' | 'pending'>('all');
   const [tab, setTab] = useState<Tab>('portfolio');
 
+  const user = data?.user ?? null;
+  const investments: Investment[] = data?.investments ?? [];
+
+  // Anonymous visitors have no cached session at all — bounce to login
+  // immediately, without waiting on the dashboard data fetch.
   useEffect(() => {
-    (async () => {
-      const cached = apiClient.getCurrentUser();
-      if (!cached) { router.push('/login'); return; }
-      let u = cached;
-      try { const f = await apiClient.refreshCurrentUser(); if (f) u = f; } catch {}
-      if (u.role !== 'investor') { router.push(`/dashboard/${u.role}`); return; }
-      setUser(u);
-      try { setInvestments(await apiClient.getInvestorInvestments()); } catch {}
-      setLoading(false);
-    })();
+    if (!apiClient.getCurrentUser()) {
+      router.push('/login');
+    }
   }, [router]);
+
+  // Once we know who the user is (from cache or a fresh fetch), make sure
+  // they're on the dashboard for their actual role.
+  useEffect(() => {
+    if (user && user.role !== 'investor') {
+      router.push(`/dashboard/${user.role}`);
+    }
+  }, [user, router]);
 
   const totalInvested = investments.reduce((s, i) => s + Number(i.amount_invested), 0);
   const totalTokens   = investments.reduce((s, i) => s + Number(i.token_holdings), 0);
@@ -60,6 +67,20 @@ export default function InvestorDashboard() {
 
   const filtered = filter === 'all' ? investments
     : investments.filter(i => i.status === filter);
+
+  // Derive a portfolio-value-over-time trend from confirmed investments —
+  // running total of invested capital, ordered by when each was made.
+  const portfolioHistory = useMemo(() => {
+    let running = 0;
+    return investments
+      .filter(i => i.status === 'confirmed')
+      .slice()
+      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+      .map(i => {
+        running += Number(i.amount_invested);
+        return { date: i.created_at, value: running };
+      });
+  }, [investments]);
 
   const confirmedInvestments = investments.filter(i => i.status === 'confirmed');
 
@@ -83,6 +104,16 @@ export default function InvestorDashboard() {
             </Link>
           </div>
         </div>
+
+        {/* Offline indicator: shown when we're displaying last-cached data because
+            the latest background refresh failed (e.g. intermittent mobile network). */}
+        {isOffline && (
+          <div role="status"
+            className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-medium text-slate-500">
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-slate-400" aria-hidden="true" />
+            Viewing offline data — showing your last synced portfolio
+          </div>
+        )}
 
         {/* Delayed-deal warning: surfaces deals past their target maturity date. */}
         {delayedCount > 0 && (
@@ -123,6 +154,10 @@ export default function InvestorDashboard() {
         {/* ── Portfolio tab ── */}
         {tab === 'portfolio' && (
           <>
+            {!loading && investments.length > 0 && (
+              <PortfolioChart data={portfolioHistory} />
+            )}
+
             {investments.length > 0 && (
               <div className="flex gap-1 bg-slate-100 rounded-xl p-1 w-fit">
                 {(['all', 'confirmed', 'pending'] as const).map(f => (
