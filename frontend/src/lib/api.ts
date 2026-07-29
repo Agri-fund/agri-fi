@@ -355,10 +355,20 @@ export interface PaginatedDeals {
   limit: number;
 }
 
-export async function getOpenDeals(page = 1, limit = 12): Promise<PaginatedDeals> {
-  const raw = await apiFetch<{ data: any[]; total: number; page: number; limit: number }>(
-    `/trade-deals?page=${page}&limit=${limit}`,
-  );
+export async function getOpenDeals(
+  page = 1,
+  limit = 12,
+  sortBy?: string,
+  sortOrder?: 'ASC' | 'DESC'
+): Promise<PaginatedDeals> {
+  let url = `/trade-deals?page=${page}&limit=${limit}`;
+  if (sortBy) {
+    url += `&sortBy=${sortBy}`;
+  }
+  if (sortOrder) {
+    url += `&sortOrder=${sortOrder}`;
+  }
+  const raw = await apiFetch<{ data: any[]; total: number; page: number; limit: number }>(url);
   return {
     data: raw.data.map(normalizeDeal),
     total: raw.total,
