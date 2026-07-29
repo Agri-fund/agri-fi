@@ -163,7 +163,12 @@ export default async function DealDetailPage({ params }: { params: { id: string 
                   <h1 className="text-3xl font-black text-slate-900 capitalize tracking-tight">{deal.commodity}</h1>
                   <p className="text-slate-400 font-mono text-sm mt-1">{deal.token_symbol}</p>
                 </div>
-                <StatusBadge status={deal.status} />
+                <div className="flex flex-col items-end gap-2">
+                  <StatusBadge status={deal.status} />
+                  <Link href={`/marketplace/${deal.id}/trade`} className="btn-secondary text-xs px-3 py-1.5">
+                    Trade on DEX →
+                  </Link>
+                </div>
               </div>
 
               {/* Stats grid */}

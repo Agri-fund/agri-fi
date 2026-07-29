@@ -62,6 +62,7 @@ export interface Deal {
   created_at: string;
   documents?: Document[];
   milestones?: Milestone[];
+  cover_image_url?: string | null;
 }
 
 export type TradeDeal = Deal;
@@ -179,6 +180,7 @@ function normalizeDeal(raw: any): Deal {
     created_at: raw.created_at ?? raw.createdAt ?? "",
     documents: raw.documents,
     milestones: raw.milestones,
+    cover_image_url: raw.cover_image_url ?? raw.coverImageUrl ?? null,
   };
 }
 
@@ -355,10 +357,20 @@ export interface PaginatedDeals {
   limit: number;
 }
 
-export async function getOpenDeals(page = 1, limit = 12): Promise<PaginatedDeals> {
-  const raw = await apiFetch<{ data: any[]; total: number; page: number; limit: number }>(
-    `/trade-deals?page=${page}&limit=${limit}`,
-  );
+export async function getOpenDeals(
+  page = 1,
+  limit = 12,
+  sortBy?: string,
+  sortOrder?: 'ASC' | 'DESC'
+): Promise<PaginatedDeals> {
+  let url = `/trade-deals?page=${page}&limit=${limit}`;
+  if (sortBy) {
+    url += `&sortBy=${sortBy}`;
+  }
+  if (sortOrder) {
+    url += `&sortOrder=${sortOrder}`;
+  }
+  const raw = await apiFetch<{ data: any[]; total: number; page: number; limit: number }>(url);
   return {
     data: raw.data.map(normalizeDeal),
     total: raw.total,

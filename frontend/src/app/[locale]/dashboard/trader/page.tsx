@@ -7,6 +7,7 @@ import { apiClient, Deal, User, MILESTONE_LABELS } from '../../../../lib/api';
 import DashboardLayout from '../../../../components/DashboardLayout';
 import StatCard from '../../../../components/StatCard';
 import { useToast } from '../../../../components/ui/ToastProvider';
+import { usePushNotifications } from '../../../../hooks/usePushNotifications';
 
 const STATUS_CFG: Record<string, string> = {
   open: 'badge-green', funded: 'badge-blue', draft: 'badge-yellow',
@@ -17,6 +18,9 @@ export default function TraderDashboard() {
   const router = useRouter();
   const { toast } = useToast();
   const [user, setUser] = useState<User | null>(null);
+
+  // Request push notification permission once the user is authenticated
+  usePushNotifications(!!user);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDeal, setSelectedDeal] = useState<string | null>(null);

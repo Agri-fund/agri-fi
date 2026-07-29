@@ -53,8 +53,8 @@ function StepNode({ step, isLast }: { step: ShipmentStep; isLast: boolean }) {
   const isPending = step.status === 'pending';
 
   return (
-    /* Vertical layout (mobile) */
-    <li className="relative flex gap-4 md:flex-col md:items-center md:gap-0 md:flex-1">
+    /* Vertical layout (mobile), horizontal layout (desktop) */
+    <li className="relative flex flex-col gap-4 md:flex-row md:items-center md:gap-0 md:flex-1">
 
       {/* Connector line — vertical on mobile, horizontal on desktop */}
       {!isLast && (
@@ -86,7 +86,7 @@ function StepNode({ step, isLast }: { step: ShipmentStep; isLast: boolean }) {
       </div>
 
       {/* Content */}
-      <div className="flex-1 pb-6 md:pb-0 md:mt-3 md:text-center">
+      <div className="flex-1 pb-6 md:pb-0 md:mt-3 md:text-center min-h-[80px]">
         <p className={`text-sm font-semibold ${isPending ? 'text-slate-400' : 'text-slate-900'}`}>
           {step.label}
         </p>
@@ -167,7 +167,7 @@ export const ShipmentStepper: React.FC<ShipmentStepperProps> = ({ steps, classNa
   return (
     <div className={className}>
       <h3 className="section-title mb-4">Shipment Progress</h3>
-      <ol className="flex flex-col md:flex-row md:items-start md:gap-0 gap-0">
+      <ol className="flex flex-col gap-0 md:flex-row md:items-start md:gap-0">
         {steps.map((step, idx) => (
           // eslint-disable-next-line react/jsx-key
           <React.Fragment key={step.id}>
