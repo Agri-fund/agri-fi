@@ -30,6 +30,7 @@ import { validateEnvironment } from './config/env.validation';
 import { ScheduleModule } from '@nestjs/schedule';
 import { APP_FILTER } from '@nestjs/core';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { AuditModule } from './audit/audit.module';
 
 @Module({
   controllers: [AppController],
@@ -87,6 +88,7 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
     TerminusModule,
     SorobanModule,
     MetricsModule,
+    AuditModule,
   ],
   providers: [
     {
