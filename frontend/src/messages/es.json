@@ -1,0 +1,347 @@
+{
+  "nav": {
+    "title": "Finanzas Agrícolas en Cadena",
+    "dashboard": "Panel de Control",
+    "marketplace": "Mercado",
+    "documents": "Documentos",
+    "settings": "Configuración",
+    "kycStatus": "Estado KYC",
+    "signOut": "Cerrar Sesión",
+    "menu": "Menú",
+    "signIn": "Iniciar Sesión",
+    "roles": {
+      "farmer": "Agricultor",
+      "trader": "Comerciante",
+      "investor": "Inversor",
+      "company": "Empresa",
+      "admin": "Administrador"
+    }
+  },
+  "home": {
+    "title": "Finanzas Agrícolas en Cadena",
+    "subtitle": "Plataforma de financiamiento de comercio agrícola respaldada por blockchain",
+    "description": "Conecta a agricultores, comerciantes e inversores a través de acuerdos comerciales agrícolas tokenizados en la blockchain de Stellar.",
+    "viewMarketplace": "Ver Mercado",
+    "getStarted": "Comenzar",
+    "signIn": "Iniciar Sesión",
+    "startFree": "Comenzar Gratis",
+    "browseProjects": "Explorar Proyectos",
+    "trustedBy": "Confiado por {count} inversores en toda África",
+    "liveOnStellar": "En vivo en Stellar Testnet · Sin comisiones durante beta",
+    "hero": {
+      "titlePart1": "La agricultura se encuentra con",
+      "titlePart2": "DeFi",
+      "titlePart3": "— transparentemente."
+    },
+    "stats": {
+      "totalFunded": "Total Financiado",
+      "activeProjects": "Proyectos Activos",
+      "investors": "Inversores",
+      "harvestSuccess": "Éxito de Cosecha"
+    },
+    "features": {
+      "badge": "Características de la Plataforma",
+      "title": "Todo en un ecosistema",
+      "description": "De la financiación inicial hasta la venta de cosecha — AgriFi maneja toda la cadena de valor agrícola.",
+      "fundFarming": {
+        "title": "Financiar Proyectos Agrícolas",
+        "desc": "Los agricultores tokenizan cosechas y recaudan capital. Los inversores obtienen propiedad fraccionaria con retornos transparentes en cadena."
+      },
+      "realTime": {
+        "title": "Seguimiento en Tiempo Real",
+        "desc": "Actualizaciones de cosecha en vivo, hitos de envío con GPS y prueba inmutable de cada transacción en Stellar."
+      },
+      "marketplace": {
+        "title": "Mercado Directo",
+        "desc": "Las empresas compran productos agrícolas verificados directamente de los agricultores — sin intermediarios, con trazabilidad completa."
+      },
+      "escrow": {
+        "title": "Depósito en Garantía Stellar",
+        "desc": "Cuentas de depósito en garantía inteligentes, activos tokenizados y prueba criptográfica aseguran cada acuerdo de principio a fin."
+      }
+    },
+    "roles": {
+      "farmer": {
+        "title": "Agricultores",
+        "cta": "Comenzar como Agricultor",
+        "points": ["Lanzar campañas de financiación", "Cargar datos de granja y cosecha", "Vender directamente a compradores", "Retirar ganancias al instante"]
+      },
+      "investor": {
+        "title": "Inversores",
+        "cta": "Comenzar a Invertir",
+        "points": ["Explorar proyectos evaluados", "Invertir fraccionariamente desde $100", "Ganar ROI transparente", "Rastrear cartera en tiempo real"]
+      },
+      "company": {
+        "title": "Empresas",
+        "cta": "Registrarse como Comprador",
+        "points": ["Comprar productos a granel directamente", "Red de agricultores verificados", "Rastrear entregas en vivo", "Pagos seguros en depósito en garantía"]
+      }
+    },
+    "steps": {
+      "title": "Cómo funciona",
+      "step1": { "title": "Crear Cuenta", "desc": "Regístrate como agricultor, inversor o empresa en menos de 2 minutos." },
+      "step2": { "title": "Completar KYC", "desc": "Verifica tu identidad para desbloquear acceso completo a la plataforma." },
+      "step3": { "title": "Financiar o Listar", "desc": "Los agricultores listan cosechas; los inversores exploran y financian proyectos." },
+      "step4": { "title": "Ganar Retornos", "desc": "Rastrear cosecha, recibir pagos y reinvertir ganancias." }
+    },
+    "transparency": {
+      "badge": "Blockchain Stellar",
+      "title": "Transparente por diseño",
+      "description": "Cada inversión, pago e hito se registra en Stellar. Verifica cualquier cosa, en cualquier momento.",
+      "smartContracts": { "title": "Contratos Inteligentes Soroban", "desc": "Los contratos de FarmCampaign automatizan depósito en garantía, liberación de hitos y distribución de ingresos — sin intervención manual." },
+      "tokenized": { "title": "Inversiones Tokenizadas", "desc": "Cada proyecto emite activos Stellar. Los inversores poseen tokens que representan propiedad fraccionaria, comercializables en el DEX." },
+      "usdc": { "title": "Liquidaciones USDC", "desc": "Todos los pagos utilizan USDC en Stellar — estable, rápido y entre fronteras. Retira a moneda local a través de Anclajes Stellar." },
+      "certificates": { "title": "Certificados en Cadena", "desc": "Los certificados de inversión están respaldados por transacciones Stellar inmutables. Prueba de propiedad, para siempre." },
+      "anchors": { "title": "Anclajes Stellar", "desc": "Deposita NGN, KES, GHS, ZAR o USD y recibe USDC al instante. Retira ganancias a tu banco local." },
+      "audit": { "title": "Pista de Auditoría Pública", "desc": "Cada dirección de contrato, hash de transacción y pago es verificable públicamente en Stellar Expert." },
+      "viewData": "Ver Datos de Blockchain en Vivo"
+    },
+    "cta": {
+      "title": "¿Listo para hacer crecer tu riqueza?",
+      "description": "Únete a miles de agricultores, inversores y compradores que ya están construyendo el futuro de la agricultura.",
+      "createAccount": "Crear Cuenta Gratis",
+      "browseMarketplace": "Explorar Mercado"
+    },
+    "footer": {
+      "rights": "© {year} AgriFi. Todos los derechos reservados.",
+      "poweredBy": "Impulsado por la blockchain {brand}"
+    },
+    "dashboard": {
+      "farmer": {
+        "title": "Panel de Control del Agricultor",
+        "greeting": "Buenos días 👋",
+        "listCrop": "Listar Cosecha",
+        "stats": {
+          "totalProjects": "Total de Proyectos",
+          "active": "Activos",
+          "totalValue": "Valor Total",
+          "funded": "Financiado"
+        },
+        "kyc": {
+          "title": "Verificación KYC requerida",
+          "desc": "Completa KYC para publicar acuerdos y recibir pagos.",
+          "verifyNow": "Verificar ahora →"
+        },
+        "noProjects": {
+          "title": "Sin proyectos aún",
+          "desc": "Lista tu primera cosecha para comenzar a recaudar financiación de inversores en todo el mundo.",
+          "cta": "+ Listar Tu Primera Cosecha"
+        },
+        "projects": {
+          "title": "Tus Proyectos",
+          "total": "{count} total",
+          "fundingProgress": "Progreso de financiación",
+          "viewDetails": "Ver Detalles →"
+        },
+        "modal": {
+          "title": "Listar Tu Cosecha",
+          "subtitle": "Crear una nueva campaña de financiación",
+          "success": "¡Cosecha listada exitosamente! 🌱"
+        }
+      }
+    },
+    "instructions": {
+      "title": "Asegúrate de:",
+      "installWallet": "Instalar extensión de billetera Freighter",
+      "switchTestnet": "Cambiar a testnet de Stellar",
+      "connectWallet": "Conectar tu billetera en la navegación superior"
+    }
+  },
+  "wallet": {
+    "title": "Conectar Billetera Stellar",
+    "subtitle": "Elige un proveedor de billetera para conectarte",
+    "description": "Tu clave privada nunca sale de tu billetera. Agri-Fi solo ve tu clave pública.",
+    "connectButton": "Conectar Billetera",
+    "connecting": "Conectando…",
+    "connected": "Conectado",
+    "disconnect": "Desconectar",
+    "freighter": {
+      "name": "Freighter",
+      "type": "Extensión de navegador"
+    },
+    "albedo": {
+      "name": "Albedo",
+      "type": "Firmante basado en web — sin instalación"
+    },
+    "detected": "Detectado",
+    "install": "Instalar",
+    "alwaysAvailable": "Siempre disponible",
+    "openDialog": "Abrir diálogo de conexión de billetera",
+    "closeDialog": "Cerrar diálogo de conexión de billetera",
+    "error": "Error al conectar billetera",
+    "errorConnect": "Error al conectar con la billetera",
+    "errorLink": "Error al vincular billetera",
+    "pleaseTryAgain": "Por favor, inténtalo de nuevo"
+  },
+  "investment": {
+    "title": "Invertir",
+    "subtitle": "Selecciona la cantidad de tokens para invertir",
+    "tokenQuantity": "Cantidad de Tokens",
+    "tokenPrice": "Precio por Token",
+    "totalAmount": "Cantidad Total",
+    "maxTokens": "Máx: {max} tokens",
+    "insufficientTokens": "No hay suficientes tokens disponibles",
+    "invest": "Invertir",
+    "investing": "Invirtiendo...",
+    "invalidQuantity": "Cantidad de tokens debe estar entre 1 y {max}",
+    "connectWallet": "Por favor, conecta tu billetera primero",
+    "success": "¡Inversión realizada exitosamente!",
+    "error": "Error al realizar inversión",
+    "txPending": "Transacción pendiente...",
+    "txConfirmed": "Transacción confirmada",
+    "txFailed": "Transacción fallida"
+  },
+  "deals": {
+    "createTitle": "Crear Nuevo Acuerdo Comercial",
+    "draftRestored": "Borrador restaurado de {time}",
+    "commodity": "Nombre de la Mercancía",
+    "quantity": "Cantidad",
+    "unit": "Unidad",
+    "totalValue": "Valor Total (USD)",
+    "tokenPrice": "Precio del Token (USD)",
+    "deliveryDate": "Fecha de Entrega (Fecha de Fin)",
+    "farmerId": "ID del Agricultor (Opcional)",
+    "traderId": "ID del Comerciante (Opcional)",
+    "createButton": "Crear Acuerdo",
+    "creating": "Creando...",
+    "cancel": "Cancelar",
+    "tokenInfo": "Esto creará {count} tokens a ${price} cada uno.",
+    "raised": "{amount} recaudado",
+    "remainingOf": "{remaining} restante de {total}",
+    "status": "Estado",
+    "details": "Detalles",
+    "documents": "Documentos",
+    "milestones": "Hitos",
+    "investors": "Inversores",
+    "fundingProgress": "Progreso de Financiación",
+    "publishDeal": "Publicar Acuerdo",
+    "validation": {
+      "commodityRequired": "Se requiere el nombre de la mercancía",
+      "quantityMin": "La cantidad debe ser al menos 1",
+      "totalValueMin": "El valor total debe ser mayor a 1000",
+      "tokenPriceFixed": "El precio del token debe ser exactamente 100",
+      "deliveryDateRequired": "Se requiere la fecha de entrega",
+      "deliveryDateFuture": "La fecha de fin debe estar en el futuro",
+      "invalidId": "ID inválido"
+    }
+  },
+  "marketplace": {
+    "title": "Mercado",
+    "subtitle": "Explora acuerdos comerciales agrícolas",
+    "searchPlaceholder": "Buscar mercancía, comerciante...",
+    "filterByStatus": "Filtrar por Estado",
+    "filterByCategory": "Filtrar por Categoría",
+    "sortBy": "Ordenar por",
+    "noDeals": "No hay acuerdos disponibles",
+    "loadingDeals": "Cargando acuerdos...",
+    "status": {
+      "draft": "Borrador",
+      "published": "Publicado",
+      "funded": "Financiado",
+      "completed": "Completado",
+      "cancelled": "Cancelado"
+    }
+  },
+  "common": {
+    "loading": "Cargando...",
+    "error": "Error",
+    "success": "Éxito",
+    "processing": "Procesando...",
+    "dismiss": "Descartar",
+    "cancel": "Cancelar",
+    "submit": "Enviar",
+    "close": "Cerrar",
+    "save": "Guardar",
+    "delete": "Eliminar",
+    "edit": "Editar",
+    "add": "Añadir",
+    "remove": "Eliminar",
+    "confirm": "Confirmar",
+    "confirmDelete": "¿Estás seguro de que deseas eliminar esto?",
+    "yes": "Sí",
+    "no": "No",
+    "ok": "Aceptar",
+    "tryAgain": "Intentar de Nuevo",
+    "learnMore": "Aprende Más",
+    "viewDetails": "Ver Detalles",
+    "backToHome": "Volver al Inicio",
+    "notFound": "No Encontrado",
+    "unauthorized": "No Autorizado",
+    "forbidden": "Prohibido",
+    "serverError": "Error del Servidor",
+    "networkError": "Error de Red",
+    "tryRefresh": "Intenta actualizar la página",
+    "requiredField": "Campo requerido",
+    "invalidEmail": "Correo electrónico inválido",
+    "passwordTooShort": "Contraseña demasiado corta",
+    "passwordMismatch": "Las contraseñas no coinciden"
+  },
+  "auth": {
+    "loginTitle": "Iniciar Sesión",
+    "registerTitle": "Registrarse",
+    "email": "Correo Electrónico",
+    "password": "Contraseña",
+    "confirmPassword": "Confirmar Contraseña",
+    "role": "Rol",
+    "selectRole": "Selecciona un rol",
+    "login": "Iniciar Sesión",
+    "register": "Registrarse",
+    "loginButton": "Iniciar Sesión",
+    "registerButton": "Registrarse",
+    "forgotPassword": "¿Olvidaste tu contraseña?",
+    "noAccount": "¿No tienes cuenta? Regístrate",
+    "haveAccount": "¿Ya tienes cuenta? Inicia sesión",
+    "loginError": "Correo electrónico o contraseña inválidos",
+    "registerError": "Error al registrarse",
+    "loggingIn": "Iniciando sesión...",
+    "registering": "Registrando...",
+    "signOut": "Cerrar Sesión",
+    "sessionExpired": "Tu sesión ha expirado. Por favor inicia sesión de nuevo."
+  },
+  "kyc": {
+    "title": "Verificación KYC",
+    "subtitle": "Verifica tu identidad para continuar",
+    "firstName": "Nombre",
+    "lastName": "Apellido",
+    "dateOfBirth": "Fecha de Nacimiento",
+    "nationality": "Nacionalidad",
+    "idType": "Tipo de ID",
+    "idNumber": "Número de ID",
+    "address": "Dirección",
+    "city": "Ciudad",
+    "country": "País",
+    "postalCode": "Código Postal",
+    "uploadDocument": "Cargar Documento",
+    "selectDocument": "Selecciona tipo de documento",
+    "documentFront": "Frente del Documento",
+    "documentBack": "Reverso del Documento",
+    "selfie": "Selfie",
+    "submit": "Enviar KYC",
+    "submitting": "Enviando...",
+    "success": "KYC enviado exitosamente",
+    "pending": "KYC Pendiente",
+    "approved": "KYC Aprobado",
+    "rejected": "KYC Rechazado",
+    "contactSupport": "Contacta con soporte"
+  },
+  "settings": {
+    "title": "Configuración",
+    "profile": "Perfil",
+    "account": "Cuenta",
+    "notifications": "Notificaciones",
+    "preferences": "Preferencias",
+    "security": "Seguridad",
+    "language": "Idioma",
+    "theme": "Tema",
+    "changePassword": "Cambiar Contraseña",
+    "twoFactor": "Autenticación de Dos Factores",
+    "logout": "Cerrar Sesión",
+    "deleteAccount": "Eliminar Cuenta",
+    "deleteAccountConfirm": "¿Estás seguro de que deseas eliminar tu cuenta? Esta acción no se puede deshacer."
+  },
+  "format": {
+    "currency": "{value, number, currency}",
+    "date": "{value, date, short}",
+    "number": "{value, number}"
+  }
+}

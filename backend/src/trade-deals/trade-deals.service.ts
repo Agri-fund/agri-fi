@@ -6,7 +6,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, Repository, QueryRunner } from 'typeorm';
 import { PinoLogger } from 'nestjs-pino';
 import { TradeDeal, TradeDealStatus } from './entities/trade-deal.entity';
 import { Document, DocumentType } from './entities/document.entity';
@@ -305,8 +305,9 @@ export class TradeDealsService {
       // if enqueueing fails, the escrow-key write must roll back too, since
       // the deal would otherwise be stuck holding an escrow account no job
       // will ever process.
-      await this.dataSource.transaction(async (manager) => {
-        await manager.update(TradeDeal, dealId, {
+      // Use transactional outbox for atomic DB update + event publish
+      return await this.dataSource.transaction(async (queryRunner: QueryRunner) => {
+        await queryRunner.manager.update(TradeDeal, dealId, {
           escrowPublicKey,
           escrowSecretKey: encryptedEscrowSecret,
         });
@@ -316,21 +317,21 @@ export class TradeDealsService {
           'Escrow account created, enqueuing token issuance',
         );
 
-        await this.queueService.enqueueDealPublish({
+        await this.queueService.enqueueDealPublishTransactional(queryRunner, {
           dealId,
           tokenSymbol: deal.tokenSymbol,
           escrowPublicKey,
           encryptedEscrowSecret,
           tokenCount: deal.tokenCount,
         });
-      });
 
-      // Return deal with escrow data (status still draft, will be updated by queue processor)
-      return {
-        ...deal,
-        escrowPublicKey,
-        escrowSecretKey: encryptedEscrowSecret,
-      };
+        // Return deal with escrow data (status still draft, will be updated by queue processor)
+        return {
+          ...deal,
+          escrowPublicKey,
+          escrowSecretKey: encryptedEscrowSecret,
+        };
+      });
     } catch (error) {
       this.logger.error(
         { dealId, error: error.message },

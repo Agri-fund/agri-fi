@@ -17,6 +17,7 @@ import { StorageModule } from './storage/storage.module';
 import { DocumentsModule } from './documents/documents.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { QueueProcessorModule } from './queue/queue-processor.module';
+import { OutboxModule } from './outbox/outbox.module';
 import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
 import { HttpLoggerMiddleware } from './common/middleware/http-logger.middleware';
 import { loggingConfig } from './common/logging/logging.config';
@@ -29,6 +30,7 @@ import { validateEnvironment } from './config/env.validation';
 import { ScheduleModule } from '@nestjs/schedule';
 import { APP_FILTER } from '@nestjs/core';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { AuditModule } from './audit/audit.module';
 
 @Module({
   controllers: [AppController],
@@ -81,10 +83,12 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
     DocumentsModule,
     NotificationsModule,
     QueueProcessorModule,
+    OutboxModule,
     HealthModule,
     TerminusModule,
     SorobanModule,
     MetricsModule,
+    AuditModule,
   ],
   providers: [
     {

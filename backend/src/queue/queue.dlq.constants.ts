@@ -9,6 +9,13 @@
  */
 export const MAX_DELIVERY_ATTEMPTS = 3;
 
+/**
+ * Maximum broker-level delivery attempts for the escrow release queue before
+ * the message is considered permanently failed and routed to the DLQ.
+ * Acceptance criteria: 5 attempts.
+ */
+export const ESCROW_MAX_DELIVERY_ATTEMPTS = 5;
+
 export const MAIN_QUEUE_NAME = 'agric_onchain_queue';
 export const MAIN_QUEUE_DLX = 'agric_onchain_queue.dlx';
 export const MAIN_QUEUE_DLQ = 'agric_onchain_queue.dlq';

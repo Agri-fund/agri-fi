@@ -11,11 +11,13 @@ import {
   dlxQueueOptions,
 } from './queue.dlq.constants';
 import { HttpModule } from '@nestjs/axios';
+import { OutboxModule } from '../outbox/outbox.module';
 export { QUEUE_SERVICE } from './queue.constants';
 
 @Module({
   imports: [
     HttpModule,
+    OutboxModule,
     ClientsModule.registerAsync([
       {
         name: QUEUE_SERVICE,
@@ -31,6 +33,7 @@ export { QUEUE_SERVICE } from './queue.constants';
             ],
             queue: MAIN_QUEUE_NAME,
             queueOptions: dlxQueueOptions(MAIN_QUEUE_DLX),
+            prefetchCount: config.get<number>('RABBITMQ_PREFETCH_COUNT', 10),
           },
         }),
         inject: [ConfigService],
@@ -38,6 +41,6 @@ export { QUEUE_SERVICE } from './queue.constants';
     ]),
   ],
   providers: [QueueService, QueueAlertService, QueueTopologyService],
-  exports: [QueueService, ClientsModule, QueueAlertService],
+  exports: [QueueService, ClientsModule, QueueAlertService, OutboxModule],
 })
 export class QueueModule {}

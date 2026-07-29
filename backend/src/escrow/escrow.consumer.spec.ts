@@ -1,156 +1,145 @@
 import { EscrowConsumer } from './escrow.consumer';
-import { IdempotencyService } from '../queue/idempotency.service';
+import { ESCROW_MAX_DELIVERY_ATTEMPTS } from '../queue/queue.dlq.constants';
+
+// Mock transitive heavy dependencies so ts-jest doesn't traverse them
+jest.mock('./escrow.service');
+jest.mock('../stellar/stellar.service');
 
 /**
- * Drain all in-flight jobs tracked by EscrowConsumer.
+ * Builds a fake RmqContext wrapping the provided raw message object.
  */
-async function drainJobs(consumer: EscrowConsumer): Promise<void> {
-  await consumer.onApplicationShutdown('TEST');
+function makeContext(rawMsg: Record<string, unknown>) {
+  const channel = { ack: jest.fn(), nack: jest.fn() };
+  return {
+    context: {
+      getChannelRef: () => channel,
+      getMessage: () => rawMsg,
+    } as any,
+    channel,
+  };
+}
+
+/**
+ * Builds a raw AMQP message with x-death headers simulating `count` prior
+ * broker-level delivery failures.
+ */
+function msgWithDeaths(count: number) {
+  return {
+    properties: {
+      headers: {
+        'x-death': count > 0 ? [{ count }] : [],
+      },
+    },
+  };
 }
 
 describe('EscrowConsumer', () => {
   let consumer: EscrowConsumer;
   let escrowService: { processDealDelivered: jest.Mock };
-  let idempotency: {
-    acquireLease: jest.Mock;
-    markDone: jest.Mock;
-    releaseLease: jest.Mock;
-  };
-  let channel: { ack: jest.Mock; nack: jest.Mock };
-  let context: { getChannelRef: jest.Mock; getMessage: jest.Mock };
-  const message = { fields: { deliveryTag: 1 } };
-  const payload = { tradeDealId: 'deal-abc' };
+
+  const payload = { tradeDealId: 'deal-001' };
 
   beforeEach(() => {
-    escrowService = {
-      processDealDelivered: jest.fn().mockResolvedValue(undefined),
-    };
-    idempotency = {
-      acquireLease: jest.fn().mockResolvedValue({ acquired: true }),
-      markDone: jest.fn().mockResolvedValue(undefined),
-      releaseLease: jest.fn().mockResolvedValue(undefined),
-    };
-    channel = { ack: jest.fn(), nack: jest.fn() };
-    context = {
-      getChannelRef: jest.fn().mockReturnValue(channel),
-      getMessage: jest.fn().mockReturnValue(message),
-    };
-    consumer = new EscrowConsumer(
-      escrowService as any,
-      idempotency as unknown as IdempotencyService,
-    );
+    escrowService = { processDealDelivered: jest.fn() };
+    consumer = new EscrowConsumer(escrowService as any);
   });
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // Happy path
-  // ─────────────────────────────────────────────────────────────────────────────
-  it('processes deal.delivered successfully and acks the message', async () => {
-    consumer.handleDealDelivered(payload, context as any);
-    await drainJobs(consumer);
+  // ── Success path ───────────────────────────────────────────────────────────
+
+  it('acks the message when processDealDelivered succeeds', async () => {
+    escrowService.processDealDelivered.mockResolvedValue(undefined);
+    const { context, channel } = makeContext(msgWithDeaths(0));
+
+    await consumer.handleDealDelivered(payload, context);
 
     expect(escrowService.processDealDelivered).toHaveBeenCalledWith(payload);
-    expect(idempotency.markDone).toHaveBeenCalledWith(
-      'idempotency:deal.delivered:deal-abc',
+    expect(channel.ack).toHaveBeenCalledTimes(1);
+    expect(channel.nack).not.toHaveBeenCalled();
+  });
+
+  // ── Retry path (attempts < max) ────────────────────────────────────────────
+
+  it('nacks with requeue=true when attempt is below the max', async () => {
+    escrowService.processDealDelivered.mockRejectedValue(
+      new Error('transient stellar timeout'),
     );
-    expect(channel.ack).toHaveBeenCalledWith(message);
+    // attempt = 1+1 = 2 (first x-death entry with count=1, +1 for current delivery)
+    // actually getDeliveryAttempt returns deaths.reduce(sum + count) + 1 = 1+1 = 2
+    const { context, channel } = makeContext(msgWithDeaths(1));
+
+    await consumer.handleDealDelivered(payload, context);
+
+    expect(channel.nack).toHaveBeenCalledWith(expect.anything(), false, true);
+    expect(channel.ack).not.toHaveBeenCalled();
   });
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // Idempotency (#687)
-  // ─────────────────────────────────────────────────────────────────────────────
-  describe('idempotency', () => {
-    it('acks without processing when message is already "done"', async () => {
-      idempotency.acquireLease.mockResolvedValue({
-        acquired: false,
-        status: 'done',
-      });
+  it('nacks with requeue=true on attempt 4 (one before max)', async () => {
+    escrowService.processDealDelivered.mockRejectedValue(new Error('db error'));
+    // x-death count=3 → attempt = 3+1 = 4; max=5, not exhausted
+    const { context, channel } = makeContext(msgWithDeaths(3));
 
-      consumer.handleDealDelivered(payload, context as any);
-      await drainJobs(consumer);
+    await consumer.handleDealDelivered(payload, context);
 
-      expect(escrowService.processDealDelivered).not.toHaveBeenCalled();
-      expect(channel.ack).toHaveBeenCalledWith(message);
-    });
-
-    it('acks without processing when another consumer holds the lease', async () => {
-      idempotency.acquireLease.mockResolvedValue({
-        acquired: false,
-        status: 'processing',
-      });
-
-      consumer.handleDealDelivered(payload, context as any);
-      await drainJobs(consumer);
-
-      expect(escrowService.processDealDelivered).not.toHaveBeenCalled();
-      expect(channel.ack).toHaveBeenCalledWith(message);
-    });
-
-    it('releases lease on non-transient failure', async () => {
-      escrowService.processDealDelivered.mockRejectedValue(
-        new Error('unrecoverable error'),
-      );
-
-      consumer.handleDealDelivered(payload, context as any);
-      await drainJobs(consumer);
-
-      expect(idempotency.releaseLease).toHaveBeenCalledWith(
-        'idempotency:deal.delivered:deal-abc',
-      );
-      expect(channel.nack).toHaveBeenCalledWith(message, false, false);
-    });
-
-    it('releases lease after all retries exhausted on transient failure', async () => {
-      escrowService.processDealDelivered.mockRejectedValue(
-        new Error('stellar connection timeout'),
-      );
-
-      consumer.handleDealDelivered(payload, context as any);
-      await drainJobs(consumer);
-
-      expect(idempotency.releaseLease).toHaveBeenCalledWith(
-        'idempotency:deal.delivered:deal-abc',
-      );
-      expect(channel.nack).toHaveBeenCalledWith(message, false, false);
-    });
+    expect(channel.nack).toHaveBeenCalledWith(expect.anything(), false, true);
   });
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // Graceful shutdown (#696)
-  // ─────────────────────────────────────────────────────────────────────────────
-  describe('graceful shutdown', () => {
-    it('nacks and requeues messages received after shutdown starts', async () => {
-      const shutdownPromise = consumer.onApplicationShutdown('SIGTERM');
+  // ── DLQ routing (attempt >= max) ──────────────────────────────────────────
 
-      consumer.handleDealDelivered(payload, context as any);
-      await shutdownPromise;
+  it(`nacks WITHOUT requeue when attempt reaches ${ESCROW_MAX_DELIVERY_ATTEMPTS} (routes to DLQ)`, async () => {
+    escrowService.processDealDelivered.mockRejectedValue(
+      new Error('permanent failure'),
+    );
+    // x-death count = ESCROW_MAX_DELIVERY_ATTEMPTS - 1 so that
+    // getDeliveryAttempt returns exactly ESCROW_MAX_DELIVERY_ATTEMPTS
+    const { context, channel } = makeContext(
+      msgWithDeaths(ESCROW_MAX_DELIVERY_ATTEMPTS - 1),
+    );
 
-      expect(channel.nack).toHaveBeenCalledWith(message, false, true);
-      expect(escrowService.processDealDelivered).not.toHaveBeenCalled();
-    });
+    await consumer.handleDealDelivered(payload, context);
 
-    it('waits for in-flight jobs before shutdown resolves', async () => {
-      let resolveJob!: () => void;
-      const barrier = new Promise<void>((res) => {
-        resolveJob = res;
-      });
-      escrowService.processDealDelivered.mockReturnValue(barrier);
+    expect(channel.nack).toHaveBeenCalledWith(expect.anything(), false, false);
+    expect(channel.ack).not.toHaveBeenCalled();
+  });
 
-      consumer.handleDealDelivered(payload, context as any);
+  it('never calls processDealDelivered again once DLQ threshold is met', async () => {
+    escrowService.processDealDelivered.mockRejectedValue(
+      new Error('some error'),
+    );
+    // Simulate a message that already has exactly 5 cumulative deaths
+    const { context, channel } = makeContext(
+      msgWithDeaths(ESCROW_MAX_DELIVERY_ATTEMPTS - 1),
+    );
 
-      let shutdownResolved = false;
-      const shutdownPromise = consumer
-        .onApplicationShutdown('SIGTERM')
-        .then(() => {
-          shutdownResolved = true;
-        });
+    await consumer.handleDealDelivered(payload, context);
 
-      await Promise.resolve(); // tick
-      expect(shutdownResolved).toBe(false);
+    // processDealDelivered is still called once (the attempt itself), but the
+    // nack that follows has requeue=false so no further redelivery occurs.
+    expect(escrowService.processDealDelivered).toHaveBeenCalledTimes(1);
+    expect(channel.nack).toHaveBeenCalledWith(expect.anything(), false, false);
+  });
 
-      resolveJob();
-      await shutdownPromise;
+  // ── Edge cases ─────────────────────────────────────────────────────────────
 
-      expect(shutdownResolved).toBe(true);
-    });
+  it('treats a first-delivery message (no x-death) as attempt 1 and requeues', async () => {
+    escrowService.processDealDelivered.mockRejectedValue(new Error('oops'));
+    // No x-death headers → getDeliveryAttempt returns 1
+    const rawMsg = { properties: { headers: {} } };
+    const { context, channel } = makeContext(rawMsg);
+
+    await consumer.handleDealDelivered(payload, context);
+
+    expect(channel.nack).toHaveBeenCalledWith(expect.anything(), false, true);
+  });
+
+  it('handles non-transient errors the same way as transient ones', async () => {
+    escrowService.processDealDelivered.mockRejectedValue(
+      new Error('ValidationError: invalid state'),
+    );
+    const { context, channel } = makeContext(msgWithDeaths(0));
+
+    await consumer.handleDealDelivered(payload, context);
+
+    // Non-transient, but still below max → requeue for broker retry
+    expect(channel.nack).toHaveBeenCalledWith(expect.anything(), false, true);
   });
 });

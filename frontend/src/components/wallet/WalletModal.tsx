@@ -5,17 +5,42 @@
  * Freighter wallet connection modal with connecting / connected / disconnected states.
  * Detects Freighter installation and shows install link if missing.
  * Displays truncated public key and network badge (Testnet / Public).
+ *
+ * Graceful disconnect (polling-based):
+ *   Shows a warning toast when the wallet is disconnected externally (Freighter locked
+ *   or active account switched outside this app).
  */
 
-import { useStellarWallet } from '@/hooks/useStellarWallet';
+import { useCallback } from 'react';
+import { useStellarWallet, DisconnectReason } from '@/hooks/useStellarWallet';
+import { useToast } from '@/components/ui/ToastProvider';
 
 interface WalletModalProps {
   onClose: () => void;
 }
 
 export function WalletModal({ onClose }: WalletModalProps) {
+  const { toast } = useToast();
+
+  const handleExternalDisconnect = useCallback(
+    (reason: DisconnectReason) => {
+      if (reason === 'account_changed') {
+        toast(
+          'Your Freighter account was switched. Please reconnect your wallet.',
+          'warning',
+        );
+      } else {
+        toast(
+          'Your wallet was disconnected. Please reconnect to continue.',
+          'warning',
+        );
+      }
+    },
+    [toast],
+  );
+
   const { status, displayKey, network, isFreighterInstalled, error, connect, disconnect } =
-    useStellarWallet();
+    useStellarWallet({ onDisconnect: handleExternalDisconnect });
 
   const handleConnect = async () => {
     await connect();
