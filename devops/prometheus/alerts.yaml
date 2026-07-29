@@ -1,4 +1,117 @@
 groups:
+  # ── Redis Cache Memory Alerts (#735) ─────────────────────────────────────────
+  - name: agri_fi_redis_memory
+    interval: 30s
+    rules:
+
+      # ── Redis memory usage approaching limit (warning at 80%) ──────────────
+      - alert: RedisMemoryUsageHigh
+        expr: |
+          (
+            redis_memory_used_bytes
+            /
+            redis_memory_max_bytes
+          ) * 100 > 80
+        for: 2m
+        labels:
+          severity: warning
+          team: backend
+          component: cache
+        annotations:
+          summary: "Redis memory usage above 80%"
+          description: >
+            Redis instance {{ $labels.instance }} memory usage has exceeded 80%
+            of the configured maxmemory limit for more than 2 minutes.
+            Current usage: {{ $value | printf "%.1f" }}%.
+            The allkeys-lru eviction policy will begin evicting keys to free memory.
+            Investigate growth in session/rate-limit keys or increase maxmemory.
+
+      # ── Redis memory usage critical (90%) ──────────────────────────────────
+      - alert: RedisMemoryUsageCritical
+        expr: |
+          (
+            redis_memory_used_bytes
+            /
+            redis_memory_max_bytes
+          ) * 100 > 90
+        for: 1m
+        labels:
+          severity: critical
+          team: backend
+          component: cache
+          pagerduty: "true"
+        annotations:
+          summary: "Redis memory usage above 90% — eviction pressure is high"
+          description: >
+            Redis instance {{ $labels.instance }} memory usage has exceeded 90%
+            of the configured maxmemory limit for more than 1 minute.
+            Current usage: {{ $value | printf "%.1f" }}%.
+            Aggressive key eviction is in progress. Session authentications and
+            rate-limit counters may be affected. Scale up Redis memory immediately.
+
+      # ── Redis maxmemory is not configured (guard) ───────────────────────────
+      - alert: RedisMaxMemoryNotConfigured
+        expr: redis_memory_max_bytes == 0
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+          component: cache
+        annotations:
+          summary: "Redis maxmemory is not set — memory usage cannot be bounded"
+          description: >
+            Redis instance {{ $labels.instance }} has no maxmemory limit configured.
+            Without a memory cap and eviction policy, Redis may consume all available
+            host memory and cause an OOM kill. Set maxmemory and maxmemory-policy
+            in the Redis configuration.
+
+      # ── Redis eviction rate spike ────────────────────────────────────────────
+      - alert: RedisHighEvictionRate
+        expr: rate(redis_evicted_keys_total[5m]) > 10
+        for: 2m
+        labels:
+          severity: warning
+          team: backend
+          component: cache
+        annotations:
+          summary: "Redis is evicting keys at an elevated rate"
+          description: >
+            Redis instance {{ $labels.instance }} is evicting more than 10 keys
+            per second (averaged over 5 minutes).
+            Eviction rate: {{ $value | printf "%.1f" }} keys/sec.
+            This indicates memory pressure. Session data and rate-limit counters
+            are at risk of being evicted before expiry.
+
+      # ── Redis exporter down ──────────────────────────────────────────────────
+      - alert: RedisExporterDown
+        expr: up{job="redis_exporter"} == 0
+        for: 1m
+        labels:
+          severity: warning
+          team: platform
+          component: cache
+        annotations:
+          summary: "Redis exporter is down — cache memory metrics unavailable"
+          description: >
+            The redis_exporter instance {{ $labels.instance }} has been
+            unreachable for more than 1 minute. Redis memory alerts will not fire.
+
+      # ── Redis instance down ──────────────────────────────────────────────────
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: backend
+          component: cache
+          pagerduty: "true"
+        annotations:
+          summary: "Redis is down — caching and rate-limiting unavailable"
+          description: >
+            Redis instance {{ $labels.instance }} has been unreachable for
+            more than 1 minute. Session caching and rate-limiting are
+            degraded. The application will fall back to in-memory cache.
+
   - name: agri_fi_database_pool
     interval: 30s
     rules:
