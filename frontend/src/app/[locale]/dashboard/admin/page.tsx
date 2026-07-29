@@ -172,7 +172,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
           <StatCard label="Total Users"  value={users.length}    icon="👥" color="bg-blue-50" />
           <StatCard label="Farmers"      value={byRole('farmer')} icon="🌱" color="bg-emerald-50" />
           <StatCard label="Investors"    value={byRole('investor')} icon="💼" color="bg-violet-50" />
@@ -204,7 +204,7 @@ export default function AdminDashboard() {
 
         {/* Overview */}
         {tab === 'overview' && (
-          <div className="grid sm:grid-cols-2 gap-5">
+          <div className="grid sm:grid-cols-2 md:grid-cols-2 gap-5">
             <div className="card p-5">
               <h3 className="section-title mb-5">Users by Role</h3>
               <div className="space-y-3">
@@ -329,7 +329,7 @@ export default function AdminDashboard() {
                 <p className="text-slate-500 text-sm">No pending KYC submissions to review.</p>
               </div>
             ) : (
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                 {pendingKyc.map(u => (
                   <div key={u.id} className="card p-5 space-y-4">
                     <div className="flex items-start justify-between gap-2">
@@ -338,7 +338,7 @@ export default function AdminDashboard() {
                           {u.email[0].toUpperCase()}
                         </div>
                         <div>
-                          <p className="font-semibold text-slate-900 text-sm truncate max-w-[140px]">{u.email}</p>
+                          <p className="font-semibold text-slate-900 text-sm truncate max-w-[160px] md:max-w-[180px] lg:max-w-[200px]">{u.email}</p>
                           <p className="text-xs text-slate-400">{u.country}</p>
                         </div>
                       </div>

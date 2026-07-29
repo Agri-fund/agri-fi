@@ -178,7 +178,13 @@
     "error": "Erreur",
     "success": "Succès",
     "processing": "Traitement...",
-    "dismiss": "Ignorer"
+    "dismiss": "Ignorer",
+    "network": {
+      "offline": {
+        "title": "Vous êtes hors ligne.",
+        "description": "Les actions nécessitant un accès à Internet sont désactivées jusqu'au rétablissement de la connexion."
+      }
+    }
   },
   "format": {
     "currency": "{value, number, currency}",

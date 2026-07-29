@@ -178,7 +178,13 @@
     "error": "Kosa",
     "success": "Mafanikio",
     "processing": "Inashughulikia...",
-    "dismiss": "Funga"
+    "dismiss": "Funga",
+    "network": {
+      "offline": {
+        "title": "Uko nje ya mtandao.",
+        "description": "Vitendo vinavyohitaji mtandao vimezimwa mpaka muunganisho urudishwe."
+      }
+    }
   },
   "format": {
     "currency": "{value, number, currency}",
