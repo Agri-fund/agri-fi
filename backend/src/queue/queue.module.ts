@@ -33,6 +33,7 @@ export { QUEUE_SERVICE } from './queue.constants';
             ],
             queue: MAIN_QUEUE_NAME,
             queueOptions: dlxQueueOptions(MAIN_QUEUE_DLX),
+            prefetchCount: config.get<number>('RABBITMQ_PREFETCH_COUNT', 10),
           },
         }),
         inject: [ConfigService],
