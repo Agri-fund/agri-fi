@@ -1,13 +1,15 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { motion, AnimatePresence } from 'framer-motion';
 import { User } from '@/lib/api';
 import { WalletButton } from '../WalletButton';
 import { WalletModal } from '../wallet/WalletModal';
-import { useStellarWallet } from '@/hooks/useStellarWallet';
+import { useStellarWallet, DisconnectReason } from '@/hooks/useStellarWallet';
+import { useToast } from '@/components/ui/ToastProvider';
 import { LanguageSwitcher } from '../LanguageSwitcher';
 
 interface HeaderProps {
@@ -24,10 +26,32 @@ const ROLE_THEME: Record<string, { accent: string; label: string; emoji: string 
 };
 
 export const Header: React.FC<HeaderProps> = ({ user, onLogout }) => {
+  const t = useTranslations();
   const [isOpen, setIsOpen] = useState(false);
   const [showWalletModal, setShowWalletModal] = useState(false);
   const pathname = usePathname();
-  const { status, displayKey, network } = useStellarWallet();
+  const { toast } = useToast();
+
+  const handleExternalDisconnect = useCallback(
+    (reason: DisconnectReason) => {
+      if (reason === 'account_changed') {
+        toast(
+          t('wallet.errorConnect'),
+          'warning',
+        );
+      } else {
+        toast(
+          t('wallet.errorConnect'),
+          'warning',
+        );
+      }
+    },
+    [toast, t],
+  );
+
+  const { status, displayKey, network } = useStellarWallet({
+    onDisconnect: handleExternalDisconnect,
+  });
   const theme = ROLE_THEME[user.role] ?? ROLE_THEME.farmer;
 
   // Close drawer on route change
@@ -46,10 +70,10 @@ export const Header: React.FC<HeaderProps> = ({ user, onLogout }) => {
   }, [isOpen]);
 
   const navLinks = [
-    { label: 'Dashboard', href: `/dashboard/${user.role}` },
-    { label: 'Marketplace', href: '/marketplace' },
-    { label: 'Documents', href: '/dashboard/documents' },
-    { label: 'Settings', href: '/settings' },
+    { label: t('nav.dashboard'), href: `/dashboard/${user.role}` },
+    { label: t('nav.marketplace'), href: '/marketplace' },
+    { label: t('nav.documents'), href: '/dashboard/documents' },
+    { label: t('nav.settings'), href: '/settings' },
   ];
 
   const toggleMenu = () => setIsOpen(!isOpen);
@@ -96,9 +120,9 @@ export const Header: React.FC<HeaderProps> = ({ user, onLogout }) => {
             {status === 'connected' && displayKey ? (
               <span className="font-mono">{displayKey}</span>
             ) : status === 'connecting' ? (
-              'Connecting…'
+              t('wallet.connecting')
             ) : (
-              'Connect Wallet'
+              t('wallet.connectButton')
             )}
             {status === 'connected' && (
               <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
@@ -115,7 +139,7 @@ export const Header: React.FC<HeaderProps> = ({ user, onLogout }) => {
           onClick={toggleMenu}
           className="md:hidden p-2 -mr-2 rounded-xl hover:bg-slate-100 transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500"
           aria-expanded={isOpen}
-          aria-label="Toggle navigation menu"
+          aria-label={t('nav.menu')}
         >
           <div className="w-6 h-5 relative flex flex-col justify-between items-center">
             <motion.span
