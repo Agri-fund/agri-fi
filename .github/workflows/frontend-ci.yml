@@ -53,3 +53,62 @@ jobs:
           # bundle as a fallback default.
           NEXT_PUBLIC_API_URL: https://api.example.invalid
           BACKEND_URL: https://api.example.invalid
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          # Discord notification
+          if [ -n "${{ secrets.DISCORD_WEBHOOK_URL }}" ]; then
+            curl -X POST ${{ secrets.DISCORD_WEBHOOK_URL }} \
+              -H "Content-Type: application/json" \
+              -d '{
+                "content": "❌ **Frontend CI Build Failed**\n\n**Repository:** ${{ github.repository }}\n**Branch:** ${{ github.ref_name }}\n**Commit:** ${{ github.sha }}\n**Actor:** ${{ github.actor }}\n**Workflow:** ${{ github.workflow }}\n**Run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+                "username": "GitHub Actions"
+              }' || true
+          fi
+
+          # Slack notification
+          if [ -n "${{ secrets.SLACK_WEBHOOK_URL }}" ]; then
+            curl -X POST ${{ secrets.SLACK_WEBHOOK_URL }} \
+              -H "Content-Type: application/json" \
+              -d '{
+                "text": "❌ Frontend CI Build Failed",
+                "blocks": [
+                  {
+                    "type": "header",
+                    "text": {
+                      "type": "plain_text",
+                      "text": "❌ Frontend CI Build Failed"
+                    }
+                  },
+                  {
+                    "type": "section",
+                    "fields": [
+                      {
+                        "type": "mrkdwn",
+                        "text": "*Repository:*\n${{ github.repository }}"
+                      },
+                      {
+                        "type": "mrkdwn",
+                        "text": "*Branch:*\n${{ github.ref_name }}"
+                      },
+                      {
+                        "type": "mrkdwn",
+                        "text": "*Commit:*\n${{ github.sha }}"
+                      },
+                      {
+                        "type": "mrkdwn",
+                        "text": "*Actor:*\n${{ github.actor }}"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "section",
+                    "text": {
+                      "type": "mrkdwn",
+                      "text": "<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow Run>"
+                    }
+                  }
+                ]
+              }' || true
+          fi

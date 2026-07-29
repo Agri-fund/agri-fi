@@ -9,6 +9,7 @@ import DashboardLayout from "../../../../components/DashboardLayout";
 import StatCard from "../../../../components/StatCard";
 import { useToast } from "../../../../components/ui/ToastProvider";
 import { CreateDealForm } from "../../../../components/deals/CreateDealForm";
+import { usePushNotifications } from "../../../../hooks/usePushNotifications";
 
 const STATUS_CFG: Record<string, string> = {
   open: "badge-green",
@@ -26,6 +27,9 @@ export default function FarmerDashboard() {
   const router = useRouter();
   const { toast } = useToast();
   const [user, setUser] = useState<User | null>(null);
+
+  // Request push notification permission once the user is authenticated
+  usePushNotifications(!!user);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);

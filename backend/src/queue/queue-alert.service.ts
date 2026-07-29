@@ -91,22 +91,32 @@ export class QueueAlertService {
     return user && pass ? { username: user, password: pass } : undefined;
   }
 
-  private async sendDiscordAlert(currentCount: number): Promise<void> {
+  /**
+   * Send an arbitrary message to the configured Discord webhook.
+   * Used both by the queue-backlog monitor and by DLQ consumers that need
+   * to notify engineers of permanently failed messages.
+   */
+  async sendAlert(message: string): Promise<void> {
     if (!this.webhookUrl) {
       this.logger.warn('DISCORD_WEBHOOK_URL not configured – alert not sent');
       return;
     }
-    const payload = {
-      content: `⚠️ Queue **${this.configService.get<string>(
-        'RABBITMQ_QUEUE_NAME',
-        'agric_onchain_queue',
-      )}** has been above **${this.threshold}** messages for over **5 minutes**. Current ready messages: ${currentCount}.`,
-    };
     try {
-      await firstValueFrom(this.httpService.post(this.webhookUrl, payload));
-      this.logger.log('Discord alert sent for queue overload');
+      await firstValueFrom(
+        this.httpService.post(this.webhookUrl, { content: message }),
+      );
+      this.logger.log('Discord alert sent');
     } catch (err) {
       this.logger.error({ err }, 'Failed to send Discord webhook notification');
     }
+  }
+
+  private async sendDiscordAlert(currentCount: number): Promise<void> {
+    await this.sendAlert(
+      `⚠️ Queue **${this.configService.get<string>(
+        'RABBITMQ_QUEUE_NAME',
+        'agric_onchain_queue',
+      )}** has been above **${this.threshold}** messages for over **5 minutes**. Current ready messages: ${currentCount}.`,
+    );
   }
 }

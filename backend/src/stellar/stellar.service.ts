@@ -40,6 +40,11 @@ import { HorizonFailoverClient } from './horizon-failover';
 export const SEQUENCE_REDIS_CLIENT = 'SEQUENCE_REDIS_CLIENT';
 const SEQUENCE_CACHE_TTL = 5; // seconds
 
+/** TTL for terminal transaction statuses (success / failed) in Redis — 1 hour. */
+const TX_STATUS_CACHE_TTL_SECONDS = 3600;
+/** Redis key prefix for cached transaction status lookups. */
+const TX_STATUS_CACHE_PREFIX = 'stellar:tx:';
+
 
 export interface InvestorShare {
   walletAddress: string;
@@ -62,6 +67,7 @@ export interface SignatureValidationResult {
 export class StellarService implements OnModuleInit, OnModuleDestroy {
   private readonly horizonClient: HorizonFailoverClient;
   private get server(): Horizon.Server { return this.horizonClient.activeServer; }
+  private set server(s: Horizon.Server) { (this.horizonClient as any)._server = s; }
   private readonly networkPassphrase: string;
   private readonly platformKeypair: Keypair;
   private readonly multiSigSigners: Keypair[];
@@ -94,7 +100,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       .filter(Boolean);
     const network = config.get<string>('STELLAR_NETWORK', 'testnet');
 
-    this.horizonClient = new HorizonFailoverClient(horizonUrls, this.logger, { timeout: 30000 });
+    this.horizonClient = new HorizonFailoverClient(horizonUrls, this.logger, { timeout: 30000 } as Horizon.Server.Options);
     this.networkPassphrase =
       network === 'mainnet' ? Networks.PUBLIC : Networks.TESTNET;
 
@@ -129,7 +135,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     this.logger.info(
       {
         network,
-        horizonUrl,
+        horizonUrls,
         usdcAssetCode,
         usdcIssuer: usdcIssuer || 'NOT_SET',
         multiSigSignersCount: this.multiSigSigners.length,
@@ -385,7 +391,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
 
     if (this.sequenceRedis) {
       try {
-        const raw = await this.sequenceRedis.get(this.cacheSeqKey(publicKey));
+        const raw = await this.sequenceRedis.get(this.cacheSeqKey(publicKey)) as string | null;
         if (raw) {
           const parsed = JSON.parse(raw);
           this.localSequenceCache.set(publicKey, {
@@ -477,7 +483,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
   ): Promise<{ valid: boolean; reason?: string }> {
     let tx: Transaction;
     try {
-      tx = TransactionBuilder.fromXDR(signedXdr, this.networkPassphrase);
+      tx = TransactionBuilder.fromXDR(signedXdr, this.networkPassphrase) as Transaction;
     } catch {
       return { valid: false, reason: 'Invalid XDR: could not decode transaction' };
     }
@@ -777,7 +783,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
 
     // If escrow secret and asset info provided, transfer Trade_Tokens to investor
     if (encryptedEscrowSecret && assetCode && tokenAmount !== undefined) {
-      const escrowSecret = this.decryptSecret(encryptedEscrowSecret);
+      const escrowSecret = await this.decryptSecret(encryptedEscrowSecret);
       await this.transferTradeTokens(
         escrowSecret,
         escrowPublicKey,
@@ -845,7 +851,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
   /**
    * Decrypts a secret key encrypted by encryptSecret().
    */
-  async decryptSecret(encryptedSecret: string): string {
+  async decryptSecret(encryptedSecret: string): Promise<string> {
     return this.kmsService.decrypt(encryptedSecret);
   }
 
@@ -1901,9 +1907,9 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Submits a transaction with exponential backoff retry for transient Horizon errors.
+   * Submits a transaction with exponential backoff retry and random jitter for transient Horizon errors.
+   * Formula: base_delay * 2^attempt + random_jitter.
    * Retries on HTTP 429, 503, 504, and network timeout errors.
-   * Waits 1s → 2s → 4s before each retry; throws after 3 failed attempts.
    */
   private async submitWithRetry(tx: any): Promise<any> {
     const RETRYABLE = new Set([429, 503, 504]);
@@ -1923,10 +1929,12 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
           throw err;
         }
 
-        const delayMs = 1000 * Math.pow(2, attempt); // 1s, 2s, 4s
+        const baseDelayMs = 1000;
+        const randomJitter = Math.floor(Math.random() * 500);
+        const delayMs = baseDelayMs * Math.pow(2, attempt) + randomJitter;
         this.logger.warn(
-          { attempt, status, delayMs },
-          `Transient Horizon error (${status ?? 'timeout'}); retrying in ${delayMs}ms`,
+          { attempt, status, delayMs, jitter: randomJitter },
+          `Transient Horizon error (${status ?? 'timeout'}); retrying with exponential backoff and jitter in ${delayMs}ms`,
         );
         await new Promise((resolve) => setTimeout(resolve, delayMs));
       }
@@ -1980,18 +1988,90 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
 
   /**
    * Returns the status of a Stellar transaction.
+   *
+   * Terminal states ('success' | 'failed') are cached in Redis for
+   * TX_STATUS_CACHE_TTL_SECONDS (1 hour) to avoid redundant Horizon API calls.
+   * Pending transactions are never cached because their state can still change.
    */
   async getTransactionStatus(
     txId: string,
   ): Promise<'success' | 'failed' | 'pending'> {
+    // 1. Cache read — skip Horizon if we already have a terminal result.
+    const cached = await this.getCachedTxStatus(txId);
+    if (cached) {
+      this.logger.info({ txId, cached }, 'Transaction status served from cache');
+      return cached;
+    }
+
+    // 2. Horizon query.
     try {
       const tx = await this.server.transactions().transaction(txId).call();
-      return tx.successful ? 'success' : 'failed';
+      const status: 'success' | 'failed' = tx.successful ? 'success' : 'failed';
+
+      // 3. Write-through — only cache terminal states.
+      await this.setCachedTxStatus(txId, status);
+
+      return status;
     } catch (err: any) {
       if (err?.response?.status === 404) {
         return 'pending';
       }
       throw err;
+    }
+  }
+
+  /** Build the Redis key for a transaction hash. */
+  private txStatusCacheKey(txId: string): string {
+    return `${TX_STATUS_CACHE_PREFIX}${txId}`;
+  }
+
+  /**
+   * Read a previously cached terminal transaction status.
+   * Returns null on any error so the caller falls through to Horizon.
+   */
+  private async getCachedTxStatus(
+    txId: string,
+  ): Promise<'success' | 'failed' | null> {
+    if (!this.sequenceRedis) {
+      return null;
+    }
+    try {
+      const raw = await this.sequenceRedis.get(this.txStatusCacheKey(txId)) as string | null;
+      if (raw === 'success' || raw === 'failed') {
+        return raw;
+      }
+      return null;
+    } catch (err) {
+      this.logger.warn(
+        { txId, err: (err as Error).message },
+        'Redis read failed for tx status cache; falling back to Horizon',
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Write a terminal transaction status to Redis with a 1-hour TTL.
+   * Failures are logged but never propagate — caching is best-effort.
+   */
+  private async setCachedTxStatus(
+    txId: string,
+    status: 'success' | 'failed',
+  ): Promise<void> {
+    if (!this.sequenceRedis) {
+      return;
+    }
+    try {
+      await this.sequenceRedis.setEx(
+        this.txStatusCacheKey(txId),
+        TX_STATUS_CACHE_TTL_SECONDS,
+        status,
+      );
+    } catch (err) {
+      this.logger.warn(
+        { txId, status, err: (err as Error).message },
+        'Redis write failed for tx status cache',
+      );
     }
   }
 
