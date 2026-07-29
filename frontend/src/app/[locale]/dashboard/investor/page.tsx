@@ -10,6 +10,7 @@ import StatCard from '../../../../components/StatCard';
 import { InvestmentCertificate } from '../../../../components/InvestmentCertificate';
 import { AnchorWidget } from '../../../../components/AnchorWidget';
 import PortfolioChart from '../../../../components/dashboard/PortfolioChart';
+import { usePushNotifications } from '../../../../hooks/usePushNotifications';
 
 const INV_STATUS: Record<string, string> = {
   confirmed: 'badge-green', pending: 'badge-yellow', failed: 'badge-red', refunded: 'badge-gray',
