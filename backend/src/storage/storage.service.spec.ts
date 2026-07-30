@@ -155,9 +155,9 @@ describe('StorageService', () => {
       // Allow a probe through half-open
       mockedAxios.post.mockResolvedValue({ data: { cid: 'QmRecovered' } });
       const result = await service.upload(file, mimeType);
-      expect(result.hash === 'QmRecovered' || result.hash.startsWith('uploads/')).toBe(
-        true,
-      );
+      expect(
+        result.hash === 'QmRecovered' || result.hash.startsWith('uploads/'),
+      ).toBe(true);
 
       jest.useRealTimers();
     });

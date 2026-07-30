@@ -46,7 +46,10 @@ const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
 export class AuthService {
   private readonly sep10SigningKeypair: Keypair;
   private readonly networkPassphrase: string;
-  private readonly challenges: Map<string, { nonce: string; expiresAt: number }>;
+  private readonly challenges: Map<
+    string,
+    { nonce: string; expiresAt: number }
+  >;
   private readonly sep10Domain: string;
 
   constructor(
@@ -60,21 +63,30 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly queueService: QueueService,
+    private readonly notificationsService: NotificationsService,
     private readonly ofacSanctionsCheck: OfacSanctionsCheckService,
     private readonly tokenBlocklistService: TokenBlocklistService,
   ) {
-    const network = this.configService.get<string>('STELLAR_NETWORK', 'testnet');
+    const network = this.configService.get<string>(
+      'STELLAR_NETWORK',
+      'testnet',
+    );
     this.networkPassphrase =
       network === 'mainnet' ? Networks.PUBLIC : Networks.TESTNET;
 
-    const sep10Secret = this.configService.get<string>('SEP10_SIGNING_SECRET', '');
+    const sep10Secret = this.configService.get<string>(
+      'SEP10_SIGNING_SECRET',
+      '',
+    );
     this.sep10SigningKeypair = sep10Secret
       ? Keypair.fromSecret(sep10Secret)
       : Keypair.random();
 
     this.challenges = new Map();
-    this.sep10Domain =
-      this.configService.get<string>('SEP10_DOMAIN', 'agri-fi.com');
+    this.sep10Domain = this.configService.get<string>(
+      'SEP10_DOMAIN',
+      'agri-fi.com',
+    );
   }
 
   // ── helpers ────────────────────────────────────────────────────────────────
@@ -87,7 +99,10 @@ export class AuthService {
     return argon2.hash(password, { type: argon2.argon2id });
   }
 
-  private async verifyPassword(hash: string, password: string): Promise<boolean> {
+  private async verifyPassword(
+    hash: string,
+    password: string,
+  ): Promise<boolean> {
     if (this.isBcryptHash(hash)) {
       return bcrypt.compare(password, hash);
     }
@@ -99,10 +114,16 @@ export class AuthService {
   }
 
   private appBaseUrl(): string {
-    return this.configService.get<string>('APP_BASE_URL', 'http://localhost:3001');
+    return this.configService.get<string>(
+      'APP_BASE_URL',
+      'http://localhost:3001',
+    );
   }
 
-  private async sendVerificationEmail(email: string, token: string): Promise<void> {
+  private async sendVerificationEmail(
+    email: string,
+    token: string,
+  ): Promise<void> {
     const link = `${this.appBaseUrl()}/auth/verify-email?token=${token}`;
     await this.notificationsService.sendEmail(
       email,
@@ -114,9 +135,7 @@ export class AuthService {
 
   // ── register ───────────────────────────────────────────────────────────────
 
-  async register(
-    dto: RegisterDto,
-  ): Promise<{
+  async register(dto: RegisterDto): Promise<{
     id: string;
     email: string;
     role: string;
@@ -417,9 +436,8 @@ export class AuthService {
     if (!user) throw new NotFoundException('User not found.');
 
     // Check if the wallet address is sanctioned
-    const isSanctioned = await this.ofacSanctionsCheck.isAddressSanctioned(
-      walletAddress,
-    );
+    const isSanctioned =
+      await this.ofacSanctionsCheck.isAddressSanctioned(walletAddress);
     if (isSanctioned) {
       throw new BadRequestException({
         code: 'SANCTIONED_ADDRESS',
@@ -456,7 +474,9 @@ export class AuthService {
       registrationNumber: dto.registrationNumber,
       businessLicenseUrl: dto.businessLicenseUrl,
       articlesOfIncorporationUrl: dto.articlesOfIncorporationUrl,
-      documentExpiresAt: dto.documentExpiresAt ? new Date(dto.documentExpiresAt) : null,
+      documentExpiresAt: dto.documentExpiresAt
+        ? new Date(dto.documentExpiresAt)
+        : null,
       status: automatedApproval ? 'approved' : 'pending_review',
     });
 
@@ -508,7 +528,9 @@ export class AuthService {
     return null;
   }
 
-  private mapProviderKycStatus(payload: Record<string, unknown>): User['kycStatus'] | null {
+  private mapProviderKycStatus(
+    payload: Record<string, unknown>,
+  ): User['kycStatus'] | null {
     const rootStatus = this.pickFirstString(payload, [
       'status',
       'reviewStatus',
@@ -527,7 +549,9 @@ export class AuthService {
     }
 
     if (
-      ['approved', 'verified', 'green', 'completed', 'success'].includes(normalized)
+      ['approved', 'verified', 'green', 'completed', 'success'].includes(
+        normalized,
+      )
     ) {
       return 'verified';
     }
@@ -539,7 +563,9 @@ export class AuthService {
     }
 
     if (
-      ['pending', 'yellow', 'processing', 'queued', 'on_hold'].includes(normalized)
+      ['pending', 'yellow', 'processing', 'queued', 'on_hold'].includes(
+        normalized,
+      )
     ) {
       return 'pending';
     }
@@ -563,15 +589,22 @@ export class AuthService {
 
     const applicant = this.asRecord(payload.applicant);
     if (applicant) {
-      return this.pickFirstString(applicant, ['externalUserId', 'userId', 'email']);
+      return this.pickFirstString(applicant, [
+        'externalUserId',
+        'userId',
+        'email',
+      ]);
     }
 
     return null;
   }
 
-  async handleKycWebhook(
-    payload: Record<string, unknown>,
-  ): Promise<{ received: true; updated: boolean; userId?: string; kycStatus?: User['kycStatus'] }> {
+  async handleKycWebhook(payload: Record<string, unknown>): Promise<{
+    received: true;
+    updated: boolean;
+    userId?: string;
+    kycStatus?: User['kycStatus'];
+  }> {
     const userReference = this.extractKycWebhookUserReference(payload);
     if (!userReference) {
       return { received: true, updated: false };
@@ -663,7 +696,11 @@ export class AuthService {
     return { kycStatus: user.kycStatus };
   }
 
-  async approveKyc(userId: string, adminId: string, reason?: string): Promise<{ kycStatus: string }> {
+  async approveKyc(
+    userId: string,
+    adminId: string,
+    reason?: string,
+  ): Promise<{ kycStatus: string }> {
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found.');
 
@@ -756,7 +793,10 @@ export class AuthService {
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found.');
 
-    const valid = await this.verifyPassword(user.passwordHash, dto.currentPassword);
+    const valid = await this.verifyPassword(
+      user.passwordHash,
+      dto.currentPassword,
+    );
     if (!valid) throw new BadRequestException('Current password is incorrect.');
 
     if (dto.currentPassword === dto.newPassword) {
@@ -769,7 +809,9 @@ export class AuthService {
     user.tokenVersion = (user.tokenVersion ?? 0) + 1;
     await this.userRepo.save(user);
 
-    return { message: 'Password updated. All active sessions have been invalidated.' };
+    return {
+      message: 'Password updated. All active sessions have been invalidated.',
+    };
   }
 
   async logout(userId: string): Promise<{ message: string }> {
@@ -814,9 +856,7 @@ export class AuthService {
     clientPublicKey: string,
   ): Promise<{ transactionXdr: string; networkPassphrase: string }> {
     if (!clientPublicKey || !clientPublicKey.startsWith('G')) {
-      throw new BadRequestException(
-        'Invalid Stellar public key',
-      );
+      throw new BadRequestException('Invalid Stellar public key');
     }
 
     const nonce = crypto.randomBytes(32).toString('hex');
@@ -825,7 +865,10 @@ export class AuthService {
     const expiry = now + 300; // 5 minutes
 
     const tx = new TransactionBuilder(
-      { sequence: '0', accountId: () => this.sep10SigningKeypair.publicKey() } as any,
+      {
+        sequence: '0',
+        accountId: () => this.sep10SigningKeypair.publicKey(),
+      } as any,
       {
         fee: BASE_FEE,
         networkPassphrase: this.networkPassphrase,
@@ -911,9 +954,7 @@ export class AuthService {
       try {
         const hint = sig.hint.toString('hex');
         const clientKeypair = Keypair.fromPublicKey(clientPublicKey);
-        const clientHint = clientKeypair
-          .signatureHint()
-          .toString('hex');
+        const clientHint = clientKeypair.signatureHint().toString('hex');
         if (hint !== clientHint) return false;
         return clientKeypair.verify(txHash, sig.signature);
       } catch {

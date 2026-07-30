@@ -192,12 +192,17 @@ jobs:
             if ('${{ needs.detect-changes.outputs.frontend }}' === 'true') labels.push('frontend');
             if ('${{ needs.detect-changes.outputs.backend }}' === 'true') labels.push('backend');
             if (labels.length > 0) {
-              await github.rest.issues.addLabels({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: issueNumber,
-                labels,
-              });
+              try {
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber,
+                  labels,
+                });
+              } catch (error) {
+                // Fork PRs often lack issues:write — skip instead of failing the job.
+                core.warning(`Skipping area labels: ${error.message}`);
+              }
             }
 
       - name: Build and post review comment
@@ -253,43 +258,48 @@ jobs:
                 : '_Please fix the failing checks and push again._',
             ].join('\n');
 
-            // Remove previous bot comments to avoid clutter
-            const comments = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: issueNumber,
-            });
-            for (const c of comments.data) {
-              if (c.user.login === 'github-actions[bot]' && c.body.includes('🤖 Automated PR Review')) {
-                await github.rest.issues.deleteComment({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  comment_id: c.id,
-                });
-              }
-            }
-
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: issueNumber,
-              body,
-            });
-
-            // Remove opposite label if present, then apply correct one
-            const opposite = allPassed ? 'needs-work' : 'ready-for-review';
             try {
-              await github.rest.issues.removeLabel({
+              // Remove previous bot comments to avoid clutter
+              const comments = await github.rest.issues.listComments({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issueNumber,
-                name: opposite,
               });
-            } catch (_) { /* label may not be present */ }
+              for (const c of comments.data) {
+                if (c.user.login === 'github-actions[bot]' && c.body.includes('🤖 Automated PR Review')) {
+                  await github.rest.issues.deleteComment({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    comment_id: c.id,
+                  });
+                }
+              }
 
-            await github.rest.issues.addLabels({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: issueNumber,
-              labels: [statusLabel],
-            });
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body,
+              });
+
+              // Remove opposite label if present, then apply correct one
+              const opposite = allPassed ? 'needs-work' : 'ready-for-review';
+              try {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber,
+                  name: opposite,
+                });
+              } catch (_) { /* label may not be present */ }
+
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                labels: [statusLabel],
+              });
+            } catch (error) {
+              // Fork PRs often lack pull_requests/issues write — checks above still ran.
+              core.warning(`Skipping review comment/labels: ${error.message}`);
+            }

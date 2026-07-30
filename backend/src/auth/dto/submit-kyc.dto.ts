@@ -19,7 +19,8 @@ export class SubmitKycDto {
 
   @ApiPropertyOptional({
     example: 'https://s3.amazonaws.com/bucket/gov-id.pdf',
-    description: 'URL of the uploaded government ID document (required for individual KYC)',
+    description:
+      'URL of the uploaded government ID document (required for individual KYC)',
   })
   @ValidateIf((dto) => !dto.isCorporate)
   @IsString()
@@ -29,7 +30,8 @@ export class SubmitKycDto {
 
   @ApiPropertyOptional({
     example: 'https://s3.amazonaws.com/bucket/proof-of-address.pdf',
-    description: 'URL of the uploaded proof of address document (required for individual KYC)',
+    description:
+      'URL of the uploaded proof of address document (required for individual KYC)',
   })
   @ValidateIf((dto) => !dto.isCorporate)
   @IsString()

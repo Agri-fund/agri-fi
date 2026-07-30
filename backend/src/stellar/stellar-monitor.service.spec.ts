@@ -84,7 +84,9 @@ describe('StellarMonitorService', () => {
         ],
       }).compile();
 
-      const customService = module.get<StellarMonitorService>(StellarMonitorService);
+      const customService = module.get<StellarMonitorService>(
+        StellarMonitorService,
+      );
       expect((customService as any).BALANCE_THRESHOLD_XLM).toBe(100);
     });
 
@@ -105,7 +107,9 @@ describe('StellarMonitorService', () => {
         ],
       }).compile();
 
-      const invalidService = module.get<StellarMonitorService>(StellarMonitorService);
+      const invalidService = module.get<StellarMonitorService>(
+        StellarMonitorService,
+      );
       expect((invalidService as any).platformAccountId).toBeNull();
     });
   });
@@ -144,9 +148,7 @@ describe('StellarMonitorService', () => {
 
     it('should handle missing native balance', async () => {
       const mockAccount = {
-        balances: [
-          { asset_type: 'credit_alphanum4', balance: '500.0000000' },
-        ],
+        balances: [{ asset_type: 'credit_alphanum4', balance: '500.0000000' }],
         sequenceNumber: () => '12345',
         subentry_count: 0,
       };
@@ -253,9 +255,7 @@ describe('StellarMonitorService', () => {
 
     it('should handle single transaction', () => {
       const now = new Date().toISOString();
-      const transactions = [
-        { fee_charged: '100', created_at: now },
-      ];
+      const transactions = [{ fee_charged: '100', created_at: now }];
 
       const metrics = (service as any).analyzeFeeMetrics(transactions);
 
@@ -413,7 +413,9 @@ describe('StellarMonitorService', () => {
         ],
       }).compile();
 
-      const noWebhookService = module.get<StellarMonitorService>(StellarMonitorService);
+      const noWebhookService = module.get<StellarMonitorService>(
+        StellarMonitorService,
+      );
       (noWebhookService as any).server = mockServer;
 
       const mockAccount = {

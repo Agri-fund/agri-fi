@@ -68,10 +68,7 @@ export class DealFundingAlertService {
         await this.evaluateDeal(deal);
       }
     } catch (error) {
-      this.logger.error(
-        { error },
-        'Failed to check deal funding milestones',
-      );
+      this.logger.error({ error }, 'Failed to check deal funding milestones');
     }
   }
 
@@ -104,20 +101,14 @@ export class DealFundingAlertService {
     actualPct: number,
   ): Promise<void> {
     const emoji = milestone === 100 ? '🎉' : '🚀';
-    const label =
-      milestone === 100
-        ? 'fully funded'
-        : `${milestone}% funded`;
+    const label = milestone === 100 ? 'fully funded' : `${milestone}% funded`;
     const message =
       `${emoji} *Deal ${deal.tokenSymbol}* (${deal.commodity}) is now *${label}*! ` +
       `Raised $${Number(deal.totalInvested).toLocaleString('en-US', { minimumFractionDigits: 2 })} ` +
       `of $${Number(deal.totalValue).toLocaleString('en-US', { minimumFractionDigits: 2 })} ` +
       `(${actualPct.toFixed(1)}%).`;
 
-    this.logger.log(
-      { dealId: deal.id, milestone, actualPct },
-      message,
-    );
+    this.logger.log({ dealId: deal.id, milestone, actualPct }, message);
 
     if (!this.webhookUrl) return;
 

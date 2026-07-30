@@ -27,10 +27,10 @@ async function bootstrap() {
           new ConfigService().get<string>('RABBITMQ_PREFETCH_COUNT', '10'),
           10,
         ),
+        noAck: false,
       },
-      noAck: false,
     },
-  });
+  );
 
   await app.startAllMicroservices();
   console.log(

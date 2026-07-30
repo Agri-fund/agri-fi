@@ -8,6 +8,11 @@ import { AuthService } from './auth.service';
 import { User } from './entities/user.entity';
 import { KycSubmission } from './entities/kyc-submission.entity';
 import { QueueService } from '../queue/queue.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { OfacSanctionsCheckService } from './utils/ofac-sanctions-check';
+import { TokenBlocklistService } from './token-blocklist.service';
+import { LoginLog } from '../database/entities/login-log.entity';
+import { AdminAction } from '../database/entities/admin-action.entity';
 
 const mockUser = (): User => ({
   id: 'uuid-1',
@@ -37,6 +42,7 @@ describe('AuthService', () => {
   let kycRepo: { findOne: jest.Mock; create: jest.Mock; save: jest.Mock };
   let jwtService: { sign: jest.Mock };
   let configService: { get: jest.Mock };
+  let notificationsService: { sendEmail: jest.Mock };
 
   beforeEach(async () => {
     userRepo = {
@@ -47,16 +53,39 @@ describe('AuthService', () => {
     };
     kycRepo = { findOne: jest.fn(), create: jest.fn(), save: jest.fn() };
     jwtService = { sign: jest.fn().mockReturnValue('token') };
-    configService = { get: jest.fn() };
+    configService = {
+      get: jest.fn((key: string, defaultVal?: string) => {
+        if (key === 'STELLAR_NETWORK') return 'testnet';
+        if (key === 'SEP10_SIGNING_SECRET') return '';
+        if (key === 'SEP10_DOMAIN') return 'agri-fi.com';
+        if (key === 'APP_BASE_URL') return 'http://localhost:3001';
+        return defaultVal ?? '';
+      }),
+    };
+    notificationsService = { sendEmail: jest.fn().mockResolvedValue(undefined) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
         { provide: getRepositoryToken(User), useValue: userRepo },
         { provide: getRepositoryToken(KycSubmission), useValue: kycRepo },
+        { provide: getRepositoryToken(LoginLog), useValue: { save: jest.fn() } },
+        {
+          provide: getRepositoryToken(AdminAction),
+          useValue: { save: jest.fn() },
+        },
         { provide: JwtService, useValue: jwtService },
         { provide: ConfigService, useValue: configService },
         { provide: QueueService, useValue: { emit: jest.fn() } },
+        { provide: NotificationsService, useValue: notificationsService },
+        {
+          provide: OfacSanctionsCheckService,
+          useValue: { isAddressSanctioned: jest.fn().mockResolvedValue(false) },
+        },
+        {
+          provide: TokenBlocklistService,
+          useValue: { isBlocked: jest.fn(), block: jest.fn() },
+        },
       ],
     }).compile();
 
@@ -126,7 +155,11 @@ describe('AuthService', () => {
     it('stores documents and sets status to pending_review in production', async () => {
       const user = mockUser();
       userRepo.findOne.mockResolvedValue(user);
-      configService.get.mockReturnValue('false'); // KYC_AUTO_APPROVE=false
+      configService.get.mockImplementation((key: string, defaultVal?: string) => {
+        if (key === 'KYC_AUTO_APPROVE') return 'false';
+        if (key === 'STELLAR_NETWORK') return 'testnet';
+        return defaultVal ?? '';
+      });
 
       kycRepo.create.mockReturnValue({ ...kycDto, status: 'pending_review' });
       kycRepo.save.mockResolvedValue({ ...kycDto, status: 'pending_review' });
@@ -145,7 +178,11 @@ describe('AuthService', () => {
     it('auto-approves KYC when flag is set', async () => {
       const user = mockUser();
       userRepo.findOne.mockResolvedValue(user);
-      configService.get.mockReturnValue('true'); // KYC_AUTO_APPROVE=true
+      configService.get.mockImplementation((key: string, defaultVal?: string) => {
+        if (key === 'KYC_AUTO_APPROVE') return 'true';
+        if (key === 'STELLAR_NETWORK') return 'testnet';
+        return defaultVal ?? '';
+      });
 
       kycRepo.create.mockReturnValue({ ...kycDto, status: 'approved' });
       kycRepo.save.mockResolvedValue({ ...kycDto, status: 'approved' });
@@ -173,7 +210,7 @@ describe('AuthService', () => {
       });
       userRepo.save.mockResolvedValue({ ...user, kycStatus: 'verified' });
 
-      const result = await service.approveKyc('uuid-1');
+      const result = await service.approveKyc('uuid-1', 'admin-1');
 
       expect(kycRepo.save).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -188,7 +225,7 @@ describe('AuthService', () => {
       userRepo.findOne.mockResolvedValue(mockUser());
       kycRepo.findOne.mockResolvedValue(null);
 
-      await expect(service.approveKyc('uuid-1')).rejects.toThrow(
+      await expect(service.approveKyc('uuid-1', 'admin-1')).rejects.toThrow(
         NotFoundException,
       );
     });

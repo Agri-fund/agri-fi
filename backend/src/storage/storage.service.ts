@@ -66,7 +66,7 @@ export class StorageService {
     } catch (ipfsErr) {
       const reason = isCircuitOpenError(ipfsErr)
         ? `circuit open (fail-fast)`
-        : (ipfsErr as Error)?.message ?? String(ipfsErr);
+        : ((ipfsErr as Error)?.message ?? String(ipfsErr));
       this.logger.warn(`IPFS upload failed: ${reason}. Falling back to S3.`);
     }
 

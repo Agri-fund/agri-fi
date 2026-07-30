@@ -23,14 +23,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { User } from './entities/user.entity';
 import { ApiBody } from '@nestjs/swagger';
-import {
-  IsIn,
-  IsString,
-  IsBoolean,
-  IsUUID,
-  IsOptional,
-  MinLength,
-} from 'class-validator';
+import { IsIn, IsString, IsBoolean, IsUUID, MinLength } from 'class-validator';
 import { Roles } from './decorators/roles.decorator';
 import { RolesGuard } from './roles.guard';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -289,9 +282,22 @@ export class AdminController {
   @ApiOperation({
     summary: 'List failed escrow payment transactions for admin review',
   })
-  @ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number (default 1)' })
-  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Items per page (default 20, max 100)' })
-  @ApiResponse({ status: 200, description: 'Paginated list of failed payments' })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    type: Number,
+    description: 'Page number (default 1)',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Items per page (default 20, max 100)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Paginated list of failed payments',
+  })
   @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
   async getFailedPayments(
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
@@ -315,9 +321,14 @@ export class AdminController {
   @ApiResponse({
     status: 201,
     description: 'Retry event enqueued',
-    schema: { properties: { queued: { type: 'boolean' }, dealId: { type: 'string' } } },
+    schema: {
+      properties: { queued: { type: 'boolean' }, dealId: { type: 'string' } },
+    },
   })
-  @ApiResponse({ status: 400, description: 'Transaction not in failed state or has no deal' })
+  @ApiResponse({
+    status: 400,
+    description: 'Transaction not in failed state or has no deal',
+  })
   @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
   @ApiResponse({ status: 404, description: 'Transaction log not found' })
   async retryFailedPayment(@Param('id') id: string) {

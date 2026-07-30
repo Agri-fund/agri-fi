@@ -67,7 +67,12 @@ const DEALS_CACHE_TTL_MS = 30_000;
     }),
   ],
   controllers: [TradeDealsController],
-  providers: [TradeDealsService, TradeDealsGuard, TradeDealsCronService, DealFundingAlertService],
+  providers: [
+    TradeDealsService,
+    TradeDealsGuard,
+    TradeDealsCronService,
+    DealFundingAlertService,
+  ],
   exports: [TradeDealsService],
 })
 export class TradeDealsModule {}

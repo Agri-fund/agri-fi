@@ -43,7 +43,9 @@ export class CreateOutboxTable1820000000000 implements MigrationInterface {
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`DROP TRIGGER IF EXISTS update_outbox_updated_at ON "outbox"`);
+    await queryRunner.query(
+      `DROP TRIGGER IF EXISTS update_outbox_updated_at ON "outbox"`,
+    );
     await queryRunner.query(`DROP INDEX IF EXISTS "idx_outbox_unprocessed"`);
     await queryRunner.query(`DROP TABLE "outbox"`);
   }

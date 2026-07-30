@@ -32,11 +32,15 @@ export class SystemAuditLog {
 
   @BeforeUpdate()
   preventUpdate(): void {
-    throw new Error('SystemAuditLog entries are immutable and cannot be updated.');
+    throw new Error(
+      'SystemAuditLog entries are immutable and cannot be updated.',
+    );
   }
 
   @BeforeRemove()
   preventRemove(): void {
-    throw new Error('SystemAuditLog entries are immutable and cannot be deleted.');
+    throw new Error(
+      'SystemAuditLog entries are immutable and cannot be deleted.',
+    );
   }
 }

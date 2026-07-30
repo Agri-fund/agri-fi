@@ -38,7 +38,13 @@ const sequenceRedisClientFactory = {
 @Module({
   imports: [
     ConfigModule,
-    TypeOrmModule.forFeature([TransactionLog, StellarHistory, Sep24Transaction, User, KycSubmission]),
+    TypeOrmModule.forFeature([
+      TransactionLog,
+      StellarHistory,
+      Sep24Transaction,
+      User,
+      KycSubmission,
+    ]),
   ],
   controllers: [StellarController, Sep24Controller, Sep12Controller],
   providers: [

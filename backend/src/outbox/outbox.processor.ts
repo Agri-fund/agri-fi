@@ -1,10 +1,12 @@
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import { PinoLogger } from 'nestjs-pino';
 import { ConfigService } from '@nestjs/config';
-import { ClientProxy, ClientProxyFactory, Transport } from '@nestjs/microservices';
+import {
+  ClientProxy,
+  ClientProxyFactory,
+  Transport,
+} from '@nestjs/microservices';
 import { OutboxEntity } from './outbox.entity';
 import { OutboxService } from './outbox.service';
 import { encryptPayload } from '../queue/queue.crypto';
@@ -92,20 +94,31 @@ export class OutboxProcessor implements OnModuleInit, OnModuleDestroy {
         `Successfully processed outbox event`,
       );
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
 
       // Increment retry count and store error
       await this.outboxService.markFailed(event.id, errorMessage);
 
       this.logger.warn(
-        { eventId: event.id, eventType: event.eventType, error: errorMessage, retryCount: event.retryCount + 1 },
+        {
+          eventId: event.id,
+          eventType: event.eventType,
+          error: errorMessage,
+          retryCount: event.retryCount + 1,
+        },
         `Failed to process outbox event, will retry`,
       );
 
       // If max retries exceeded, log as dead letter
       if (event.retryCount + 1 >= MAX_RETRIES) {
         this.logger.error(
-          { eventId: event.id, eventType: event.eventType, error: errorMessage, retryCount: event.retryCount + 1 },
+          {
+            eventId: event.id,
+            eventType: event.eventType,
+            error: errorMessage,
+            retryCount: event.retryCount + 1,
+          },
           `Outbox event exceeded max retries (${MAX_RETRIES}), moving to dead letter`,
         );
       }

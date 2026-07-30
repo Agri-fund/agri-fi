@@ -110,13 +110,6 @@ jobs:
           path: zap-full-scan-report*
           retention-days: 30
 
-      - name: Convert ZAP Report to SARIF (for GitHub Security tab)
-        uses: zaproxy/action-sarif@v0.3.0
-        if: always()
-
-      - name: Upload SARIF to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        with:
-          sarif_file: zap-full-scan-report.sarif
-          category: "owasp-zap"
+      # Note: `zaproxy/action-sarif` does not exist on GitHub and caused the whole
+      # job to fail at action-resolution time before the scan could run. Reports
+      # remain available via the artifact upload above.

@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
@@ -37,7 +41,10 @@ export interface Sep12CustomerResponse {
   id_country_code?: string;
 }
 
-const KYC_STATUS_MAP: Record<string, 'ACCEPTED' | 'PROCESSING' | 'VERIFIED' | 'REJECTED'> = {
+const KYC_STATUS_MAP: Record<
+  string,
+  'ACCEPTED' | 'PROCESSING' | 'VERIFIED' | 'REJECTED'
+> = {
   pending: 'PROCESSING',
   verified: 'VERIFIED',
   rejected: 'REJECTED',

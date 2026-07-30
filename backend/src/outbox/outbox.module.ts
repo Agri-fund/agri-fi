@@ -6,10 +6,7 @@ import { OutboxService } from './outbox.service';
 import { OutboxProcessor } from './outbox.processor';
 
 @Module({
-  imports: [
-    TypeOrmModule.forFeature([OutboxEntity]),
-    ScheduleModule.forRoot(),
-  ],
+  imports: [TypeOrmModule.forFeature([OutboxEntity]), ScheduleModule.forRoot()],
   providers: [OutboxService, OutboxProcessor],
   exports: [OutboxService],
 })

@@ -306,32 +306,34 @@ export class TradeDealsService {
       // the deal would otherwise be stuck holding an escrow account no job
       // will ever process.
       // Use transactional outbox for atomic DB update + event publish
-      return await this.dataSource.transaction(async (queryRunner: QueryRunner) => {
-        await queryRunner.manager.update(TradeDeal, dealId, {
-          escrowPublicKey,
-          escrowSecretKey: encryptedEscrowSecret,
-        });
+      return await this.dataSource.transaction(
+        async (queryRunner: QueryRunner) => {
+          await queryRunner.manager.update(TradeDeal, dealId, {
+            escrowPublicKey,
+            escrowSecretKey: encryptedEscrowSecret,
+          });
 
-        this.logger.info(
-          { dealId, escrowPublicKey },
-          'Escrow account created, enqueuing token issuance',
-        );
+          this.logger.info(
+            { dealId, escrowPublicKey },
+            'Escrow account created, enqueuing token issuance',
+          );
 
-        await this.queueService.enqueueDealPublishTransactional(queryRunner, {
-          dealId,
-          tokenSymbol: deal.tokenSymbol,
-          escrowPublicKey,
-          encryptedEscrowSecret,
-          tokenCount: deal.tokenCount,
-        });
+          await this.queueService.enqueueDealPublishTransactional(queryRunner, {
+            dealId,
+            tokenSymbol: deal.tokenSymbol,
+            escrowPublicKey,
+            encryptedEscrowSecret,
+            tokenCount: deal.tokenCount,
+          });
 
-        // Return deal with escrow data (status still draft, will be updated by queue processor)
-        return {
-          ...deal,
-          escrowPublicKey,
-          escrowSecretKey: encryptedEscrowSecret,
-        };
-      });
+          // Return deal with escrow data (status still draft, will be updated by queue processor)
+          return {
+            ...deal,
+            escrowPublicKey,
+            escrowSecretKey: encryptedEscrowSecret,
+          };
+        },
+      );
     } catch (error) {
       this.logger.error(
         { dealId, error: error.message },

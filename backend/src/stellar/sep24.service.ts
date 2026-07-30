@@ -184,7 +184,10 @@ export class Sep24Service {
 
     const url = `${this.interactiveBaseUrl}?transaction_id=${id}&kind=withdraw`;
 
-    this.logger.info({ id, account: req.account }, 'SEP-24 withdrawal initiated');
+    this.logger.info(
+      { id, account: req.account },
+      'SEP-24 withdrawal initiated',
+    );
 
     return {
       id,
@@ -265,9 +268,7 @@ export class Sep24Service {
     walletAddress: string | null,
   ): void {
     if (!walletAddress) {
-      throw new ForbiddenException(
-        'No wallet address linked to your account.',
-      );
+      throw new ForbiddenException('No wallet address linked to your account.');
     }
     if (account !== walletAddress) {
       throw new ForbiddenException(
@@ -285,7 +286,9 @@ export class Sep24Service {
     }
 
     if (!req.account.startsWith('G')) {
-      throw new BadRequestException('account must be a valid Stellar public key.');
+      throw new BadRequestException(
+        'account must be a valid Stellar public key.',
+      );
     }
 
     if (req.asset_code !== this.supportedAsset) {
@@ -322,7 +325,9 @@ export class Sep24Service {
       throw new NotFoundException(`Transaction ${id} not found.`);
     }
     if (tx.stellarAccount !== stellarAccount) {
-      throw new ForbiddenException('Transaction does not belong to this account.');
+      throw new ForbiddenException(
+        'Transaction does not belong to this account.',
+      );
     }
     return tx;
   }

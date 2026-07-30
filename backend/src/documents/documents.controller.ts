@@ -45,12 +45,42 @@ const ALLOWED_MIME_TYPES: ReadonlySet<string> = new Set([
  * Covers common script, executable, and web-exploit extensions.
  */
 const BLOCKED_EXTENSIONS: ReadonlySet<string> = new Set([
-  '.exe', '.bat', '.cmd', '.sh', '.ps1', '.psm1', '.vbs', '.vbe',
-  '.js',  '.jsx', '.ts',  '.tsx', '.mjs', '.cjs',
-  '.php', '.asp', '.aspx', '.jsp', '.py', '.rb', '.pl', '.lua',
-  '.dll', '.so',  '.dylib', '.elf',
-  '.svg', '.xml', '.html', '.htm', '.xhtml',
-  '.zip', '.tar', '.gz',  '.7z',  '.rar',
+  '.exe',
+  '.bat',
+  '.cmd',
+  '.sh',
+  '.ps1',
+  '.psm1',
+  '.vbs',
+  '.vbe',
+  '.js',
+  '.jsx',
+  '.ts',
+  '.tsx',
+  '.mjs',
+  '.cjs',
+  '.php',
+  '.asp',
+  '.aspx',
+  '.jsp',
+  '.py',
+  '.rb',
+  '.pl',
+  '.lua',
+  '.dll',
+  '.so',
+  '.dylib',
+  '.elf',
+  '.svg',
+  '.xml',
+  '.html',
+  '.htm',
+  '.xhtml',
+  '.zip',
+  '.tar',
+  '.gz',
+  '.7z',
+  '.rar',
 ]);
 
 /**
@@ -68,9 +98,9 @@ const MAX_FILENAME_LENGTH = 255;
  */
 function sanitizeFilename(raw: string): string {
   return raw
-    .replace(/\.\.[/\\]/g, '')   // strip directory traversal
-    .replace(/\0/g, '')           // strip null bytes
-    .replace(/\s+/g, ' ')         // collapse whitespace
+    .replace(/\.\.[/\\]/g, '') // strip directory traversal
+    .replace(/\0/g, '') // strip null bytes
+    .replace(/\s+/g, ' ') // collapse whitespace
     .trim()
     .slice(0, MAX_FILENAME_LENGTH);
 }
