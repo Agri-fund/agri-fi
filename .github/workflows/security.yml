@@ -92,12 +92,13 @@ jobs:
 
       - name: Wait for backend to be ready
         run: |
-          for i in {1..60}; do
-            if curl -s http://localhost:3001/health > /dev/null; then
+          for i in {1..90}; do
+            if curl -s http://localhost:3001/health > /dev/null || \
+               curl -s http://localhost:3001/v1/health > /dev/null; then
               echo "Backend is ready!"
               exit 0
             fi
-            echo "Waiting for backend to be ready... ($i/60)"
+            echo "Waiting for backend to be ready... ($i/90)"
             sleep 1
           done
           echo "Backend failed to start in time"
