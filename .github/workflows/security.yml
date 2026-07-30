@@ -43,6 +43,11 @@ jobs:
     env:
       NODE_ENV: test
       DATABASE_URL: postgres://agri:agri@localhost:5432/agri_test
+      DATABASE_HOST: localhost
+      DATABASE_PORT: "5432"
+      DATABASE_USER: agri
+      DATABASE_PASSWORD: agri
+      DATABASE_NAME: agri_test
       JWT_SECRET: zap-scan-secret
       STELLAR_NETWORK: testnet
       STELLAR_HORIZON_URL: https://horizon-testnet.stellar.org

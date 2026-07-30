@@ -62,14 +62,19 @@ describe('AuthService', () => {
         return defaultVal ?? '';
       }),
     };
-    notificationsService = { sendEmail: jest.fn().mockResolvedValue(undefined) };
+    notificationsService = {
+      sendEmail: jest.fn().mockResolvedValue(undefined),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
         { provide: getRepositoryToken(User), useValue: userRepo },
         { provide: getRepositoryToken(KycSubmission), useValue: kycRepo },
-        { provide: getRepositoryToken(LoginLog), useValue: { save: jest.fn() } },
+        {
+          provide: getRepositoryToken(LoginLog),
+          useValue: { save: jest.fn() },
+        },
         {
           provide: getRepositoryToken(AdminAction),
           useValue: { save: jest.fn() },
@@ -155,11 +160,13 @@ describe('AuthService', () => {
     it('stores documents and sets status to pending_review in production', async () => {
       const user = mockUser();
       userRepo.findOne.mockResolvedValue(user);
-      configService.get.mockImplementation((key: string, defaultVal?: string) => {
-        if (key === 'KYC_AUTO_APPROVE') return 'false';
-        if (key === 'STELLAR_NETWORK') return 'testnet';
-        return defaultVal ?? '';
-      });
+      configService.get.mockImplementation(
+        (key: string, defaultVal?: string) => {
+          if (key === 'KYC_AUTO_APPROVE') return 'false';
+          if (key === 'STELLAR_NETWORK') return 'testnet';
+          return defaultVal ?? '';
+        },
+      );
 
       kycRepo.create.mockReturnValue({ ...kycDto, status: 'pending_review' });
       kycRepo.save.mockResolvedValue({ ...kycDto, status: 'pending_review' });
@@ -178,11 +185,13 @@ describe('AuthService', () => {
     it('auto-approves KYC when flag is set', async () => {
       const user = mockUser();
       userRepo.findOne.mockResolvedValue(user);
-      configService.get.mockImplementation((key: string, defaultVal?: string) => {
-        if (key === 'KYC_AUTO_APPROVE') return 'true';
-        if (key === 'STELLAR_NETWORK') return 'testnet';
-        return defaultVal ?? '';
-      });
+      configService.get.mockImplementation(
+        (key: string, defaultVal?: string) => {
+          if (key === 'KYC_AUTO_APPROVE') return 'true';
+          if (key === 'STELLAR_NETWORK') return 'testnet';
+          return defaultVal ?? '';
+        },
+      );
 
       kycRepo.create.mockReturnValue({ ...kycDto, status: 'approved' });
       kycRepo.save.mockResolvedValue({ ...kycDto, status: 'approved' });
