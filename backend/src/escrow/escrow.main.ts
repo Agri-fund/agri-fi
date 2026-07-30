@@ -32,7 +32,7 @@ async function bootstrap() {
     },
   );
 
-  await app.startAllMicroservices();
+  await app.listen();
   console.log(
     'Escrow microservices running:\n' +
       `  • Primary queue: ${ESCROW_QUEUE_NAME}\n` +

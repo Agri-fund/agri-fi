@@ -1,4 +1,15 @@
 import { Test, TestingModule } from '@nestjs/testing';
+
+jest.mock('bcrypt', () => ({
+  hash: jest.fn().mockResolvedValue('hashed-password'),
+  compare: jest.fn().mockResolvedValue(true),
+}));
+
+jest.mock('argon2', () => ({
+  hash: jest.fn().mockResolvedValue('argon2-hashed'),
+  verify: jest.fn().mockResolvedValue(true),
+}));
+
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
@@ -10,7 +21,17 @@ const mockAuthService = {
   linkWallet: jest.fn(),
   submitKyc: jest.fn(),
   logout: jest.fn(),
+  cookieOptions: jest.fn().mockReturnValue({
+    httpOnly: true,
+    secure: false,
+    sameSite: 'lax',
+  }),
 };
+
+const mockResponse = () =>
+  ({
+    cookie: jest.fn(),
+  }) as any;
 
 describe('AuthController', () => {
   let controller: AuthController;
@@ -77,11 +98,17 @@ describe('AuthController', () => {
         password: 'password123',
       };
 
-      mockAuthService.login.mockResolvedValue({ access_token: 'jwt-token' });
+      mockAuthService.login.mockResolvedValue({
+        accessToken: 'jwt-token',
+        refreshToken: 'refresh-token',
+      });
+      const res = mockResponse();
 
-      await controller.login(loginDto);
+      await controller.login(loginDto, res);
 
       expect(mockAuthService.login).toHaveBeenCalledWith(loginDto);
+      expect(mockAuthService.cookieOptions).toHaveBeenCalled();
+      expect(res.cookie).toHaveBeenCalledTimes(2);
     });
 
     it('should mock JWT sign helper methods verification', async () => {
@@ -90,11 +117,12 @@ describe('AuthController', () => {
         password: 'password123',
       };
       mockAuthService.login.mockResolvedValue({
-        access_token: 'mock-signed-jwt',
+        accessToken: 'mock-signed-jwt',
+        refreshToken: 'mock-refresh-jwt',
       });
 
-      const result = await controller.login(loginDto);
-      expect(result.access_token).toBe('mock-signed-jwt');
+      const result = await controller.login(loginDto, mockResponse());
+      expect(result.accessToken).toBe('mock-signed-jwt');
       expect(mockAuthService.login).toHaveBeenCalledWith(loginDto);
     });
   });

@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsBoolean,
+  IsDateString,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -76,4 +77,12 @@ export class SubmitKycDto {
   @IsNotEmpty()
   @IsUrl()
   articlesOfIncorporationUrl?: string;
+
+  @ApiPropertyOptional({
+    example: '2027-12-31',
+    description: 'Optional expiry date of the identity document (ISO 8601)',
+  })
+  @IsOptional()
+  @IsDateString()
+  documentExpiresAt?: string;
 }

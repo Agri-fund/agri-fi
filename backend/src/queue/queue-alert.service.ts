@@ -33,9 +33,7 @@ export class QueueAlertService {
   constructor(
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
-  ) {
-    this.logger.setContext(QueueAlertService.name);
-  }
+  ) {}
 
   /**
    * Runs every minute. Adjust the cron expression if you need a different interval.

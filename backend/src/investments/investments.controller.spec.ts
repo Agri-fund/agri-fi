@@ -6,6 +6,7 @@ import { RolesGuard } from '../auth/roles.guard';
 import { InvestmentsController } from './investments.controller';
 import { InvestmentsService } from './investments.service';
 import { StellarService } from '../stellar/stellar.service';
+import { TradeDealsGuard } from '../trade-deals/trade-deals.guard';
 import { CreateInvestmentDto } from './dto/create-investment.dto';
 
 const mockInvestmentsService = {
@@ -32,7 +33,10 @@ describe('InvestmentsController', () => {
         { provide: StellarService, useValue: mockStellarService },
         { provide: APP_GUARD, useClass: ThrottlerGuard },
       ],
-    }).compile();
+    })
+      .overrideGuard(TradeDealsGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
 
     controller = module.get<InvestmentsController>(InvestmentsController);
     rolesGuard = new RolesGuard(new Reflector());

@@ -4,7 +4,23 @@ import { StellarMonitorService } from './stellar-monitor.service';
 import { Keypair } from '@stellar/stellar-sdk';
 import axios from 'axios';
 
-jest.mock('axios');
+jest.mock('axios', () => {
+  const mockAxios = {
+    create: jest.fn(() => ({
+      interceptors: {
+        request: { use: jest.fn() },
+        response: { use: jest.fn() },
+      },
+    })),
+    post: jest.fn(),
+    get: jest.fn(),
+  };
+  return {
+    __esModule: true,
+    default: mockAxios,
+    ...mockAxios,
+  };
+});
 
 /**
  * Unit tests for StellarMonitorService (Issue #359)
@@ -228,8 +244,8 @@ describe('StellarMonitorService', () => {
     it('should calculate metrics from transactions', () => {
       const baseTime = new Date('2026-06-20T00:00:00Z').getTime();
       const transactions = Array.from({ length: 10 }, (_, i) => ({
-        fee_charged: '100', // 100 stroops = 0.00001 XLM
-        created_at: new Date(baseTime + i * 60 * 60 * 1000).toISOString(),
+        fee_charged: '100',
+        created_at: new Date(baseTime + (9 - i) * 60 * 60 * 1000).toISOString(),
       }));
 
       const metrics = (service as any).analyzeFeeMetrics(transactions);
@@ -241,10 +257,11 @@ describe('StellarMonitorService', () => {
 
     it('should project monthly burn correctly', () => {
       const baseTime = new Date('2026-06-01T00:00:00Z').getTime();
-      // 60 transactions over 30 days
       const transactions = Array.from({ length: 60 }, (_, i) => ({
-        fee_charged: '100000', // 100000 stroops = 0.01 XLM
-        created_at: new Date(baseTime + i * 12 * 60 * 60 * 1000).toISOString(),
+        fee_charged: '100000',
+        created_at: new Date(
+          baseTime + (59 - i) * 12 * 60 * 60 * 1000,
+        ).toISOString(),
       }));
 
       const metrics = (service as any).analyzeFeeMetrics(transactions);

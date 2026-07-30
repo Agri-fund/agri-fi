@@ -384,7 +384,7 @@ export class UsersService {
         id: `kyc-${kyc.id}`,
         type: 'kyc',
         title: 'KYC submission',
-        description: `KYC verification ${kyc.status === 'verified' ? 'approved' : kyc.status === 'rejected' ? 'rejected' : 'submitted'}`,
+        description: `KYC verification ${kyc.status === 'approved' ? 'approved' : kyc.status === 'rejected' ? 'rejected' : 'submitted'}`,
         meta: {
           kycId: kyc.id,
           status: kyc.status,

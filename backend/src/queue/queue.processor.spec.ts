@@ -1,5 +1,12 @@
 import { QueueProcessor } from './queue.processor';
 
+jest.mock('./queue.crypto', () => ({
+  decryptPayload: jest.fn((payload: unknown) =>
+    typeof payload === 'string' ? JSON.parse(payload) : payload,
+  ),
+  encryptPayload: jest.fn((payload: unknown) => JSON.stringify(payload)),
+}));
+
 describe('QueueProcessor', () => {
   let processor: QueueProcessor;
   let stellarService: {
@@ -24,7 +31,7 @@ describe('QueueProcessor', () => {
     getChannelRef: jest.Mock;
     getMessage: jest.Mock;
   };
-  let channel: { ack: jest.Mock };
+  let channel: { ack: jest.Mock; nack: jest.Mock };
   const message = { fields: { deliveryTag: 1 } };
 
   beforeEach(() => {
@@ -46,7 +53,7 @@ describe('QueueProcessor', () => {
       warn: jest.fn(),
       error: jest.fn(),
     };
-    channel = { ack: jest.fn() };
+    channel = { ack: jest.fn(), nack: jest.fn() };
     context = {
       getChannelRef: jest.fn().mockReturnValue(channel),
       getMessage: jest.fn().mockReturnValue(message),
@@ -67,13 +74,13 @@ describe('QueueProcessor', () => {
 
   describe('handleDealPublish', () => {
     it('encrypts issuer secret before persisting the published deal', async () => {
-      stellarService.decryptSecret.mockReturnValue('plain-escrow-secret');
+      stellarService.decryptSecret.mockResolvedValue('plain-escrow-secret');
       stellarService.issueTradeToken.mockResolvedValue({
         txId: 'tx-123',
         issuerPublicKey: 'GISSUER123',
         issuerSecret: 'plain-issuer-secret',
       });
-      stellarService.encryptSecret.mockReturnValue('encrypted-issuer-secret');
+      stellarService.encryptSecret.mockResolvedValue('encrypted-issuer-secret');
       tradeDealRepo.update.mockResolvedValue({ affected: 1 });
 
       await processor.handleDealPublish(
@@ -83,7 +90,7 @@ describe('QueueProcessor', () => {
           escrowPublicKey: 'GESCROW123',
           encryptedEscrowSecret: 'encrypted-escrow-secret',
           tokenCount: 50,
-        },
+        } as any,
         context as any,
       );
 
@@ -101,6 +108,7 @@ describe('QueueProcessor', () => {
       );
       expect(tradeDealRepo.update).toHaveBeenCalledWith('deal-uuid', {
         status: 'open',
+        appTraceId: expect.any(String),
         stellarAssetTxId: 'tx-123',
         issuerPublicKey: 'GISSUER123',
         issuerSecretKey: 'encrypted-issuer-secret',
@@ -110,16 +118,17 @@ describe('QueueProcessor', () => {
         expect.objectContaining({ issuerSecretKey: 'plain-issuer-secret' }),
       );
       expect(channel.ack).toHaveBeenCalledWith(message);
+      expect(channel.nack).not.toHaveBeenCalled();
     });
 
     it('does not persist the issuer secret if encryption returns plaintext', async () => {
-      stellarService.decryptSecret.mockReturnValue('plain-escrow-secret');
+      stellarService.decryptSecret.mockResolvedValue('plain-escrow-secret');
       stellarService.issueTradeToken.mockResolvedValue({
         txId: 'tx-123',
         issuerPublicKey: 'GISSUER123',
         issuerSecret: 'plain-issuer-secret',
       });
-      stellarService.encryptSecret.mockReturnValue('plain-issuer-secret');
+      stellarService.encryptSecret.mockResolvedValue('plain-issuer-secret');
       tradeDealRepo.update.mockResolvedValue({ affected: 1 });
 
       await processor.handleDealPublish(
@@ -129,7 +138,7 @@ describe('QueueProcessor', () => {
           escrowPublicKey: 'GESCROW123',
           encryptedEscrowSecret: 'encrypted-escrow-secret',
           tokenCount: 50,
-        },
+        } as any,
         context as any,
       );
 
@@ -142,8 +151,10 @@ describe('QueueProcessor', () => {
       );
       expect(tradeDealRepo.update).toHaveBeenCalledWith('deal-uuid', {
         status: 'failed',
+        appTraceId: expect.any(String),
       });
-      expect(channel.ack).toHaveBeenCalledWith(message);
+      expect(channel.nack).toHaveBeenCalledWith(message, false, true);
+      expect(channel.ack).not.toHaveBeenCalled();
     });
   });
 });

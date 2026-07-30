@@ -55,7 +55,7 @@ export class SorobanEventIndexer implements OnModuleInit, OnModuleDestroy {
   private readonly rpcServer: rpc.Server;
   private readonly horizonServer: Horizon.Server;
   private readonly networkPassphrase: string;
-  private pollingInterval: NodeJS.Timer | null = null;
+  private pollingInterval: ReturnType<typeof setInterval> | null = null;
   private lastLedger: number = 0;
   private readonly processedEventsCache = new Map<string, ProcessedEvent>();
   private isRunning = false;

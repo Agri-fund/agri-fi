@@ -255,7 +255,7 @@ export class AdminController {
       );
     }
 
-    const issuerSecret = this.stellarService.decryptSecret(
+    const issuerSecret = await this.stellarService.decryptSecret(
       deal.issuerSecretKey,
     );
     const txId = await this.stellarService.freezeAsset(

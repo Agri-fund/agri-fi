@@ -23,6 +23,9 @@ export class DatabaseConfig
   constructor(private readonly config: ConfigService) {}
 
   createTypeOrmOptions(): TypeOrmModuleOptions {
+    const isProduction =
+      this.config.get<string>('NODE_ENV', 'development') === 'production';
+
     const masterConnection = {
       host: this.config.get<string>('DATABASE_HOST', 'localhost'),
       port: this.config.get<number>('DATABASE_PORT', 5432),

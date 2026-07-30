@@ -130,7 +130,7 @@ export class EscrowService {
     // before opening the DB transaction so a Stellar failure leaves the database
     // unchanged. If the DB writes below fail after Stellar succeeds we log the
     // Stellar TX IDs and alert ops so the distributions can be reconstructed.
-    const escrowSecret = this.stellarService.decryptSecret(
+    const escrowSecret = await this.stellarService.decryptSecret(
       deal.escrowSecretKey,
     );
 

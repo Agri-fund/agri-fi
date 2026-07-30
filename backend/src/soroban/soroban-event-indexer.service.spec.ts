@@ -25,6 +25,15 @@ describe('SorobanEventIndexer', () => {
   let logger: any;
 
   beforeEach(async () => {
+    process.env.FARM_CAMPAIGN_CONTRACT =
+      'C1111111111111111111111111111111111111111111111111111111111';
+    process.env.PROJECT_FACTORY_CONTRACT =
+      'C2222222222222222222222222222222222222222222222222222222222';
+    process.env.REVENUE_DISTRIBUTOR_CONTRACT =
+      'C3333333333333333333333333333333333333333333333333333333333';
+    process.env.MARKETPLACE_SETTLEMENT_CONTRACT =
+      'C4444444444444444444444444444444444444444444444444444444444';
+
     // Setup mocks
     txLogRepo = {
       update: jest.fn().mockResolvedValue({ affected: 1 }),
@@ -102,7 +111,6 @@ describe('SorobanEventIndexer', () => {
     it('should initialize successfully', async () => {
       await service.onModuleInit();
       expect(logger.info).toHaveBeenCalledWith(
-        expect.any(Object),
         'Initializing Soroban event indexer...',
       );
     });
@@ -146,7 +154,7 @@ describe('SorobanEventIndexer', () => {
       );
 
       expect(milestoneRepo.findOne).toHaveBeenCalled();
-      expect(milestone.save).toHaveBeenCalled();
+      expect(milestoneRepo.save).toHaveBeenCalledWith(milestone);
 
       expect(queueService.emit).toHaveBeenCalledWith(
         'milestone.completed',

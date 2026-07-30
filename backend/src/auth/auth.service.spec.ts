@@ -4,6 +4,16 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { NotFoundException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
+
+jest.mock('bcrypt', () => ({
+  hash: jest.fn().mockResolvedValue('hashed-password'),
+  compare: jest.fn().mockResolvedValue(true),
+}));
+
+jest.mock('argon2', () => ({
+  hash: jest.fn().mockResolvedValue('argon2-hashed'),
+  verify: jest.fn().mockResolvedValue(true),
+}));
 import { AuthService } from './auth.service';
 import { User } from './entities/user.entity';
 import { KycSubmission } from './entities/kyc-submission.entity';
@@ -77,7 +87,10 @@ describe('AuthService', () => {
         },
         {
           provide: getRepositoryToken(AdminAction),
-          useValue: { save: jest.fn() },
+          useValue: {
+            save: jest.fn(),
+            create: jest.fn((value) => value),
+          },
         },
         { provide: JwtService, useValue: jwtService },
         { provide: ConfigService, useValue: configService },

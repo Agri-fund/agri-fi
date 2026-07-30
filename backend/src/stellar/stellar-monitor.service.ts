@@ -136,7 +136,10 @@ export class StellarMonitorService {
         .limit(100)
         .call();
 
-      return transactions.records || [];
+      return (transactions.records || []).map((record) => ({
+        fee_charged: String(record.fee_charged),
+        created_at: record.created_at,
+      }));
     } catch (error: any) {
       this.logger.warn('Failed to fetch recent transactions', error.message);
       return [];

@@ -4,7 +4,7 @@ import {
   ValidatorConstraint,
   ValidatorConstraintInterface,
 } from 'class-validator';
-import * as zxcvbn from 'zxcvbn';
+import zxcvbn = require('zxcvbn');
 
 @ValidatorConstraint({ name: 'isStrongPassword', async: false })
 export class IsStrongPasswordConstraint implements ValidatorConstraintInterface {

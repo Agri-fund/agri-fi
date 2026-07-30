@@ -6,7 +6,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository, QueryRunner } from 'typeorm';
+import { DataSource, Repository, EntityManager } from 'typeorm';
 import { PinoLogger } from 'nestjs-pino';
 import { TradeDeal, TradeDealStatus } from './entities/trade-deal.entity';
 import { Document, DocumentType } from './entities/document.entity';
@@ -307,8 +307,8 @@ export class TradeDealsService {
       // will ever process.
       // Use transactional outbox for atomic DB update + event publish
       return await this.dataSource.transaction(
-        async (queryRunner: QueryRunner) => {
-          await queryRunner.manager.update(TradeDeal, dealId, {
+        async (manager: EntityManager) => {
+          await manager.update(TradeDeal, dealId, {
             escrowPublicKey,
             escrowSecretKey: encryptedEscrowSecret,
           });
@@ -317,6 +317,11 @@ export class TradeDealsService {
             { dealId, escrowPublicKey },
             'Escrow account created, enqueuing token issuance',
           );
+
+          const queryRunner = manager.queryRunner;
+          if (!queryRunner) {
+            throw new Error('Active transaction required for outbox write');
+          }
 
           await this.queueService.enqueueDealPublishTransactional(queryRunner, {
             dealId,
@@ -449,7 +454,7 @@ export class TradeDealsService {
       }
 
       if (investorShares.length > 0) {
-        const issuerSecret = this.stellarService.decryptSecret(
+        const issuerSecret = await this.stellarService.decryptSecret(
           deal.issuerSecretKey,
         );
 

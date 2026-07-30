@@ -67,6 +67,7 @@
     "express-basic-auth": "^1.2.1",
     "file-type": "^16.5.4",
     "helmet": "^8.2.0",
+    "joi": "^18.2.3",
     "nestjs-cls": "^6.2.0",
     "nestjs-pino": "^4.6.1",
     "nodemailer": "^8.0.6",

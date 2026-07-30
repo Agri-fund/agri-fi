@@ -368,7 +368,13 @@ export class AuthService {
         // decode error ignored
       }
     }
-    return { message: 'Logged out successfully' };
+
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found.');
+
+    user.tokenVersion = (user.tokenVersion ?? 0) + 1;
+    await this.userRepo.save(user);
+    return { message: 'Logged out successfully.' };
   }
 
   // ── MFA ───────────────────────────────────────────────────────────────────
@@ -814,15 +820,6 @@ export class AuthService {
     };
   }
 
-  async logout(userId: string): Promise<{ message: string }> {
-    const user = await this.userRepo.findOne({ where: { id: userId } });
-    if (!user) throw new NotFoundException('User not found.');
-
-    user.tokenVersion = (user.tokenVersion ?? 0) + 1;
-    await this.userRepo.save(user);
-    return { message: 'Logged out successfully.' };
-  }
-
   // ── list users ─────────────────────────────────────────────────────────────
 
   async listUsers(
@@ -911,7 +908,7 @@ export class AuthService {
 
     const now = Math.floor(Date.now() / 1000);
     if (tx.timeBounds) {
-      if (tx.timeBounds.maxTime && now > tx.timeBounds.maxTime) {
+      if (tx.timeBounds.maxTime && now > Number(tx.timeBounds.maxTime)) {
         throw new UnauthorizedException('SEP-10 challenge has expired');
       }
     }
@@ -920,7 +917,7 @@ export class AuthService {
     const serverSigned = tx.signatures.some((sig) => {
       try {
         const keypair = this.sep10SigningKeypair;
-        return keypair.verify(tx.hash(), sig.signature);
+        return keypair.verify(tx.hash(), sig.signature());
       } catch {
         return false;
       }
@@ -932,9 +929,7 @@ export class AuthService {
     }
 
     // Extract the manageData operation to find the client public key
-    const manageDataOp = tx.operations.find(
-      (op) => op.type === 11, // manageData
-    );
+    const manageDataOp = tx.operations.find((op) => op.type === 'manageData');
     if (!manageDataOp) {
       throw new UnauthorizedException(
         'SEP-10 challenge must contain a manageData operation',
@@ -952,11 +947,11 @@ export class AuthService {
     const txHash = tx.hash();
     const clientVerified = tx.signatures.some((sig) => {
       try {
-        const hint = sig.hint.toString('hex');
+        const hint = Buffer.from(sig.hint()).toString('hex');
         const clientKeypair = Keypair.fromPublicKey(clientPublicKey);
         const clientHint = clientKeypair.signatureHint().toString('hex');
         if (hint !== clientHint) return false;
-        return clientKeypair.verify(txHash, sig.signature);
+        return clientKeypair.verify(txHash, sig.signature());
       } catch {
         return false;
       }
