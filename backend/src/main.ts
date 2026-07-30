@@ -25,8 +25,8 @@ import { Logger } from 'nestjs-pino';
 import { JsonBigIntInterceptor } from './common/interceptors/json-bigint.interceptor';
 import { UserContextInterceptor } from './common/interceptors/user-context.interceptor';
 import { ClsService } from 'nestjs-cls';
-import * as cookieParser from 'cookie-parser';
-import * as csrf from 'csurf';
+import cookieParser from 'cookie-parser';
+import csurf from 'csurf';
 
 async function bootstrap() {
   // rawBody: true preserves the unparsed request buffer on req.rawBody,
@@ -89,7 +89,7 @@ async function bootstrap() {
 
   // CSRF protection for cookie-based (session) endpoints.
   // JWT-only routes are unaffected; the token is exposed via GET /csrf-token.
-  const csrfProtection = csrf({
+  const csrfProtection = csurf({
     cookie: { httpOnly: true, sameSite: 'strict' },
   });
   app.use(csrfProtection);
