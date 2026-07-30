@@ -1,4 +1,4 @@
-import 'dotenv-vault/config';
+import 'dotenv/config';
 
 // Shim BigInt JSON serialization globally.
 // Stellar ledger amounts (stroops, sequence numbers) can exceed Number.MAX_SAFE_INTEGER.
