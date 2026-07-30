@@ -22,7 +22,15 @@ export class KmsService {
     const region = this.config.get<string>('AWS_REGION', 'us-east-1');
     this.keyId = this.config.get<string>('KMS_KEY_ID');
     if (!this.keyId) {
-      throw new Error('KMS_KEY_ID environment variable is required');
+      const nodeEnv = this.config.get<string>('NODE_ENV', 'development');
+      if (nodeEnv === 'test') {
+        this.logger.warn(
+          'KMS_KEY_ID is not set; using a dummy key id for test bootstrapping',
+        );
+        this.keyId = 'alias/ci-test-kms-key';
+      } else {
+        throw new Error('KMS_KEY_ID environment variable is required');
+      }
     }
     this.kmsClient = new KMSClient({ region });
   }
