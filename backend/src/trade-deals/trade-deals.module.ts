@@ -73,6 +73,6 @@ const DEALS_CACHE_TTL_MS = 30_000;
     TradeDealsCronService,
     DealFundingAlertService,
   ],
-  exports: [TradeDealsService],
+  exports: [TradeDealsService, TradeDealsGuard],
 })
 export class TradeDealsModule {}
