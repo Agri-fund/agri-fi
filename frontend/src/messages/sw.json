@@ -63,36 +63,81 @@
       "farmer": {
         "title": "Wakulima",
         "cta": "Anza kama Mkulima",
-        "points": ["Zindua kampeni za ufadhili", "Pakia data ya shamba na mavuno", "Uza moja kwa moja kwa wanunuzi", "Toa mapato mara moja"]
+        "points": [
+          "Zindua kampeni za ufadhili",
+          "Pakia data ya shamba na mavuno",
+          "Uza moja kwa moja kwa wanunuzi",
+          "Toa mapato mara moja"
+        ]
       },
       "investor": {
         "title": "Wawekezaji",
         "cta": "Anza Kuwekeza",
-        "points": ["Vinjari miradi iliyochunguzwa", "Wekeza kwa sehemu kuanzia $100", "Pata ROI ya uwazi", "Fuatilia portfolio kwa wakati halisi"]
+        "points": [
+          "Vinjari miradi iliyochunguzwa",
+          "Wekeza kwa sehemu kuanzia $100",
+          "Pata ROI ya uwazi",
+          "Fuatilia portfolio kwa wakati halisi"
+        ]
       },
       "company": {
         "title": "Makampuni",
         "cta": "Jiandikishe kama Mnunuzi",
-        "points": ["Nunua bidhaa kwa wingi moja kwa moja", "Mtandao wa wakulima waliohakikishwa", "Fuatilia usafirishaji moja kwa moja", "Malipo salama ya escrow"]
+        "points": [
+          "Nunua bidhaa kwa wingi moja kwa moja",
+          "Mtandao wa wakulima waliohakikishwa",
+          "Fuatilia usafirishaji moja kwa moja",
+          "Malipo salama ya escrow"
+        ]
       }
     },
     "steps": {
       "title": "Jinsi inavyofanya kazi",
-      "step1": { "title": "Fungua Akaunti", "desc": "Jiandikishe kama mkulima, mwekezaji, au kampuni kwa chini ya dakika 2." },
-      "step2": { "title": "Kamilisha KYC", "desc": "Thibitisha utambulisho wako ili kufungua ufikiaji kamili wa jukwaa." },
-      "step3": { "title": "Fadhili au Orodhesha", "desc": "Wakulima wanaorodhesha mazao; wawekezaji wanaangalia na kufadhili miradi." },
-      "step4": { "title": "Pata Mapato", "desc": "Fuatilia mavuno, pokea malipo, na uwekeze tena faida." }
+      "step1": {
+        "title": "Fungua Akaunti",
+        "desc": "Jiandikishe kama mkulima, mwekezaji, au kampuni kwa chini ya dakika 2."
+      },
+      "step2": {
+        "title": "Kamilisha KYC",
+        "desc": "Thibitisha utambulisho wako ili kufungua ufikiaji kamili wa jukwaa."
+      },
+      "step3": {
+        "title": "Fadhili au Orodhesha",
+        "desc": "Wakulima wanaorodhesha mazao; wawekezaji wanaangalia na kufadhili miradi."
+      },
+      "step4": {
+        "title": "Pata Mapato",
+        "desc": "Fuatilia mavuno, pokea malipo, na uwekeze tena faida."
+      }
     },
     "transparency": {
       "badge": "Blockchain ya Stellar",
       "title": "Uwazi kwa muundo",
       "description": "Kila uwekezaji, malipo, na alama imerekodiwa kwenye Stellar. Thibitisha chochote, wakati wowote.",
-      "smartContracts": { "title": "Mikataba Akili ya Soroban", "desc": "Mikataba ya FarmCampaign inafanya kiotomatiki escrow, utoaji wa alama, na usambazaji wa mapato." },
-      "tokenized": { "title": "Uwekezaji Uliotokeni", "desc": "Kila mradi hutoa mali za Stellar. Wawekezaji wanashikilia tokeni zinazowakilisha umiliki wa sehemu." },
-      "usdc": { "title": "Malipo ya USDC", "desc": "Malipo yote yanatumia USDC kwenye Stellar — imara, ya haraka, na ya kimataifa." },
-      "certificates": { "title": "Vyeti vya Kwenye Mnyororo", "desc": "Vyeti vya uwekezaji vinategemewa na miamala isiyobadilika ya Stellar." },
-      "anchors": { "title": "Stellar Anchors", "desc": "Weka NGN, KES, GHS, ZAR au USD na upokee USDC mara moja." },
-      "audit": { "title": "Rekodi ya Ukaguzi wa Umma", "desc": "Kila anwani ya mkataba, hash ya muamala, na malipo inaweza kuthibitishwa hadharani." },
+      "smartContracts": {
+        "title": "Mikataba Akili ya Soroban",
+        "desc": "Mikataba ya FarmCampaign inafanya kiotomatiki escrow, utoaji wa alama, na usambazaji wa mapato."
+      },
+      "tokenized": {
+        "title": "Uwekezaji Uliotokeni",
+        "desc": "Kila mradi hutoa mali za Stellar. Wawekezaji wanashikilia tokeni zinazowakilisha umiliki wa sehemu."
+      },
+      "usdc": {
+        "title": "Malipo ya USDC",
+        "desc": "Malipo yote yanatumia USDC kwenye Stellar — imara, ya haraka, na ya kimataifa."
+      },
+      "certificates": {
+        "title": "Vyeti vya Kwenye Mnyororo",
+        "desc": "Vyeti vya uwekezaji vinategemewa na miamala isiyobadilika ya Stellar."
+      },
+      "anchors": {
+        "title": "Stellar Anchors",
+        "desc": "Weka NGN, KES, GHS, ZAR au USD na upokee USDC mara moja."
+      },
+      "audit": {
+        "title": "Rekodi ya Ukaguzi wa Umma",
+        "desc": "Kila anwani ya mkataba, hash ya muamala, na malipo inaweza kuthibitishwa hadharani."
+      },
       "viewData": "Tazama Data ya Blockchain ya Moja kwa Moja"
     },
     "cta": {
@@ -171,7 +216,14 @@
       "deliveryDateRequired": "Tarehe ya utoaji inahitajika",
       "deliveryDateFuture": "Tarehe ya mwisho lazima iwe siku zijazo",
       "invalidId": "Kitambulisho batili"
-    }
+    },
+    "status": "Status",
+    "details": "Details",
+    "documents": "Documents",
+    "milestones": "Milestones",
+    "investors": "Investors",
+    "fundingProgress": "Funding Progress",
+    "publishDeal": "Publish Deal"
   },
   "common": {
     "loading": "Inapakia...",
@@ -190,5 +242,66 @@
     "currency": "{value, number, currency}",
     "date": "{value, date, short}",
     "number": "{value, number}"
+  },
+  "wallet": {
+    "title": "Connect Stellar Wallet",
+    "subtitle": "Choose a wallet provider to connect",
+    "description": "Your private key never leaves your wallet. Agri-Fi only ever sees your public key.",
+    "connectButton": "Connect Wallet",
+    "connecting": "Connecting…",
+    "connected": "Connected",
+    "disconnect": "Disconnect",
+    "freighter": {
+      "name": "Freighter",
+      "type": "Browser extension wallet"
+    },
+    "albedo": {
+      "name": "Albedo",
+      "type": "Web-based signer — no install needed"
+    },
+    "detected": "Detected",
+    "install": "Install",
+    "alwaysAvailable": "Always available",
+    "openDialog": "Open wallet connection dialog",
+    "closeDialog": "Close wallet connection dialog",
+    "error": "Error connecting wallet",
+    "errorConnect": "Failed to connect wallet",
+    "errorLink": "Failed to link wallet",
+    "pleaseTryAgain": "Please try again"
+  },
+  "investment": {
+    "title": "Invest",
+    "subtitle": "Select token quantity to invest",
+    "tokenQuantity": "Token Quantity",
+    "tokenPrice": "Token Price",
+    "totalAmount": "Total Amount",
+    "maxTokens": "Max: {max} tokens",
+    "insufficientTokens": "Not enough tokens available",
+    "invest": "Invest",
+    "investing": "Investing...",
+    "invalidQuantity": "Token quantity must be between 1 and {max}",
+    "connectWallet": "Please connect your wallet first",
+    "success": "Investment successful!",
+    "error": "Investment failed",
+    "txPending": "Transaction pending...",
+    "txConfirmed": "Transaction confirmed",
+    "txFailed": "Transaction failed"
+  },
+  "marketplace": {
+    "title": "Marketplace",
+    "subtitle": "Explore agricultural trade deals",
+    "searchPlaceholder": "Search commodity, trader...",
+    "filterByStatus": "Filter by Status",
+    "filterByCategory": "Filter by Category",
+    "sortBy": "Sort By",
+    "noDeals": "No deals available",
+    "loadingDeals": "Loading deals...",
+    "status": {
+      "draft": "Draft",
+      "published": "Published",
+      "funded": "Funded",
+      "completed": "Completed",
+      "cancelled": "Cancelled"
+    }
   }
 }

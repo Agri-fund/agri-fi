@@ -13,7 +13,7 @@
     "build:docs": "npm run build && node generate-openapi.js",
     "start": "nest start",
     "start:dev": "nest start --watch",
-    "start:prod": "node -r dotenv-vault/config dist/main",
+    "start:prod": "node dist/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\"",
     "typeorm": "typeorm-ts-node-commonjs",
     "migration:run": "npm run typeorm migration:run -- -d src/database/data-source.ts",

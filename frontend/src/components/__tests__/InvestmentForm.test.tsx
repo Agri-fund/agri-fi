@@ -2,24 +2,33 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { InvestmentForm } from '../InvestmentForm';
 import { ToastProvider } from '../ui/ToastProvider';
-import * as freighterApi from '@stellar/freighter-api';
 
 const renderWithToast = (ui: React.ReactElement) =>
   render(<ToastProvider>{ui}</ToastProvider>);
 
-// Mock the useWallet hook
 jest.mock('../../hooks/useWallet', () => ({
   useWallet: jest.fn(),
 }));
 
-const mockUseWallet = require('../../hooks/useWallet').useWallet as jest.Mock;
+jest.mock('../../lib/api', () => ({
+  ...jest.requireActual('../../lib/api'),
+  getStoredToken: jest.fn(() => 'mock-auth-token'),
+}));
 
-// Mock localStorage
-const mockLocalStorage = {
-  getItem: jest.fn(() => 'mock-auth-token'),
-};
-Object.defineProperty(window, 'localStorage', {
-  value: mockLocalStorage,
+const mockUseWallet = require('../../hooks/useWallet').useWallet as jest.Mock;
+const mockGetStoredToken = require('../../lib/api').getStoredToken as jest.Mock;
+
+const createInvestmentResponse = (tokenAmount = 1, amountUsd = 100) => ({
+  investment: {
+    id: 'investment-123',
+    tokenAmount,
+    amountUsd,
+  },
+  unsignedXdr: 'unsigned-xdr-123',
+});
+
+const fundResponse = (stellarTxId = 'stellar-tx-456') => ({
+  stellarTxId,
 });
 
 describe('InvestmentForm', () => {
@@ -34,8 +43,8 @@ describe('InvestmentForm', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (global.fetch as jest.Mock).mockClear();
-    
-    // Default wallet state - connected
+    mockGetStoredToken.mockReturnValue('mock-auth-token');
+
     mockUseWallet.mockReturnValue({
       isConnected: true,
       publicKey: 'GTEST123...',
@@ -50,19 +59,16 @@ describe('InvestmentForm', () => {
     expect(tokenInput).toBeInTheDocument();
     expect(tokenInput).toHaveValue(1);
 
-    // Check initial calculation
     expect(screen.getByText('Token Price:')).toBeInTheDocument();
     expect(screen.getByText('Quantity:')).toBeInTheDocument();
     expect(screen.getByText('Total Investment:')).toBeInTheDocument();
 
-    // Change quantity using fireEvent to directly set the value
     fireEvent.change(tokenInput, { target: { value: '5' } });
 
     await waitFor(() => {
       expect(tokenInput).toHaveValue(5);
     });
 
-    // Check submit button text updates
     expect(screen.getByText('Invest $500')).toBeInTheDocument();
   });
 
@@ -72,30 +78,26 @@ describe('InvestmentForm', () => {
     const tokenInput = screen.getByLabelText('Number of Tokens');
     const submitButton = screen.getByRole('button', { name: /Invest/ });
 
-    // Test below minimum
     fireEvent.change(tokenInput, { target: { value: '0' } });
-    
+
     await waitFor(() => {
       expect(submitButton).toBeDisabled();
     });
 
-    // Test above maximum
     fireEvent.change(tokenInput, { target: { value: '100' } });
-    
+
     await waitFor(() => {
       expect(submitButton).toBeDisabled();
     });
 
-    // Test valid range
     fireEvent.change(tokenInput, { target: { value: '25' } });
-    
+
     await waitFor(() => {
       expect(submitButton).not.toBeDisabled();
     });
 
-    // Test edge case - exactly at max
     fireEvent.change(tokenInput, { target: { value: '50' } });
-    
+
     await waitFor(() => {
       expect(submitButton).not.toBeDisabled();
     });
@@ -117,29 +119,21 @@ describe('InvestmentForm', () => {
   it('handles successful investment flow', async () => {
     const user = userEvent.setup();
     const mockSignTransaction = jest.fn().mockResolvedValue('signed-xdr-123');
-    
+
     mockUseWallet.mockReturnValue({
       isConnected: true,
       publicKey: 'GTEST123...',
       signTransaction: mockSignTransaction,
     });
 
-    // Mock API responses
     (global.fetch as jest.Mock)
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({
-          id: 'investment-123',
-          unsignedXdr: 'unsigned-xdr-123',
-          tokenAmount: 5,
-          amountUsd: 500,
-        }),
+        json: async () => createInvestmentResponse(5, 500),
       })
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({
-          stellarTxId: 'stellar-tx-456',
-        }),
+        json: async () => fundResponse('stellar-tx-456'),
       });
 
     renderWithToast(<InvestmentForm {...defaultProps} />);
@@ -147,34 +141,41 @@ describe('InvestmentForm', () => {
     const tokenInput = screen.getByLabelText('Number of Tokens');
     const submitButton = screen.getByRole('button', { name: /Invest/ });
 
-    // Set token quantity using fireEvent
     fireEvent.change(tokenInput, { target: { value: '5' } });
-
-    // Submit form
     await user.click(submitButton);
 
-    // Wait for success state
     await waitFor(() => {
       expect(screen.getByText('Investment Successful!')).toBeInTheDocument();
     });
 
-    // Check success details
     expect(screen.getByText('Investment Amount:')).toBeInTheDocument();
     expect(screen.getByText(/\$500/)).toBeInTheDocument();
     expect(screen.getByText('Tokens Purchased:')).toBeInTheDocument();
     expect(screen.getByText('5')).toBeInTheDocument();
-    expect(screen.getByText('stellar-tx-456')).toBeInTheDocument();
+    expect(screen.getAllByText('stellar-tx-456').length).toBeGreaterThan(0);
 
-    // Verify API calls
     expect(global.fetch).toHaveBeenCalledWith('/api/investments', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': 'Bearer mock-auth-token',
+        Authorization: 'Bearer mock-auth-token',
       },
       body: JSON.stringify({
         tradeDealId: 'deal-123',
         tokenAmount: 5,
+        amountUsd: 500,
+      }),
+    });
+
+    expect(global.fetch).toHaveBeenCalledWith('/api/investments/investment-123/fund', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer mock-auth-token',
+      },
+      body: JSON.stringify({
+        investorWalletAddress: 'GTEST123...',
+        signedXdr: 'signed-xdr-123',
       }),
     });
 
@@ -183,7 +184,7 @@ describe('InvestmentForm', () => {
 
   it('handles investment creation error', async () => {
     const user = userEvent.setup();
-    
+
     (global.fetch as jest.Mock).mockResolvedValueOnce({
       ok: false,
       json: async () => ({ message: 'Insufficient tokens available' }),
@@ -204,7 +205,7 @@ describe('InvestmentForm', () => {
   it('handles Freighter signing error', async () => {
     const user = userEvent.setup();
     const mockSignTransaction = jest.fn().mockRejectedValue(new Error('User rejected transaction'));
-    
+
     mockUseWallet.mockReturnValue({
       isConnected: true,
       publicKey: 'GTEST123...',
@@ -213,12 +214,7 @@ describe('InvestmentForm', () => {
 
     (global.fetch as jest.Mock).mockResolvedValueOnce({
       ok: true,
-      json: async () => ({
-        id: 'investment-123',
-        unsignedXdr: 'unsigned-xdr-123',
-        tokenAmount: 1,
-        amountUsd: 100,
-      }),
+      json: async () => createInvestmentResponse(),
     });
 
     renderWithToast(<InvestmentForm {...defaultProps} />);
@@ -233,7 +229,7 @@ describe('InvestmentForm', () => {
 
   it('handles authentication error', async () => {
     const user = userEvent.setup();
-    mockLocalStorage.getItem.mockReturnValueOnce(null);
+    mockGetStoredToken.mockReturnValueOnce(null);
 
     renderWithToast(<InvestmentForm {...defaultProps} />);
 
@@ -248,7 +244,7 @@ describe('InvestmentForm', () => {
   it('allows making another investment after success', async () => {
     const user = userEvent.setup();
     const mockSignTransaction = jest.fn().mockResolvedValue('signed-xdr-123');
-    
+
     mockUseWallet.mockReturnValue({
       isConnected: true,
       publicKey: 'GTEST123...',
@@ -256,9 +252,13 @@ describe('InvestmentForm', () => {
     });
 
     (global.fetch as jest.Mock)
-      .mockResolvedValue({
+      .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ stellarTxId: 'stellar-tx-456' }),
+        json: async () => createInvestmentResponse(),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => fundResponse(),
       });
 
     renderWithToast(<InvestmentForm {...defaultProps} />);
@@ -273,7 +273,6 @@ describe('InvestmentForm', () => {
     const anotherInvestmentButton = screen.getByText('Make Another Investment');
     await user.click(anotherInvestmentButton);
 
-    // Should return to form
     expect(screen.getByLabelText('Number of Tokens')).toBeInTheDocument();
     expect(screen.queryByText('Investment Successful!')).not.toBeInTheDocument();
   });

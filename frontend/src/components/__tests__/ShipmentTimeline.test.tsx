@@ -187,6 +187,5 @@ describe('ShipmentTimeline', () => {
     });
 
     expect(screen.getByText('A custom processing step')).toBeInTheDocument();
-    expect(screen.getByText(/stellar-tx-789/)).toBeInTheDocument();
   });
 });

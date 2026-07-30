@@ -81,7 +81,9 @@ jobs:
         working-directory: backend
 
       - name: Start backend API in background
-        run: npm run start:prod &
+        run: |
+          npm run start:prod > /tmp/backend-zap.log 2>&1 &
+          echo $! > /tmp/backend-zap.pid
         working-directory: backend
 
       - name: Wait for backend to be ready
@@ -95,6 +97,8 @@ jobs:
             sleep 1
           done
           echo "Backend failed to start in time"
+          echo "---- backend log ----"
+          cat /tmp/backend-zap.log || true
           exit 1
 
       - name: OWASP ZAP Scan

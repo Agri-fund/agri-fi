@@ -99,7 +99,7 @@ jobs:
         working-directory: frontend
 
       - name: Frontend - Test
-        run: pnpm run test -- --passWithNoTests
+        run: pnpm run test
         working-directory: frontend
 
       - name: Notify on failure
