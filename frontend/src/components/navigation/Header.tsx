@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { User } from '@/lib/api';
 import { WalletModal } from '../wallet/WalletModal';
 import { useStellarWallet, DisconnectReason } from '@/hooks/useStellarWallet';

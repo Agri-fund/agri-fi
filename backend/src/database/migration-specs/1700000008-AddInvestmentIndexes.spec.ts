@@ -1,5 +1,5 @@
 import { QueryRunner } from 'typeorm';
-import { AddInvestmentIndexes1700000008000 } from './1700000008-AddInvestmentIndexes';
+import { AddInvestmentIndexes1700000008000 } from '../migrations/1700000008-AddInvestmentIndexes';
 
 /**
  * Guards the investment.investor_id index (issue #299) at the migration-
