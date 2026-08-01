@@ -20,14 +20,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { User } from './entities/user.entity';
 import { ApiBody } from '@nestjs/swagger';
-import {
-  IsIn,
-  IsString,
-  IsBoolean,
-  IsUUID,
-  IsOptional,
-  MinLength,
-} from 'class-validator';
+import { IsIn, IsString, IsBoolean, IsUUID, MinLength } from 'class-validator';
 import { Roles } from './decorators/roles.decorator';
 import { RolesGuard } from './roles.guard';
 import { InjectRepository } from '@nestjs/typeorm';

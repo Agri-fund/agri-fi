@@ -17,12 +17,11 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
 import { PinoLogger } from 'nestjs-pino';
 import { Repository } from 'typeorm';
+import { Horizon, Networks, rpc } from '@stellar/stellar-sdk';
 import {
-  Horizon,
-  Networks,
-  rpc,
-} from '@stellar/stellar-sdk';
-import { TransactionLog, TxStatus } from '../stellar/entities/transaction-log.entity';
+  TransactionLog,
+  TxStatus,
+} from '../stellar/entities/transaction-log.entity';
 import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.entity';
 import { QueueService } from '../queue/queue.service';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
@@ -138,10 +137,17 @@ export class SorobanEventIndexer implements OnModuleInit, OnModuleDestroy {
    */
   private async initializeLastLedger() {
     try {
-      const ledger = await this.horizonServer.ledgers().limit(1).order('desc').call();
+      const ledger = await this.horizonServer
+        .ledgers()
+        .limit(1)
+        .order('desc')
+        .call();
       if (ledger.records && ledger.records.length > 0) {
         this.lastLedger = ledger.records[0].sequence - 100; // Start 100 ledgers behind
-        this.logger.info({ ledger: this.lastLedger }, 'Event indexing started from ledger');
+        this.logger.info(
+          { ledger: this.lastLedger },
+          'Event indexing started from ledger',
+        );
       }
     } catch (error) {
       this.logger.warn(
@@ -172,10 +178,7 @@ export class SorobanEventIndexer implements OnModuleInit, OnModuleDestroy {
       });
     }, intervalMs);
 
-    this.logger.info(
-      { intervalMs },
-      'Soroban event polling started',
-    );
+    this.logger.info({ intervalMs }, 'Soroban event polling started');
   }
 
   /**
@@ -266,9 +269,7 @@ export class SorobanEventIndexer implements OnModuleInit, OnModuleDestroy {
     const filters = [];
 
     // Filter for contract events from known contracts
-    for (const [contractName, contractId] of Object.entries(
-      this.contractAddresses,
-    )) {
+    for (const [, contractId] of Object.entries(this.contractAddresses)) {
       if (contractId) {
         filters.push({
           contractIds: [contractId],
@@ -554,7 +555,10 @@ export class SorobanEventIndexer implements OnModuleInit, OnModuleDestroy {
         timestamp: new Date(),
       });
     } catch (error) {
-      this.logger.error({ error, txHash }, 'Error handling trade_settled event');
+      this.logger.error(
+        { error, txHash },
+        'Error handling trade_settled event',
+      );
     }
   }
 

@@ -2,10 +2,9 @@ import {
   Injectable,
   ForbiddenException,
   NotFoundException,
-  ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In, DataSource } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { randomBytes } from 'crypto';
 import { User, UserRole } from '../auth/entities/user.entity';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
@@ -30,7 +29,9 @@ export interface CurrentUserProfile {
 export type DashboardDealRole = 'farmer' | 'trader';
 
 function generateRandomString(length: number): string {
-  return randomBytes(Math.ceil(length / 2)).toString('hex').slice(0, length);
+  return randomBytes(Math.ceil(length / 2))
+    .toString('hex')
+    .slice(0, length);
 }
 
 @Injectable()
