@@ -21,6 +21,7 @@ coverage
 **/__snapshots__
 *.snap
 test-results
+test-output.txt
 playwright-report
 .nyc_output
 
