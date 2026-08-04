@@ -136,7 +136,16 @@ describe('StellarController', () => {
     );
 
     expect(result).toEqual({ hash: 'abc123', success: true });
-    expect(mockStellarService.submitTransaction).toHaveBeenCalledWith(xdr);
+    expect(mockStellarService.submitTransaction).toHaveBeenCalledWith(xdr, {
+      allowedOpTypes: [
+        'payment',
+        'changeTrust',
+        'manageSellOffer',
+        'manageBuyOffer',
+        'pathPaymentStrictSend',
+        'pathPaymentStrictReceive',
+      ],
+    });
   });
 
   describe('setupPlatformMultiSig (Issue #352)', () => {
@@ -260,7 +269,9 @@ describe('StellarController', () => {
         ),
       );
 
-      expect(mockStellarService.getPlatformMultiSigConfig).not.toHaveBeenCalled();
+      expect(
+        mockStellarService.getPlatformMultiSigConfig,
+      ).not.toHaveBeenCalled();
     });
 
     it('should handle retrieval errors', async () => {

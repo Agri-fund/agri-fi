@@ -18,7 +18,6 @@ describe('ErrorBoundary', () => {
   });
 
   it('renders fallback UI when a child throws an error', () => {
-    // Suppress console.error for this test to keep output clean
     const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
 
     render(
@@ -35,18 +34,17 @@ describe('ErrorBoundary', () => {
 
   it('reloads the page when Reload button is clicked', () => {
     const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
-    const reloadSpy = jest.spyOn(window.location, 'reload').mockImplementation(() => {});
+    const onReload = jest.fn();
 
     render(
-      <ErrorBoundary>
+      <ErrorBoundary onReload={onReload}>
         <ProblemChild />
       </ErrorBoundary>
     );
 
     fireEvent.click(screen.getByText('Reload page'));
-    expect(reloadSpy).toHaveBeenCalled();
+    expect(onReload).toHaveBeenCalled();
 
     consoleSpy.mockRestore();
-    reloadSpy.mockRestore();
   });
 });

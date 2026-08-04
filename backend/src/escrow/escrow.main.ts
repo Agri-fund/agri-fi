@@ -27,12 +27,12 @@ async function bootstrap() {
           new ConfigService().get<string>('RABBITMQ_PREFETCH_COUNT', '10'),
           10,
         ),
+        noAck: false,
       },
-      noAck: false,
     },
-  });
+  );
 
-  await app.startAllMicroservices();
+  await app.listen();
   console.log(
     'Escrow microservices running:\n' +
       `  • Primary queue: ${ESCROW_QUEUE_NAME}\n` +

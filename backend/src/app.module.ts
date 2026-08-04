@@ -32,6 +32,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { APP_FILTER } from '@nestjs/core';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { AuditModule } from './audit/audit.module';
+import { CircuitBreakerModule } from './common/circuit-breaker';
 
 @Module({
   controllers: [AppController],
@@ -39,6 +40,7 @@ import { AuditModule } from './audit/audit.module';
     // Register ClsModule globally — no auto-mount; we mount manually below
     // to guarantee ordering: ClsMiddleware runs before CorrelationIdMiddleware
     ClsModule.forRoot({ global: true }),
+    CircuitBreakerModule,
     ScheduleModule.forRoot(),
     ThrottlerModule.forRoot([
       {

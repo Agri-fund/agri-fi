@@ -28,7 +28,7 @@ const TOKEN_ISSUER = 'GISSUER1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 // ── setup / teardown ───────────────────────────────────────────────────────
 
 beforeEach(() => {
-  jest.resetAllMocks();
+  jest.clearAllMocks();
   localStorage.clear();
   // Reset global fetch mock
   global.fetch = jest.fn();

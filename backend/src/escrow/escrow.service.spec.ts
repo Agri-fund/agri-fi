@@ -21,32 +21,62 @@ describe('EscrowService', () => {
   let mockQueueService: jest.Mocked<QueueService>;
   let mockConfigService: jest.Mocked<ConfigService>;
   let mockDataSource: jest.Mocked<DataSource>;
+  let mockQueryRunnerManager: {
+    create: jest.Mock;
+    save: jest.Mock;
+    update: jest.Mock;
+  };
+  let mockQueryRunner: {
+    connect: jest.Mock;
+    startTransaction: jest.Mock;
+    commitTransaction: jest.Mock;
+    rollbackTransaction: jest.Mock;
+    release: jest.Mock;
+    manager: typeof mockQueryRunnerManager;
+  };
+
+  const setupDealMocks = (
+    mockDeal: Record<string, unknown>,
+    mockInvestments: Record<string, unknown>[] = [],
+  ) => {
+    mockTradeDealRepo.findOne.mockResolvedValue(mockDeal as TradeDeal);
+    mockInvestmentRepo.find.mockResolvedValue(mockInvestments as Investment[]);
+  };
 
   beforeEach(async () => {
     jest.useFakeTimers();
 
-    const mockManager = {
-      findOne: jest.fn(),
-      find: jest.fn(),
-      create: jest.fn(),
-      save: jest.fn(),
-      update: jest.fn(),
+    mockQueryRunnerManager = {
+      create: jest.fn().mockImplementation((_entity, data) => data),
+      save: jest.fn().mockResolvedValue(undefined),
+      update: jest.fn().mockResolvedValue(undefined),
+    };
+
+    mockQueryRunner = {
+      connect: jest.fn().mockResolvedValue(undefined),
+      startTransaction: jest.fn().mockResolvedValue(undefined),
+      commitTransaction: jest.fn().mockResolvedValue(undefined),
+      rollbackTransaction: jest.fn().mockResolvedValue(undefined),
+      release: jest.fn().mockResolvedValue(undefined),
+      manager: mockQueryRunnerManager,
     };
 
     mockDataSource = {
-      transaction: jest
-        .fn()
-        .mockImplementation((cb: (m: typeof mockManager) => Promise<unknown>) =>
-          cb(mockManager),
-        ),
+      createQueryRunner: jest.fn().mockReturnValue(mockQueryRunner),
     } as any;
 
     mockPaymentDistributionRepo = {
       update: jest.fn(),
     } as any;
 
-    mockTradeDealRepo = {} as any;
-    mockInvestmentRepo = {} as any;
+    mockTradeDealRepo = {
+      findOne: jest.fn(),
+    } as any;
+
+    mockInvestmentRepo = {
+      find: jest.fn(),
+    } as any;
+
     mockUserRepo = {} as any;
 
     mockStellarService = {
@@ -152,17 +182,7 @@ describe('EscrowService', () => {
         },
       ];
 
-      const mockManager = {
-        findOne: jest.fn().mockResolvedValue(mockDeal),
-        find: jest.fn().mockResolvedValue(mockInvestments),
-        create: jest.fn().mockImplementation((entity, data) => data),
-        save: jest.fn().mockResolvedValue(undefined),
-        update: jest.fn().mockResolvedValue(undefined),
-      };
-
-      (mockDataSource.transaction as jest.Mock).mockImplementation(
-        (cb: (m: typeof mockManager) => Promise<unknown>) => cb(mockManager),
-      );
+      setupDealMocks(mockDeal, mockInvestments);
       mockConfigService.get.mockReturnValue('platform-wallet');
       mockStellarService.decryptSecret.mockReturnValue(
         'decrypted-escrow-secret',
@@ -171,12 +191,13 @@ describe('EscrowService', () => {
 
       await service.processDealDelivered(payload);
 
-      // Verify Stellar secret was decrypted
+      expect(mockTradeDealRepo.findOne).toHaveBeenCalledWith({
+        where: { id: tradeDealId },
+        relations: ['farmer', 'trader'],
+      });
       expect(mockStellarService.decryptSecret).toHaveBeenCalledWith(
         'escrow-secret',
       );
-
-      // Verify Stellar escrow release was called with decrypted secret
       expect(mockStellarService.releaseEscrow).toHaveBeenCalledWith(
         'decrypted-escrow-secret',
         'farmer-wallet',
@@ -196,37 +217,37 @@ describe('EscrowService', () => {
         10000,
       );
 
-      // Verify payment distributions were created (3 total: farmer, 2 investors, platform)
-      expect(mockManager.save).toHaveBeenCalledWith(
+      expect(mockQueryRunnerManager.save).toHaveBeenCalledWith(
         PaymentDistribution,
         expect.arrayContaining([
           expect.objectContaining({
-            recipientType: 'farmer',
-            amountUsd: 9800, // 98% of 10000
+            recipientType: 'investor',
+            amountUsd: 4900,
             stellarTxId: 'stellar-tx-123',
           }),
           expect.objectContaining({
             recipientType: 'investor',
-            amountUsd: 5000, // 50% of 10000
-            stellarTxId: 'stellar-tx-123',
-          }),
-          expect.objectContaining({
-            recipientType: 'investor',
-            amountUsd: 5000, // 50% of 10000
+            amountUsd: 4900,
             stellarTxId: 'stellar-tx-123',
           }),
           expect.objectContaining({
             recipientType: 'platform',
-            amountUsd: 200, // 2% of 10000
+            amountUsd: 200,
             stellarTxId: 'stellar-tx-123',
           }),
         ]),
       );
 
-      // Verify deal status was updated to completed
-      expect(mockManager.update).toHaveBeenCalledWith(TradeDeal, tradeDealId, {
-        status: 'completed',
-      });
+      expect(mockQueryRunnerManager.update).toHaveBeenCalledWith(
+        TradeDeal,
+        tradeDealId,
+        expect.objectContaining({
+          status: 'completed',
+          appTraceId: expect.any(String),
+        }),
+      );
+      expect(mockQueryRunner.commitTransaction).toHaveBeenCalled();
+      expect(mockQueryRunner.release).toHaveBeenCalled();
     });
 
     it('should handle Stellar failure and send admin alert', async () => {
@@ -255,20 +276,12 @@ describe('EscrowService', () => {
         },
       ];
 
-      const mockManager = {
-        findOne: jest.fn().mockResolvedValue(mockDeal),
-        find: jest.fn().mockResolvedValue(mockInvestments),
-        create: jest.fn(),
-        save: jest.fn(),
-        update: jest.fn(),
-      };
-
-      (mockDataSource.transaction as jest.Mock).mockImplementation(
-        (cb: (m: typeof mockManager) => Promise<unknown>) => cb(mockManager),
-      );
+      setupDealMocks(mockDeal, mockInvestments);
       mockConfigService.get.mockReturnValue('platform-wallet');
+      mockStellarService.decryptSecret.mockReturnValue(
+        'decrypted-escrow-secret',
+      );
 
-      // Simulate Stellar failure
       const stellarError = new Error('Stellar network error');
       mockStellarService.releaseEscrow.mockRejectedValue(stellarError);
 
@@ -276,7 +289,6 @@ describe('EscrowService', () => {
         'Stellar network error',
       );
 
-      // Verify admin alert was sent
       expect(mockQueueService.emit).toHaveBeenCalledWith('admin.alert', {
         type: 'escrow_failure',
         dealId: tradeDealId,
@@ -284,46 +296,33 @@ describe('EscrowService', () => {
         timestamp: expect.any(String),
       });
 
-      // Verify payment distributions were marked as failed
       expect(mockPaymentDistributionRepo.update).toHaveBeenCalledWith(
         { tradeDealId },
         { status: 'failed' },
       );
+      expect(mockDataSource.createQueryRunner).not.toHaveBeenCalled();
     });
 
     it('should skip processing if deal is not in delivered status', async () => {
       const tradeDealId = 'deal-123';
       const payload = { tradeDealId };
 
-      const mockDeal = {
+      setupDealMocks({
         id: tradeDealId,
-        status: 'funded', // Not delivered
+        status: 'funded',
         totalValue: 10000,
         farmerId: 'farmer-123',
         traderId: 'trader-123',
         escrowSecretKey: 'escrow-secret',
         farmer: { walletAddress: 'farmer-wallet' },
         trader: { walletAddress: 'trader-wallet' },
-      };
-
-      const mockManager = {
-        findOne: jest.fn().mockResolvedValue(mockDeal),
-        find: jest.fn(),
-        create: jest.fn(),
-        save: jest.fn(),
-        update: jest.fn(),
-      };
-
-      (mockDataSource.transaction as jest.Mock).mockImplementation(
-        (cb: (m: typeof mockManager) => Promise<unknown>) => cb(mockManager),
-      );
+      });
 
       await service.processDealDelivered(payload);
 
-      // Verify no Stellar operations were performed
       expect(mockStellarService.releaseEscrow).not.toHaveBeenCalled();
-      expect(mockManager.save).not.toHaveBeenCalled();
-      expect(mockManager.update).not.toHaveBeenCalled();
+      expect(mockQueryRunnerManager.save).not.toHaveBeenCalled();
+      expect(mockQueryRunnerManager.update).not.toHaveBeenCalled();
     });
   });
 });

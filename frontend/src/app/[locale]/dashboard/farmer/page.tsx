@@ -9,6 +9,7 @@ import DashboardLayout from "../../../../components/DashboardLayout";
 import StatCard from "../../../../components/StatCard";
 import { useToast } from "../../../../components/ui/ToastProvider";
 import dynamic from "next/dynamic";
+import { usePushNotifications } from "../../../../hooks/usePushNotifications";
 
 // CreateDealForm pulls in react-hook-form + zod validation + heavy form logic.
 // Load it only when the user explicitly opens the "Create Deal" panel.

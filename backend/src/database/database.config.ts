@@ -2,7 +2,6 @@ import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TypeOrmModuleOptions, TypeOrmOptionsFactory } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
-import { InjectDataSource } from '@nestjs/typeorm';
 import { join } from 'path';
 
 /**
@@ -24,6 +23,9 @@ export class DatabaseConfig
   constructor(private readonly config: ConfigService) {}
 
   createTypeOrmOptions(): TypeOrmModuleOptions {
+    const isProduction =
+      this.config.get<string>('NODE_ENV', 'development') === 'production';
+
     const masterConnection = {
       host: this.config.get<string>('DATABASE_HOST', 'localhost'),
       port: this.config.get<number>('DATABASE_PORT', 5432),
@@ -61,10 +63,7 @@ export class DatabaseConfig
           'DATABASE_POOL_MAX',
           isProduction ? 50 : 10,
         ),
-        min: this.config.get<number>(
-          'DATABASE_POOL_MIN',
-          isProduction ? 5 : 2,
-        ),
+        min: this.config.get<number>('DATABASE_POOL_MIN', isProduction ? 5 : 2),
 
         // ── Timeout settings ─────────────────────────────────────────────────
         /** Milliseconds a connection can sit idle before being released back to

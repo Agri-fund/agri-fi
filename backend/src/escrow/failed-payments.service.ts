@@ -111,7 +111,9 @@ export class FailedPaymentsService {
    *
    * Acceptance criterion: "Admins can trigger manual retries directly from the UI."
    */
-  async retryFailedPayment(id: string): Promise<{ queued: boolean; dealId: string }> {
+  async retryFailedPayment(
+    id: string,
+  ): Promise<{ queued: boolean; dealId: string }> {
     const log = await this.getFailedPaymentById(id);
 
     if (!log.dealId) {

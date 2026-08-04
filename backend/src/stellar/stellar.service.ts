@@ -12,7 +12,11 @@ import { PinoLogger } from 'nestjs-pino';
 import { createHash } from 'crypto';
 import axios from 'axios';
 import { TransactionLog, TxStatus } from './entities/transaction-log.entity';
-import { CursorPaginatedResult, decodeCursor, encodeCursor } from '../common/pagination';
+import {
+  CursorPaginatedResult,
+  decodeCursor,
+  encodeCursor,
+} from '../common/pagination';
 import { KmsService } from '../kms/kms.service';
 import {
   Horizon,
@@ -45,7 +49,6 @@ const TX_STATUS_CACHE_TTL_SECONDS = 3600;
 /** Redis key prefix for cached transaction status lookups. */
 const TX_STATUS_CACHE_PREFIX = 'stellar:tx:';
 
-
 export interface InvestorShare {
   walletAddress: string;
   tokenAmount: number;
@@ -66,13 +69,20 @@ export interface SignatureValidationResult {
 @Injectable()
 export class StellarService implements OnModuleInit, OnModuleDestroy {
   private readonly horizonClient: HorizonFailoverClient;
-  private get server(): Horizon.Server { return this.horizonClient.activeServer; }
-  private set server(s: Horizon.Server) { (this.horizonClient as any)._server = s; }
+  private get server(): Horizon.Server {
+    return this.horizonClient.activeServer;
+  }
+  private set server(s: Horizon.Server) {
+    (this.horizonClient as any)._server = s;
+  }
   private readonly networkPassphrase: string;
   private readonly platformKeypair: Keypair;
   private readonly multiSigSigners: Keypair[];
   private readonly usdcAsset: Asset;
-  private readonly localSequenceCache: Map<string, { seq: string; expiresAt: number }>;
+  private readonly localSequenceCache: Map<
+    string,
+    { seq: string; expiresAt: number }
+  >;
   private readonly enableSequenceCache: boolean;
 
   constructor(
@@ -92,7 +102,10 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     // Support a comma-separated list of Horizon URLs for failover.
     const horizonUrlsRaw = config.get<string>(
       'STELLAR_HORIZON_URLS',
-      config.get<string>('STELLAR_HORIZON_URL', 'https://horizon-testnet.stellar.org'),
+      config.get<string>(
+        'STELLAR_HORIZON_URL',
+        'https://horizon-testnet.stellar.org',
+      ),
     );
     const horizonUrls = horizonUrlsRaw!
       .split(',')
@@ -100,7 +113,9 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       .filter(Boolean);
     const network = config.get<string>('STELLAR_NETWORK', 'testnet');
 
-    this.horizonClient = new HorizonFailoverClient(horizonUrls, this.logger, { timeout: 30000 } as Horizon.Server.Options);
+    this.horizonClient = new HorizonFailoverClient(horizonUrls, this.logger, {
+      timeout: 30000,
+    } as Horizon.Server.Options);
     this.networkPassphrase =
       network === 'mainnet' ? Networks.PUBLIC : Networks.TESTNET;
 
@@ -124,7 +139,6 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
 
     // Removed ENCRYPTION_KEY validation as KMS handles encryption.
     // Ensure KMS_KEY_ID is set via environment.
-
 
     const usdcAssetCode = config.get<string>('USDC_ASSET_CODE', 'USDC');
     const usdcIssuer = config.get<string>('USDC_ISSUER', '');
@@ -154,7 +168,10 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     const maxSigners = 2; // We'll have 3 total: platform key + 2 additional signers
 
     for (let i = 1; i <= maxSigners; i++) {
-      const secretKey = config.get<string>(`STELLAR_MULTISIG_SIGNER_${i}_SECRET`, '');
+      const secretKey = config.get<string>(
+        `STELLAR_MULTISIG_SIGNER_${i}_SECRET`,
+        '',
+      );
       if (secretKey) {
         try {
           signers.push(Keypair.fromSecret(secretKey));
@@ -252,7 +269,8 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     await this.submitWithRetry(tx);
 
     // Add second signer in a separate transaction
-    const updatedPlatformAccount = await this.server.loadAccount(platformPublicKey);
+    const updatedPlatformAccount =
+      await this.server.loadAccount(platformPublicKey);
 
     const secondSignerOp = Operation.setOptions({
       signer: {
@@ -391,7 +409,9 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
 
     if (this.sequenceRedis) {
       try {
-        const raw = await this.sequenceRedis.get(this.cacheSeqKey(publicKey)) as string | null;
+        const raw = (await this.sequenceRedis.get(
+          this.cacheSeqKey(publicKey),
+        )) as string | null;
         if (raw) {
           const parsed = JSON.parse(raw);
           this.localSequenceCache.set(publicKey, {
@@ -407,7 +427,10 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     return null;
   }
 
-  private async setCachedSequence(publicKey: string, seq: string): Promise<void> {
+  private async setCachedSequence(
+    publicKey: string,
+    seq: string,
+  ): Promise<void> {
     const expiresAt = Date.now() + SEQUENCE_CACHE_TTL * 1000;
     this.localSequenceCache.set(publicKey, { seq, expiresAt });
 
@@ -483,9 +506,15 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
   ): Promise<{ valid: boolean; reason?: string }> {
     let tx: Transaction;
     try {
-      tx = TransactionBuilder.fromXDR(signedXdr, this.networkPassphrase) as Transaction;
+      tx = TransactionBuilder.fromXDR(
+        signedXdr,
+        this.networkPassphrase,
+      ) as Transaction;
     } catch {
-      return { valid: false, reason: 'Invalid XDR: could not decode transaction' };
+      return {
+        valid: false,
+        reason: 'Invalid XDR: could not decode transaction',
+      };
     }
 
     const opTypeMap: Record<number, string> = {
@@ -880,9 +909,9 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     }
 
     // Calculate platform fee (2%) and investor pool (98%) using BigNumber
-    const platformStroopsBN = totalStroopsBN.multipliedBy(0.02).integerValue(
-      BigNumber.ROUND_FLOOR,
-    );
+    const platformStroopsBN = totalStroopsBN
+      .multipliedBy(0.02)
+      .integerValue(BigNumber.ROUND_FLOOR);
     const investorPoolStroopsBN = totalStroopsBN.minus(platformStroopsBN);
 
     const platformStroops = platformStroopsBN.toNumber();
@@ -946,9 +975,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         );
 
         if (globalIdx === investorShares.length - 1) {
-          shareStroops =
-            investorPoolStroops -
-            distributedToInvestors;
+          shareStroops = investorPoolStroops - distributedToInvestors;
         }
 
         distributedToInvestors += shareStroops;
@@ -992,9 +1019,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
           Operation.payment({
             destination: platformWallet,
             asset: this.usdcAsset,
-            amount: new BigNumber(platformStroops)
-              .dividedBy(1e7)
-              .toFixed(7),
+            amount: new BigNumber(platformStroops).dividedBy(1e7).toFixed(7),
           }),
         );
       }
@@ -1261,7 +1286,8 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       return {
         ...base,
         valid: false,
-        error: 'Failed to parse XDR envelope. Ensure the transaction was built for the correct network.',
+        error:
+          'Failed to parse XDR envelope. Ensure the transaction was built for the correct network.',
       };
     }
 
@@ -1368,20 +1394,15 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
    * Verifies an account's XLM balance exceeds the minimum base reserve
    * before sending transactions. Returns the balance and minimum required.
    */
-  async checkMinimumReserve(
-    publicKey: string,
-  ): Promise<{
+  async checkMinimumReserve(publicKey: string): Promise<{
     sufficient: boolean;
     balance: string;
     minimumRequired: string;
   }> {
     const account = await this.server.loadAccount(publicKey);
     const xlmBalance =
-      (
-        account.balances.find(
-          (b: any) => b.asset_type === 'native',
-        ) as any
-      )?.balance ?? '0';
+      (account.balances.find((b: any) => b.asset_type === 'native') as any)
+        ?.balance ?? '0';
     const minRequired = await this.getMinimumBalance(account);
     return {
       sufficient: new BigNumber(xlmBalance).gte(minRequired),
@@ -1527,7 +1548,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     if (!pathResult) {
       throw new Error(
         `No path found from ${sourceAsset.getCode()} to USDC for ${sendAmount} ${sourceAsset.getCode()}. ` +
-        'Ensure the Stellar DEX has sufficient liquidity for this conversion.',
+          'Ensure the Stellar DEX has sufficient liquidity for this conversion.',
       );
     }
 
@@ -1549,7 +1570,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       if (xlmBalance < minRequired) {
         throw new Error(
           `Insufficient XLM balance for trustline base reserve. ` +
-          `Need at least ${minRequired.toFixed(3)} XLM, have ${xlmBalance} XLM.`,
+            `Need at least ${minRequired.toFixed(3)} XLM, have ${xlmBalance} XLM.`,
         );
       }
     }
@@ -1862,7 +1883,11 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     const tradeAsset = createAsset(assetCode, issuerPublicKey);
 
     const LIMIT = 200;
-    let page = await this.server.accounts().forAsset(tradeAsset).limit(LIMIT).call();
+    let page = await this.server
+      .accounts()
+      .forAsset(tradeAsset)
+      .limit(LIMIT)
+      .call();
 
     const holders: Array<{ walletAddress: string; tokenAmount: number }> = [];
 
@@ -1879,7 +1904,10 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         if (balanceEntry) {
           const bal = parseFloat(balanceEntry.balance || '0');
           if (bal > 0) {
-            holders.push({ walletAddress: acc.account_id ?? acc.id, tokenAmount: bal });
+            holders.push({
+              walletAddress: acc.account_id ?? acc.id,
+              tokenAmount: bal,
+            });
           }
         }
       }
@@ -1889,7 +1917,10 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         try {
           page = await (page as any).next();
         } catch (e) {
-          this.logger.warn({ err: e }, 'Failed to fetch next page of asset holders');
+          this.logger.warn(
+            { err: e },
+            'Failed to fetch next page of asset holders',
+          );
           break;
         }
       } else {
@@ -1999,7 +2030,10 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     // 1. Cache read — skip Horizon if we already have a terminal result.
     const cached = await this.getCachedTxStatus(txId);
     if (cached) {
-      this.logger.info({ txId, cached }, 'Transaction status served from cache');
+      this.logger.info(
+        { txId, cached },
+        'Transaction status served from cache',
+      );
       return cached;
     }
 
@@ -2036,7 +2070,9 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       return null;
     }
     try {
-      const raw = await this.sequenceRedis.get(this.txStatusCacheKey(txId)) as string | null;
+      const raw = (await this.sequenceRedis.get(
+        this.txStatusCacheKey(txId),
+      )) as string | null;
       if (raw === 'success' || raw === 'failed') {
         return raw;
       }
@@ -2224,7 +2260,10 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     }
 
     if (operations.length > MAX_OPERATIONS_PER_TX) {
-      const plan = planTransactionBatches(operations.length, MAX_OPERATIONS_PER_TX);
+      const plan = planTransactionBatches(
+        operations.length,
+        MAX_OPERATIONS_PER_TX,
+      );
       this.logger.info(
         {
           totalOperations: operations.length,
@@ -2242,7 +2281,11 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     const txHashes: string[] = [];
 
     // Submit transactions sequentially with correct sequence numbers
-    for (let chunkIndex = 0; chunkIndex < operationChunks.length; chunkIndex++) {
+    for (
+      let chunkIndex = 0;
+      chunkIndex < operationChunks.length;
+      chunkIndex++
+    ) {
       const chunk = operationChunks[chunkIndex];
       const totalChunks = operationChunks.length;
 

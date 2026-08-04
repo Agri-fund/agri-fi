@@ -10,6 +10,13 @@ async function drainJobs(processor: QueueProcessor): Promise<void> {
   await processor.onApplicationShutdown('TEST');
 }
 
+jest.mock('./queue.crypto', () => ({
+  decryptPayload: jest.fn((payload: unknown) =>
+    typeof payload === 'string' ? JSON.parse(payload) : payload,
+  ),
+  encryptPayload: jest.fn((payload: unknown) => JSON.stringify(payload)),
+}));
+
 describe('QueueProcessor', () => {
   let processor: QueueProcessor;
   let stellarService: {
@@ -139,6 +146,7 @@ describe('QueueProcessor', () => {
         expect.objectContaining({ issuerSecretKey: 'plain-issuer-secret' }),
       );
       expect(channel.ack).toHaveBeenCalledWith(message);
+      expect(channel.nack).not.toHaveBeenCalled();
       expect(idempotency.markDone).toHaveBeenCalled();
     });
 

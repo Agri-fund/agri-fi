@@ -63,36 +63,81 @@
       "farmer": {
         "title": "Agriculteurs",
         "cta": "Commencer comme Agriculteur",
-        "points": ["Lancer des campagnes de financement", "Télécharger les données de la ferme et des récoltes", "Vendre directement aux acheteurs", "Retirer les gains instantanément"]
+        "points": [
+          "Lancer des campagnes de financement",
+          "Télécharger les données de la ferme et des récoltes",
+          "Vendre directement aux acheteurs",
+          "Retirer les gains instantanément"
+        ]
       },
       "investor": {
         "title": "Investisseurs",
         "cta": "Commencer à investir",
-        "points": ["Parcourir les projets vérifiés", "Investir de manière fractionnée à partir de 100 $", "Gagner un ROI transparent", "Suivre le portefeuille en temps réel"]
+        "points": [
+          "Parcourir les projets vérifiés",
+          "Investir de manière fractionnée à partir de 100 $",
+          "Gagner un ROI transparent",
+          "Suivre le portefeuille en temps réel"
+        ]
       },
       "company": {
         "title": "Entreprises",
         "cta": "S'inscrire comme Acheteur",
-        "points": ["Acheter des produits en vrac directement", "Réseau d'agriculteurs vérifiés", "Suivre les livraisons en direct", "Paiements séquestres sécurisés"]
+        "points": [
+          "Acheter des produits en vrac directement",
+          "Réseau d'agriculteurs vérifiés",
+          "Suivre les livraisons en direct",
+          "Paiements séquestres sécurisés"
+        ]
       }
     },
     "steps": {
       "title": "Comment ça marche",
-      "step1": { "title": "Créer un compte", "desc": "Inscrivez-vous en tant qu'agriculteur, investisseur ou entreprise en moins de 2 minutes." },
-      "step2": { "title": "Compléter le KYC", "desc": "Vérifiez votre identité pour débloquer l'accès complet à la plateforme." },
-      "step3": { "title": "Financer ou Lister", "desc": "Les agriculteurs listent les cultures ; les investisseurs parcourent et financent les projets." },
-      "step4": { "title": "Gagner des rendements", "desc": "Suivez la récolte, recevez des paiements et réinvestissez les bénéfices." }
+      "step1": {
+        "title": "Créer un compte",
+        "desc": "Inscrivez-vous en tant qu'agriculteur, investisseur ou entreprise en moins de 2 minutes."
+      },
+      "step2": {
+        "title": "Compléter le KYC",
+        "desc": "Vérifiez votre identité pour débloquer l'accès complet à la plateforme."
+      },
+      "step3": {
+        "title": "Financer ou Lister",
+        "desc": "Les agriculteurs listent les cultures ; les investisseurs parcourent et financent les projets."
+      },
+      "step4": {
+        "title": "Gagner des rendements",
+        "desc": "Suivez la récolte, recevez des paiements et réinvestissez les bénéfices."
+      }
     },
     "transparency": {
       "badge": "Blockchain Stellar",
       "title": "Transparent par conception",
       "description": "Chaque investissement, paiement et étape est enregistré sur Stellar. Vérifiez n'importe quoi, n'importe quand.",
-      "smartContracts": { "title": "Smart Contracts Soroban", "desc": "Les contrats FarmCampaign automatisent l'escrow, les versions d'étapes et la distribution des revenus — sans intervention manuelle." },
-      "tokenized": { "title": "Investissements tokenisés", "desc": "Chaque projet émet des actifs Stellar. Les investisseurs détiennent des jetons représentant une propriété fractionnée, échangeables sur le DEX." },
-      "usdc": { "title": "Règlements en USDC", "desc": "Tous les paiements utilisent l'USDC sur Stellar — stable, rapide et transfrontalier. Retirez en monnaie locale via les Anchors Stellar." },
-      "certificates": { "title": "Certificats on-chain", "desc": "Les certificats d'investissement sont soutenus par des transactions Stellar immuables. Preuve de propriété, pour toujours." },
-      "anchors": { "title": "Anchors Stellar", "desc": "Déposez NGN, KES, GHS, ZAR ou USD et recevez instantanément de l'USDC. Retirez vos gains vers votre banque locale." },
-      "audit": { "title": "Piste d'audit publique", "desc": "Chaque adresse de contrat, hash de transaction et paiement est vérifiable publiquement sur Stellar Expert." },
+      "smartContracts": {
+        "title": "Smart Contracts Soroban",
+        "desc": "Les contrats FarmCampaign automatisent l'escrow, les versions d'étapes et la distribution des revenus — sans intervention manuelle."
+      },
+      "tokenized": {
+        "title": "Investissements tokenisés",
+        "desc": "Chaque projet émet des actifs Stellar. Les investisseurs détiennent des jetons représentant une propriété fractionnée, échangeables sur le DEX."
+      },
+      "usdc": {
+        "title": "Règlements en USDC",
+        "desc": "Tous les paiements utilisent l'USDC sur Stellar — stable, rapide et transfrontalier. Retirez en monnaie locale via les Anchors Stellar."
+      },
+      "certificates": {
+        "title": "Certificats on-chain",
+        "desc": "Les certificats d'investissement sont soutenus par des transactions Stellar immuables. Preuve de propriété, pour toujours."
+      },
+      "anchors": {
+        "title": "Anchors Stellar",
+        "desc": "Déposez NGN, KES, GHS, ZAR ou USD et recevez instantanément de l'USDC. Retirez vos gains vers votre banque locale."
+      },
+      "audit": {
+        "title": "Piste d'audit publique",
+        "desc": "Chaque adresse de contrat, hash de transaction et paiement est vérifiable publiquement sur Stellar Expert."
+      },
       "viewData": "Voir les données blockchain en direct"
     },
     "cta": {
@@ -171,7 +216,14 @@
       "deliveryDateRequired": "La date de livraison est requise",
       "deliveryDateFuture": "La date de fin doit être dans le futur",
       "invalidId": "ID invalide"
-    }
+    },
+    "status": "Status",
+    "details": "Details",
+    "documents": "Documents",
+    "milestones": "Milestones",
+    "investors": "Investors",
+    "fundingProgress": "Funding Progress",
+    "publishDeal": "Publish Deal"
   },
   "common": {
     "loading": "Chargement...",
@@ -190,5 +242,66 @@
     "currency": "{value, number, currency}",
     "date": "{value, date, short}",
     "number": "{value, number}"
+  },
+  "wallet": {
+    "title": "Connect Stellar Wallet",
+    "subtitle": "Choose a wallet provider to connect",
+    "description": "Your private key never leaves your wallet. Agri-Fi only ever sees your public key.",
+    "connectButton": "Connect Wallet",
+    "connecting": "Connecting…",
+    "connected": "Connected",
+    "disconnect": "Disconnect",
+    "freighter": {
+      "name": "Freighter",
+      "type": "Browser extension wallet"
+    },
+    "albedo": {
+      "name": "Albedo",
+      "type": "Web-based signer — no install needed"
+    },
+    "detected": "Detected",
+    "install": "Install",
+    "alwaysAvailable": "Always available",
+    "openDialog": "Open wallet connection dialog",
+    "closeDialog": "Close wallet connection dialog",
+    "error": "Error connecting wallet",
+    "errorConnect": "Failed to connect wallet",
+    "errorLink": "Failed to link wallet",
+    "pleaseTryAgain": "Please try again"
+  },
+  "investment": {
+    "title": "Invest",
+    "subtitle": "Select token quantity to invest",
+    "tokenQuantity": "Token Quantity",
+    "tokenPrice": "Token Price",
+    "totalAmount": "Total Amount",
+    "maxTokens": "Max: {max} tokens",
+    "insufficientTokens": "Not enough tokens available",
+    "invest": "Invest",
+    "investing": "Investing...",
+    "invalidQuantity": "Token quantity must be between 1 and {max}",
+    "connectWallet": "Please connect your wallet first",
+    "success": "Investment successful!",
+    "error": "Investment failed",
+    "txPending": "Transaction pending...",
+    "txConfirmed": "Transaction confirmed",
+    "txFailed": "Transaction failed"
+  },
+  "marketplace": {
+    "title": "Marketplace",
+    "subtitle": "Explore agricultural trade deals",
+    "searchPlaceholder": "Search commodity, trader...",
+    "filterByStatus": "Filter by Status",
+    "filterByCategory": "Filter by Category",
+    "sortBy": "Sort By",
+    "noDeals": "No deals available",
+    "loadingDeals": "Loading deals...",
+    "status": {
+      "draft": "Draft",
+      "published": "Published",
+      "funded": "Funded",
+      "completed": "Completed",
+      "cancelled": "Cancelled"
+    }
   }
 }

@@ -6,7 +6,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository, QueryRunner } from 'typeorm';
+import { DataSource, Repository, EntityManager } from 'typeorm';
 import { PinoLogger } from 'nestjs-pino';
 import { TradeDeal, TradeDealStatus } from './entities/trade-deal.entity';
 import { Document, DocumentType } from './entities/document.entity';
@@ -306,32 +306,39 @@ export class TradeDealsService {
       // the deal would otherwise be stuck holding an escrow account no job
       // will ever process.
       // Use transactional outbox for atomic DB update + event publish
-      return await this.dataSource.transaction(async (queryRunner: QueryRunner) => {
-        await queryRunner.manager.update(TradeDeal, dealId, {
-          escrowPublicKey,
-          escrowSecretKey: encryptedEscrowSecret,
-        });
+      return await this.dataSource.transaction(
+        async (manager: EntityManager) => {
+          await manager.update(TradeDeal, dealId, {
+            escrowPublicKey,
+            escrowSecretKey: encryptedEscrowSecret,
+          });
 
-        this.logger.info(
-          { dealId, escrowPublicKey },
-          'Escrow account created, enqueuing token issuance',
-        );
+          this.logger.info(
+            { dealId, escrowPublicKey },
+            'Escrow account created, enqueuing token issuance',
+          );
 
-        await this.queueService.enqueueDealPublishTransactional(queryRunner, {
-          dealId,
-          tokenSymbol: deal.tokenSymbol,
-          escrowPublicKey,
-          encryptedEscrowSecret,
-          tokenCount: deal.tokenCount,
-        });
+          const queryRunner = manager.queryRunner;
+          if (!queryRunner) {
+            throw new Error('Active transaction required for outbox write');
+          }
 
-        // Return deal with escrow data (status still draft, will be updated by queue processor)
-        return {
-          ...deal,
-          escrowPublicKey,
-          escrowSecretKey: encryptedEscrowSecret,
-        };
-      });
+          await this.queueService.enqueueDealPublishTransactional(queryRunner, {
+            dealId,
+            tokenSymbol: deal.tokenSymbol,
+            escrowPublicKey,
+            encryptedEscrowSecret,
+            tokenCount: deal.tokenCount,
+          });
+
+          // Return deal with escrow data (status still draft, will be updated by queue processor)
+          return {
+            ...deal,
+            escrowPublicKey,
+            escrowSecretKey: encryptedEscrowSecret,
+          };
+        },
+      );
     } catch (error) {
       this.logger.error(
         { dealId, error: error.message },
@@ -447,7 +454,7 @@ export class TradeDealsService {
       }
 
       if (investorShares.length > 0) {
-        const issuerSecret = this.stellarService.decryptSecret(
+        const issuerSecret = await this.stellarService.decryptSecret(
           deal.issuerSecretKey,
         );
 

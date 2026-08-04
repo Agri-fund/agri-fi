@@ -9,6 +9,8 @@ import { ConfigService } from '@nestjs/config';
 import { PinoLogger } from 'nestjs-pino';
 import axios from 'axios';
 import { RedisClientType } from 'redis';
+import type CircuitBreaker from 'opossum';
+import { CircuitBreakerFactory } from '../common/circuit-breaker';
 
 export const PRICE_REDIS_CLIENT = 'PRICE_REDIS_CLIENT';
 export const XLM_USDC_PRICE_CACHE_KEY = 'stellar:prices:xlm-usdc';
@@ -23,15 +25,27 @@ interface PriceSnapshot {
 export class PricesService implements OnModuleInit, OnModuleDestroy {
   private refreshTimer?: NodeJS.Timeout;
   private lastKnownRate: number | null = null;
+  private readonly coingeckoBreaker: CircuitBreaker<[], number>;
 
   constructor(
     private readonly config: ConfigService,
     private readonly logger: PinoLogger,
+    private readonly circuitBreakers: CircuitBreakerFactory,
     @Optional()
     @Inject(PRICE_REDIS_CLIENT)
     private readonly redisClient: RedisClientType | null,
   ) {
     this.logger.setContext(PricesService.name);
+    this.coingeckoBreaker = this.circuitBreakers.create(
+      'coingecko',
+      () => this.fetchLiveRateRaw(),
+      {
+        timeout: this.getNumericConfig('XLM_USDC_PRICE_TIMEOUT_MS', 5000),
+        resetTimeout: 30_000,
+        volumeThreshold: 5,
+        errorThresholdPercentage: 50,
+      },
+    );
   }
 
   async onModuleInit(): Promise<void> {
@@ -71,7 +85,7 @@ export class PricesService implements OnModuleInit, OnModuleDestroy {
 
   async refreshAndCachePrice(reason: string): Promise<number> {
     try {
-      const liveRate = await this.fetchLiveRate();
+      const liveRate = await this.coingeckoBreaker.fire();
       this.lastKnownRate = liveRate;
       await this.writeCachedRate(liveRate);
 
@@ -92,6 +106,7 @@ export class PricesService implements OnModuleInit, OnModuleDestroy {
           reason,
           error: this.formatError(error),
           fallbackRate,
+          circuitOpen: this.coingeckoBreaker.opened,
         },
         'Using fallback XLM/USDC price feed',
       );
@@ -100,7 +115,7 @@ export class PricesService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async fetchLiveRate(): Promise<number> {
+  private async fetchLiveRateRaw(): Promise<number> {
     const response = await axios.get(
       'https://api.coingecko.com/api/v3/simple/price',
       {

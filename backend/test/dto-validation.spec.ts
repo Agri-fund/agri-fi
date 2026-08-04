@@ -32,7 +32,8 @@ describe('DTO Validation checks', () => {
     const dto = new RegisterDto();
     dto.name = 'Valid Name';
     dto.email = 'valid@example.com';
-    dto.password = 'securePassword123';
+    // zxcvbn score must be >= 3 for @IsStrongPassword
+    dto.password = 'Tr0ub4dor&3-Agrifi!';
     dto.role = 'farmer';
     dto.country = 'USA';
 

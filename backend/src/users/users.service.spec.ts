@@ -1,11 +1,15 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
 import { User } from '../auth/entities/user.entity';
+import { KycSubmission } from '../auth/entities/kyc-submission.entity';
 import { PaymentDistribution } from '../escrow/entities/payment-distribution.entity';
+import { AuditLog } from '../database/entities/audit-log.entity';
 import { Investment } from '../investments/entities/investment.entity';
 import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.entity';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
+import { Document } from '../trade-deals/entities/document.entity';
 import { UsersService } from './users.service';
 
 const mockTradeDeal = (overrides: Partial<TradeDeal> = {}): TradeDeal =>
@@ -74,6 +78,26 @@ describe('UsersService', () => {
         {
           provide: getRepositoryToken(PaymentDistribution),
           useValue: paymentDistributionRepository,
+        },
+        {
+          provide: getRepositoryToken(KycSubmission),
+          useValue: { find: jest.fn(), findOne: jest.fn() },
+        },
+        {
+          provide: getRepositoryToken(Document),
+          useValue: {
+            find: jest.fn(),
+            findOne: jest.fn(),
+            count: jest.fn().mockResolvedValue(0),
+          },
+        },
+        {
+          provide: getRepositoryToken(AuditLog),
+          useValue: { find: jest.fn(), findOne: jest.fn() },
+        },
+        {
+          provide: DataSource,
+          useValue: { query: jest.fn(), createQueryRunner: jest.fn() },
         },
       ],
     }).compile();

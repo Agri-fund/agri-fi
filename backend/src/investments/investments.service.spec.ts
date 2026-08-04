@@ -39,6 +39,7 @@ const mockTradeDeal = (): TradeDeal => ({
   stellarAssetTxId: null,
   sorobanCampaignContractId: null,
   sorobanFactoryTxHash: null,
+  appTraceId: null,
   createdAt: new Date(),
   farmer: null,
   trader: null,
@@ -82,7 +83,13 @@ describe('InvestmentsService', () => {
     fundEscrow: jest.MockedFunction<any>;
     createInvestmentTransaction: jest.MockedFunction<any>;
   };
-  let queueService: { enqueueInvestmentFund: jest.MockedFunction<any> };
+  let queueService: {
+    enqueueInvestmentFundTransactional: jest.MockedFunction<any>;
+  };
+  let dataSource: {
+    transaction: jest.Mock;
+    createQueryRunner: jest.Mock;
+  };
 
   beforeEach(async () => {
     investmentRepo = {
@@ -100,9 +107,39 @@ describe('InvestmentsService', () => {
     stellarService = {
       fundEscrow: jest.fn(),
       createInvestmentTransaction: jest.fn().mockResolvedValue('unsigned-xdr'),
+      checkUsdcTrustline: jest.fn().mockResolvedValue(true),
     };
     queueService = {
-      enqueueInvestmentFund: jest.fn().mockResolvedValue(undefined),
+      enqueueInvestmentFundTransactional: jest
+        .fn()
+        .mockResolvedValue(undefined),
+    };
+    dataSource = {
+      transaction: jest.fn((cb) =>
+        cb({
+          findOne: jest.fn((entity, opts) => {
+            if (entity === TradeDeal) {
+              return tradeDealRepo.findOne(opts);
+            }
+            return investmentRepo.findOne(opts);
+          }),
+          update: jest.fn(async (entity, criteria, values) => {
+            if (entity === Investment) {
+              return investmentRepo.update(criteria, values);
+            }
+            return tradeDealRepo.update(criteria, values);
+          }),
+          find: jest.fn((entity, opts) => investmentRepo.find(opts)),
+          create: jest.fn((entity, values) => {
+            if (entity === Investment) {
+              return investmentRepo.create(values);
+            }
+            return values;
+          }),
+          save: jest.fn((value) => investmentRepo.save(value)),
+        }),
+      ),
+      createQueryRunner: jest.fn().mockReturnValue({}),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -115,32 +152,7 @@ describe('InvestmentsService', () => {
         { provide: QueueService, useValue: queueService },
         {
           provide: DataSource,
-          useValue: {
-            transaction: jest.fn((cb) =>
-              cb({
-                findOne: jest.fn((entity, opts) => {
-                  if (entity === TradeDeal) {
-                    return tradeDealRepo.findOne(opts);
-                  }
-                  return investmentRepo.findOne(opts);
-                }),
-                update: jest.fn((entity, criteria, values) => {
-                  if (entity === Investment) {
-                    return investmentRepo.update(criteria, values);
-                  }
-                  return tradeDealRepo.update(criteria, values);
-                }),
-                find: jest.fn((entity, opts) => investmentRepo.find(opts)),
-                create: jest.fn((entity, values) => {
-                  if (entity === Investment) {
-                    return investmentRepo.create(values);
-                  }
-                  return values;
-                }),
-                save: jest.fn((value) => investmentRepo.save(value)),
-              }),
-            ),
-          },
+          useValue: dataSource,
         },
       ],
     }).compile();
@@ -179,10 +191,7 @@ describe('InvestmentsService', () => {
               return payoutCents;
             });
 
-            const sumPayouts = payouts.reduce(
-              (sum, payout) => sum + payout,
-              0,
-            );
+            const sumPayouts = payouts.reduce((sum, payout) => sum + payout, 0);
 
             return sumPayouts === investorPoolCents;
           },
@@ -245,7 +254,7 @@ describe('InvestmentsService', () => {
       const dto: CreateInvestmentDto = {
         tradeDealId: 'deal-1',
         tokenAmount: 1100,
-        amountUsd: 11000,
+        amountUsd: 1000,
       };
 
       tradeDealRepo.findOne.mockResolvedValue(deal);
@@ -257,11 +266,11 @@ describe('InvestmentsService', () => {
     });
 
     it('rejects over-funding', async () => {
-      const deal = mockTradeDeal();
+      const deal = { ...mockTradeDeal(), totalValue: 500 };
       const dto: CreateInvestmentDto = {
         tradeDealId: 'deal-1',
-        tokenAmount: 100,
-        amountUsd: 11000,
+        tokenAmount: 5,
+        amountUsd: 600,
       };
 
       tradeDealRepo.findOne.mockResolvedValue(deal);
@@ -327,7 +336,10 @@ describe('InvestmentsService', () => {
       });
       expect(tradeDealRepo.update).toHaveBeenCalledWith(
         { id: 'deal-1', status: 'open' },
-        { status: 'funded' },
+        expect.objectContaining({
+          status: 'funded',
+          appTraceId: expect.any(String),
+        }),
       );
     });
 
@@ -340,11 +352,7 @@ describe('InvestmentsService', () => {
       investmentRepo.findOne.mockResolvedValue(investment);
 
       await expect(
-        service.confirmInvestment(
-          'investor-1',
-          'inv-1',
-          VALID_STELLAR_TX_ID,
-        ),
+        service.confirmInvestment('investor-1', 'inv-1', VALID_STELLAR_TX_ID),
       ).rejects.toThrow(UnprocessableEntityException);
     });
 
@@ -421,7 +429,10 @@ describe('InvestmentsService', () => {
         'signed-xdr-payload',
       );
 
-      expect(queueService.enqueueInvestmentFund).toHaveBeenCalledWith(
+      expect(
+        queueService.enqueueInvestmentFundTransactional,
+      ).toHaveBeenCalledWith(
+        expect.any(Object),
         expect.objectContaining({
           investmentId: 'inv-1',
           signedXdr: 'signed-xdr-payload',
@@ -498,7 +509,7 @@ describe('InvestmentsService', () => {
 
       expect(investmentRepo.findAndCount).toHaveBeenCalledWith({
         where: { tradeDealId: 'deal-1' },
-        relations: ['investor'],
+        relations: ['investor', 'tradeDeal'],
         order: { createdAt: 'DESC' },
         skip: 0,
         take: 20,
@@ -517,7 +528,7 @@ describe('InvestmentsService', () => {
 
       expect(investmentRepo.findAndCount).toHaveBeenCalledWith({
         where: { investorId: 'investor-1' },
-        relations: ['tradeDeal'],
+        relations: ['investor', 'tradeDeal'],
         order: { createdAt: 'DESC' },
         skip: 0,
         take: 20,

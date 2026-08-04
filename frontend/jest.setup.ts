@@ -30,12 +30,19 @@ jest.mock("next-intl", () => ({
   }),
 }));
 
-// Mock localStorage with jest.fn() so tests can call .mockReturnValue etc.
+// In-memory localStorage mock (supports setItem/getItem and jest overrides)
+const localStorageStore: Record<string, string> = {};
 const localStorageMock = {
-  getItem: jest.fn(),
-  setItem: jest.fn(),
-  removeItem: jest.fn(),
-  clear: jest.fn(),
+  getItem: jest.fn((key: string) => localStorageStore[key] ?? null),
+  setItem: jest.fn((key: string, value: string) => {
+    localStorageStore[key] = value;
+  }),
+  removeItem: jest.fn((key: string) => {
+    delete localStorageStore[key];
+  }),
+  clear: jest.fn(() => {
+    Object.keys(localStorageStore).forEach((key) => delete localStorageStore[key]);
+  }),
 };
 Object.defineProperty(global, "localStorage", {
   value: localStorageMock,
@@ -44,12 +51,12 @@ Object.defineProperty(global, "localStorage", {
 
 // Make window.location.reload mockable (jsdom marks it read-only)
 try {
-  Object.defineProperty(window, "location", {
-    value: { ...window.location, reload: jest.fn() },
-    writable: true,
+  Object.defineProperty(window.location, "reload", {
+    configurable: true,
+    value: jest.fn(),
   });
 } catch {
-  // Location property is already mocked in test environment
+  // Some jsdom versions expose location.reload as non-configurable
 }
 
 // Mock fetch

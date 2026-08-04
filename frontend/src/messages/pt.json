@@ -216,7 +216,14 @@
       "deliveryDateRequired": "Data de entrega é obrigatória",
       "deliveryDateFuture": "A data de término deve ser no futuro",
       "invalidId": "ID inválido"
-    }
+    },
+    "status": "Status",
+    "details": "Details",
+    "documents": "Documents",
+    "milestones": "Milestones",
+    "investors": "Investors",
+    "fundingProgress": "Funding Progress",
+    "publishDeal": "Publish Deal"
   },
   "common": {
     "loading": "Carregando...",
@@ -235,5 +242,66 @@
     "currency": "{value, number, currency}",
     "date": "{value, date, short}",
     "number": "{value, number}"
+  },
+  "wallet": {
+    "title": "Connect Stellar Wallet",
+    "subtitle": "Choose a wallet provider to connect",
+    "description": "Your private key never leaves your wallet. Agri-Fi only ever sees your public key.",
+    "connectButton": "Connect Wallet",
+    "connecting": "Connecting…",
+    "connected": "Connected",
+    "disconnect": "Disconnect",
+    "freighter": {
+      "name": "Freighter",
+      "type": "Browser extension wallet"
+    },
+    "albedo": {
+      "name": "Albedo",
+      "type": "Web-based signer — no install needed"
+    },
+    "detected": "Detected",
+    "install": "Install",
+    "alwaysAvailable": "Always available",
+    "openDialog": "Open wallet connection dialog",
+    "closeDialog": "Close wallet connection dialog",
+    "error": "Error connecting wallet",
+    "errorConnect": "Failed to connect wallet",
+    "errorLink": "Failed to link wallet",
+    "pleaseTryAgain": "Please try again"
+  },
+  "investment": {
+    "title": "Invest",
+    "subtitle": "Select token quantity to invest",
+    "tokenQuantity": "Token Quantity",
+    "tokenPrice": "Token Price",
+    "totalAmount": "Total Amount",
+    "maxTokens": "Max: {max} tokens",
+    "insufficientTokens": "Not enough tokens available",
+    "invest": "Invest",
+    "investing": "Investing...",
+    "invalidQuantity": "Token quantity must be between 1 and {max}",
+    "connectWallet": "Please connect your wallet first",
+    "success": "Investment successful!",
+    "error": "Investment failed",
+    "txPending": "Transaction pending...",
+    "txConfirmed": "Transaction confirmed",
+    "txFailed": "Transaction failed"
+  },
+  "marketplace": {
+    "title": "Marketplace",
+    "subtitle": "Explore agricultural trade deals",
+    "searchPlaceholder": "Search commodity, trader...",
+    "filterByStatus": "Filter by Status",
+    "filterByCategory": "Filter by Category",
+    "sortBy": "Sort By",
+    "noDeals": "No deals available",
+    "loadingDeals": "Loading deals...",
+    "status": {
+      "draft": "Draft",
+      "published": "Published",
+      "funded": "Funded",
+      "completed": "Completed",
+      "cancelled": "Cancelled"
+    }
   }
 }

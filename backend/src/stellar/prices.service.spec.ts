@@ -7,6 +7,7 @@ import {
   PricesService,
   XLM_USDC_PRICE_CACHE_KEY,
 } from './prices.service';
+import { CircuitBreakerFactory } from '../common/circuit-breaker';
 
 jest.mock('axios');
 
@@ -22,7 +23,7 @@ describe('PricesService', () => {
 
   const configService = {
     get: jest.fn((key: string, defaultValue?: string | number) => {
-      const values: Record<string, string> = {
+      const values: Record<string, string | number> = {
         XLM_USDC_PRICE_TIMEOUT_MS: '5000',
         XLM_USDC_PRICE_REFRESH_INTERVAL_MS: '60000',
         XLM_USDC_FALLBACK_RATE: '0.1',
@@ -52,6 +53,7 @@ describe('PricesService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PricesService,
+        CircuitBreakerFactory,
         { provide: ConfigService, useValue: configService },
         { provide: PinoLogger, useValue: logger },
         { provide: PRICE_REDIS_CLIENT, useValue: redisClient },

@@ -43,6 +43,11 @@ jobs:
     env:
       NODE_ENV: test
       DATABASE_URL: postgres://agri:agri@localhost:5432/agri_test
+      DATABASE_HOST: localhost
+      DATABASE_PORT: "5432"
+      DATABASE_USER: agri
+      DATABASE_PASSWORD: agri
+      DATABASE_NAME: agri_test
       JWT_SECRET: zap-scan-secret
       STELLAR_NETWORK: testnet
       STELLAR_HORIZON_URL: https://horizon-testnet.stellar.org
@@ -51,6 +56,10 @@ jobs:
       RABBITMQ_URL: amqp://localhost:5672
       NOTIFICATIONS_ENABLED: "false"
       PORT: 3001
+      KMS_KEY_ID: alias/ci-zap-scan-kms-key
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: testing
+      AWS_SECRET_ACCESS_KEY: testing
 
     steps:
       - name: Checkout repository
@@ -76,47 +85,52 @@ jobs:
         working-directory: backend
 
       - name: Start backend API in background
-        run: npm run start:prod &
+        run: |
+          npm run start:prod > /tmp/backend-zap.log 2>&1 &
+          echo $! > /tmp/backend-zap.pid
         working-directory: backend
 
       - name: Wait for backend to be ready
         run: |
-          for i in {1..60}; do
-            if curl -s http://localhost:3001/health > /dev/null; then
+          for i in {1..90}; do
+            if curl -s http://localhost:3001/health > /dev/null || \
+               curl -s http://localhost:3001/v1/health > /dev/null; then
               echo "Backend is ready!"
               exit 0
             fi
-            echo "Waiting for backend to be ready... ($i/60)"
+            echo "Waiting for backend to be ready... ($i/90)"
             sleep 1
           done
           echo "Backend failed to start in time"
+          echo "---- backend log ----"
+          cat /tmp/backend-zap.log || true
           exit 1
 
       - name: OWASP ZAP Scan
+        # Fork PRs get a read-only token that cannot create artifacts; the action
+        # still fails the step after a clean scan when artifact upload 400s.
+        # fail_action=warn already treats findings as non-fatal — keep going.
+        continue-on-error: true
         uses: zaproxy/action-full-scan@v0.11.0
         with:
           target: "http://localhost:3001"
-          rules_file_name: ".zap/rules.tsv"  # Optional: custom rules
-          cmd_options: "-a"                  # Include alpha rules
+          rules_file_name: ".zap/rules.tsv"
+          cmd_options: "-a"
           allow_issue_writing: false
-          artifact_name: "zap-scan-report"
+          artifact_name: zap_scan_${{ github.run_id }}
           fail_action: "warn"
 
       - name: Upload ZAP Report as Artifact
         uses: actions/upload-artifact@v4
-        if: always()
+        if: >-
+          always() &&
+          (github.event_name != 'pull_request' ||
+           github.event.pull_request.head.repo.full_name == github.repository)
+        continue-on-error: true
         with:
-          name: zap-security-report
+          name: zap-security-report-${{ github.run_id }}
           path: zap-full-scan-report*
           retention-days: 30
 
-      - name: Convert ZAP Report to SARIF (for GitHub Security tab)
-        uses: zaproxy/action-sarif@v0.3.0
-        if: always()
-
-      - name: Upload SARIF to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        with:
-          sarif_file: zap-full-scan-report.sarif
-          category: "owasp-zap"
+      # Note: `zaproxy/action-sarif` does not exist on GitHub and caused the whole
+      # job to fail at action-resolution time before the scan could run.

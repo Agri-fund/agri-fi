@@ -52,7 +52,10 @@ export class UsersController {
 
   @Delete('me')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Delete the authenticated user account (GDPR Right to be Forgotten)' })
+  @ApiOperation({
+    summary:
+      'Delete the authenticated user account (GDPR Right to be Forgotten)',
+  })
   @ApiResponse({
     status: 204,
     description: 'Account deleted successfully',
@@ -125,8 +128,13 @@ export class UsersController {
   }
 
   @Get('me/activity')
-  @ApiOperation({ summary: "Get the authenticated user's chronological activity log" })
-  @ApiResponse({ status: 200, description: 'List of activity events, newest first' })
+  @ApiOperation({
+    summary: "Get the authenticated user's chronological activity log",
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'List of activity events, newest first',
+  })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async getActivityLog(
     @Request() req: AuthRequest,

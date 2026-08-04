@@ -50,7 +50,7 @@ const DEALS_CACHE_TTL_MS = 30_000;
     CacheModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: async (config: ConfigService) => {
+      useFactory: async (config: ConfigService): Promise<any> => {
         const redisUrl = config.get<string>('REDIS_URL', '').trim();
 
         if (redisUrl) {
@@ -67,7 +67,12 @@ const DEALS_CACHE_TTL_MS = 30_000;
     }),
   ],
   controllers: [TradeDealsController],
-  providers: [TradeDealsService, TradeDealsGuard, TradeDealsCronService, DealFundingAlertService],
-  exports: [TradeDealsService],
+  providers: [
+    TradeDealsService,
+    TradeDealsGuard,
+    TradeDealsCronService,
+    DealFundingAlertService,
+  ],
+  exports: [TradeDealsService, TradeDealsGuard],
 })
 export class TradeDealsModule {}

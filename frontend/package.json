@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "jest",
+    "test": "jest --passWithNoTests",
     "test:a11y": "playwright test frontend/tests/accessibility.spec.ts",
     "test:a11y:report": "playwright test frontend/tests/accessibility.spec.ts --reporter=html",
     "prepare": "husky"

@@ -7,6 +7,11 @@ import { ConfigService } from '@nestjs/config';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import axios from 'axios';
 import { randomUUID } from 'crypto';
+import type CircuitBreaker from 'opossum';
+import {
+  CircuitBreakerFactory,
+  isCircuitOpenError,
+} from '../common/circuit-breaker';
 
 export interface StorageResult {
   hash: string;
@@ -21,8 +26,12 @@ export class StorageService {
   private readonly ipfsToken: string;
   private readonly s3Bucket: string;
   private readonly s3Region: string;
+  private readonly ipfsBreaker: CircuitBreaker<[Buffer, string], StorageResult>;
 
-  constructor(private readonly config: ConfigService) {
+  constructor(
+    private readonly config: ConfigService,
+    private readonly circuitBreakers: CircuitBreakerFactory,
+  ) {
     this.ipfsGateway = config.get<string>(
       'IPFS_GATEWAY',
       'https://api.web3.storage',
@@ -38,21 +47,33 @@ export class StorageService {
         secretAccessKey: config.get<string>('AWS_SECRET_ACCESS_KEY', ''),
       },
     });
+
+    this.ipfsBreaker = this.circuitBreakers.create(
+      'ipfs-pinning',
+      (file: Buffer, mimeType: string) => this.uploadToIpfsRaw(file, mimeType),
+      {
+        timeout: 30_000,
+        resetTimeout: 60_000,
+        volumeThreshold: 3,
+        errorThresholdPercentage: 50,
+      },
+    );
   }
 
   async upload(file: Buffer, mimeType: string): Promise<StorageResult> {
     try {
-      return await this.uploadToIpfs(file, mimeType);
+      return await this.ipfsBreaker.fire(file, mimeType);
     } catch (ipfsErr) {
-      this.logger.warn(
-        `IPFS upload failed: ${ipfsErr.message}. Falling back to S3.`,
-      );
+      const reason = isCircuitOpenError(ipfsErr)
+        ? `circuit open (fail-fast)`
+        : ((ipfsErr as Error)?.message ?? String(ipfsErr));
+      this.logger.warn(`IPFS upload failed: ${reason}. Falling back to S3.`);
     }
 
     try {
       return await this.uploadToS3(file, mimeType);
     } catch (s3Err) {
-      this.logger.error(`S3 upload also failed: ${s3Err.message}`);
+      this.logger.error(`S3 upload also failed: ${(s3Err as Error).message}`);
     }
 
     throw new ServiceUnavailableException(
@@ -68,7 +89,20 @@ export class StorageService {
     return `https://${this.s3Bucket}.s3.${this.s3Region}.amazonaws.com/${hash}`;
   }
 
-  private async uploadToIpfs(
+  /** Exposed for tests / health introspection. */
+  getIpfsCircuitState(): {
+    opened: boolean;
+    halfOpen: boolean;
+    closed: boolean;
+  } {
+    return {
+      opened: this.ipfsBreaker.opened,
+      halfOpen: this.ipfsBreaker.halfOpen,
+      closed: this.ipfsBreaker.closed,
+    };
+  }
+
+  private async uploadToIpfsRaw(
     file: Buffer,
     mimeType: string,
   ): Promise<StorageResult> {

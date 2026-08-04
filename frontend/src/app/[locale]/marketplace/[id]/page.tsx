@@ -1,7 +1,7 @@
 import { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import dynamic from 'next/dynamic';
+import nextDynamic from 'next/dynamic';
 import { getDealById, Milestone } from '@/lib/api';
 import FundingProgressBar from '@/components/FundingProgressBar';
 import StatusBadge from '@/components/StatusBadge';
@@ -10,14 +10,15 @@ import InvestmentSection from '@/components/InvestmentSection';
 
 // Heavy client components — loaded as separate chunks that are only fetched
 // when the browser renders this page, not included in the shared JS bundle.
-const ShipmentTimeline = dynamic(
+// Named `nextDynamic` to avoid clashing with Next.js route segment `export const dynamic`.
+const ShipmentTimeline = nextDynamic(
   () => import('@/components/ShipmentTimeline').then(m => ({ default: m.ShipmentTimeline })),
   {
     loading: () => <div className="h-40 skeleton rounded-2xl" aria-label="Loading timeline…" />,
   },
 );
 
-const ShipmentMap = dynamic(
+const ShipmentMap = nextDynamic(
   () => import('@/components/dashboard/ShipmentMap').then(m => ({ default: m.ShipmentMap })),
   {
     ssr: false,

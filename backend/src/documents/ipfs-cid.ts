@@ -1,4 +1,5 @@
-const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+const BASE58_ALPHABET =
+  '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
 
 function decodeBase58(value: string): Uint8Array | null {
   const bytes = [0];
@@ -49,12 +50,10 @@ function decodeBase32(value: string): Uint8Array | null {
 }
 
 function readVarint(bytes: Uint8Array, offset: number): number | null {
-  let value = 0;
   let shift = 0;
 
   for (let index = offset; index < bytes.length && shift < 35; index += 1) {
     const byte = bytes[index];
-    value |= (byte & 0x7f) << shift;
     if ((byte & 0x80) === 0) return index + 1;
     shift += 7;
   }

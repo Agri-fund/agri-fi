@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsBoolean,
+  IsDateString,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -19,7 +20,8 @@ export class SubmitKycDto {
 
   @ApiPropertyOptional({
     example: 'https://s3.amazonaws.com/bucket/gov-id.pdf',
-    description: 'URL of the uploaded government ID document (required for individual KYC)',
+    description:
+      'URL of the uploaded government ID document (required for individual KYC)',
   })
   @ValidateIf((dto) => !dto.isCorporate)
   @IsString()
@@ -29,7 +31,8 @@ export class SubmitKycDto {
 
   @ApiPropertyOptional({
     example: 'https://s3.amazonaws.com/bucket/proof-of-address.pdf',
-    description: 'URL of the uploaded proof of address document (required for individual KYC)',
+    description:
+      'URL of the uploaded proof of address document (required for individual KYC)',
   })
   @ValidateIf((dto) => !dto.isCorporate)
   @IsString()
@@ -74,4 +77,12 @@ export class SubmitKycDto {
   @IsNotEmpty()
   @IsUrl()
   articlesOfIncorporationUrl?: string;
+
+  @ApiPropertyOptional({
+    example: '2027-12-31',
+    description: 'Optional expiry date of the identity document (ISO 8601)',
+  })
+  @IsOptional()
+  @IsDateString()
+  documentExpiresAt?: string;
 }

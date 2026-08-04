@@ -2,10 +2,9 @@ import {
   Injectable,
   ForbiddenException,
   NotFoundException,
-  ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In, DataSource } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { randomBytes } from 'crypto';
 import { User, UserRole } from '../auth/entities/user.entity';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
@@ -51,7 +50,9 @@ export interface ActivityLogItem {
 }
 
 function generateRandomString(length: number): string {
-  return randomBytes(Math.ceil(length / 2)).toString('hex').slice(0, length);
+  return randomBytes(Math.ceil(length / 2))
+    .toString('hex')
+    .slice(0, length);
 }
 
 @Injectable()
@@ -269,10 +270,7 @@ export class UsersService {
    *
    * Returns the most recent `limit` events, sorted newest-first.
    */
-  async getActivityLog(
-    userId: string,
-    limit = 50,
-  ): Promise<ActivityLogItem[]> {
+  async getActivityLog(userId: string, limit = 50): Promise<ActivityLogItem[]> {
     const events: ActivityLogItem[] = [];
 
     // ── Investments ────────────────────────────────────────────────────────
@@ -332,7 +330,10 @@ export class UsersService {
     });
     for (const ms of milestones) {
       const milestoneLabels: Record<string, string> = {
-        farm: 'Farm', warehouse: 'Warehouse', port: 'Port', importer: 'Importer',
+        farm: 'Farm',
+        warehouse: 'Warehouse',
+        port: 'Port',
+        importer: 'Importer',
       };
       events.push({
         id: `ms-${ms.id}`,
@@ -383,7 +384,7 @@ export class UsersService {
         id: `kyc-${kyc.id}`,
         type: 'kyc',
         title: 'KYC submission',
-        description: `KYC verification ${kyc.status === 'verified' ? 'approved' : kyc.status === 'rejected' ? 'rejected' : 'submitted'}`,
+        description: `KYC verification ${kyc.status === 'approved' ? 'approved' : kyc.status === 'rejected' ? 'rejected' : 'submitted'}`,
         meta: {
           kycId: kyc.id,
           status: kyc.status,

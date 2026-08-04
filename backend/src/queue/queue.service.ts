@@ -179,7 +179,7 @@ export class QueueService implements TransactionalQueueService {
     await this.outboxService.writeEvent(
       queryRunner,
       EVENTS.DEAL_PUBLISH,
-      enrichedPayload,
+      enrichedPayload as unknown as Record<string, unknown>,
     );
   }
 
@@ -194,7 +194,7 @@ export class QueueService implements TransactionalQueueService {
     await this.outboxService.writeEvent(
       queryRunner,
       EVENTS.DEAL_DELIVERED,
-      payload,
+      payload as unknown as Record<string, unknown>,
     );
   }
 
@@ -209,7 +209,7 @@ export class QueueService implements TransactionalQueueService {
     await this.outboxService.writeEvent(
       queryRunner,
       EVENTS.DEAL_CLEANUP,
-      payload,
+      payload as unknown as Record<string, unknown>,
     );
   }
 
@@ -224,7 +224,7 @@ export class QueueService implements TransactionalQueueService {
     await this.outboxService.writeEvent(
       queryRunner,
       EVENTS.INVESTMENT_FUND,
-      enrichedPayload,
+      enrichedPayload as unknown as Record<string, unknown>,
     );
   }
 
@@ -246,7 +246,7 @@ export class QueueService implements TransactionalQueueService {
     await this.outboxService.writeEvent(
       queryRunner,
       EVENTS.DEAL_FUNDED,
-      enrichedPayload,
+      enrichedPayload as unknown as Record<string, unknown>,
     );
   }
 }

@@ -99,7 +99,9 @@ export class ShipmentsService {
 
       let signerSecret = this.config.get<string>('STELLAR_PLATFORM_SECRET', '');
       if (deal.escrowSecretKey) {
-        signerSecret = this.stellarService.decryptSecret(deal.escrowSecretKey);
+        signerSecret = await this.stellarService.decryptSecret(
+          deal.escrowSecretKey,
+        );
       }
 
       const stellarTxId = await this.stellarService.recordMemo(

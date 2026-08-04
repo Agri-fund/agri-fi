@@ -3,7 +3,6 @@ import {
   PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
-  DeleteDateColumn,
 } from 'typeorm';
 import { ApiProperty } from '@nestjs/swagger';
 import { Exclude } from 'class-transformer';
@@ -106,7 +105,10 @@ export class User {
 
   // #409 — email verification
   @Column({ name: 'is_email_verified', default: false })
-  @ApiProperty({ description: 'Whether the email address has been verified', example: false })
+  @ApiProperty({
+    description: 'Whether the email address has been verified',
+    example: false,
+  })
   isEmailVerified: boolean;
 
   @Exclude()
@@ -126,7 +128,10 @@ export class User {
   mfaSecret: string | null;
 
   @Column({ name: 'is_mfa_enabled', default: false })
-  @ApiProperty({ description: 'Whether MFA is enabled for this user', example: false })
+  @ApiProperty({
+    description: 'Whether MFA is enabled for this user',
+    example: false,
+  })
   isMfaEnabled: boolean;
 
   @CreateDateColumn({ name: 'created_at' })
@@ -138,17 +143,29 @@ export class User {
 
   /** Full legal name — stored AES-256-CBC encrypted */
   @Exclude()
-  @Column({ name: 'full_name', nullable: true, transformer: encryptionTransformer })
+  @Column({
+    name: 'full_name',
+    nullable: true,
+    transformer: encryptionTransformer,
+  })
   fullName: string | null;
 
   /** Date of birth — stored AES-256-CBC encrypted (ISO date string) */
   @Exclude()
-  @Column({ name: 'birthdate', nullable: true, transformer: encryptionTransformer })
+  @Column({
+    name: 'birthdate',
+    nullable: true,
+    transformer: encryptionTransformer,
+  })
   birthdate: string | null;
 
   /** Tax / national ID number — stored AES-256-CBC encrypted */
   @Exclude()
-  @Column({ name: 'tax_id', nullable: true, transformer: encryptionTransformer })
+  @Column({
+    name: 'tax_id',
+    nullable: true,
+    transformer: encryptionTransformer,
+  })
   taxId: string | null;
 
   /** Phone number — stored AES-256-GCM encrypted */
@@ -158,6 +175,10 @@ export class User {
 
   /** Physical / mailing address — stored AES-256-GCM encrypted */
   @Exclude()
-  @Column({ name: 'physical_address', nullable: true, transformer: encryptionTransformer })
+  @Column({
+    name: 'physical_address',
+    nullable: true,
+    transformer: encryptionTransformer,
+  })
   physicalAddress: string | null;
 }

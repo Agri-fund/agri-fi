@@ -44,7 +44,7 @@ class RedisCacheStore {
     const raw = await this.client.get(key);
     if (raw === null || raw === undefined) return undefined;
     try {
-      return JSON.parse(raw) as T;
+      return JSON.parse(typeof raw === 'string' ? raw : String(raw)) as T;
     } catch {
       return raw as unknown as T;
     }
@@ -88,7 +88,7 @@ class RedisCacheStore {
     return values.map((v) => {
       if (v === null || v === undefined) return undefined;
       try {
-        return JSON.parse(v);
+        return JSON.parse(typeof v === 'string' ? v : String(v));
       } catch {
         return v;
       }

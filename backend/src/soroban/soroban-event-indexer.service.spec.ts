@@ -7,7 +7,10 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
 import { PinoLogger } from 'nestjs-pino';
 import { SorobanEventIndexer } from './soroban-event-indexer.service';
-import { TransactionLog, TxStatus } from '../stellar/entities/transaction-log.entity';
+import {
+  TransactionLog,
+  TxStatus,
+} from '../stellar/entities/transaction-log.entity';
 import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.entity';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
 import { QueueService } from '../queue/queue.service';
@@ -22,6 +25,15 @@ describe('SorobanEventIndexer', () => {
   let logger: any;
 
   beforeEach(async () => {
+    process.env.FARM_CAMPAIGN_CONTRACT =
+      'C1111111111111111111111111111111111111111111111111111111111';
+    process.env.PROJECT_FACTORY_CONTRACT =
+      'C2222222222222222222222222222222222222222222222222222222222';
+    process.env.REVENUE_DISTRIBUTOR_CONTRACT =
+      'C3333333333333333333333333333333333333333333333333333333333';
+    process.env.MARKETPLACE_SETTLEMENT_CONTRACT =
+      'C4444444444444444444444444444444444444444444444444444444444';
+
     // Setup mocks
     txLogRepo = {
       update: jest.fn().mockResolvedValue({ affected: 1 }),
@@ -52,10 +64,14 @@ describe('SorobanEventIndexer', () => {
           STELLAR_NETWORK: 'testnet',
           SOROBAN_EVENT_INDEXING_ENABLED: 'true',
           SOROBAN_EVENT_POLLING_INTERVAL_MS: 10000,
-          FARM_CAMPAIGN_CONTRACT: 'C1111111111111111111111111111111111111111111111111111111111',
-          PROJECT_FACTORY_CONTRACT: 'C2222222222222222222222222222222222222222222222222222222222',
-          REVENUE_DISTRIBUTOR_CONTRACT: 'C3333333333333333333333333333333333333333333333333333333333',
-          MARKETPLACE_SETTLEMENT_CONTRACT: 'C4444444444444444444444444444444444444444444444444444444444',
+          FARM_CAMPAIGN_CONTRACT:
+            'C1111111111111111111111111111111111111111111111111111111111',
+          PROJECT_FACTORY_CONTRACT:
+            'C2222222222222222222222222222222222222222222222222222222222',
+          REVENUE_DISTRIBUTOR_CONTRACT:
+            'C3333333333333333333333333333333333333333333333333333333333',
+          MARKETPLACE_SETTLEMENT_CONTRACT:
+            'C4444444444444444444444444444444444444444444444444444444444',
         };
         return config[key] ?? defaultValue;
       }),
@@ -75,7 +91,10 @@ describe('SorobanEventIndexer', () => {
         { provide: ConfigService, useValue: configService },
         { provide: PinoLogger, useValue: logger },
         { provide: getRepositoryToken(TransactionLog), useValue: txLogRepo },
-        { provide: getRepositoryToken(ShipmentMilestone), useValue: milestoneRepo },
+        {
+          provide: getRepositoryToken(ShipmentMilestone),
+          useValue: milestoneRepo,
+        },
         { provide: getRepositoryToken(TradeDeal), useValue: dealRepo },
         { provide: QueueService, useValue: queueService },
       ],
@@ -92,7 +111,6 @@ describe('SorobanEventIndexer', () => {
     it('should initialize successfully', async () => {
       await service.onModuleInit();
       expect(logger.info).toHaveBeenCalledWith(
-        expect.any(Object),
         'Initializing Soroban event indexer...',
       );
     });
@@ -104,7 +122,9 @@ describe('SorobanEventIndexer', () => {
       });
 
       await service.onModuleInit();
-      expect(logger.info).toHaveBeenCalledWith('Soroban event indexing is disabled');
+      expect(logger.info).toHaveBeenCalledWith(
+        'Soroban event indexing is disabled',
+      );
     });
   });
 
@@ -122,7 +142,11 @@ describe('SorobanEventIndexer', () => {
 
       // Access private method for testing (not ideal but necessary)
       const handleMethod = (service as any).handleMilestoneCompleted;
-      await handleMethod.call(service, { dealId: 'deal-001', milestoneIndex: 0 }, txHash);
+      await handleMethod.call(
+        service,
+        { dealId: 'deal-001', milestoneIndex: 0 },
+        txHash,
+      );
 
       expect(txLogRepo.update).toHaveBeenCalledWith(
         { txHash },
@@ -130,7 +154,7 @@ describe('SorobanEventIndexer', () => {
       );
 
       expect(milestoneRepo.findOne).toHaveBeenCalled();
-      expect(milestone.save).toHaveBeenCalled();
+      expect(milestoneRepo.save).toHaveBeenCalledWith(milestone);
 
       expect(queueService.emit).toHaveBeenCalledWith(
         'milestone.completed',
@@ -233,7 +257,8 @@ describe('SorobanEventIndexer', () => {
         id: 'evt-001',
         transactionHash: 'tx999',
         ledger: 1000,
-        contractId: 'C1111111111111111111111111111111111111111111111111111111111',
+        contractId:
+          'C1111111111111111111111111111111111111111111111111111111111',
         type: 'milestone_completed',
         topic: [],
         value: { dealId: 'deal-001', milestoneIndex: 0 },
@@ -241,9 +266,12 @@ describe('SorobanEventIndexer', () => {
 
       // Process event twice
       const processMethod = (service as any).processEvent;
-      
+
       txLogRepo.update.mockResolvedValue({ affected: 1 });
-      milestoneRepo.findOne.mockResolvedValue({ id: 'ms-001', save: jest.fn() });
+      milestoneRepo.findOne.mockResolvedValue({
+        id: 'ms-001',
+        save: jest.fn(),
+      });
 
       await processMethod.call(service, event);
       await processMethod.call(service, event);
