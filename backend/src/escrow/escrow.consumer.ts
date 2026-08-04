@@ -1,4 +1,4 @@
-import { Controller, Logger } from '@nestjs/common';
+import { Controller, Logger, OnApplicationShutdown } from '@nestjs/common';
 import { Ctx, EventPattern, Payload, RmqContext } from '@nestjs/microservices';
 import { EscrowService } from './escrow.service';
 import {
@@ -24,15 +24,74 @@ interface DealDeliveredPayload {
  *     (agric_onchain_escrow_queue.dlq) where PayoutDeadLetterConsumer picks it up.
  */
 @Controller()
-export class EscrowConsumer {
+export class EscrowConsumer implements OnApplicationShutdown {
   private readonly logger = new Logger(EscrowConsumer.name);
 
-  constructor(private readonly escrowService: EscrowService) {}
+  /**
+   * Tracks all in-flight handler promises so onApplicationShutdown can await
+   * them before the process exits, satisfying #696.
+   */
+  private readonly activeJobs = new Set<Promise<void>>();
+
+  /** Set to true once shutdown is signalled — new messages are nacked. */
+  private shuttingDown = false;
+
+  constructor(
+    private readonly escrowService: EscrowService,
+    private readonly idempotency: IdempotencyService,
+  ) {}
+
+  // ── Shutdown hook (#696) ────────────────────────────────────────────────────
+
+  /**
+   * Called by NestJS when the application receives a shutdown signal.
+   * Stops accepting new messages and waits for in-flight handlers to complete.
+   */
+  async onApplicationShutdown(signal?: string): Promise<void> {
+    this.shuttingDown = true;
+    this.logger.log(
+      `EscrowConsumer shutting down (signal: ${signal ?? 'unknown'}) — waiting for ${this.activeJobs.size} in-flight job(s)`,
+    );
+
+    if (this.activeJobs.size > 0) {
+      await Promise.allSettled(Array.from(this.activeJobs));
+    }
+
+    this.logger.log('EscrowConsumer shutdown complete — all jobs finished');
+  }
+
+  // ── Event handler ────────────────────────────────────────────────────────────
 
   @EventPattern('deal.delivered')
-  async handleDealDelivered(
+  handleDealDelivered(
     @Payload() payload: DealDeliveredPayload,
     @Ctx() context: RmqContext,
+  ): void {
+    const channel = context.getChannelRef();
+    const originalMsg = context.getMessage();
+
+    if (this.shuttingDown) {
+      // Return message to queue so the next healthy replica picks it up
+      this.logger.warn(
+        `deal.delivered received during shutdown — requeueing message for deal ${payload?.tradeDealId}`,
+      );
+      channel.nack(originalMsg, false, true);
+      return;
+    }
+
+    const job = this.processDealDelivered(
+      payload,
+      channel,
+      originalMsg,
+    ).finally(() => this.activeJobs.delete(job));
+
+    this.activeJobs.add(job);
+  }
+
+  private async processDealDelivered(
+    payload: DealDeliveredPayload,
+    channel: any,
+    originalMsg: any,
   ): Promise<void> {
     const channel = context.getChannelRef();
     const originalMsg = context.getMessage();

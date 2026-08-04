@@ -1,4 +1,36 @@
 services:
+  # ── Redis cache with eviction policy (#735) ─────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    command:
+      - redis-server
+      - --maxmemory
+      - "128mb"
+      - --maxmemory-policy
+      - allkeys-lru
+      - --save
+      - ""
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── Prometheus Redis Exporter (#735) ────────────────────────────────────────
+  # Exposes Redis INFO metrics on :9121 so Prometheus alert rules can
+  # evaluate redis_memory_used_bytes / redis_memory_max_bytes.
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.62.0
+    environment:
+      REDIS_ADDR: "redis://redis:6379"
+    ports:
+      - '9121:9121'
+    depends_on:
+      redis:
+        condition: service_healthy
+
   postgres:
     image: postgres:16-alpine
     environment:

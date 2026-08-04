@@ -644,6 +644,49 @@ export class TradeDealsService {
     return dealsWithCounts;
   }
 
+  /**
+   * Soft-delete a trade deal (admin only).
+   * This preserves audit history while excluding the deal from standard queries.
+   * Soft-deleted deals can be restored with restore().
+   *
+   * @param dealId  UUID of the deal to soft-delete
+   * @returns       void (throws NotFoundException if deal doesn't exist)
+   */
+  async softDeleteDeal(dealId: string): Promise<void> {
+    const deal = await this.tradeDealRepo.findOne({ where: { id: dealId } });
+    if (!deal) {
+      throw new NotFoundException('Trade deal not found.');
+    }
+
+    await this.tradeDealRepo.softDelete(dealId);
+    this.logger.info({ dealId }, 'Trade deal soft-deleted by admin');
+  }
+
+  /**
+   * Restore a soft-deleted trade deal (admin only).
+   *
+   * @param dealId  UUID of the deal to restore
+   * @returns       void (throws NotFoundException if deal doesn't exist)
+   */
+  async restoreDeal(dealId: string): Promise<void> {
+    const deal = await this.tradeDealRepo.findOne({
+      where: { id: dealId },
+      withDeleted: true,
+    });
+
+    if (!deal) {
+      throw new NotFoundException('Trade deal not found.');
+    }
+
+    if (!deal.deletedAt) {
+      this.logger.warn({ dealId }, 'Attempted restore on non-deleted deal');
+      return;
+    }
+
+    await this.tradeDealRepo.restore(dealId);
+    this.logger.info({ dealId }, 'Trade deal restored by admin');
+  }
+
   private generateTokenSymbol(commodity: string, dealId: string): string {
     const commodityCode = commodity
       .replace(/[^a-zA-Z0-9]/g, '')

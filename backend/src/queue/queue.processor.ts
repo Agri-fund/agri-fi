@@ -1,4 +1,4 @@
-import { Controller } from '@nestjs/common';
+import { Controller, OnApplicationShutdown } from '@nestjs/common';
 import { Ctx, EventPattern, Payload, RmqContext } from '@nestjs/microservices';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -24,9 +24,19 @@ import {
   getDeliveryAttempt,
 } from './retry-policy';
 import { decryptPayload } from './queue.crypto';
+import { IdempotencyService } from './idempotency.service';
 
 @Controller()
-export class QueueProcessor {
+export class QueueProcessor implements OnApplicationShutdown {
+  /**
+   * Tracks all in-flight handler promises so onApplicationShutdown can await
+   * them before the process exits, satisfying #696.
+   */
+  private readonly activeJobs = new Set<Promise<void>>();
+
+  /** Set to true once shutdown is signalled — new messages are nacked. */
+  private shuttingDown = false;
+
   constructor(
     private readonly stellarService: StellarService,
     private readonly sorobanService: SorobanService,
@@ -40,9 +50,58 @@ export class QueueProcessor {
     private readonly userRepo: Repository<User>,
     private readonly notificationsService: NotificationsService,
     private readonly logger: PinoLogger,
+    private readonly idempotency: IdempotencyService,
   ) {
     this.logger.setContext(QueueProcessor.name);
   }
+
+  // ── Shutdown hook (#696) ────────────────────────────────────────────────────
+
+  /**
+   * Called by NestJS when the application receives a shutdown signal
+   * (SIGTERM/SIGINT). Stops accepting new messages and waits for all
+   * in-flight handlers to complete before allowing the process to exit.
+   */
+  async onApplicationShutdown(signal?: string): Promise<void> {
+    this.shuttingDown = true;
+    this.logger.info(
+      { signal, inflightCount: this.activeJobs.size },
+      'QueueProcessor shutting down — waiting for in-flight jobs to complete',
+    );
+
+    if (this.activeJobs.size > 0) {
+      await Promise.allSettled(Array.from(this.activeJobs));
+    }
+
+    this.logger.info('QueueProcessor shutdown complete — all jobs finished');
+  }
+
+  /**
+   * Wraps a handler body so it is tracked in activeJobs and graceful-shutdown
+   * aware.  Returns immediately (nacks) if shutting down.
+   */
+  private track(
+    fn: () => Promise<void>,
+    channel: any,
+    msg: any,
+    pattern: string,
+  ): void {
+    if (this.shuttingDown) {
+      // Return the message to the queue safely — it will be reprocessed
+      // by the next healthy replica.
+      this.logger.warn(
+        { event: pattern },
+        `${pattern} received during shutdown — requeueing message`,
+      );
+      channel.nack(msg, false, true);
+      return;
+    }
+
+    const job = fn().finally(() => this.activeJobs.delete(job));
+    this.activeJobs.add(job);
+  }
+
+  // ── Internal helpers ─────────────────────────────────────────────────────────
 
   private setCorrelationId(payload: BasePayload): void {
     if (payload.correlationId) {
@@ -99,13 +158,29 @@ export class QueueProcessor {
     channel.nack(msg, false, !exhausted);
   }
 
+  // ── Event handlers ──────────────────────────────────────────────────────────
+
   @EventPattern('deal.publish')
-  async handleDealPublish(
+  handleDealPublish(
     @Payload() encrypted: string,
     @Ctx() context: RmqContext,
-  ) {
+  ): void {
     const channel = context.getChannelRef();
     const originalMsg = context.getMessage();
+
+    this.track(
+      () => this.processDealPublish(encrypted, channel, originalMsg),
+      channel,
+      originalMsg,
+      'deal.publish',
+    );
+  }
+
+  private async processDealPublish(
+    encrypted: string,
+    channel: any,
+    originalMsg: any,
+  ): Promise<void> {
     const data = this.unwrap<DealPublishPayload>(
       encrypted,
       'deal.publish',
@@ -115,6 +190,19 @@ export class QueueProcessor {
     if (!data) return;
 
     this.setCorrelationId(data);
+
+    // ── Idempotency check (#687) ───────────────────────────────────────────
+    const idemKey = IdempotencyService.buildKey('deal.publish', data.dealId);
+    const lease = await this.idempotency.acquireLease(idemKey);
+    if (!lease.acquired) {
+      this.logger.info(
+        { dealId: data.dealId, status: lease.status },
+        'deal.publish duplicate — acking without reprocessing',
+      );
+      channel.ack(originalMsg);
+      return;
+    }
+
     this.logger.info(
       { dealId: data.dealId },
       `Processing deal.publish for deal ${data.dealId}`,
@@ -163,6 +251,8 @@ export class QueueProcessor {
         { dealId: data.dealId, txId: result.txId },
         `Successfully published deal ${data.dealId} with txId ${result.txId}`,
       );
+
+      await this.idempotency.markDone(idemKey);
     } catch (error) {
       this.logger.error(
         { dealId: data.dealId, error: error.message },
@@ -176,6 +266,9 @@ export class QueueProcessor {
         appTraceId,
       });
 
+      // Release idempotency lease so retry can re-acquire
+      await this.idempotency.releaseLease(idemKey);
+
       this.nackWithRetryLimit(channel, originalMsg, 'deal.publish', {
         dealId: data.dealId,
       });
@@ -187,12 +280,26 @@ export class QueueProcessor {
   }
 
   @EventPattern('investment.fund')
-  async handleInvestmentFund(
+  handleInvestmentFund(
     @Payload() encrypted: string,
     @Ctx() context: RmqContext,
-  ) {
+  ): void {
     const channel = context.getChannelRef();
     const originalMsg = context.getMessage();
+
+    this.track(
+      () => this.processInvestmentFund(encrypted, channel, originalMsg),
+      channel,
+      originalMsg,
+      'investment.fund',
+    );
+  }
+
+  private async processInvestmentFund(
+    encrypted: string,
+    channel: any,
+    originalMsg: any,
+  ): Promise<void> {
     const data = this.unwrap<InvestmentFundPayload>(
       encrypted,
       'investment.fund',
@@ -202,6 +309,22 @@ export class QueueProcessor {
     if (!data) return;
 
     this.setCorrelationId(data);
+
+    // ── Idempotency check (#687) ───────────────────────────────────────────
+    const idemKey = IdempotencyService.buildKey(
+      'investment.fund',
+      data.investmentId,
+    );
+    const lease = await this.idempotency.acquireLease(idemKey);
+    if (!lease.acquired) {
+      this.logger.info(
+        { investmentId: data.investmentId, status: lease.status },
+        'investment.fund duplicate — acking without reprocessing',
+      );
+      channel.ack(originalMsg);
+      return;
+    }
+
     this.logger.info(
       { investmentId: data.investmentId },
       `Processing investment.fund for investment ${data.investmentId}`,
@@ -218,11 +341,7 @@ export class QueueProcessor {
         );
         const stellarTxId: string = result.hash;
 
-        // 4. Transfer Trade_Tokens from escrow account to investor wallet.
-        // Decrypt the escrow secret from the payload and use the typed
-        // InvestmentFundPayload fields directly — the previously referenced
-        // variables (escrowSecret, deal, investment) were never declared in
-        // this method and would cause a ReferenceError at runtime.
+        // Transfer Trade_Tokens from escrow account to investor wallet.
         const escrowSecret = await this.stellarService.decryptSecret(
           data.encryptedEscrowSecret,
         );
@@ -245,6 +364,7 @@ export class QueueProcessor {
           `Successfully funded investment ${data.investmentId} with txId ${stellarTxId}`,
         );
 
+        await this.idempotency.markDone(idemKey);
         channel.ack(originalMsg);
         return;
       } catch (error) {
@@ -268,9 +388,7 @@ export class QueueProcessor {
       }
     }
 
-    // In-process retries exhausted — mark investment as failed and route the
-    // message to the DLQ (rather than ack-and-forget) so it's visible for
-    // manual inspection/retry.
+    // In-process retries exhausted — mark investment as failed and release lease
     this.logger.error(
       {
         investmentId: data.investmentId,
@@ -283,16 +401,31 @@ export class QueueProcessor {
       status: 'failed' as any,
     });
 
+    await this.idempotency.releaseLease(idemKey);
     channel.nack(originalMsg, false, false);
   }
 
   @EventPattern('deal.funded')
-  async handleDealFunded(
+  handleDealFunded(
     @Payload() encrypted: string,
     @Ctx() context: RmqContext,
-  ) {
+  ): void {
     const channel = context.getChannelRef();
     const originalMsg = context.getMessage();
+
+    this.track(
+      () => this.processDealFunded(encrypted, channel, originalMsg),
+      channel,
+      originalMsg,
+      'deal.funded',
+    );
+  }
+
+  private async processDealFunded(
+    encrypted: string,
+    channel: any,
+    originalMsg: any,
+  ): Promise<void> {
     const data = this.unwrap<DealFundedPayload>(
       encrypted,
       'deal.funded',
@@ -302,6 +435,22 @@ export class QueueProcessor {
     if (!data) return;
 
     this.setCorrelationId(data);
+
+    // ── Idempotency check (#687) ───────────────────────────────────────────
+    const idemKey = IdempotencyService.buildKey(
+      'deal.funded',
+      data.tradeDealId,
+    );
+    const lease = await this.idempotency.acquireLease(idemKey);
+    if (!lease.acquired) {
+      this.logger.info(
+        { tradeDealId: data.tradeDealId, status: lease.status },
+        'deal.funded duplicate — acking without reprocessing',
+      );
+      channel.ack(originalMsg);
+      return;
+    }
+
     this.logger.info(
       { tradeDealId: data.tradeDealId },
       `Processing deal.funded for deal ${data.tradeDealId}`,
@@ -316,23 +465,41 @@ export class QueueProcessor {
           `<h3>Deal Fully Funded</h3><p>Good news! The deal for <strong>${data.commodity}</strong> you invested in (Deal ID: ${data.tradeDealId}) is now fully funded.</p><p>You invested ${investor.tokenAmount} tokens.</p>`,
         );
       }
+      await this.idempotency.markDone(idemKey);
     } catch (e: any) {
       this.logger.error(
         { error: e.message },
         `Failed to send deal.funded notifications: ${e.message}`,
       );
+      // Notification failures are non-critical — release lease and ack anyway
+      // so the deal record is not stuck; alerts go via queue-alert service.
+      await this.idempotency.releaseLease(idemKey);
     }
 
     channel.ack(originalMsg);
   }
 
   @EventPattern('email.notification')
-  async handleEmailNotification(
+  handleEmailNotification(
     @Payload() encrypted: string,
     @Ctx() context: RmqContext,
-  ) {
+  ): void {
     const channel = context.getChannelRef();
     const originalMsg = context.getMessage();
+
+    this.track(
+      () => this.processEmailNotification(encrypted, channel, originalMsg),
+      channel,
+      originalMsg,
+      'email.notification',
+    );
+  }
+
+  private async processEmailNotification(
+    encrypted: string,
+    channel: any,
+    originalMsg: any,
+  ): Promise<void> {
     const data = this.unwrap<any>(
       encrypted,
       'email.notification',
@@ -342,6 +509,26 @@ export class QueueProcessor {
     if (!data) return;
 
     this.setCorrelationId(data);
+
+    // Derive a stable idempotency key: prefer an explicit messageId on the
+    // payload; fall back to userId+type for notification events.
+    const businessId =
+      data.messageId ??
+      `${data.userId ?? 'unknown'}-${data.type ?? 'unknown'}`;
+    const idemKey = IdempotencyService.buildKey(
+      'email.notification',
+      businessId,
+    );
+    const lease = await this.idempotency.acquireLease(idemKey);
+    if (!lease.acquired) {
+      this.logger.info(
+        { businessId, status: lease.status },
+        'email.notification duplicate — acking without reprocessing',
+      );
+      channel.ack(originalMsg);
+      return;
+    }
+
     this.logger.info(
       { type: data.type },
       `Processing email.notification of type ${data.type}`,
@@ -411,23 +598,40 @@ export class QueueProcessor {
           'No email address found for user notification',
         );
       }
+
+      await this.idempotency.markDone(idemKey);
     } catch (e: any) {
       this.logger.error(
         { error: e.message },
         `Failed to send email.notification: ${e.message}`,
       );
+      await this.idempotency.releaseLease(idemKey);
     }
 
     channel.ack(originalMsg);
   }
 
   @EventPattern('deal.cleanup')
-  async handleDealCleanup(
+  handleDealCleanup(
     @Payload() encrypted: string,
     @Ctx() context: RmqContext,
-  ) {
+  ): void {
     const channel = context.getChannelRef();
     const originalMsg = context.getMessage();
+
+    this.track(
+      () => this.processDealCleanup(encrypted, channel, originalMsg),
+      channel,
+      originalMsg,
+      'deal.cleanup',
+    );
+  }
+
+  private async processDealCleanup(
+    encrypted: string,
+    channel: any,
+    originalMsg: any,
+  ): Promise<void> {
     const data = this.unwrap<DealCleanupPayload>(
       encrypted,
       'deal.cleanup',
@@ -437,6 +641,22 @@ export class QueueProcessor {
     if (!data) return;
 
     this.setCorrelationId(data);
+
+    // ── Idempotency check (#687) ───────────────────────────────────────────
+    const idemKey = IdempotencyService.buildKey(
+      'deal.cleanup',
+      data.tradeDealId,
+    );
+    const lease = await this.idempotency.acquireLease(idemKey);
+    if (!lease.acquired) {
+      this.logger.info(
+        { tradeDealId: data.tradeDealId, status: lease.status },
+        'deal.cleanup duplicate — acking without reprocessing',
+      );
+      channel.ack(originalMsg);
+      return;
+    }
+
     this.logger.info(
       { dealId: data.tradeDealId },
       `Processing deal.cleanup for deal ${data.tradeDealId}`,
@@ -446,6 +666,7 @@ export class QueueProcessor {
       const deal = await this.tradeDealsService.findOne(data.tradeDealId);
       if (!deal) {
         this.logger.warn(`Deal ${data.tradeDealId} not found for cleanup`);
+        await this.idempotency.markDone(idemKey);
         channel.ack(originalMsg);
         return;
       }
@@ -501,12 +722,15 @@ export class QueueProcessor {
         { dealId: data.tradeDealId },
         `Successfully completed deal cleanup for deal ${data.tradeDealId}`,
       );
+
+      await this.idempotency.markDone(idemKey);
     } catch (error) {
       this.logger.error(
         { dealId: data.tradeDealId, error: error.message },
         `Deal cleanup failed for deal ${data.tradeDealId}: ${error.message}`,
       );
-      // We still ack the message, it's a best-effort cleanup
+      // Best-effort cleanup — still release lease and ack
+      await this.idempotency.releaseLease(idemKey);
     }
 
     channel.ack(originalMsg);

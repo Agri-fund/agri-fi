@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { SorobanService } from './soroban.service';
 import { SorobanController } from './soroban.controller';
 import { SorobanListenerService } from './soroban-listener.service';
+import { SorobanRentService } from './soroban-rent.service';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
 import { AuthModule } from '../auth/auth.module';
 
@@ -17,7 +18,7 @@ import { AuthModule } from '../auth/auth.module';
     AuthModule,
   ],
   controllers: [SorobanController],
-  providers: [SorobanService, SorobanListenerService],
-  exports: [SorobanService],
+  providers: [SorobanService, SorobanListenerService, SorobanRentService],
+  exports: [SorobanService, SorobanRentService],
 })
 export class SorobanModule {}

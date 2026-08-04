@@ -1,4 +1,5 @@
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -23,7 +24,7 @@ import { HttpLoggerMiddleware } from './common/middleware/http-logger.middleware
 import { loggingConfig } from './common/logging/logging.config';
 import { HealthModule } from './health/health.module';
 import { TerminusModule } from '@nestjs/terminus';
-import { ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { SorobanModule } from './soroban/soroban.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { validateEnvironment } from './config/env.validation';
@@ -96,6 +97,15 @@ import { CircuitBreakerModule } from './common/circuit-breaker';
     {
       provide: APP_FILTER,
       useClass: HttpExceptionFilter,
+    },
+  ],
+  providers: [
+    // Apply ThrottlerGuard globally — all endpoints are rate-limited by default.
+    // Use @SkipThrottle() on controllers/routes that should be exempt
+    // (e.g. the health check endpoint used by Kubernetes probes).
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
     },
   ],
 })

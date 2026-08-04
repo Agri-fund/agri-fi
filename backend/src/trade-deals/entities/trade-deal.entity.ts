@@ -5,6 +5,7 @@ import {
   ManyToOne,
   JoinColumn,
   CreateDateColumn,
+  DeleteDateColumn,
   OneToMany,
   Index,
 } from 'typeorm';
@@ -83,6 +84,7 @@ export class TradeDeal {
     type: 'text',
     default: 'draft',
   })
+  @Index('IDX_trade_deals_status')
   @ApiProperty({
     description: 'Current deal status',
     enum: [
@@ -202,6 +204,19 @@ export class TradeDeal {
     example: '2024-01-15T10:30:00Z',
   })
   createdAt: Date;
+
+  /**
+   * Soft-delete timestamp. When set, the record is considered deleted and
+   * TypeORM will automatically exclude it from standard queries.
+   * Use repository.softDelete() / restore() to manage this field.
+   */
+  @DeleteDateColumn({ name: 'deleted_at', nullable: true })
+  @ApiProperty({
+    description: 'Soft-delete timestamp; null means the deal is active',
+    nullable: true,
+    example: null,
+  })
+  deletedAt: Date | null;
 
   @Column({ name: 'app_trace_id', nullable: true })
   @ApiProperty({
