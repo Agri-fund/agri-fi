@@ -5,6 +5,7 @@ import {
   HttpException,
   HttpStatus,
   Logger,
+  ValidationError,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import * as Sentry from '@sentry/node';
@@ -99,6 +100,7 @@ function buildRequestContext(request: Request): Record<string, unknown> {
  * - In production: strips stack traces and raw database messages from 5xx
  *   responses, returning a generic "Internal Server Error" body.
  * - In development: passes full error details through for easier debugging.
+ * - Formats validation errors into a structured errors array.
  */
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
@@ -160,16 +162,30 @@ export class HttpExceptionFilter implements ExceptionFilter {
     // ────────────────────────────────────────────────────────────────────────
 
     let message: unknown;
+    let errors: string[] = [];
 
     if (isServerError && IS_PROD) {
       message = 'Internal Server Error';
+      // Log stack trace internally for server errors in production
+      if (exception instanceof Error) {
+        console.error('[HttpExceptionFilter] Server Error:', exception.stack);
+      }
     } else if (isHttpException) {
       const exceptionResponse = exception.getResponse();
-      message =
+      const responseObj =
         typeof exceptionResponse === 'string'
-          ? exceptionResponse
-          : ((exceptionResponse as Record<string, unknown>).message ??
-            exception.message);
+          ? { message: exceptionResponse }
+          : (exceptionResponse as Record<string, unknown>);
+
+      message = responseObj.message ?? exception.message;
+
+      // Handle class-validator validation errors
+      if (Array.isArray(responseObj.message)) {
+        errors = this.flattenValidationErrors(responseObj.message);
+        message = 'Validation failed';
+      } else if (typeof responseObj.message === 'string') {
+        message = responseObj.message;
+      }
     } else {
       message = IS_PROD
         ? 'Internal Server Error'
@@ -183,6 +199,36 @@ export class HttpExceptionFilter implements ExceptionFilter {
       message,
       path: request.url,
       timestamp: new Date().toISOString(),
+      errors: errors.length > 0 ? errors : undefined,
     });
+  }
+
+  private flattenValidationErrors(validationErrors: unknown[]): string[] {
+    const errors: string[] = [];
+
+    for (const error of validationErrors) {
+      if (typeof error === 'string') {
+        errors.push(error);
+      } else if (this.isValidationError(error)) {
+        const constraints = error.constraints;
+        if (constraints) {
+          errors.push(...Object.values(constraints));
+        }
+        const children = error.children;
+        if (children && children.length > 0) {
+          errors.push(...this.flattenValidationErrors(children));
+        }
+      }
+    }
+
+    return errors;
+  }
+
+  private isValidationError(error: unknown): error is ValidationError {
+    return (
+      typeof error === 'object' &&
+      error !== null &&
+      'constraints' in error
+    );
   }
 }

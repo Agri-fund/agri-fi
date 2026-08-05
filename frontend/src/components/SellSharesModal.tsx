@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { useWallet } from '../hooks/useWallet';
+import { useTransactionProgress } from '../hooks/useTransactionProgress';
+import { OnChainProgressIndicator } from './OnChainProgressIndicator';
 
 interface SellSharesModalProps {
   tradeTokenCode: string;
@@ -25,11 +27,13 @@ export const SellSharesModal: React.FC<SellSharesModalProps> = ({
   onSuccess,
 }) => {
   const { isConnected, publicKey, signTransaction } = useWallet();
+  const txProgress = useTransactionProgress();
   const [tokenAmount, setTokenAmount] = useState<number | ''>(1);
   const [pricePerToken, setPricePerToken] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successTxId, setSuccessTxId] = useState<string | null>(null);
+  const [showProgress, setShowProgress] = useState(false);
 
   const safeAmount = tokenAmount === '' ? 0 : tokenAmount;
   const totalValue = pricePerToken ? safeAmount * parseFloat(pricePerToken) : 0;
@@ -55,11 +59,14 @@ export const SellSharesModal: React.FC<SellSharesModalProps> = ({
     }
 
     setIsSubmitting(true);
+    setShowProgress(true);
+    txProgress.setSimulating();
+    
     try {
       const token = localStorage.getItem('auth_token');
       if (!token) throw new Error('Please log in first.');
 
-      // Step 1: Get unsigned XDR for the sell offer from backend
+      // Step 1: Get unsigned XDR for the sell offer from backend (simulating)
       const buildRes = await fetch('/api/investments/sell-offer', {
         method: 'POST',
         headers: {
@@ -83,10 +90,11 @@ export const SellSharesModal: React.FC<SellSharesModalProps> = ({
 
       const { unsignedXdr } = await buildRes.json();
 
-      // Step 2: Sign with wallet
+      // Step 2: Sign with wallet (simulating → submitting)
+      txProgress.setSubmitting();
       const signedXdr = await signTransaction(unsignedXdr);
 
-      // Step 3: Submit signed XDR
+      // Step 3: Submit signed XDR (submitting phase)
       const submitRes = await fetch('/api/stellar/submit', {
         method: 'POST',
         headers: {
@@ -102,10 +110,17 @@ export const SellSharesModal: React.FC<SellSharesModalProps> = ({
       }
 
       const result = await submitRes.json();
-      setSuccessTxId(result.hash ?? result.txId ?? 'submitted');
-      onSuccess?.(result.hash ?? result.txId ?? 'submitted');
+      const txId = result.hash ?? result.txId ?? 'submitted';
+      
+      // Mark as confirmed
+      txProgress.setConfirmed(txId);
+      
+      setSuccessTxId(txId);
+      onSuccess?.(txId);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Sell offer failed.');
+      setShowProgress(false);
+      txProgress.reset();
     } finally {
       setIsSubmitting(false);
     }
@@ -128,18 +143,41 @@ export const SellSharesModal: React.FC<SellSharesModalProps> = ({
           </button>
         </div>
 
-        {successTxId ? (
-          <div className="bg-green-50 border border-green-200 rounded-xl p-4">
-            <p className="text-green-800 font-medium mb-1">Sell offer created!</p>
-            <p className="text-xs text-green-700 font-mono break-all">
-              Tx: {successTxId}
+        {/* Show progress indicator while transaction is in-flight */}
+        {showProgress && txProgress.state !== 'confirmed' && (
+          <div className="mb-4">
+            <OnChainProgressIndicator
+              state={txProgress.state}
+              txHash={txProgress.txHash ?? undefined}
+            />
+            <p className="text-xs text-slate-600 text-center mt-3">
+              Processing your sell offer on the Stellar network...
             </p>
-            <button
-              onClick={onClose}
-              className="mt-4 w-full bg-green-600 hover:bg-green-700 text-white py-2 rounded-xl text-sm font-medium"
-            >
-              Done
-            </button>
+          </div>
+        )}
+
+        {successTxId ? (
+          <div className="space-y-3">
+            {/* Show confirmed progress indicator */}
+            {txProgress.state === 'confirmed' && (
+              <OnChainProgressIndicator
+                state="confirmed"
+                txHash={successTxId}
+              />
+            )}
+            
+            <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+              <p className="text-green-800 font-medium mb-1">Sell offer created!</p>
+              <p className="text-xs text-green-700 font-mono break-all">
+                Tx: {successTxId}
+              </p>
+              <button
+                onClick={onClose}
+                className="mt-4 w-full bg-green-600 hover:bg-green-700 text-white py-2 rounded-xl text-sm font-medium"
+              >
+                Done
+              </button>
+            </div>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">

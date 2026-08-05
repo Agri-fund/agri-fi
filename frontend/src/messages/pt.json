@@ -223,7 +223,13 @@
     "error": "Erro",
     "success": "Sucesso",
     "processing": "Processando...",
-    "dismiss": "Descartar"
+    "dismiss": "Descartar",
+    "network": {
+      "offline": {
+        "title": "Você está offline.",
+        "description": "As ações que requerem acesso à internet ficam desativadas até a conexão ser restabelecida."
+      }
+    }
   },
   "format": {
     "currency": "{value, number, currency}",

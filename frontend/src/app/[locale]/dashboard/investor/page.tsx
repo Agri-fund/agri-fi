@@ -3,13 +3,35 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { apiClient, Investment } from '../../../../lib/api';
 import { useDashboardData } from '../../../../hooks/useDashboardData';
 import DashboardLayout from '../../../../components/DashboardLayout';
 import StatCard from '../../../../components/StatCard';
-import { InvestmentCertificate } from '../../../../components/InvestmentCertificate';
-import { AnchorWidget } from '../../../../components/AnchorWidget';
-import PortfolioChart from '../../../../components/dashboard/PortfolioChart';
+
+// Heavy chart / certificate components — loaded only when the user navigates
+// to their respective tabs, keeping the initial dashboard bundle small.
+const PortfolioChart = dynamic(
+  () => import('../../../../components/dashboard/PortfolioChart'),
+  {
+    ssr: false,
+    loading: () => <div className="card h-56 skeleton" aria-label="Loading chart…" />,
+  },
+);
+
+const InvestmentCertificate = dynamic(
+  () => import('../../../../components/InvestmentCertificate').then(m => ({ default: m.InvestmentCertificate })),
+  {
+    loading: () => <div className="card h-40 skeleton" aria-label="Loading certificate…" />,
+  },
+);
+
+const AnchorWidget = dynamic(
+  () => import('../../../../components/AnchorWidget').then(m => ({ default: m.AnchorWidget })),
+  {
+    loading: () => <div className="card h-32 skeleton" aria-label="Loading widget…" />,
+  },
+);
 
 const INV_STATUS: Record<string, string> = {
   confirmed: 'badge-green', pending: 'badge-yellow', failed: 'badge-red', refunded: 'badge-gray',
@@ -124,7 +146,7 @@ export default function InvestorDashboard() {
         )}
 
         {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4">
           <StatCard label="Total Investment Value" value={`${totalInvested.toLocaleString()}`}  icon="💰" color="bg-violet-50" />
           <StatCard label="Active Deals Funded"    value={confirmed}                              icon="✅" color="bg-emerald-50" />
           <StatCard label="Total Returns Paid"     value={`${totalReturnsPaid.toLocaleString()}`} icon="💵" color="bg-teal-50" />
@@ -174,7 +196,7 @@ export default function InvestorDashboard() {
             )}
 
             {loading ? (
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+              <div className="grid sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-5">
                 {[1,2,3].map(i => <div key={i} className="card h-56 skeleton" />)}
               </div>
             ) : investments.length === 0 ? (
@@ -192,7 +214,7 @@ export default function InvestorDashboard() {
                   <h2 className="section-title">Your Portfolio</h2>
                   <span className="muted">{filtered.length} investment{filtered.length !== 1 ? 's' : ''}</span>
                 </div>
-                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                <div className="grid sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-5">
                   {filtered.map(inv => {
                     const pct = inv.deal.total_value > 0
                       ? Math.min((Number(inv.deal.funded_amount) / Number(inv.deal.total_value)) * 100, 100) : 0;
@@ -292,7 +314,7 @@ export default function InvestorDashboard() {
                 </p>
               </div>
             ) : (
-              <div className="grid sm:grid-cols-2 gap-6">
+              <div className="grid sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-2 gap-6">
                 {confirmedInvestments.map(inv => (
                   <InvestmentCertificate
                     key={inv.id}
