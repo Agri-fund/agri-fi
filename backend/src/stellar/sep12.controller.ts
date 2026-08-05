@@ -18,7 +18,11 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { Request } from 'express';
 import { User } from '../auth/entities/user.entity';
-import { Sep12Service, Sep12PutCustomerRequest, Sep12CustomerResponse } from './sep12.service';
+import {
+  Sep12Service,
+  Sep12PutCustomerRequest,
+  Sep12CustomerResponse,
+} from './sep12.service';
 
 @ApiTags('sep12')
 @ApiBearerAuth('jwt')

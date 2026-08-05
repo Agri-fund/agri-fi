@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import {
   ESCROW_QUEUE_NAME,
   ESCROW_QUEUE_DLX,
+  ESCROW_QUEUE_DLQ,
   dlxQueueOptions,
 } from '../queue/queue.dlq.constants';
 
@@ -22,13 +23,20 @@ async function bootstrap() {
         ],
         queue: ESCROW_QUEUE_NAME,
         queueOptions: dlxQueueOptions(ESCROW_QUEUE_DLX),
+        prefetchCount: parseInt(
+          new ConfigService().get<string>('RABBITMQ_PREFETCH_COUNT', '10'),
+          10,
+        ),
       },
+      noAck: false,
     },
-  );
+  });
 
-  await app.listen();
+  await app.startAllMicroservices();
   console.log(
-    'Escrow microservice is running on dedicated queue: agric_onchain_escrow_queue',
+    'Escrow microservices running:\n' +
+      `  • Primary queue: ${ESCROW_QUEUE_NAME}\n` +
+      `  • DLQ:           ${ESCROW_QUEUE_DLQ}`,
   );
 }
 

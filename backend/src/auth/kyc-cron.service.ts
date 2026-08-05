@@ -36,7 +36,7 @@ export class KycCronService {
 
       const expiresAt = new Date(submission.documentExpiresAt);
       const daysUntilExpiry = Math.ceil(
-        (expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+        (expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
       );
 
       // Check for expiration
@@ -70,26 +70,26 @@ export class KycCronService {
   private async sendAlert(
     submission: KycSubmission,
     alertType: string,
-    alertField: keyof KycSubmission
+    alertField: keyof KycSubmission,
   ): Promise<void> {
     try {
       await this.queueService.emit('email.notification', {
         type: alertType,
         userId: submission.userId,
       });
-      
+
       await this.kycSubmissionRepo.update(submission.id, {
         [alertField]: new Date(),
       });
-      
+
       this.logger.info(
         { submissionId: submission.id, alertType },
-        `Successfully sent ${alertType} alert`
+        `Successfully sent ${alertType} alert`,
       );
     } catch (error) {
       this.logger.error(
         { submissionId: submission.id, alertType, error: error.message },
-        `Failed to send ${alertType} alert`
+        `Failed to send ${alertType} alert`,
       );
     }
   }
@@ -114,12 +114,12 @@ export class KycCronService {
 
       this.logger.info(
         { submissionId: submission.id, userId: submission.userId },
-        'Successfully expired KYC submission'
+        'Successfully expired KYC submission',
       );
     } catch (error) {
       this.logger.error(
         { submissionId: submission.id, error: error.message },
-        'Failed to expire KYC submission'
+        'Failed to expire KYC submission',
       );
     }
   }

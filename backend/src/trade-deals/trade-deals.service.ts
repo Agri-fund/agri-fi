@@ -6,7 +6,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, Repository, QueryRunner } from 'typeorm';
 import { PinoLogger } from 'nestjs-pino';
 import { TradeDeal, TradeDealStatus } from './entities/trade-deal.entity';
 import { Document, DocumentType } from './entities/document.entity';
@@ -305,8 +305,9 @@ export class TradeDealsService {
       // if enqueueing fails, the escrow-key write must roll back too, since
       // the deal would otherwise be stuck holding an escrow account no job
       // will ever process.
-      await this.dataSource.transaction(async (manager) => {
-        await manager.update(TradeDeal, dealId, {
+      // Use transactional outbox for atomic DB update + event publish
+      return await this.dataSource.transaction(async (queryRunner: QueryRunner) => {
+        await queryRunner.manager.update(TradeDeal, dealId, {
           escrowPublicKey,
           escrowSecretKey: encryptedEscrowSecret,
         });
@@ -316,21 +317,21 @@ export class TradeDealsService {
           'Escrow account created, enqueuing token issuance',
         );
 
-        await this.queueService.enqueueDealPublish({
+        await this.queueService.enqueueDealPublishTransactional(queryRunner, {
           dealId,
           tokenSymbol: deal.tokenSymbol,
           escrowPublicKey,
           encryptedEscrowSecret,
           tokenCount: deal.tokenCount,
         });
-      });
 
-      // Return deal with escrow data (status still draft, will be updated by queue processor)
-      return {
-        ...deal,
-        escrowPublicKey,
-        escrowSecretKey: encryptedEscrowSecret,
-      };
+        // Return deal with escrow data (status still draft, will be updated by queue processor)
+        return {
+          ...deal,
+          escrowPublicKey,
+          escrowSecretKey: encryptedEscrowSecret,
+        };
+      });
     } catch (error) {
       this.logger.error(
         { dealId, error: error.message },
@@ -634,6 +635,49 @@ export class TradeDealsService {
     );
 
     return dealsWithCounts;
+  }
+
+  /**
+   * Soft-delete a trade deal (admin only).
+   * This preserves audit history while excluding the deal from standard queries.
+   * Soft-deleted deals can be restored with restore().
+   *
+   * @param dealId  UUID of the deal to soft-delete
+   * @returns       void (throws NotFoundException if deal doesn't exist)
+   */
+  async softDeleteDeal(dealId: string): Promise<void> {
+    const deal = await this.tradeDealRepo.findOne({ where: { id: dealId } });
+    if (!deal) {
+      throw new NotFoundException('Trade deal not found.');
+    }
+
+    await this.tradeDealRepo.softDelete(dealId);
+    this.logger.info({ dealId }, 'Trade deal soft-deleted by admin');
+  }
+
+  /**
+   * Restore a soft-deleted trade deal (admin only).
+   *
+   * @param dealId  UUID of the deal to restore
+   * @returns       void (throws NotFoundException if deal doesn't exist)
+   */
+  async restoreDeal(dealId: string): Promise<void> {
+    const deal = await this.tradeDealRepo.findOne({
+      where: { id: dealId },
+      withDeleted: true,
+    });
+
+    if (!deal) {
+      throw new NotFoundException('Trade deal not found.');
+    }
+
+    if (!deal.deletedAt) {
+      this.logger.warn({ dealId }, 'Attempted restore on non-deleted deal');
+      return;
+    }
+
+    await this.tradeDealRepo.restore(dealId);
+    this.logger.info({ dealId }, 'Trade deal restored by admin');
   }
 
   private generateTokenSymbol(commodity: string, dealId: string): string {

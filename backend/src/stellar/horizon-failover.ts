@@ -75,7 +75,10 @@ export class HorizonFailoverClient {
 
   private advance(): void {
     this.currentIndex = (this.currentIndex + 1) % this.urls.length;
-    this.server = new Horizon.Server(this.urls[this.currentIndex], this.serverOptions);
+    this.server = new Horizon.Server(
+      this.urls[this.currentIndex],
+      this.serverOptions,
+    );
   }
 
   private isRetryable(err: unknown): boolean {
@@ -93,7 +96,8 @@ export class HorizonFailoverClient {
       }
     }
     // HTTP 429 Too Many Requests or 503 Service Unavailable
-    const status = (err as { response?: { status?: number } })?.response?.status;
+    const status = (err as { response?: { status?: number } })?.response
+      ?.status;
     return status === 429 || status === 503;
   }
 }

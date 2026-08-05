@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   WalletProvider,
   detectAvailableWallets,
@@ -13,7 +13,23 @@ const NETWORK_PASSPHRASE =
     ? 'Public Global Stellar Network ; September 2015'
     : 'Test SDF Network ; September 2015';
 
+/**
+ * How often (ms) to poll the wallet extension for connection/account changes.
+ * Freighter does not emit DOM events for external disconnects, so we poll.
+ */
+const POLL_INTERVAL_MS = 3_000;
+
 export type { WalletProvider };
+
+/**
+ * Reason the wallet was last disconnected.
+ *
+ * - `null`            — never disconnected, or disconnect hasn't happened yet
+ * - `'user'`          — the user clicked Disconnect inside this app
+ * - `'external'`      — Freighter was locked / disconnected outside this app
+ * - `'account_changed'` — the active Freighter account was switched
+ */
+export type DisconnectReason = null | 'user' | 'external' | 'account_changed';
 
 export interface WalletState {
   isConnected: boolean;
@@ -22,6 +38,8 @@ export interface WalletState {
   availableWallets: WalletProvider[];
   isLoading: boolean;
   error: string | null;
+  /** Reason for the most recent disconnect, reset to null on a new successful connect. */
+  disconnectReason: DisconnectReason;
 }
 
 export interface UseWalletReturn extends WalletState {
@@ -36,14 +54,20 @@ export const useWallet = (): UseWalletReturn => {
     publicKey: null,
     provider: null,
     availableWallets: [],
-    isLoading: false,
+    isLoading: true,
     error: null,
+    disconnectReason: null,
   });
+
+  // Keep a ref so the polling closure always reads the latest state without
+  // needing to be recreated on every render.
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   // Detect available wallets on mount
   useEffect(() => {
     detectAvailableWallets().then((wallets) => {
-      setState((prev) => ({ ...prev, availableWallets: wallets }));
+      setState((prev) => ({ ...prev, availableWallets: wallets, isLoading: false }));
     });
   }, []);
 
@@ -116,9 +140,83 @@ export const useWallet = (): UseWalletReturn => {
     };
   }, []);
 
+  // ── Polling watcher ────────────────────────────────────────────────────────
+  // Runs only while the wallet is connected. Every POLL_INTERVAL_MS it fetches
+  // the current public key from the wallet extension and compares it to the one
+  // stored in state. Three outcomes are possible:
+  //
+  //   1. Keys match         → still connected, do nothing.
+  //   2. Keys differ        → the user switched accounts in Freighter. We treat
+  //                           this as an "account_changed" external event and
+  //                           reset state so the app doesn't operate on a stale key.
+  //   3. Call throws / empty → Freighter is locked or the user removed the
+  //                           extension permission. Reset state with reason
+  //                           'external'.
+  useEffect(() => {
+    if (!state.isConnected || !state.provider) return;
+
+    const provider = state.provider;
+    const knownKey = state.publicKey;
+
+    const intervalId = setInterval(async () => {
+      // If the component has already moved to disconnected, stop.
+      if (!stateRef.current.isConnected) return;
+
+      try {
+        const currentKey = await getPublicKeyWithWallet(provider);
+
+        if (!currentKey) {
+          // Wallet returned empty string — Freighter is locked / disconnected.
+          sessionStorage.removeItem('stellar_wallet');
+          setState((prev) => ({
+            ...prev,
+            isConnected: false,
+            publicKey: null,
+            provider: null,
+            disconnectReason: 'external',
+          }));
+          return;
+        }
+
+        if (currentKey !== knownKey) {
+          // Account was switched externally.
+          sessionStorage.removeItem('stellar_wallet');
+          setState((prev) => ({
+            ...prev,
+            isConnected: false,
+            publicKey: null,
+            provider: null,
+            disconnectReason: 'account_changed',
+          }));
+        }
+      } catch {
+        // Any error (extension unresponsive, etc.) → treat as external disconnect.
+        sessionStorage.removeItem('stellar_wallet');
+        setState((prev) => ({
+          ...prev,
+          isConnected: false,
+          publicKey: null,
+          provider: null,
+          disconnectReason: 'external',
+        }));
+      }
+    }, POLL_INTERVAL_MS);
+
+    return () => clearInterval(intervalId);
+    // Re-create the watcher whenever the connection itself changes (connect/disconnect).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.isConnected, state.provider, state.publicKey]);
+
+  // ── Actions ────────────────────────────────────────────────────────────────
+
   const connect = useCallback(async (provider: WalletProvider): Promise<string> => {
     try {
-      setState((prev) => ({ ...prev, isLoading: true, error: null }));
+      setState((prev) => ({
+        ...prev,
+        isLoading: true,
+        error: null,
+        disconnectReason: null,
+      }));
 
       const result = await connectWallet(provider);
 
@@ -133,6 +231,7 @@ export const useWallet = (): UseWalletReturn => {
         publicKey: result.publicKey,
         provider,
         isLoading: false,
+        disconnectReason: null,
       }));
 
       return result.publicKey;
@@ -159,6 +258,7 @@ export const useWallet = (): UseWalletReturn => {
       publicKey: null,
       provider: null,
       error: null,
+      disconnectReason: 'user',
     }));
   }, []);
 

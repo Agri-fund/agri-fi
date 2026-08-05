@@ -21,7 +21,10 @@ export class QueueAlertService {
     this.configService.get<string>('QUEUE_ALERT_THRESHOLD', '10'),
   );
   private readonly durationMs = Number(
-    this.configService.get<string>('QUEUE_ALERT_DURATION_MS', `${5 * 60 * 1000}`),
+    this.configService.get<string>(
+      'QUEUE_ALERT_DURATION_MS',
+      `${5 * 60 * 1000}`,
+    ),
   ); // 5 minutes
   private readonly webhookUrl = this.configService.get<string>(
     'DISCORD_WEBHOOK_URL',
@@ -44,7 +47,10 @@ export class QueueAlertService {
       const response = await firstValueFrom(
         this.httpService.get(apiUrl, { auth: this.buildAuth() }),
       );
-      const queueInfo = response.data as { messages: number; idle_since?: string };
+      const queueInfo = response.data as {
+        messages: number;
+        idle_since?: string;
+      };
       const readyCount = queueInfo.messages;
 
       this.logger.debug(`Queue ready messages: ${readyCount}`);
@@ -55,7 +61,10 @@ export class QueueAlertService {
           this.logger.warn(
             `Queue size exceeded threshold (${this.threshold}). Monitoring started.`,
           );
-        } else if (new Date().getTime() - this.highWaterStart.getTime() >= this.durationMs) {
+        } else if (
+          new Date().getTime() - this.highWaterStart.getTime() >=
+          this.durationMs
+        ) {
           await this.sendDiscordAlert(readyCount);
           // Reset after notification to avoid spamming.
           this.highWaterStart = null;
@@ -76,11 +85,22 @@ export class QueueAlertService {
   }
 
   private buildManagementApiUrl(): string {
-    const host = this.configService.get<string>('RABBITMQ_MANAGEMENT_HOST', 'localhost');
-    const port = this.configService.get<string>('RABBITMQ_MANAGEMENT_PORT', '15672');
-    const vhost = encodeURIComponent(this.configService.get<string>('RABBITMQ_VHOST', '/'));
+    const host = this.configService.get<string>(
+      'RABBITMQ_MANAGEMENT_HOST',
+      'localhost',
+    );
+    const port = this.configService.get<string>(
+      'RABBITMQ_MANAGEMENT_PORT',
+      '15672',
+    );
+    const vhost = encodeURIComponent(
+      this.configService.get<string>('RABBITMQ_VHOST', '/'),
+    );
     const queue = encodeURIComponent(
-      this.configService.get<string>('RABBITMQ_QUEUE_NAME', 'agric_onchain_queue'),
+      this.configService.get<string>(
+        'RABBITMQ_QUEUE_NAME',
+        'agric_onchain_queue',
+      ),
     );
     return `http://${host}:${port}/api/queues/${vhost}/${queue}`;
   }
@@ -91,22 +111,32 @@ export class QueueAlertService {
     return user && pass ? { username: user, password: pass } : undefined;
   }
 
-  private async sendDiscordAlert(currentCount: number): Promise<void> {
+  /**
+   * Send an arbitrary message to the configured Discord webhook.
+   * Used both by the queue-backlog monitor and by DLQ consumers that need
+   * to notify engineers of permanently failed messages.
+   */
+  async sendAlert(message: string): Promise<void> {
     if (!this.webhookUrl) {
       this.logger.warn('DISCORD_WEBHOOK_URL not configured – alert not sent');
       return;
     }
-    const payload = {
-      content: `⚠️ Queue **${this.configService.get<string>(
-        'RABBITMQ_QUEUE_NAME',
-        'agric_onchain_queue',
-      )}** has been above **${this.threshold}** messages for over **5 minutes**. Current ready messages: ${currentCount}.`,
-    };
     try {
-      await firstValueFrom(this.httpService.post(this.webhookUrl, payload));
-      this.logger.log('Discord alert sent for queue overload');
+      await firstValueFrom(
+        this.httpService.post(this.webhookUrl, { content: message }),
+      );
+      this.logger.log('Discord alert sent');
     } catch (err) {
       this.logger.error({ err }, 'Failed to send Discord webhook notification');
     }
+  }
+
+  private async sendDiscordAlert(currentCount: number): Promise<void> {
+    await this.sendAlert(
+      `⚠️ Queue **${this.configService.get<string>(
+        'RABBITMQ_QUEUE_NAME',
+        'agric_onchain_queue',
+      )}** has been above **${this.threshold}** messages for over **5 minutes**. Current ready messages: ${currentCount}.`,
+    );
   }
 }

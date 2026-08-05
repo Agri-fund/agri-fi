@@ -179,10 +179,7 @@ describe('InvestmentsService', () => {
               return payoutCents;
             });
 
-            const sumPayouts = payouts.reduce(
-              (sum, payout) => sum + payout,
-              0,
-            );
+            const sumPayouts = payouts.reduce((sum, payout) => sum + payout, 0);
 
             return sumPayouts === investorPoolCents;
           },
@@ -340,11 +337,7 @@ describe('InvestmentsService', () => {
       investmentRepo.findOne.mockResolvedValue(investment);
 
       await expect(
-        service.confirmInvestment(
-          'investor-1',
-          'inv-1',
-          VALID_STELLAR_TX_ID,
-        ),
+        service.confirmInvestment('investor-1', 'inv-1', VALID_STELLAR_TX_ID),
       ).rejects.toThrow(UnprocessableEntityException);
     });
 

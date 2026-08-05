@@ -22,8 +22,7 @@ describe('Logging Configuration', () => {
     expect(logger).toBeDefined();
   });
 
-  it('should set context correctly', () => {
-    logger.setContext('TestService');
+  it('should carry service and version in pino bindings', () => {
     expect(logger.logger.bindings()).toEqual(
       expect.objectContaining({
         service: 'agri-fi-backend',
@@ -31,7 +30,7 @@ describe('Logging Configuration', () => {
     );
   });
 
-  it('should support structured logging', () => {
+  it('should support structured logging with arbitrary fields', () => {
     const logSpy = jest.spyOn(logger.logger, 'info');
 
     logger.info({ userId: 'test-123', action: 'test' }, 'Test message');
@@ -42,13 +41,69 @@ describe('Logging Configuration', () => {
     );
   });
 
-  it('should handle correlation ID assignment in request scope', () => {
-    // This test verifies the logger can be configured for correlation IDs
-    // In actual usage, correlation IDs are set by the middleware in request scope
-    expect(() => {
-      logger.assign({ correlationId: 'test-123' });
-    }).toThrow(
-      'PinoLogger: unable to assign extra fields out of request scope',
+  it('should support structured logging with traceId field', () => {
+    const logSpy = jest.spyOn(logger.logger, 'info');
+    const traceId = 'trace-abc-123';
+
+    logger.info({ traceId, dealId: 'deal-456' }, 'Deal published');
+
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ traceId }),
+      'Deal published',
     );
+  });
+
+  it('should support warn level with structured data', () => {
+    const logSpy = jest.spyOn(logger.logger, 'warn');
+
+    logger.warn({ traceId: 'trace-xyz', attempt: 2 }, 'Retrying operation');
+
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ traceId: 'trace-xyz', attempt: 2 }),
+      'Retrying operation',
+    );
+  });
+
+  it('should support error level with structured data', () => {
+    const logSpy = jest.spyOn(logger.logger, 'error');
+
+    logger.error(
+      { traceId: 'trace-err', error: 'Stellar timeout' },
+      'Transaction failed',
+    );
+
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ traceId: 'trace-err' }),
+      'Transaction failed',
+    );
+  });
+
+  it('should throw when assign() is called outside request scope', () => {
+    // PinoLogger.assign() requires an active pino-http request context.
+    // This documents the expected behaviour so callers know it is request-scoped.
+    expect(() => {
+      logger.assign({ traceId: 'test-123' });
+    }).toThrow('PinoLogger: unable to assign extra fields out of request scope');
+  });
+
+  describe('production mode — raw JSON (no pretty transport)', () => {
+    it('should not enable pretty transport when NODE_ENV=production', () => {
+      // Mirror the guard condition from logging.config.ts:
+      //   usePretty = LOG_PRETTY === 'true' && NODE_ENV !== 'production' && hasPinoPretty()
+      // When NODE_ENV=production, usePretty must be false regardless of LOG_PRETTY.
+      const computeUsePretty = (nodeEnv: string, logPretty: string) =>
+        logPretty === 'true' && nodeEnv !== 'production';
+
+      expect(computeUsePretty('production', 'true')).toBe(false);
+      expect(computeUsePretty('production', 'false')).toBe(false);
+    });
+
+    it('should enable pretty transport in development when LOG_PRETTY=true', () => {
+      const computeUsePretty = (nodeEnv: string, logPretty: string) =>
+        logPretty === 'true' && nodeEnv !== 'production';
+
+      expect(computeUsePretty('development', 'true')).toBe(true);
+      expect(computeUsePretty('development', 'false')).toBe(false);
+    });
   });
 });

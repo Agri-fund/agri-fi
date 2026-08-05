@@ -13,6 +13,7 @@ import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.enti
 import { PaymentDistribution } from '../escrow/entities/payment-distribution.entity';
 import { KycSubmission } from '../auth/entities/kyc-submission.entity';
 import { Document } from '../trade-deals/entities/document.entity';
+import { AuditLog } from '../database/entities/audit-log.entity';
 
 export interface CurrentUserProfile {
   id: string;
@@ -27,6 +28,26 @@ export interface CurrentUserProfile {
 }
 
 export type DashboardDealRole = 'farmer' | 'trader';
+
+export type ActivityEventType =
+  | 'investment'
+  | 'deal_created'
+  | 'deal_status_change'
+  | 'milestone'
+  | 'document_upload'
+  | 'payment'
+  | 'kyc'
+  | 'login'
+  | 'account';
+
+export interface ActivityLogItem {
+  id: string;
+  type: ActivityEventType;
+  title: string;
+  description: string;
+  meta: Record<string, unknown>;
+  created_at: string;
+}
 
 function generateRandomString(length: number): string {
   return randomBytes(Math.ceil(length / 2))
@@ -51,6 +72,8 @@ export class UsersService {
     private readonly kycSubmissionRepository: Repository<KycSubmission>,
     @InjectRepository(Document)
     private readonly documentRepository: Repository<Document>,
+    @InjectRepository(AuditLog)
+    private readonly auditLogRepository: Repository<AuditLog>,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -238,6 +261,193 @@ export class UsersService {
         };
       }),
     );
+  }
+
+  /**
+   * Synthesises a chronological activity feed for the user by merging events
+   * from: investments, trade deals, shipment milestones, documents, KYC
+   * submissions, payment distributions, and the audit_logs table.
+   *
+   * Returns the most recent `limit` events, sorted newest-first.
+   */
+  async getActivityLog(
+    userId: string,
+    limit = 50,
+  ): Promise<ActivityLogItem[]> {
+    const events: ActivityLogItem[] = [];
+
+    // ── Investments ────────────────────────────────────────────────────────
+    const investments = await this.investmentRepository.find({
+      where: { investorId: userId },
+      relations: ['tradeDeal'],
+      order: { createdAt: 'DESC' },
+      take: limit,
+    });
+    for (const inv of investments) {
+      events.push({
+        id: `inv-${inv.id}`,
+        type: 'investment',
+        title: 'Investment made',
+        description: `Invested $${Number(inv.amountUsd).toLocaleString()} in ${inv.tradeDeal?.commodity ?? 'a trade deal'} (${inv.tradeDeal?.tokenSymbol ?? ''})`,
+        meta: {
+          investmentId: inv.id,
+          dealId: inv.tradeDealId,
+          commodity: inv.tradeDeal?.commodity,
+          amountUsd: Number(inv.amountUsd),
+          tokenAmount: Number(inv.tokenAmount),
+          status: inv.status,
+          stellarTxId: inv.stellarTxId,
+        },
+        created_at: inv.createdAt.toISOString(),
+      });
+    }
+
+    // ── Trade deals created by this user ──────────────────────────────────
+    const deals = await this.tradeDealRepository.find({
+      where: [{ farmerId: userId }, { traderId: userId }],
+      order: { createdAt: 'DESC' },
+      take: limit,
+    });
+    for (const deal of deals) {
+      events.push({
+        id: `deal-${deal.id}`,
+        type: 'deal_created',
+        title: 'Trade deal created',
+        description: `Created trade deal for ${deal.commodity} — $${Number(deal.totalValue).toLocaleString()} (${deal.tokenSymbol})`,
+        meta: {
+          dealId: deal.id,
+          commodity: deal.commodity,
+          totalValue: Number(deal.totalValue),
+          status: deal.status,
+          tokenSymbol: deal.tokenSymbol,
+        },
+        created_at: deal.createdAt.toISOString(),
+      });
+    }
+
+    // ── Shipment milestones recorded by this user ─────────────────────────
+    const milestones = await this.milestoneRepository.find({
+      where: { recordedBy: userId },
+      order: { recordedAt: 'DESC' },
+      take: limit,
+    });
+    for (const ms of milestones) {
+      const milestoneLabels: Record<string, string> = {
+        farm: 'Farm', warehouse: 'Warehouse', port: 'Port', importer: 'Importer',
+      };
+      events.push({
+        id: `ms-${ms.id}`,
+        type: 'milestone',
+        title: 'Shipment milestone recorded',
+        description: `Recorded "${milestoneLabels[ms.milestone] ?? ms.milestone}" milestone${ms.notes ? `: ${ms.notes}` : ''}`,
+        meta: {
+          milestoneId: ms.id,
+          dealId: ms.tradeDealId,
+          milestone: ms.milestone,
+          notes: ms.notes,
+          stellarTxId: ms.stellarTxId,
+        },
+        created_at: ms.recordedAt.toISOString(),
+      });
+    }
+
+    // ── Document uploads ──────────────────────────────────────────────────
+    const docs = await this.documentRepository.find({
+      where: { uploaderId: userId },
+      order: { createdAt: 'DESC' },
+      take: limit,
+    });
+    for (const doc of docs) {
+      events.push({
+        id: `doc-${doc.id}`,
+        type: 'document_upload',
+        title: 'Document uploaded',
+        description: `Uploaded document of type "${doc.docType}"`,
+        meta: {
+          documentId: doc.id,
+          docType: doc.docType,
+          dealId: doc.tradeDealId,
+          ipfsHash: doc.ipfsHash,
+        },
+        created_at: doc.createdAt.toISOString(),
+      });
+    }
+
+    // ── KYC submissions ───────────────────────────────────────────────────
+    const kycSubmissions = await this.kycSubmissionRepository.find({
+      where: { userId },
+      order: { createdAt: 'DESC' },
+      take: 10,
+    });
+    for (const kyc of kycSubmissions) {
+      events.push({
+        id: `kyc-${kyc.id}`,
+        type: 'kyc',
+        title: 'KYC submission',
+        description: `KYC verification ${kyc.status === 'verified' ? 'approved' : kyc.status === 'rejected' ? 'rejected' : 'submitted'}`,
+        meta: {
+          kycId: kyc.id,
+          status: kyc.status,
+          isCorporate: kyc.isCorporate,
+        },
+        created_at: kyc.createdAt.toISOString(),
+      });
+    }
+
+    // ── Payment distributions received ────────────────────────────────────
+    const payments = await this.paymentDistributionRepository.find({
+      where: { recipientId: userId, status: 'confirmed' },
+      order: { createdAt: 'DESC' },
+      take: limit,
+    });
+    for (const pd of payments) {
+      events.push({
+        id: `pay-${pd.id}`,
+        type: 'payment',
+        title: 'Payment received',
+        description: `Received $${Number(pd.amountUsd).toLocaleString()} from escrow release (${pd.recipientType})`,
+        meta: {
+          paymentId: pd.id,
+          dealId: pd.tradeDealId,
+          amountUsd: Number(pd.amountUsd),
+          recipientType: pd.recipientType,
+          stellarTxId: pd.stellarTxId,
+        },
+        created_at: pd.createdAt.toISOString(),
+      });
+    }
+
+    // ── Audit log entries attributed to this user ─────────────────────────
+    const auditEntries = await this.auditLogRepository.find({
+      where: { userId },
+      order: { createdAt: 'DESC' },
+      take: limit,
+    });
+    for (const entry of auditEntries) {
+      // Skip TradeDeal mutations — already covered by deal_created above
+      if (entry.entityName === 'TradeDeal') continue;
+      events.push({
+        id: `audit-${entry.id}`,
+        type: 'account',
+        title: `${entry.action.toLowerCase().replace('insert', 'created').replace('update', 'updated').replace('delete', 'deleted')} ${entry.entityName}`,
+        description: entry.changes ?? `${entry.action} on ${entry.entityName}`,
+        meta: {
+          auditId: entry.id,
+          entityName: entry.entityName,
+          entityId: entry.entityId,
+          action: entry.action,
+        },
+        created_at: entry.createdAt.toISOString(),
+      });
+    }
+
+    // ── Sort all events newest-first and cap ──────────────────────────────
+    events.sort(
+      (a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    );
+
+    return events.slice(0, limit);
   }
 
   async exportUserData(userId: string): Promise<any> {
