@@ -160,4 +160,13 @@ export class User {
   @Exclude()
   @Column({ name: 'physical_address', nullable: true, transformer: encryptionTransformer })
   physicalAddress: string | null;
+
+  /** Farmer credit score (300-850) based on historical performance */
+  @Column({ name: 'credit_score', type: 'int', nullable: true })
+  @ApiProperty({
+    description: 'Farmer credit score calculated from historical performance (300-850)',
+    nullable: true,
+    example: 720,
+  })
+  creditScore: number | null;
 }
