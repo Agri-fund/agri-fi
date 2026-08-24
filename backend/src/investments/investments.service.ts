@@ -22,10 +22,14 @@ import {
   PaginationQuery,
   toPaginatedResult,
 } from '../common/pagination';
+import { FeeCalculatorService, FeeBreakdown } from './fee-calculator.service';
+import { CreateInvestmentResponseDto } from './dto/investment-response.dto';
+import { encodeFeeData, generateInvestmentMemo } from './fee-transaction.utils';
 
 export interface CreateInvestmentResult {
   investment: Investment;
   unsignedXdr: string;
+  feeBreakdown: FeeBreakdown;
 }
 
 const STELLAR_TX_HASH_PATTERN = /^[a-f0-9]{64}$/i;
@@ -49,6 +53,7 @@ export class InvestmentsService {
     private readonly stellarService: StellarService,
     private readonly dataSource: DataSource,
     private readonly queueService: QueueService,
+    private readonly feeCalculatorService: FeeCalculatorService,
   ) {}
 
   async createInvestment(
@@ -81,6 +86,23 @@ export class InvestmentsService {
           'Investor wallet has not established a USDC trustline. Please add a USDC trustline to your Stellar wallet before investing.',
       });
     }
+
+    // Calculate fees upfront
+    const investorTier =
+      this.feeCalculatorService.getInvestorTierFromUser(investor);
+    const tradeDealTemp = await this.tradeDealRepo.findOne({
+      where: { id: dto.tradeDealId },
+    });
+
+    if (!tradeDealTemp) {
+      throw new NotFoundException('Trade deal not found.');
+    }
+
+    const feeBreakdown = await this.feeCalculatorService.calculateFeeBreakdown({
+      dealType: tradeDealTemp.commodity,
+      investorTier,
+      grossAmount: dto.amountUsd,
+    });
 
     const investment = await this.dataSource.transaction(async (manager) => {
       // Load and lock the trade deal
@@ -137,7 +159,7 @@ export class InvestmentsService {
         });
       }
 
-      // Check for over-funding
+      // Check for over-funding (use gross amount)
       const totalInvested = currentInvestments.reduce(
         (sum, inv) => sum + Number(inv.amountUsd),
         0,
@@ -177,9 +199,14 @@ export class InvestmentsService {
       dto.tokenAmount,
       tradeDeal!.issuerPublicKey!,
       dto.complianceData,
+      generateInvestmentMemo(
+        tradeDeal!.tokenSymbol,
+        dto.tokenAmount,
+        encodeFeeData(feeBreakdown),
+      ),
     );
 
-    return { investment, unsignedXdr };
+    return { investment, unsignedXdr, feeBreakdown };
   }
 
   private assertTravelRuleCompliance(
