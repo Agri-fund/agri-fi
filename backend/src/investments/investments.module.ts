@@ -4,6 +4,7 @@ import { InvestmentsService } from './investments.service';
 import { InvestmentsController } from './investments.controller';
 import { FeeConfigurationService } from './fee-configuration.service';
 import { FeeConfigurationController } from './fee-configuration.controller';
+import { CurrencyConverterService } from './currency-converter.service';
 import { Investment } from './entities/investment.entity';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
 import { User } from '../auth/entities/user.entity';
@@ -23,7 +24,13 @@ import { FeeCalculatorService } from './fee-calculator.service';
     InvestmentsService,
     FeeCalculatorService,
     FeeConfigurationService,
+    CurrencyConverterService,
   ],
-  exports: [InvestmentsService, FeeCalculatorService, FeeConfigurationService],
+  exports: [
+    InvestmentsService,
+    FeeCalculatorService,
+    FeeConfigurationService,
+    CurrencyConverterService,
+  ],
 })
 export class InvestmentsModule {}
