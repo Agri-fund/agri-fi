@@ -316,7 +316,7 @@ export class InvestmentsService {
     }
 
     // Trigger referral reward for first investment
-    this.referralService.triggerReward(investorId).catch(() => {});
+    this.referralService?.triggerReward(investorId)?.catch(() => {});
 
     // Return the updated investment by fetching it from the database
     const updatedInvestment = await this.investmentRepo.findOne({

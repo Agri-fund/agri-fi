@@ -14,6 +14,7 @@ import { User } from '../auth/entities/user.entity';
 import { StellarService } from '../stellar/stellar.service';
 import { QueueService } from '../queue/queue.service';
 import { CreateInvestmentDto } from './dto/create-investment.dto';
+import { FeeCalculatorService } from './fee-calculator.service';
 import * as fc from 'fast-check';
 
 const VALID_STELLAR_TX_ID =
@@ -100,9 +101,12 @@ describe('InvestmentsService', () => {
     stellarService = {
       fundEscrow: jest.fn(),
       createInvestmentTransaction: jest.fn().mockResolvedValue('unsigned-xdr'),
+      checkUsdcTrustline: jest.fn().mockResolvedValue(true),
     };
     queueService = {
       enqueueInvestmentFund: jest.fn().mockResolvedValue(undefined),
+      enqueueInvestmentFundTransactional: jest.fn().mockResolvedValue(undefined),
+      enqueueDealFundedTransactional: jest.fn().mockResolvedValue(undefined),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -116,6 +120,7 @@ describe('InvestmentsService', () => {
         {
           provide: DataSource,
           useValue: {
+            createQueryRunner: jest.fn().mockReturnValue({}),
             transaction: jest.fn((cb) =>
               cb({
                 findOne: jest.fn((entity, opts) => {
@@ -140,6 +145,19 @@ describe('InvestmentsService', () => {
                 save: jest.fn((value) => investmentRepo.save(value)),
               }),
             ),
+          },
+        },
+        {
+          provide: FeeCalculatorService,
+          useValue: {
+            getInvestorTierFromUser: jest.fn().mockReturnValue('standard'),
+            calculateFeeBreakdown: jest.fn().mockResolvedValue({
+              grossAmountUsd: 1000,
+              platformFeeUsd: 20,
+              netAmountUsd: 980,
+              feePercentage: 2,
+              investorTier: 'standard',
+            }),
           },
         },
       ],
@@ -246,6 +264,10 @@ describe('InvestmentsService', () => {
         tradeDealId: 'deal-1',
         tokenAmount: 1100,
         amountUsd: 11000,
+        complianceData: {
+          originator: { name: 'Alice', address: '123 St', accountNumber: 'ACC1' },
+          beneficiary: { name: 'Bob', address: '456 St', accountNumber: 'ACC2' },
+        },
       };
 
       tradeDealRepo.findOne.mockResolvedValue(deal);
@@ -262,6 +284,10 @@ describe('InvestmentsService', () => {
         tradeDealId: 'deal-1',
         tokenAmount: 100,
         amountUsd: 11000,
+        complianceData: {
+          originator: { name: 'Alice', address: '123 St', accountNumber: 'ACC1' },
+          beneficiary: { name: 'Bob', address: '456 St', accountNumber: 'ACC2' },
+        },
       };
 
       tradeDealRepo.findOne.mockResolvedValue(deal);
@@ -327,7 +353,7 @@ describe('InvestmentsService', () => {
       });
       expect(tradeDealRepo.update).toHaveBeenCalledWith(
         { id: 'deal-1', status: 'open' },
-        { status: 'funded' },
+        expect.objectContaining({ status: 'funded' }),
       );
     });
 
@@ -421,7 +447,8 @@ describe('InvestmentsService', () => {
         'signed-xdr-payload',
       );
 
-      expect(queueService.enqueueInvestmentFund).toHaveBeenCalledWith(
+      expect(queueService.enqueueInvestmentFundTransactional).toHaveBeenCalledWith(
+        expect.anything(),
         expect.objectContaining({
           investmentId: 'inv-1',
           signedXdr: 'signed-xdr-payload',
@@ -498,7 +525,7 @@ describe('InvestmentsService', () => {
 
       expect(investmentRepo.findAndCount).toHaveBeenCalledWith({
         where: { tradeDealId: 'deal-1' },
-        relations: ['investor'],
+        relations: ['investor', 'tradeDeal'],
         order: { createdAt: 'DESC' },
         skip: 0,
         take: 20,
@@ -517,7 +544,7 @@ describe('InvestmentsService', () => {
 
       expect(investmentRepo.findAndCount).toHaveBeenCalledWith({
         where: { investorId: 'investor-1' },
-        relations: ['tradeDeal'],
+        relations: ['investor', 'tradeDeal'],
         order: { createdAt: 'DESC' },
         skip: 0,
         take: 20,

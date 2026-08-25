@@ -319,6 +319,7 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
           type="number"
           id="tokenQuantity"
           min="1"
+          step="0.0000001"
           max={maxTokens}
           value={tokenQuantity === '' ? '' : tokenQuantity}
           onChange={(e) => {

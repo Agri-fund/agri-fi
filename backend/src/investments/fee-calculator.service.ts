@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, LessThanOrEqual, MoreThan, IsNull } from 'typeorm';
 import {
   FeeConfiguration,
   FeeType,
@@ -138,12 +138,20 @@ export class FeeCalculatorService {
     referenceDate: Date,
   ): Promise<FeeConfiguration[]> {
     return await this.feeConfigRepo.find({
-      where: {
-        dealType,
-        investorTier,
-        effectiveFrom: { _type: 'lte', value: referenceDate },
-        effectiveTo: { _type: 'gt', value: referenceDate },
-      },
+      where: [
+        {
+          dealType,
+          investorTier,
+          effectiveFrom: LessThanOrEqual(referenceDate),
+          effectiveTo: MoreThan(referenceDate),
+        },
+        {
+          dealType,
+          investorTier,
+          effectiveFrom: LessThanOrEqual(referenceDate),
+          effectiveTo: IsNull(),
+        },
+      ],
       order: {
         feeType: 'ASC',
       },
@@ -211,11 +219,18 @@ export class FeeCalculatorService {
   ): Promise<boolean> {
     const date = referenceDate || new Date();
     const count = await this.feeConfigRepo.count({
-      where: {
-        dealType,
-        effectiveFrom: { _type: 'lte', value: date },
-        effectiveTo: { _type: 'gt', value: date },
-      },
+      where: [
+        {
+          dealType,
+          effectiveFrom: LessThanOrEqual(date),
+          effectiveTo: MoreThan(date),
+        },
+        {
+          dealType,
+          effectiveFrom: LessThanOrEqual(date),
+          effectiveTo: IsNull(),
+        },
+      ],
     });
     return count > 0;
   }

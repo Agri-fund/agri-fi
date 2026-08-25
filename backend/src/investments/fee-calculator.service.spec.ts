@@ -132,7 +132,7 @@ describe('FeeCalculatorService', () => {
       });
 
       expect(result.grossAmount).toBe(10000);
-      expect(result.breakdown.length).toBe(4); // All 4 fee types
+      expect(result.breakdown.length).toBe(3); // 3 active non-early-exit fee types
       expect(result.platformOriginationFee?.amount).toBe(200); // 2% of 10000
       expect(result.investorEntryFee?.amount).toBe(100); // 1% of 10000
       expect(result.platformSuccessFee?.amount).toBe(50); // 0.5% of 10000

@@ -34,7 +34,6 @@ import { TradeDealsGuard } from '../trade-deals/trade-deals.guard';
 @ApiTags('investments')
 @ApiBearerAuth('jwt')
 @UseGuards(AuthGuard('jwt'))
-@Version('1')
 @Controller('investments')
 export class InvestmentsController {
   constructor(
