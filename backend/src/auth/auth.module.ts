@@ -9,6 +9,8 @@ import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt.strategy';
 import { User } from './entities/user.entity';
 import { KycSubmission } from './entities/kyc-submission.entity';
+import { ReferralCode } from './entities/referral-code.entity';
+import { Referral } from './entities/referral.entity';
 import { KycGuard } from './kyc.guard';
 import { RolesGuard } from './roles.guard';
 import { QueueModule } from '../queue/queue.module';

@@ -18,6 +18,7 @@ import { FeeCalculatorService } from './fee-calculator.service';
     TypeOrmModule.forFeature([Investment, TradeDeal, User, FeeConfiguration]),
     StellarModule,
     QueueModule,
+    ReferralModule,
   ],
   controllers: [InvestmentsController, FeeConfigurationController],
   providers: [

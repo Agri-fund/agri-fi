@@ -8,6 +8,7 @@ import { ClsModule, ClsMiddleware } from 'nestjs-cls';
 import { DatabaseConfig } from './database/database.config';
 import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './auth/auth.module';
+import { ReferralModule } from './auth/referral.module';
 import { StellarModule } from './stellar/stellar.module';
 import { ShipmentsModule } from './shipments/shipments.module';
 import { TradeDealsModule } from './trade-deals/trade-deals.module';
@@ -74,6 +75,7 @@ import { AuditModule } from './audit/audit.module';
     }),
     DatabaseModule,
     AuthModule,
+    ReferralModule,
     StellarModule,
     ShipmentsModule,
     TradeDealsModule,

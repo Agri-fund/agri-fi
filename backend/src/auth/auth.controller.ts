@@ -11,6 +11,7 @@ import {
   Res,
   HttpCode,
   HttpStatus,
+  Version,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -41,6 +42,7 @@ interface AuthRequest extends ExpressRequest {
 }
 
 @ApiTags('auth')
+@Version('1')
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}

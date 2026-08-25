@@ -4,11 +4,14 @@ import {
   OnGatewayConnection,
   OnGatewayDisconnect,
   OnGatewayInit,
+  SubscribeMessage,
   WebSocketGateway,
   WebSocketServer,
+  MessageBody,
+  ConnectedSocket,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { WsJwtGuard } from './ws-jwt.guard';
+import { WsJwtGuard, WS_AUTH_ERROR_CODE } from './ws-jwt.guard';
 
 @WebSocketGateway({
   cors: { origin: true, credentials: true },
@@ -23,26 +26,25 @@ export class NotificationsGateway
   @WebSocketServer()
   server: Server;
 
-  constructor(private readonly jwtService: JwtService) {}
+  constructor(
+    private readonly jwtService: JwtService,
+    private readonly wsJwtGuard: WsJwtGuard,
+  ) {}
 
   afterInit(server: Server): void {
     server.use((socket, next) => {
-      const token =
-        (socket.handshake.auth?.token as string | undefined) ??
-        (typeof socket.handshake.headers.authorization === 'string'
-          ? socket.handshake.headers.authorization.split(' ')[1]
-          : undefined);
+      const token = this.wsJwtGuard.extractToken(socket as Socket);
 
       if (!token) {
-        socket.disconnect();
+        (socket as Socket).disconnect();
         return next(new Error('Unauthorized'));
       }
 
       try {
-        socket.data.user = this.jwtService.verify(token);
+        this.wsJwtGuard.verifyAndStore(socket as Socket, token);
         next();
       } catch {
-        socket.disconnect();
+        (socket as Socket).disconnect();
         next(new Error('Unauthorized'));
       }
     });
@@ -54,5 +56,23 @@ export class NotificationsGateway
 
   handleDisconnect(client: Socket): void {
     this.logger.debug(`Client disconnected: ${client.id}`);
+  }
+
+  afterInitMessageValidation(server: Server): void {
+    server.use((socket, next) => {
+      const client = socket as Socket;
+      const token = this.wsJwtGuard.extractToken(client);
+      if (!token) {
+        client.emit('auth_error', { message: 'Token missing' });
+        client.disconnect(true);
+        return next(new Error('Unauthorized'));
+      }
+      try {
+        this.wsJwtGuard.verifyAndStore(client, token);
+        next();
+      } catch {
+        return next(new Error('Unauthorized'));
+      }
+    });
   }
 }

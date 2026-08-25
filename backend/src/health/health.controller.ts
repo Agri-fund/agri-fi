@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Version } from '@nestjs/common';
 import {
   HealthCheckService,
   HealthCheck,
@@ -13,6 +13,7 @@ import { SkipThrottle } from '@nestjs/throttler';
 import { RabbitmqHealthIndicator } from './rabbitmq.health-indicator';
 
 @ApiTags('health')
+@Version('1')
 @Controller('health')
 @SkipThrottle() // Health check is called by Kubernetes liveness/readiness probes — exempt from rate limiting
 export class HealthController {
