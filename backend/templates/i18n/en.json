@@ -41,5 +41,20 @@
   },
   "co-farmer-invitation": {
     "subject": "You have been invited to co-farm a deal"
+  },
+  "drip-welcome": {
+    "subject": "Welcome to Agri-Fi — Start Your Investment Journey"
+  },
+  "drip-how-it-works": {
+    "subject": "How Agri-Fi Works: 5 Simple Steps"
+  },
+  "drip-featured-deal": {
+    "subject": "This Week's Featured Deals on Agri-Fi"
+  },
+  "drip-risk-returns": {
+    "subject": "Understanding Risk & Returns on Agri-Fi"
+  },
+  "drip-last-chance": {
+    "subject": "Complete Your First Investment — Deals Are Filling Fast"
   }
 }

@@ -41,5 +41,20 @@
   },
   "co-farmer-invitation": {
     "subject": "Umealikwa kushirikiana kulima mkataba"
+  },
+  "drip-welcome": {
+    "subject": "Karibu Agri-Fi — Anza Safari Yako ya Uwekezaji"
+  },
+  "drip-how-it-works": {
+    "subject": "Jinsi Agri-Fi Inavyofanya Kazi: Hatua 5 Rahisi"
+  },
+  "drip-featured-deal": {
+    "subject": "Mikataba Iliyoangaziwa Wiki Hii kwenye Agri-Fi"
+  },
+  "drip-risk-returns": {
+    "subject": "Kuelewa Hatari na Faida kwenye Agri-Fi"
+  },
+  "drip-last-chance": {
+    "subject": "Kamilisha Uwekezaji Wako wa Kwanza — Mikataba Inajaa Haraka"
   }
 }
