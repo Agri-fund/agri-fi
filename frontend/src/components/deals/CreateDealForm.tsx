@@ -7,6 +7,11 @@ import * as z from 'zod';
 import { useToast } from '@/components/ui/ToastProvider';
 import { useTranslations } from 'next-intl';
 
+interface CoFarmerRow {
+  email: string;
+  portionPercent: string;
+}
+
 interface CreateDealFormProps {
   onSuccess?: () => void;
   onCancel?: () => void;
@@ -14,6 +19,8 @@ interface CreateDealFormProps {
 
 const DRAFT_STORAGE_KEY = 'createDealForm.draft';
 const DRAFT_SAVE_DEBOUNCE_MS = 1000;
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export const CreateDealForm: React.FC<CreateDealFormProps> = ({ onSuccess, onCancel }) => {
   const t = useTranslations('deals');
@@ -69,6 +76,31 @@ export const CreateDealForm: React.FC<CreateDealFormProps> = ({ onSuccess, onCan
   const [restoredAt, setRestoredAt] = useState<string | null>(null);
   const hasHydrated = useRef(false);
 
+  // #891 — co-investment: optional co-farmer invitations created with the deal
+  const [coFarmers, setCoFarmers] = useState<CoFarmerRow[]>([]);
+  const [coFarmerError, setCoFarmerError] = useState<string | null>(null);
+
+  const addCoFarmerRow = () => setCoFarmers((rows) => [...rows, { email: '', portionPercent: '' }]);
+  const removeCoFarmerRow = (index: number) =>
+    setCoFarmers((rows) => rows.filter((_, i) => i !== index));
+  const updateCoFarmerRow = (index: number, patch: Partial<CoFarmerRow>) =>
+    setCoFarmers((rows) => rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+
+  /** Validates the co-farmer rows; returns an i18n error key or null. */
+  const validateCoFarmers = (): string | null => {
+    let committedTotal = 0;
+    for (const row of coFarmers) {
+      if (!EMAIL_PATTERN.test(row.email)) return 'invalidEmail';
+      const portion = Number(row.portionPercent);
+      if (!row.portionPercent || Number.isNaN(portion) || portion <= 0 || portion > 100) {
+        return 'invalidPortion';
+      }
+      committedTotal += portion;
+    }
+    if (committedTotal > 100) return 'totalTooHigh';
+    return null;
+  };
+
   // Restore a saved draft (if any) on mount, before the debounced-save effect
   // below starts running so we don't immediately clobber it with defaults.
   useEffect(() => {
@@ -111,6 +143,14 @@ export const CreateDealForm: React.FC<CreateDealFormProps> = ({ onSuccess, onCan
       trader_id: data.trader_id || undefined,
     };
 
+    // Validate co-farmer rows before creating the deal (#891)
+    const coFarmerValidation = validateCoFarmers();
+    if (coFarmerValidation) {
+      setCoFarmerError(coFarmerValidation);
+      return;
+    }
+    setCoFarmerError(null);
+
     const creationPromise = fetch('/api/trade-deals', {
       method: 'POST',
       headers: {
@@ -126,13 +166,37 @@ export const CreateDealForm: React.FC<CreateDealFormProps> = ({ onSuccess, onCan
     });
 
     try {
-      await promise(creationPromise, {
+      const deal = await promise(creationPromise, {
         loading: tc('processing'),
         success: tc('success'),
         error: tc('error'),
       });
 
+      // Fire the co-farmer invitations against the freshly created deal.
+      // Best-effort: a failed invitation does not roll back deal creation.
+      const dealId = (deal as { id?: string })?.id;
+      if (dealId && coFarmers.length > 0) {
+        const results = await Promise.allSettled(
+          coFarmers.map((row) =>
+            fetch(`/api/trade-deals/${dealId}/co-farmers`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                email: row.email,
+                portionPercent: Number(row.portionPercent),
+              }),
+            }).then((response) => {
+              if (!response.ok) throw new Error(`Invite failed (${response.status})`);
+            }),
+          ),
+        );
+        if (results.some((r) => r.status === 'rejected')) {
+          toast(t('coFarmers.inviteFailed'), 'error');
+        }
+      }
+
       reset();
+      setCoFarmers([]);
       try {
         localStorage.removeItem(DRAFT_STORAGE_KEY);
       } catch {
@@ -327,6 +391,66 @@ export const CreateDealForm: React.FC<CreateDealFormProps> = ({ onSuccess, onCan
               <span className="text-red-500 text-xs mt-1 font-medium">{errors.trader_id.message}</span>
             )}
           </div>
+        </div>
+
+        {/* #891 — Co-investment: invite co-farmers onto this deal */}
+        <div className="space-y-3 pt-4 border-t border-gray-100">
+          <div>
+            <h3 className="text-sm font-bold text-gray-800">{t('coFarmers.title')}</h3>
+            <p className="text-xs text-gray-500 mt-0.5">{t('coFarmers.description')}</p>
+          </div>
+
+          {coFarmers.map((row, index) => (
+            <div key={index} className="grid grid-cols-[1fr_100px_auto] gap-2 items-start">
+              <div className="flex flex-col">
+                <label htmlFor={`co-farmer-email-${index}`} className="sr-only">
+                  {t('coFarmers.emailLabel')}
+                </label>
+                <input
+                  id={`co-farmer-email-${index}`}
+                  type="email"
+                  value={row.email}
+                  onChange={(e) => updateCoFarmerRow(index, { email: e.target.value })}
+                  placeholder="farmer@example.com"
+                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                />
+              </div>
+              <div className="flex flex-col">
+                <label htmlFor={`co-farmer-portion-${index}`} className="sr-only">
+                  {t('coFarmers.portionLabel')}
+                </label>
+                <input
+                  id={`co-farmer-portion-${index}`}
+                  type="number"
+                  min="1"
+                  max="100"
+                  value={row.portionPercent}
+                  onChange={(e) => updateCoFarmerRow(index, { portionPercent: e.target.value })}
+                  placeholder="%"
+                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => removeCoFarmerRow(index)}
+                className="px-3 py-2 text-sm text-red-600 hover:text-red-800 font-semibold"
+              >
+                {t('coFarmers.remove')}
+              </button>
+            </div>
+          ))}
+
+          {coFarmerError && (
+            <span className="text-red-500 text-xs font-medium block">{t(`coFarmers.${coFarmerError}`)}</span>
+          )}
+
+          <button
+            type="button"
+            onClick={addCoFarmerRow}
+            className="text-sm text-green-700 hover:text-green-900 font-semibold"
+          >
+            + {t('coFarmers.add')}
+          </button>
         </div>
 
         <button

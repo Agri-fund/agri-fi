@@ -193,19 +193,32 @@ export class User {
   })
   creditScore: number | null;
 
-  /** User's preferred currency for displaying investment amounts (ISO 4217 code) */
-  @Column({
-    name: 'preferred_currency',
-    type: 'varchar',
-    length: 3,
-    default: 'USD',
-  })
+  /** Preferred language for transactional emails (#897). ISO 639-1 code. */
+  @Column({ name: 'preferred_language', type: 'varchar', length: 8, default: 'en' })
   @ApiProperty({
-    description:
-      'Preferred currency for displaying investment amounts (ISO 4217 code)',
-    example: 'KES',
-    enum: ['USD', 'KES', 'NGN', 'GHS', 'TZS'],
-    default: 'USD',
+    description: 'Preferred language for emails and notifications',
+    enum: ['en', 'es', 'fr', 'pt', 'sw'],
+    example: 'en',
   })
-  preferredCurrency: string;
+  preferredLanguage: string;
+
+  /** IANA timezone used for timezone-aware scheduling, e.g. weekly digests (#892). */
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  @ApiProperty({
+    description: 'IANA timezone for scheduled notifications',
+    example: 'Africa/Nairobi',
+    required: false,
+  })
+  timezone: string | null;
+
+  /**
+   * Whether the user opted in to the weekly deal digest email (#892).
+   * Toggled from notification preferences or the unsubscribe link.
+   */
+  @Column({ name: 'email_digest_enabled', type: 'boolean', default: true })
+  @ApiProperty({
+    description: 'Whether the weekly digest email is enabled',
+    example: true,
+  })
+  emailDigestEnabled: boolean;
 }

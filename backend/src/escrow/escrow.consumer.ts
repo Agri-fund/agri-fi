@@ -1,6 +1,7 @@
 import { Controller, Logger, OnApplicationShutdown } from '@nestjs/common';
 import { Ctx, EventPattern, Payload, RmqContext } from '@nestjs/microservices';
 import { EscrowService } from './escrow.service';
+import { IdempotencyService } from '../queue/idempotency.service';
 import {
   getDeliveryAttempt,
   isTransientQueueError,
@@ -93,8 +94,6 @@ export class EscrowConsumer implements OnApplicationShutdown {
     channel: any,
     originalMsg: any,
   ): Promise<void> {
-    const channel = context.getChannelRef();
-    const originalMsg = context.getMessage();
     const { tradeDealId } = payload;
 
     // Derive the current attempt count from broker-tracked x-death headers.
@@ -106,14 +105,30 @@ export class EscrowConsumer implements OnApplicationShutdown {
       `Received deal.delivered for deal ${tradeDealId} (attempt ${attempt}/${ESCROW_MAX_DELIVERY_ATTEMPTS})`,
     );
 
+    const idempotencyKey = IdempotencyService.buildKey(
+      'deal.delivered',
+      tradeDealId,
+    );
+    const lease = await this.idempotency.acquireLease(idempotencyKey, 900);
+
+    if (!lease.acquired) {
+      this.logger.warn(
+        `Skipping duplicate deal.delivered for deal ${tradeDealId} (status: ${lease.status ?? 'unknown'})`,
+      );
+      channel.ack(originalMsg);
+      return;
+    }
+
     try {
       await this.escrowService.processDealDelivered(payload);
+      await this.idempotency.markDone(idempotencyKey);
 
       this.logger.log(
         `Successfully processed deal.delivered for deal ${tradeDealId} on attempt ${attempt}`,
       );
       channel.ack(originalMsg);
     } catch (error) {
+      await this.idempotency.releaseLease(idempotencyKey);
       const err = error as Error;
 
       if (exhausted) {

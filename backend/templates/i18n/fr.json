@@ -1,0 +1,45 @@
+{
+  "welcome": {
+    "subject": "Bienvenue sur Agri-Fi"
+  },
+  "kyc-approved": {
+    "subject": "Votre vérification KYC a été approuvée"
+  },
+  "kyc-rejected": {
+    "subject": "Votre vérification KYC n'a pas été approuvée"
+  },
+  "investment-confirmed": {
+    "subject": "Investissement confirmé"
+  },
+  "payment-distributed": {
+    "subject": "Paiement distribué"
+  },
+  "deal-funded": {
+    "subject": "Accord entièrement financé"
+  },
+  "deal-expired": {
+    "subject": "Accord expiré"
+  },
+  "password-reset": {
+    "subject": "Réinitialisez votre mot de passe"
+  },
+  "account-lockout": {
+    "subject": "Votre compte a été verrouillé"
+  },
+  "security-alert": {
+    "subject": "Alerte sécurité : connexion depuis un nouvel appareil"
+  },
+  "deal-digest": {
+    "subject": "Votre résumé hebdomadaire des accords",
+    "sections": {
+      "deals": "Progression du financement",
+      "milestones": "Jalons à venir cette semaine",
+      "documents": "Documents en attente de soumission",
+      "actions": "Actions à mener",
+      "unsubscribe": "Se désabonner de ces e-mails"
+    }
+  },
+  "co-farmer-invitation": {
+    "subject": "Vous avez été invité à co-cultiver un accord"
+  }
+}
