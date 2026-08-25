@@ -148,6 +148,7 @@
   },
   "deals": {
     "createTitle": "Unda Mkataba Mpya wa Biashara",
+    "draftRestored": "Rasimu imerejeshwa kutoka {time}",
     "commodity": "Jina la Bidhaa",
     "quantity": "Kiasi",
     "unit": "Kitengo",
@@ -177,7 +178,13 @@
     "error": "Kosa",
     "success": "Mafanikio",
     "processing": "Inashughulikia...",
-    "dismiss": "Funga"
+    "dismiss": "Funga",
+    "network": {
+      "offline": {
+        "title": "Uko nje ya mtandao.",
+        "description": "Vitendo vinavyohitaji mtandao vimezimwa mpaka muunganisho urudishwe."
+      }
+    }
   },
   "referrals": {
     "title": "Programu ya Rufaa",

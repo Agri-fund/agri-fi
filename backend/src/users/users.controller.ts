@@ -1,13 +1,18 @@
 import {
   Controller,
   Get,
+  Delete,
   UseGuards,
   Request,
   Query,
   BadRequestException,
   ForbiddenException,
-  Version,
+  Res,
+  Header,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
+import { Response } from 'express';
 import {
   ApiTags,
   ApiOperation,
@@ -44,6 +49,19 @@ export class UsersController {
   @ApiResponse({ status: 404, description: 'User not found' })
   async getCurrentUser(@Request() req: AuthRequest) {
     return this.usersService.getProfile(req.user.id);
+  }
+
+  @Delete('me')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Delete the authenticated user account (GDPR Right to be Forgotten)' })
+  @ApiResponse({
+    status: 204,
+    description: 'Account deleted successfully',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'User not found' })
+  async deleteAccount(@Request() req: AuthRequest) {
+    await this.usersService.deleteAccount(req.user.id);
   }
 
   @Get('me/deals')
@@ -105,5 +123,32 @@ export class UsersController {
       );
     }
     return this.usersService.getUserInvestments(id, role);
+  }
+
+  @Get('me/activity')
+  @ApiOperation({ summary: "Get the authenticated user's chronological activity log" })
+  @ApiResponse({ status: 200, description: 'List of activity events, newest first' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async getActivityLog(
+    @Request() req: AuthRequest,
+    @Query('limit') limit?: string,
+  ) {
+    const parsedLimit = limit ? Math.min(parseInt(limit, 10), 200) : 50;
+    return this.usersService.getActivityLog(req.user.id, parsedLimit);
+  }
+
+  @Get('me/export')
+  @ApiOperation({ summary: 'Export all user data (GDPR compliance)' })
+  @ApiResponse({
+    status: 200,
+    description: 'JSON file containing all user data',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @Header('Content-Type', 'application/json')
+  @Header('Content-Disposition', 'attachment; filename="user-data-export.json"')
+  async exportUserData(@Request() req: AuthRequest, @Res() res: Response) {
+    const { id } = req.user;
+    const userData = await this.usersService.exportUserData(id);
+    res.json(userData);
   }
 }

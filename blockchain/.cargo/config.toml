@@ -1,0 +1,19 @@
+# Cargo configuration for Soroban smart contracts
+# Issue #346 - Integrate Soroban Rust SDK in development environment
+
+# Default build target for smart contracts
+[build]
+target = "wasm32-unknown-unknown"
+
+# Alias shortcuts for common commands
+[alias]
+wasm = "build --release --target wasm32-unknown-unknown"
+test-wasm = "test --target wasm32-unknown-unknown"
+check-wasm = "check --target wasm32-unknown-unknown"
+clippy-wasm = "clippy --target wasm32-unknown-unknown"
+
+# Environment variables for builds
+[env]
+CARGO_NET_RETRY = "3"
+CARGO_NET_GIT_FETCH_WITH_CLI = "true"
+RUSTFLAGS = "-C target-feature=+simd128"

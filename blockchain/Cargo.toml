@@ -1,13 +1,47 @@
+# Soroban Rust Smart Contracts Workspace
+# Issue #346 - Integrate Soroban Rust SDK in development environment
+#
+# This workspace manages all Soroban WASM smart contracts for the Agri-Fi platform.
+#
+# Build all contracts:
+#   cargo build --release --target wasm32-unknown-unknown
+#
+# Build specific contract:
+#   cargo build -p escrow --release --target wasm32-unknown-unknown
+#
+# Run tests:
+#   cargo test
+#
+# Deploy with Soroban CLI:
+#   soroban contract deploy --wasm ./target/wasm32-unknown-unknown/release/escrow.wasm
+
 [workspace]
 members = [
+    "contracts/escrow",
     "contracts/farm_campaign",
-    "contracts/revenue_distributor",
-    "contracts/project_factory",
+    "contracts/farm_campaign_settlement",
     "contracts/marketplace_settlement",
+    "contracts/project_factory",
+    "contracts/revenue_distributor",
 ]
 resolver = "2"
 
 [profile.release]
+# ── WASM size optimisation (#697) ────────────────────────────────────────────
+# Stellar charges storage fees proportional to WASM binary size, so we
+# minimise every byte.  These settings target <15 KB per compiled contract.
+#
+#   opt-level = "z"   — optimise for smallest code size (vs "s" or "3")
+#   lto        = true — full link-time optimisation; eliminates dead code
+#                       across the entire crate graph at link time
+#   codegen-units = 1 — single CGU is required for LTO to be maximally
+#                       effective (multiple CGUs would limit inlining scope)
+#   panic = "abort"   — replaces panic unwinding machinery with a single
+#                       wasm `unreachable` instruction, saving ~5–10 KB
+#   strip = "symbols" — removes symbol names from the final binary
+#
+# After cargo build, run wasm-opt -Oz (see blockchain/scripts/build.sh or
+# blockchain/scripts/deploy.sh) for an additional 5–20% size reduction.
 opt-level = "z"
 overflow-checks = true
 debug = 0

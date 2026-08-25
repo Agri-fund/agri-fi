@@ -5,7 +5,9 @@ import {
   ManyToOne,
   JoinColumn,
   CreateDateColumn,
+  DeleteDateColumn,
   OneToMany,
+  Index,
 } from 'typeorm';
 import { ApiProperty } from '@nestjs/swagger';
 import { Exclude } from 'class-transformer';
@@ -20,9 +22,12 @@ export type TradeDealStatus =
   | 'delivered'
   | 'completed'
   | 'failed'
-  | 'canceled';
+  | 'canceled'
+  | 'expired';
 
 @Entity('trade_deals')
+@Index(['farmerId', 'status'])
+@Index(['traderId', 'status'])
 export class TradeDeal {
   @PrimaryGeneratedColumn('uuid')
   @ApiProperty({
@@ -38,7 +43,7 @@ export class TradeDeal {
   })
   commodity: string;
 
-  @Column({ type: 'numeric', precision: 10, scale: 2 })
+  @Column({ type: 'decimal', precision: 18, scale: 2 })
   @ApiProperty({
     description: 'Quantity of the commodity',
     example: '1000.00',
@@ -53,7 +58,7 @@ export class TradeDeal {
   })
   quantityUnit: string;
 
-  @Column({ name: 'total_value', type: 'numeric', precision: 10, scale: 2 })
+  @Column({ name: 'total_value', type: 'decimal', precision: 18, scale: 2 })
   @ApiProperty({
     description: 'Total deal value in USD',
     example: '50000.00',
@@ -74,10 +79,12 @@ export class TradeDeal {
   })
   tokenSymbol: string;
 
+  @Index()
   @Column({
     type: 'text',
     default: 'draft',
   })
+  @Index('IDX_trade_deals_status')
   @ApiProperty({
     description: 'Current deal status',
     enum: [
@@ -88,6 +95,7 @@ export class TradeDeal {
       'completed',
       'failed',
       'canceled',
+      'expired',
     ],
     example: 'open',
   })
@@ -97,6 +105,7 @@ export class TradeDeal {
   @JoinColumn({ name: 'farmer_id' })
   farmer: User;
 
+  @Index()
   @Column({ name: 'farmer_id' })
   @ApiProperty({
     description: 'Farmer user UUID',
@@ -108,6 +117,7 @@ export class TradeDeal {
   @JoinColumn({ name: 'trader_id' })
   trader: User;
 
+  @Index()
   @Column({ name: 'trader_id' })
   @ApiProperty({
     description: 'Trader user UUID',
@@ -141,8 +151,8 @@ export class TradeDeal {
 
   @Column({
     name: 'total_invested',
-    type: 'numeric',
-    precision: 10,
+    type: 'decimal',
+    precision: 18,
     scale: 2,
     default: 0,
   })
@@ -194,4 +204,26 @@ export class TradeDeal {
     example: '2024-01-15T10:30:00Z',
   })
   createdAt: Date;
+
+  /**
+   * Soft-delete timestamp. When set, the record is considered deleted and
+   * TypeORM will automatically exclude it from standard queries.
+   * Use repository.softDelete() / restore() to manage this field.
+   */
+  @DeleteDateColumn({ name: 'deleted_at', nullable: true })
+  @ApiProperty({
+    description: 'Soft-delete timestamp; null means the deal is active',
+    nullable: true,
+    example: null,
+  })
+  deletedAt: Date | null;
+
+  @Column({ name: 'app_trace_id', nullable: true })
+  @ApiProperty({
+    description: 'Application-generated trace ID for authorized updates',
+    example: 'app-1234567890abcdef',
+    required: false,
+    nullable: true,
+  })
+  appTraceId: string | null;
 }

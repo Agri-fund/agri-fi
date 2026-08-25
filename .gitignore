@@ -1,12 +1,88 @@
+# Kiro
 .kiro
+
+# Dependencies
 node_modules
 */node_modules
+**/node_modules
+
+# Build artifacts
 dist
 build
+out
 .next
-.eslintcache
-*.log
+.nuxt
 
+# TypeScript cache
+*.tsbuildinfo
+
+# Test artifacts & snapshots
+coverage
+**/__snapshots__
+*.snap
+test-results
+test-output.txt
+playwright-report
+.nyc_output
+
+# Logs
+*.log
+logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment files
+.env
+.env.local
+.env.*.local
+!.env.example
+!.env.local.example
+
+# Editor & OS
+.DS_Store
+Thumbs.db
+.vscode
+*.swp
+*.swo
+
+# ESLint / Prettier cache
+.eslintcache
+.prettiercache
+
+# Package manager locks (keep only the one used)
+# pnpm-lock.yaml  — keep if using pnpm
+# package-lock.json — keep if using npm
+
+# Rust / Soroban build
+blockchain/target
+
+# Terraform state
+*.tfstate
+*.tfstate.*
+.terraform
+*.tfvars
+!*.tfvars.example
+
+# Next.js / Vercel
+.vercel
+.next/cache
+
+# Sentry
+.sentryclirc
+
+# Jest output
+jest-results.json
+
+# Playwright
+playwright/.cache/
+
+# Backend test output
+backend/test-output.txt
+
+# Debug / temp files
+*.local.js
+*.local.ts
 fix.md
-issue.md
-pr.md
+*.md.bak

@@ -22,6 +22,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { ShipmentsService } from './shipments.service';
 import { CreateMilestoneDto } from './dto/create-milestone.dto';
 import { User } from '../auth/entities/user.entity';
+import { TradeDealsGuard } from '../trade-deals/trade-deals.guard';
 
 interface AuthRequest extends Request {
   user: User;
@@ -36,10 +37,12 @@ export class ShipmentsController {
   constructor(private readonly shipmentsService: ShipmentsService) {}
 
   @Get(':trade_deal_id')
+  @UseGuards(TradeDealsGuard)
   @ApiOperation({ summary: 'List shipment milestones for a trade deal' })
   @ApiParam({ name: 'trade_deal_id', description: 'Trade deal UUID' })
   @ApiResponse({ status: 200, description: 'Ordered list of milestones' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
   @ApiResponse({ status: 404, description: 'Trade deal not found' })
   async getMilestonesByDeal(@Param('trade_deal_id') tradeDealId: string) {
     return this.shipmentsService.findByDeal(tradeDealId);

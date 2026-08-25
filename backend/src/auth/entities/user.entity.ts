@@ -3,9 +3,11 @@ import {
   PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
+  DeleteDateColumn,
 } from 'typeorm';
 import { ApiProperty } from '@nestjs/swagger';
 import { Exclude } from 'class-transformer';
+import { encryptionTransformer } from '../../common/encryption.transformer';
 
 export type UserRole =
   | 'farmer'
@@ -13,7 +15,7 @@ export type UserRole =
   | 'investor'
   | 'company_admin'
   | 'admin';
-export type KycStatus = 'pending' | 'verified' | 'rejected';
+export type KycStatus = 'pending' | 'verified' | 'rejected' | 'expired';
 
 export interface CompanyDetails {
   companyName?: string;
@@ -59,7 +61,7 @@ export class User {
   @Column({ name: 'kyc_status', default: 'pending' })
   @ApiProperty({
     description: 'KYC verification status',
-    enum: ['pending', 'verified', 'rejected'],
+    enum: ['pending', 'verified', 'rejected', 'expired'],
     example: 'verified',
   })
   kycStatus: KycStatus;
@@ -102,10 +104,69 @@ export class User {
   })
   companyDetails: CompanyDetails | null;
 
+  // #409 — email verification
+  @Column({ name: 'is_email_verified', default: false })
+  @ApiProperty({ description: 'Whether the email address has been verified', example: false })
+  isEmailVerified: boolean;
+
+  @Exclude()
+  @Column({ name: 'email_verification_token', nullable: true })
+  emailVerificationToken: string | null;
+
+  // #413 — account lockout
+  @Column({ name: 'failed_login_attempts', default: 0 })
+  failedLoginAttempts: number;
+
+  @Column({ name: 'lockout_until', type: 'timestamptz', nullable: true })
+  lockoutUntil: Date | null;
+
+  // #652 — MFA support
+  @Exclude()
+  @Column({ name: 'mfa_secret', nullable: true })
+  mfaSecret: string | null;
+
+  @Column({ name: 'is_mfa_enabled', default: false })
+  @ApiProperty({ description: 'Whether MFA is enabled for this user', example: false })
+  isMfaEnabled: boolean;
+
   @CreateDateColumn({ name: 'created_at' })
   @ApiProperty({
     description: 'Account creation timestamp',
     example: '2024-01-15T10:30:00Z',
   })
   createdAt: Date;
+
+  /** Full legal name — stored AES-256-CBC encrypted */
+  @Exclude()
+  @Column({ name: 'full_name', nullable: true, transformer: encryptionTransformer })
+  fullName: string | null;
+
+  /** Date of birth — stored AES-256-CBC encrypted (ISO date string) */
+  @Exclude()
+  @Column({ name: 'birthdate', nullable: true, transformer: encryptionTransformer })
+  birthdate: string | null;
+
+  /** Tax / national ID number — stored AES-256-CBC encrypted */
+  @Exclude()
+  @Column({ name: 'tax_id', nullable: true, transformer: encryptionTransformer })
+  taxId: string | null;
+
+  /** Phone number — stored AES-256-GCM encrypted */
+  @Exclude()
+  @Column({ name: 'phone', nullable: true, transformer: encryptionTransformer })
+  phone: string | null;
+
+  /** Physical / mailing address — stored AES-256-GCM encrypted */
+  @Exclude()
+  @Column({ name: 'physical_address', nullable: true, transformer: encryptionTransformer })
+  physicalAddress: string | null;
+
+  /** Farmer credit score (300-850) based on historical performance */
+  @Column({ name: 'credit_score', type: 'int', nullable: true })
+  @ApiProperty({
+    description: 'Farmer credit score calculated from historical performance (300-850)',
+    nullable: true,
+    example: 720,
+  })
+  creditScore: number | null;
 }

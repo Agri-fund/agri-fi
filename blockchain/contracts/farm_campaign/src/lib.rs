@@ -29,6 +29,8 @@ pub enum Error {
     RefundNotAllowed     = 12,
     DeadlinePassed       = 13,
     AlreadyDistributed   = 14,
+    DisputeActive        = 15,
+    NoDispute            = 16,
 }
 
 #[contracttype]
@@ -38,6 +40,8 @@ pub enum DataKey {
     Investments,
     MilestoneReleased(u32),
     Distributed,
+    Arbitrator,
+    Dispute(u32),
 }
 
 #[contracttype]
@@ -45,6 +49,7 @@ pub enum DataKey {
 pub struct Config {
     pub admin: Address,
     pub farmer: Address,
+    pub arbitrator: Address,
     pub usdc_token: Address,
     pub funding_target: i128,
     pub deadline: u64,
@@ -84,6 +89,7 @@ impl FarmCampaignContract {
         env: Env,
         admin: Address,
         farmer: Address,
+        arbitrator: Address,
         usdc_token: Address,
         funding_target: i128,
         deadline: u64,
@@ -99,7 +105,7 @@ impl FarmCampaignContract {
             return Err(Error::InvalidAmount);
         }
         let config = Config {
-            admin, farmer, usdc_token, funding_target, deadline,
+            admin, farmer, arbitrator, usdc_token, funding_target, deadline,
             platform_fee_bps, milestone_count, project_name, commodity,
         };
         let state = State {
@@ -110,6 +116,8 @@ impl FarmCampaignContract {
         env.storage().instance().set(&DataKey::Config, &config);
         env.storage().instance().set(&DataKey::State, &state);
         env.storage().instance().set(&DataKey::Investments, &Map::<Address, i128>::new(&env));
+        env.storage().instance().set(&DataKey::Arbitrator, &arbitrator);
+        env.events().publish((symbol_short!("initialized"),), ());
         Ok(())
     }
 
@@ -130,9 +138,6 @@ impl FarmCampaignContract {
         let remaining = config.funding_target - state.total_raised;
         if amount > remaining { return Err(Error::TargetExceeded); }
 
-        let usdc = token::Client::new(&env, &config.usdc_token);
-        usdc.transfer(&investor, &env.current_contract_address(), &amount);
-
         let mut investments: Map<Address, i128> = env.storage().instance()
             .get(&DataKey::Investments).unwrap_or_else(|| Map::new(&env));
         let existing = investments.get(investor.clone()).unwrap_or(0);
@@ -142,9 +147,15 @@ impl FarmCampaignContract {
         state.total_raised += amount;
         if state.total_raised >= config.funding_target {
             state.status = CampaignStatus::Funded;
-            env.events().publish((symbol_short!("funded"), investor.clone()), state.total_raised);
+            env.events().publish((symbol_short!("status_changed"), symbol_short!("funded")), state.total_raised);
         }
         env.storage().instance().set(&DataKey::State, &state);
+
+        // Persist investment state before the external transfer so a
+        // reentrant call reads the updated `total_raised`/`state.status`.
+        let usdc = token::Client::new(&env, &config.usdc_token);
+        usdc.transfer(&investor, &env.current_contract_address(), &amount);
+
         env.events().publish((symbol_short!("invested"), investor), amount);
         Ok(())
     }
@@ -159,7 +170,7 @@ impl FarmCampaignContract {
         if state.status != CampaignStatus::Funded { return Err(Error::NotFunded); }
         state.status = CampaignStatus::Active;
         env.storage().instance().set(&DataKey::State, &state);
-        env.events().publish((symbol_short!("approved"),), ());
+        env.events().publish((symbol_short!("status_changed"), symbol_short!("active")), ());
         Ok(())
     }
 
@@ -175,20 +186,29 @@ impl FarmCampaignContract {
         if env.storage().instance().has(&DataKey::MilestoneReleased(milestone_index)) {
             return Err(Error::MilestoneAlreadyDone);
         }
+        
+        // Check for active dispute on this milestone
+        if env.storage().instance().has(&DataKey::Dispute(milestone_index)) {
+            return Err(Error::DisputeActive);
+        }
 
         let platform_fee = (state.total_raised * config.platform_fee_bps as i128) / 10_000;
         let farmer_pool  = state.total_raised - platform_fee;
         let tranche      = farmer_pool / config.milestone_count as i128;
 
-        let usdc = token::Client::new(&env, &config.usdc_token);
-        usdc.transfer(&env.current_contract_address(), &config.farmer, &tranche);
-
+        // Lock this milestone before invoking the external transfer so a
+        // reentrant call sees it already released and errors out.
         env.storage().instance().set(&DataKey::MilestoneReleased(milestone_index), &true);
         state.milestones_released += 1;
         if state.milestones_released >= config.milestone_count {
             state.status = CampaignStatus::Delivered;
+            env.events().publish((symbol_short!("status_changed"), symbol_short!("delivered")), ());
         }
         env.storage().instance().set(&DataKey::State, &state);
+
+        let usdc = token::Client::new(&env, &config.usdc_token);
+        usdc.transfer(&env.current_contract_address(), &config.farmer, &tranche);
+
         env.events().publish((symbol_short!("milestone"), milestone_index), tranche);
         Ok(())
     }
@@ -198,7 +218,7 @@ impl FarmCampaignContract {
         let config: Config = env.storage().instance().get(&DataKey::Config)
             .ok_or(Error::NotInitialized)?;
         if admin != config.admin { return Err(Error::Unauthorized); }
-        let state: State = env.storage().instance().get(&DataKey::State)
+        let mut state: State = env.storage().instance().get(&DataKey::State)
             .ok_or(Error::NotInitialized)?;
         if state.status != CampaignStatus::Delivered { return Err(Error::NotFunded); }
         if env.storage().instance().has(&DataKey::Distributed) { return Err(Error::AlreadyDistributed); }
@@ -211,15 +231,20 @@ impl FarmCampaignContract {
         let investments: Map<Address, i128> = env.storage().instance()
             .get(&DataKey::Investments).unwrap_or_else(|| Map::new(&env));
         let total_raised = state.total_raised;
-        let investors: Vec<Address> = investments.keys();
 
-        for investor in investors.iter() {
-            let invested = investments.get(investor.clone()).unwrap_or(0);
+        // Lock distribution state before invoking external transfers so a
+        // reentrant call sees `Distributed == true` and is rejected immediately.
+        env.storage().instance().set(&DataKey::Distributed, &true);
+        state.status = CampaignStatus::Completed;
+        env.storage().instance().set(&DataKey::State, &state);
+
+        // Iterate directly over the Map for better gas efficiency
+        for (investor, invested) in investments.iter() {
             if invested > 0 && total_raised > 0 {
                 let share = (investor_pool * invested) / total_raised;
                 if share > 0 {
                     usdc.transfer(&env.current_contract_address(), &investor, &share);
-                    env.events().publish((symbol_short!("payout"), investor.clone()), share);
+                    env.events().publish((symbol_short!("payout"), investor), share);
                 }
             }
         }
@@ -227,11 +252,6 @@ impl FarmCampaignContract {
             usdc.transfer(&env.current_contract_address(), &config.admin, &platform_fee);
         }
 
-        env.storage().instance().set(&DataKey::Distributed, &true);
-        let mut final_state: State = env.storage().instance().get(&DataKey::State)
-            .ok_or(Error::NotInitialized)?;
-        final_state.status = CampaignStatus::Completed;
-        env.storage().instance().set(&DataKey::State, &final_state);
         env.events().publish((symbol_short!("complete"),), revenue_amount);
         Ok(())
     }
@@ -271,7 +291,7 @@ impl FarmCampaignContract {
             .ok_or(Error::NotInitialized)?;
         state.status = CampaignStatus::Paused;
         env.storage().instance().set(&DataKey::State, &state);
-        env.events().publish((symbol_short!("paused"),), ());
+        env.events().publish((symbol_short!("status_changed"), symbol_short!("paused")), ());
         Ok(())
     }
 
@@ -284,7 +304,7 @@ impl FarmCampaignContract {
             .ok_or(Error::NotInitialized)?;
         state.status = CampaignStatus::Open;
         env.storage().instance().set(&DataKey::State, &state);
-        env.events().publish((symbol_short!("unpaused"),), ());
+        env.events().publish((symbol_short!("status_changed"), symbol_short!("open")), ());
         Ok(())
     }
 
@@ -297,7 +317,104 @@ impl FarmCampaignContract {
             .ok_or(Error::NotInitialized)?;
         state.status = CampaignStatus::Failed;
         env.storage().instance().set(&DataKey::State, &state);
-        env.events().publish((symbol_short!("failed"),), ());
+        env.events().publish((symbol_short!("status_changed"), symbol_short!("failed")), ());
+        Ok(())
+    }
+
+    /// Raise a dispute on a specific milestone
+    /// Can be called by admin or farmer
+    pub fn raise_dispute(env: Env, caller: Address, milestone_index: u32) -> Result<(), Error> {
+        caller.require_auth();
+        let config: Config = env.storage().instance().get(&DataKey::Config)
+            .ok_or(Error::NotInitialized)?;
+        let state: State = env.storage().instance().get(&DataKey::State)
+            .ok_or(Error::NotInitialized)?;
+        
+        // Only admin or farmer can raise disputes
+        if caller != config.admin && caller != config.farmer {
+            return Err(Error::Unauthorized);
+        }
+        
+        if state.status != CampaignStatus::Active { return Err(Error::NotFunded); }
+        if milestone_index >= config.milestone_count { return Err(Error::MilestoneNotFound); }
+        if env.storage().instance().has(&DataKey::MilestoneReleased(milestone_index)) {
+            return Err(Error::MilestoneAlreadyDone);
+        }
+        if env.storage().instance().has(&DataKey::Dispute(milestone_index)) {
+            return Err(Error::DisputeActive);
+        }
+        
+        // Set dispute flag
+        env.storage().instance().set(&DataKey::Dispute(milestone_index), &true);
+        env.events().publish((symbol_short!("dispute_raised"), milestone_index), caller);
+        Ok(())
+    }
+
+    /// Resolve a dispute on a milestone
+    /// Can only be called by the arbitrator
+    /// approve: true to release milestone, false to deny
+    pub fn resolve_dispute(env: Env, arbitrator: Address, milestone_index: u32, approve: bool) -> Result<(), Error> {
+        arbitrator.require_auth();
+        let config: Config = env.storage().instance().get(&DataKey::Config)
+            .ok_or(Error::NotInitialized)?;
+        let stored_arbitrator: Address = env.storage().instance().get(&DataKey::Arbitrator)
+            .ok_or(Error::NotInitialized)?;
+        
+        if arbitrator != stored_arbitrator { return Err(Error::Unauthorized); }
+        
+        if !env.storage().instance().has(&DataKey::Dispute(milestone_index)) {
+            return Err(Error::NoDispute);
+        }
+        
+        // Remove dispute flag
+        env.storage().instance().remove(&DataKey::Dispute(milestone_index));
+        
+        if approve {
+            // If approved, release the milestone
+            let mut state: State = env.storage().instance().get(&DataKey::State)
+                .ok_or(Error::NotInitialized)?;
+            
+            let platform_fee = (state.total_raised * config.platform_fee_bps as i128) / 10_000;
+            let farmer_pool  = state.total_raised - platform_fee;
+            let tranche      = farmer_pool / config.milestone_count as i128;
+
+            // Lock this milestone before invoking the external transfer so a
+            // reentrant call sees it already released and errors out.
+            env.storage().instance().set(&DataKey::MilestoneReleased(milestone_index), &true);
+            state.milestones_released += 1;
+            if state.milestones_released >= config.milestone_count {
+                state.status = CampaignStatus::Delivered;
+                env.events().publish((symbol_short!("status_changed"), symbol_short!("delivered")), ());
+            }
+            env.storage().instance().set(&DataKey::State, &state);
+
+            let usdc = token::Client::new(&env, &config.usdc_token);
+            usdc.transfer(&env.current_contract_address(), &config.farmer, &tranche);
+
+            env.events().publish((symbol_short!("milestone"), milestone_index), tranche);
+        }
+        
+        env.events().publish((symbol_short!("dispute_resolved"), milestone_index), approve);
+        Ok(())
+    }
+
+    /// Update the arbitrator address
+    /// Can only be called by admin before campaign is funded
+    pub fn update_arbitrator(env: Env, admin: Address, new_arbitrator: Address) -> Result<(), Error> {
+        admin.require_auth();
+        let config: Config = env.storage().instance().get(&DataKey::Config)
+            .ok_or(Error::NotInitialized)?;
+        if admin != config.admin { return Err(Error::Unauthorized); }
+        
+        // Prevent modification after funding has started
+        let state: State = env.storage().instance().get(&DataKey::State)
+            .ok_or(Error::NotInitialized)?;
+        if state.status != CampaignStatus::Open {
+            return Err(Error::Unauthorized);
+        }
+        
+        env.storage().instance().set(&DataKey::Arbitrator, &new_arbitrator);
+        env.events().publish((symbol_short!("arbitrator_updated"),), new_arbitrator);
         Ok(())
     }
 
@@ -327,5 +444,13 @@ impl FarmCampaignContract {
             .get(&DataKey::Investments).unwrap_or_else(|| Map::new(&env));
         let invested = investments.get(investor).unwrap_or(0);
         (invested * 10_000) / state.total_raised
+    }
+
+    pub fn has_dispute(env: Env, milestone_index: u32) -> bool {
+        env.storage().instance().has(&DataKey::Dispute(milestone_index))
+    }
+
+    pub fn get_arbitrator(env: Env) -> Result<Address, Error> {
+        env.storage().instance().get(&DataKey::Arbitrator).ok_or(Error::NotInitialized)
     }
 }

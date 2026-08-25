@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 
 export interface ShipmentStep {
   id: string;
@@ -27,15 +27,34 @@ function formatDateTime(iso: string) {
   });
 }
 
+/* ── Clipboard copier hook ────────────────────────────────────────────────── */
+function useCopyToClipboard() {
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const copy = async (text: string, id: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(id);
+      // Reset after 2 seconds
+      setTimeout(() => setCopied(null), 2000);
+    } catch {
+      console.error('Failed to copy to clipboard');
+    }
+  };
+
+  return { copied, copy };
+}
+
 /* ── Single step node ─────────────────────────────────────────────────────── */
 function StepNode({ step, isLast }: { step: ShipmentStep; isLast: boolean }) {
+  const { copied, copy } = useCopyToClipboard();
   const isDone    = step.status === 'completed';
   const isActive  = step.status === 'active';
   const isPending = step.status === 'pending';
 
   return (
-    /* Vertical layout (mobile) */
-    <li className="relative flex gap-4 md:flex-col md:items-center md:gap-0 md:flex-1">
+    /* Vertical layout (mobile), horizontal layout (desktop) */
+    <li className="relative flex flex-col gap-4 md:flex-row md:items-center md:gap-0 md:flex-1">
 
       {/* Connector line — vertical on mobile, horizontal on desktop */}
       {!isLast && (
@@ -67,7 +86,7 @@ function StepNode({ step, isLast }: { step: ShipmentStep; isLast: boolean }) {
       </div>
 
       {/* Content */}
-      <div className="flex-1 pb-6 md:pb-0 md:mt-3 md:text-center">
+      <div className="flex-1 pb-6 md:pb-0 md:mt-3 md:text-center min-h-[80px]">
         <p className={`text-sm font-semibold ${isPending ? 'text-slate-400' : 'text-slate-900'}`}>
           {step.label}
         </p>
@@ -94,15 +113,37 @@ function StepNode({ step, isLast }: { step: ShipmentStep; isLast: boolean }) {
         )}
 
         {step.txHash && (
-          <a
-            href={`${STELLAR_EXPLORER}/${step.txHash}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-block text-[10px] font-mono text-brand-600 hover:text-brand-700 hover:underline mt-1 truncate max-w-[120px] md:max-w-full"
-            title={step.txHash}
-          >
-            TX: {step.txHash.slice(0, 12)}…
-          </a>
+          <div className="flex items-center gap-2 mt-1">
+            <a
+              href={`${STELLAR_EXPLORER}/${step.txHash}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[10px] font-mono text-brand-600 hover:text-brand-700 hover:underline truncate max-w-[120px] md:max-w-[200px]"
+              title={step.txHash}
+            >
+              TX: {step.txHash.slice(0, 12)}…
+            </a>
+            <button
+              onClick={() => copy(step.txHash!, `tx-${step.id}`)}
+              className={`flex-shrink-0 p-1 rounded transition-all ${
+                copied === `tx-${step.id}`
+                  ? 'bg-green-100 text-green-600'
+                  : 'text-slate-400 hover:text-brand-600 hover:bg-slate-100'
+              }`}
+              title={copied === `tx-${step.id}` ? 'Copied!' : 'Copy to clipboard'}
+              aria-label="Copy transaction hash"
+            >
+              {copied === `tx-${step.id}` ? (
+                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                </svg>
+              ) : (
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+              )}
+            </button>
+          </div>
         )}
 
         {step.notes && (
@@ -126,7 +167,7 @@ export const ShipmentStepper: React.FC<ShipmentStepperProps> = ({ steps, classNa
   return (
     <div className={className}>
       <h3 className="section-title mb-4">Shipment Progress</h3>
-      <ol className="flex flex-col md:flex-row md:items-start md:gap-0 gap-0">
+      <ol className="flex flex-col gap-0 md:flex-row md:items-start md:gap-0">
         {steps.map((step, idx) => (
           // eslint-disable-next-line react/jsx-key
           <React.Fragment key={step.id}>

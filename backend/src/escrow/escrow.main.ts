@@ -2,6 +2,12 @@ import { NestFactory } from '@nestjs/core';
 import { EscrowModule } from './escrow.module';
 import { Transport, MicroserviceOptions } from '@nestjs/microservices';
 import { ConfigService } from '@nestjs/config';
+import {
+  ESCROW_QUEUE_NAME,
+  ESCROW_QUEUE_DLX,
+  ESCROW_QUEUE_DLQ,
+  dlxQueueOptions,
+} from '../queue/queue.dlq.constants';
 
 async function bootstrap() {
   const app = await NestFactory.createMicroservice<MicroserviceOptions>(
@@ -15,15 +21,22 @@ async function bootstrap() {
             'amqp://guest:guest@localhost:5672',
           ),
         ],
-        queue: 'agric_onchain_escrow_queue',
-        queueOptions: { durable: true },
+        queue: ESCROW_QUEUE_NAME,
+        queueOptions: dlxQueueOptions(ESCROW_QUEUE_DLX),
+        prefetchCount: parseInt(
+          new ConfigService().get<string>('RABBITMQ_PREFETCH_COUNT', '10'),
+          10,
+        ),
       },
+      noAck: false,
     },
-  );
+  });
 
-  await app.listen();
+  await app.startAllMicroservices();
   console.log(
-    'Escrow microservice is running on dedicated queue: agric_onchain_escrow_queue',
+    'Escrow microservices running:\n' +
+      `  • Primary queue: ${ESCROW_QUEUE_NAME}\n` +
+      `  • DLQ:           ${ESCROW_QUEUE_DLQ}`,
   );
 }
 

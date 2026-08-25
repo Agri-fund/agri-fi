@@ -5,6 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { ReactNode, useState } from 'react';
 import { apiClient, User } from '@/lib/api';
 import { Header } from './navigation/Header';
+import KycStatusBanner from './dashboard/KycStatusBanner';
 
 /* ── Nav config ───────────────────────────────────────────────────────────── */
 interface NavItem { label: string; href: string; icon: ReactNode; exact?: boolean; }
@@ -26,6 +27,7 @@ const investorNav: NavItem[] = [
 ];
 const adminNav: NavItem[] = [
   { label: 'Dashboard',   href: '/dashboard/admin',   icon: <HomeIcon />,   exact: true },
+  { label: 'Verify Documents', href: '/dashboard/admin/documents', icon: <DocsIcon /> },
   { label: 'Marketplace', href: '/marketplace',        icon: <ShopIcon /> },
   { label: 'Referrals',   href: '/dashboard/referrals', icon: <ReferralIcon /> },
 ];
@@ -148,6 +150,9 @@ export default function DashboardLayout({ user, children }: Props) {
 
         {/* Page content */}
         <main className="flex-1 overflow-y-auto">
+          <div className="px-6 pt-6 max-w-7xl mx-auto">
+            <KycStatusBanner />
+          </div>
           {children}
         </main>
       </div>

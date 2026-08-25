@@ -45,3 +45,8 @@ data:
   # Frontend
   NEXT_PUBLIC_API_URL: "https://api.agri-fi.example.com"
   BACKEND_URL: "https://api.agri-fi.example.com"
+  
+  # IPFS/Storage Configuration (non-sensitive)
+  IPFS_GATEWAY: "https://api.web3.storage"
+  AWS_REGION: "us-east-1"
+  AWS_S3_BUCKET: "your-s3-bucket-name"

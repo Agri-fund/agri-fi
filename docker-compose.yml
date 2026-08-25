@@ -1,4 +1,36 @@
 services:
+  # ── Redis cache with eviction policy (#735) ─────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    command:
+      - redis-server
+      - --maxmemory
+      - "128mb"
+      - --maxmemory-policy
+      - allkeys-lru
+      - --save
+      - ""
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── Prometheus Redis Exporter (#735) ────────────────────────────────────────
+  # Exposes Redis INFO metrics on :9121 so Prometheus alert rules can
+  # evaluate redis_memory_used_bytes / redis_memory_max_bytes.
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.62.0
+    environment:
+      REDIS_ADDR: "redis://redis:6379"
+    ports:
+      - '9121:9121'
+    depends_on:
+      redis:
+        condition: service_healthy
+
   postgres:
     image: postgres:16-alpine
     environment:
@@ -20,9 +52,13 @@ services:
     ports:
       - '5672:5672'
       - '15672:15672'  # management UI
+      - '15692:15692'  # Prometheus metrics
     environment:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - ./devops/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - ./devops/rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
     healthcheck:
       test: ["CMD-SHELL", "rabbitmq-diagnostics -q ping"]
       interval: 5s
@@ -36,10 +72,14 @@ services:
     environment:
       - DATABASE_URL=postgres://postgres:postgres@postgres:5432/agric_onchain
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+      - CLAMAV_HOST=clamav
+      - CLAMAV_PORT=3310
     depends_on:
       postgres:
         condition: service_healthy
       rabbitmq:
+        condition: service_healthy
+      clamav:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
@@ -47,6 +87,47 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+
+  soroban:
+    image: stellar/soroban-preview:latest
+    container_name: soroban-cli
+    working_dir: /app
+    volumes:
+      - ./blockchain:/app/blockchain
+      - ./target:/app/target
+    environment:
+      - SOROBAN_RPC_HOST=http://soroban-rpc:8000
+      - SOROBAN_RPC_URL=http://soroban-rpc:8000/soroban/rpc
+      - NETWORK=standalone
+    command: /bin/bash
+    stdin_open: true
+    tty: true
+    depends_on:
+      - soroban-rpc
+    networks:
+      - default
+
+  soroban-rpc:
+    image: stellar/soroban-preview:latest
+    container_name: soroban-rpc
+    ports:
+      - '8000:8000'
+    environment:
+      - SOROBAN_RPC_FRIENDBOT_URL=http://localhost:8000
+    command: soroban-rpc --help
+    networks:
+      - default
+
+  clamav:
+    image: clamav/clamav:stable
+    ports:
+      - '3310:3310'
+    healthcheck:
+      test: ["CMD", "clamdscan", "--ping", "3"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
 
   pgadmin:
     image: dpage/pgadmin4
@@ -60,6 +141,41 @@ services:
     volumes:
       - pgadmin_data:/var/lib/pgadmin
 
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    ports:
+      - '9090:9090'
+    volumes:
+      - ./devops/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./devops/prometheus/alerts.yaml:/etc/prometheus/alerts.yaml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    depends_on:
+      - rabbitmq
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    ports:
+      - '3002:3000'
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: 'false'
+    volumes:
+      - ./devops/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ./devops/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
 volumes:
   pgdata:
   pgadmin_data:
+  prometheus_data:
+  grafana_data:

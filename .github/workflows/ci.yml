@@ -15,6 +15,44 @@ jobs:
     strategy:
       matrix:
         node-version: [20]
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: agri
+          POSTGRES_PASSWORD: agri
+          POSTGRES_DB: agri_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      rabbitmq:
+        image: rabbitmq:3-management
+        ports:
+          - 5672:5672
+        options: >-
+          --health-cmd "rabbitmq-diagnostics ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgres://agri:agri@localhost:5432/agri_test
+      JWT_SECRET: ci-test-secret
+      STELLAR_NETWORK: testnet
+      STELLAR_HORIZON_URL: https://horizon-testnet.stellar.org
+      STELLAR_PLATFORM_SECRET: ${{ secrets.STELLAR_PLATFORM_SECRET_TESTNET }}
+      STELLAR_INTEGRATION_TESTS: ${{ secrets.STELLAR_PLATFORM_SECRET_TESTNET != '' && 'true' || 'false' }}
+      ENCRYPTION_KEY: ci-test-encryption-key-32chars!!
+      RABBITMQ_URL: amqp://localhost:5672
+      NOTIFICATIONS_ENABLED: "false"
+
     steps:
       - uses: actions/checkout@v4
 
@@ -22,9 +60,7 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
           cache: npm
-          cache-dependency-path: |
-            backend/package-lock.json
-            frontend/package-lock.json
+          cache-dependency-path: backend/package-lock.json
 
       - name: Install backend dependencies
         run: npm ci
@@ -34,20 +70,36 @@ jobs:
         run: npm run lint -- --max-warnings=0
         working-directory: backend
 
+      - name: Run database migrations
+        run: npm run migration:run
+        working-directory: backend
+        env:
+          DATABASE_URL: postgres://agri:agri@localhost:5432/agri_test
+
       - name: Backend - Test
         run: npm test -- --passWithNoTests
         working-directory: backend
 
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
       - name: Install frontend dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
         working-directory: frontend
 
       - name: Frontend - Lint
-        run: npm run lint
+        run: pnpm run lint
         working-directory: frontend
 
       - name: Frontend - Test
-        run: npm test -- --passWithNoTests
+        run: pnpm run test -- --passWithNoTests
         working-directory: frontend
 
       - name: Notify on failure
@@ -62,7 +114,7 @@ jobs:
                 "username": "GitHub Actions"
               }' || true
           fi
-          
+
           # Slack notification
           if [ -n "${{ secrets.SLACK_WEBHOOK_URL }}" ]; then
             curl -X POST ${{ secrets.SLACK_WEBHOOK_URL }} \

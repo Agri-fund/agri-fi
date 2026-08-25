@@ -14,14 +14,32 @@ import { Referral } from './entities/referral.entity';
 import { KycGuard } from './kyc.guard';
 import { RolesGuard } from './roles.guard';
 import { QueueModule } from '../queue/queue.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
-import { ReferralService } from './referral.service';
+import { Document } from '../trade-deals/entities/document.entity';
+import { OfacSanctionsCheckService } from './utils/ofac-sanctions-check';
+import { LoginLog } from '../database/entities/login-log.entity';
+import { AdminAction } from '../database/entities/admin-action.entity';
+import { KycCronService } from './kyc-cron.service';
+import { RedisConfig } from '../config/redis.config';
+import { TokenBlocklistService } from './token-blocklist.service';
+import { MfaGuard } from './guards/mfa.guard';
+import { EscrowModule } from '../escrow/escrow.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, KycSubmission, TradeDeal, ReferralCode, Referral]),
+    TypeOrmModule.forFeature([
+      User,
+      KycSubmission,
+      TradeDeal,
+      Document,
+      LoginLog,
+      AdminAction,
+    ]),
     QueueModule,
+    NotificationsModule,
     PassportModule,
+    EscrowModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -32,7 +50,26 @@ import { ReferralService } from './referral.service';
     }),
   ],
   controllers: [AuthController, AdminController],
-  providers: [AuthService, JwtStrategy, KycGuard, RolesGuard, ReferralService],
-  exports: [AuthService, JwtModule, TypeOrmModule, KycGuard, RolesGuard],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    KycGuard,
+    RolesGuard,
+    MfaGuard,
+    RedisConfig,
+    TokenBlocklistService,
+    OfacSanctionsCheckService,
+    KycCronService,
+  ],
+  exports: [
+    AuthService,
+    JwtModule,
+    TypeOrmModule,
+    KycGuard,
+    RolesGuard,
+    MfaGuard,
+    RedisConfig,
+    TokenBlocklistService,
+  ],
 })
 export class AuthModule {}

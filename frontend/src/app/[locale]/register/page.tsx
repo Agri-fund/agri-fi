@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
+import zxcvbn from 'zxcvbn';
 import { apiClient } from '@/lib/api';
 import { useToast } from '@/components/ui/ToastProvider';
 
@@ -209,18 +210,21 @@ export default function RegisterPage() {
                       {showPw ? '🙈' : '👁'}
                     </button>
                   </div>
-                  {form.password.length > 0 && (
-                    <div className="mt-2 flex gap-1">
-                      {[4,6,8].map(n => (
-                        <div key={n} className={`flex-1 h-1 rounded-full transition-all ${
-                          form.password.length >= n ? 'bg-brand-500' : 'bg-slate-200'
-                        }`} />
-                      ))}
-                      <span className="text-xs text-slate-400 ml-1">
-                        {form.password.length < 4 ? 'Weak' : form.password.length < 8 ? 'Fair' : 'Strong'}
-                      </span>
-                    </div>
-                  )}
+                  {form.password.length > 0 && (() => {
+                    const score = zxcvbn(form.password).score;
+                    const colors = ['bg-red-400', 'bg-red-400', 'bg-yellow-400', 'bg-blue-500', 'bg-green-500'];
+                    const labels = ['Very weak', 'Weak', 'Fair', 'Strong', 'Very strong'];
+                    return (
+                      <div className="mt-2">
+                        <div className="flex gap-1">
+                          {[0,1,2,3].map(i => (
+                            <div key={i} className={`flex-1 h-1 rounded-full transition-all ${i <= score ? colors[score] : 'bg-slate-200'}`} />
+                          ))}
+                        </div>
+                        <span className="text-xs text-slate-400 mt-1 block">{labels[score]}</span>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 <div>

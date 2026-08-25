@@ -148,6 +148,7 @@
   },
   "deals": {
     "createTitle": "Créer un nouveau contrat commercial",
+    "draftRestored": "Brouillon restauré depuis {time}",
     "commodity": "Nom de la marchandise",
     "quantity": "Quantité",
     "unit": "Unité",
@@ -177,7 +178,13 @@
     "error": "Erreur",
     "success": "Succès",
     "processing": "Traitement...",
-    "dismiss": "Ignorer"
+    "dismiss": "Ignorer",
+    "network": {
+      "offline": {
+        "title": "Vous êtes hors ligne.",
+        "description": "Les actions nécessitant un accès à Internet sont désactivées jusqu'au rétablissement de la connexion."
+      }
+    }
   },
   "referrals": {
     "title": "Programme de parrainage",

@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useForm, useWatch, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -11,6 +11,9 @@ interface CreateDealFormProps {
   onSuccess?: () => void;
   onCancel?: () => void;
 }
+
+const DRAFT_STORAGE_KEY = 'createDealForm.draft';
+const DRAFT_SAVE_DEBOUNCE_MS = 1000;
 
 export const CreateDealForm: React.FC<CreateDealFormProps> = ({ onSuccess, onCancel }) => {
   const t = useTranslations('deals');
@@ -61,6 +64,44 @@ export const CreateDealForm: React.FC<CreateDealFormProps> = ({ onSuccess, onCan
 
   const totalValue = useWatch({ control, name: 'total_value' }) || 0;
   const tokenPrice = useWatch({ control, name: 'token_price' }) || 0;
+  const watchedValues = useWatch({ control });
+
+  const [restoredAt, setRestoredAt] = useState<string | null>(null);
+  const hasHydrated = useRef(false);
+
+  // Restore a saved draft (if any) on mount, before the debounced-save effect
+  // below starts running so we don't immediately clobber it with defaults.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(DRAFT_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as { values: DealFormData; savedAt: string };
+        if (parsed?.values) {
+          reset(parsed.values);
+          setRestoredAt(parsed.savedAt);
+        }
+      }
+    } catch {
+      // Corrupt or inaccessible localStorage — ignore and start fresh.
+    }
+    hasHydrated.current = true;
+  }, [reset]);
+
+  // Persist the draft to localStorage on field change, debounced by 1s.
+  useEffect(() => {
+    if (!hasHydrated.current) return;
+    const timeout = setTimeout(() => {
+      try {
+        localStorage.setItem(
+          DRAFT_STORAGE_KEY,
+          JSON.stringify({ values: watchedValues, savedAt: new Date().toISOString() })
+        );
+      } catch {
+        // Storage full or unavailable — draft persistence is best-effort.
+      }
+    }, DRAFT_SAVE_DEBOUNCE_MS);
+    return () => clearTimeout(timeout);
+  }, [watchedValues]);
 
   const onSubmit: SubmitHandler<DealFormData> = async (data) => {
     // Clean up optional fields
@@ -92,6 +133,11 @@ export const CreateDealForm: React.FC<CreateDealFormProps> = ({ onSuccess, onCan
       });
 
       reset();
+      try {
+        localStorage.removeItem(DRAFT_STORAGE_KEY);
+      } catch {
+        // Best-effort cleanup — nothing to do if storage is unavailable.
+      }
       onSuccess?.();
     } catch (error: any) {
       console.error('Deal creation error:', error);
@@ -101,7 +147,28 @@ export const CreateDealForm: React.FC<CreateDealFormProps> = ({ onSuccess, onCan
   return (
     <div className="bg-white rounded-lg">
       <h2 className="text-2xl font-bold mb-6 text-gray-800">{t('createTitle')}</h2>
-      
+
+      {restoredAt && (
+        <div className="alert-info mb-5">
+          <span>💾</span>
+          <p className="flex-1">
+            {t('draftRestored', {
+              time: new Date(restoredAt).toLocaleTimeString(undefined, {
+                hour: '2-digit',
+                minute: '2-digit',
+              }),
+            })}
+          </p>
+          <button
+            type="button"
+            onClick={() => setRestoredAt(null)}
+            className="text-blue-700 hover:text-blue-900 font-semibold text-xs flex-shrink-0"
+          >
+            {tc('dismiss')}
+          </button>
+        </div>
+      )}
+
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
         <div className="flex flex-col">
           <label htmlFor="commodity" className="mb-1 text-sm font-semibold text-gray-700">

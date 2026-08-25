@@ -2,8 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { useWallet } from '../hooks/useWallet';
+import { useTransactionProgress } from '../hooks/useTransactionProgress';
 import { getStoredToken } from '../lib/api';
 import { useToast } from './ui/ToastProvider';
+import { OnChainProgressIndicator } from './OnChainProgressIndicator';
 
 interface InvestmentFormProps {
   dealId: string;
@@ -41,11 +43,13 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
 }) => {
   const { toast, promise } = useToast();
   const { isConnected, publicKey, signTransaction } = useWallet();
+  const txProgress = useTransactionProgress();
   const [tokenQuantity, setTokenQuantity] = useState<number | ''>(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<SuccessState | null>(null);
   const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null);
+  const [showProgress, setShowProgress] = useState(false);
 
   // Cleanup polling interval on unmount
   useEffect(() => {
@@ -75,6 +79,8 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
     setIsSubmitting(true);
     setError(null);
     setSuccess(null);
+    setShowProgress(true);
+    txProgress.setSimulating();
 
     const investmentFlow = async () => {
       const token = getStoredToken();
@@ -82,7 +88,7 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
         throw new Error('Please log in first');
       }
 
-      // Step 1: Create pending investment
+      // Step 1: Create pending investment (simulating phase)
       const createResponse = await fetch('/api/investments', {
         method: 'POST',
         headers: {
@@ -103,10 +109,11 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
 
       const investmentData: InvestmentResponse = await createResponse.json();
 
-      // Step 2: Sign transaction
+      // Step 2: Sign transaction (simulating → submitting)
+      txProgress.setSubmitting();
       const signedXdr = await signTransaction(investmentData.unsignedXdr);
 
-      // Step 3: Submit signed transaction to backend
+      // Step 3: Submit signed transaction to backend (submitting phase)
       const submitResponse = await fetch(`/api/investments/${investmentData.investment.id}/fund`, {
         method: 'POST',
         headers: {
@@ -134,6 +141,11 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
         error: 'Investment failed. Please try again.',
       });
       
+      // Mark as confirmed once we get the result
+      if (finalResult.stellarTxId) {
+        txProgress.setConfirmed(finalResult.stellarTxId);
+      }
+      
       if (finalResult.status === 'queued') {
         setSuccess({
           investmentAmount: totalAmount,
@@ -158,6 +170,8 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
       const errorMessage = error instanceof Error ? error.message : 'Investment failed';
       setError(errorMessage);
       onError?.(errorMessage);
+      setShowProgress(false);
+      txProgress.reset();
     } finally {
       setIsSubmitting(false);
     }
@@ -218,50 +232,79 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
     );
   }
 
+  // Show progress indicator while transaction is in-flight
+  if (showProgress && txProgress.state !== 'confirmed') {
+    return (
+      <div className="space-y-4">
+        <OnChainProgressIndicator
+          state={txProgress.state}
+          txHash={txProgress.txHash ?? undefined}
+        />
+        <p className="text-sm text-slate-600 text-center">
+          Please wait while your investment is being processed on the Stellar network.
+        </p>
+      </div>
+    );
+  }
+
   if (success) {
     return (
-      <div className={`${success.isQueued ? 'bg-blue-50 border-blue-200' : 'bg-green-50 border-green-200'} border rounded-lg p-6`}>
-        <div className="flex items-center mb-4">
-          <div className={`w-8 h-8 ${success.isQueued ? 'bg-blue-500' : 'bg-green-500'} rounded-full flex items-center justify-center mr-3`}>
-            {success.isQueued ? (
-              <svg className="w-5 h-5 text-white animate-spin" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-              </svg>
-            ) : (
-              <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-              </svg>
+      <div className="space-y-4">
+        {/* Show the progress indicator in confirmed state */}
+        {txProgress.state === 'confirmed' && (
+          <OnChainProgressIndicator
+            state="confirmed"
+            txHash={success.transactionId !== 'Processing... (queued)' ? success.transactionId : txProgress.txHash ?? undefined}
+          />
+        )}
+        
+        <div className={`${success.isQueued ? 'bg-blue-50 border-blue-200' : 'bg-green-50 border-green-200'} border rounded-lg p-6`}>
+          <div className="flex items-center mb-4">
+            <div className={`w-8 h-8 ${success.isQueued ? 'bg-blue-500' : 'bg-green-500'} rounded-full flex items-center justify-center mr-3`}>
+              {success.isQueued ? (
+                <svg className="w-5 h-5 text-white animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+              ) : (
+                <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                </svg>
+              )}
+            </div>
+            <h3 className={`text-lg font-semibold ${success.isQueued ? 'text-blue-800' : 'text-green-800'}`}>
+              {success.isQueued ? 'Investment Processing...' : 'Investment Successful!'}
+            </h3>
+          </div>
+          
+          <div className={`space-y-2 text-sm ${success.isQueued ? 'text-blue-700' : 'text-green-700'}`}>
+            <p><strong>Investment Amount:</strong> ${success.investmentAmount.toLocaleString()}</p>
+            <p><strong>Tokens Purchased:</strong> {success.tokenCount}</p>
+            {success.transactionId && success.transactionId !== 'Processing... (queued)' && (
+              <p><strong>{success.isQueued ? 'Status:' : 'Transaction ID:'}</strong> 
+                <span className="font-mono text-xs break-all ml-1">
+                  {success.transactionId}
+                </span>
+              </p>
+            )}
+            {success.isQueued && (
+              <p className="text-xs italic">
+                Your investment is being processed. This page will update automatically when complete.
+              </p>
             )}
           </div>
-          <h3 className={`text-lg font-semibold ${success.isQueued ? 'text-blue-800' : 'text-green-800'}`}>
-            {success.isQueued ? 'Investment Processing...' : 'Investment Successful!'}
-          </h3>
+          
+          <button
+            onClick={() => {
+              setSuccess(null);
+              setShowProgress(false);
+              txProgress.reset();
+            }}
+            className={`mt-4 text-sm ${success.isQueued ? 'text-blue-600 hover:text-blue-800' : 'text-green-600 hover:text-green-800'} underline`}
+          >
+            Make Another Investment
+          </button>
         </div>
-        
-        <div className={`space-y-2 text-sm ${success.isQueued ? 'text-blue-700' : 'text-green-700'}`}>
-          <p><strong>Investment Amount:</strong> ${success.investmentAmount.toLocaleString()}</p>
-          <p><strong>Tokens Purchased:</strong> {success.tokenCount}</p>
-          {success.transactionId && (
-            <p><strong>{success.isQueued ? 'Status:' : 'Transaction ID:'}</strong> 
-              <span className="font-mono text-xs break-all ml-1">
-                {success.transactionId}
-              </span>
-            </p>
-          )}
-          {success.isQueued && (
-            <p className="text-xs italic">
-              Your investment is being processed. This page will update automatically when complete.
-            </p>
-          )}
-        </div>
-        
-        <button
-          onClick={() => setSuccess(null)}
-          className={`mt-4 text-sm ${success.isQueued ? 'text-blue-600 hover:text-blue-800' : 'text-green-600 hover:text-green-800'} underline`}
-        >
-          Make Another Investment
-        </button>
       </div>
     );
   }

@@ -31,6 +31,9 @@ const mockFarmer = (): User => ({
   isCompany: false,
   companyDetails: null,
   createdAt: new Date(),
+  fullName: null,
+  birthdate: null,
+  taxId: null,
 });
 
 const mockDeal = (): TradeDeal => ({
