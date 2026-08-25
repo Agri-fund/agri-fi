@@ -267,5 +267,38 @@
     "currency": "{value, number, currency}",
     "date": "{value, date, short}",
     "number": "{value, number}"
+  },
+  "tour": {
+    "welcome": {
+      "title": "Bem-vindo ao Agri-Fi",
+      "text": "Este tour rápido apresentará os principais recursos da plataforma. Você pode reiniciar este tour a qualquer momento nas Configurações."
+    },
+    "browseDeals": {
+      "title": "Explorar Negócios",
+      "text": "Encontre oportunidades de investimento em negociações agrícolas. Filtre por produto, status e mais."
+    },
+    "connectWallet": {
+      "title": "Conecte sua Carteira",
+      "text": "Conecte sua carteira Stellar para investir em negócios e acompanhar seu portfólio na blockchain."
+    },
+    "portfolioStats": {
+      "title": "Estatísticas do Portfólio",
+      "text": "Acompanhe seus investimentos, retornos e o desempenho dos negócios de relance."
+    },
+    "notificationBell": {
+      "title": "Mantenha-se Atualizado",
+      "text": "Receba notificações em tempo real sobre seus negócios, investimentos e atualizações da plataforma."
+    },
+    "complete": {
+      "title": "Tudo Pronto!",
+      "text": "Você está pronto para explorar o Agri-Fi. Boas investimentos!"
+    },
+    "buttons": {
+      "next": "Próximo",
+      "back": "Voltar",
+      "skip": "Pular Tour",
+      "finish": "Começar"
+    },
+    "restart": "Reiniciar Tour"
   }
 }

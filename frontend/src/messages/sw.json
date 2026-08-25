@@ -222,5 +222,38 @@
     "currency": "{value, number, currency}",
     "date": "{value, date, short}",
     "number": "{value, number}"
+  },
+  "tour": {
+    "welcome": {
+      "title": "Karibu Agri-Fi",
+      "text": "Hii ndio ziara ya haraka itakayokutambulisha na vipengele muhimu vya jukwaa. Unaweza kuanzisha upya ziara hii wakati wowote kutoka kwa Mipangilio."
+    },
+    "browseDeals": {
+      "title": "Vinjari Mikataba",
+      "text": "Tafuta fursa za uwekezaji katika mikataba ya biashara ya kilimo. Chuja kwa zao, hali, na zaidi."
+    },
+    "connectWallet": {
+      "title": "Unganisha Mfoldi Yako",
+      "text": "Unganisha mfoldi yako ya Stellar ili kuwekeza katika mikataba na kufuatilia portfolio yako kwenye mtandao."
+    },
+    "portfolioStats": {
+      "title": "Takwimu za Portfolio",
+      "text": "Fuatilia uwekezaji wako, faida, na utendaji wa mikataba kwa mtazamo mmoja."
+    },
+    "notificationBell": {
+      "title": "Kaa Umefahamishwa",
+      "text": "Pata arifa za wakati halisi kuhusu mikataba yako, uwekezaji, na masasisho ya jukwaa."
+    },
+    "complete": {
+      "title": "Uko Tayari!",
+      "text": "Uko tayari kuanza kuchunguza Agri-Fi. Furahia uwekezaji!"
+    },
+    "buttons": {
+      "next": "Ifuatayo",
+      "back": "Rudi",
+      "skip": "Ruka Ziara",
+      "finish": "Anza"
+    },
+    "restart": "Anza Upya Ziara"
   }
 }
