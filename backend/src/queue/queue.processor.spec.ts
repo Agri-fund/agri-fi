@@ -23,6 +23,7 @@ describe('QueueProcessor', () => {
   let investmentRepo: { update: jest.Mock };
   let userRepo: { findOne: jest.Mock };
   let notificationsService: { sendEmail: jest.Mock };
+  let emailTemplates: { render: jest.Mock };
   let logger: {
     setContext: jest.Mock;
     assign: jest.Mock;
@@ -54,6 +55,13 @@ describe('QueueProcessor', () => {
     investmentRepo = { update: jest.fn() };
     userRepo = { findOne: jest.fn() };
     notificationsService = { sendEmail: jest.fn() };
+    emailTemplates = {
+      render: jest.fn().mockReturnValue({
+        subject: 'Test Subject',
+        text: 'Test body',
+        html: '<p>Test body</p>',
+      }),
+    };
     logger = {
       setContext: jest.fn(),
       assign: jest.fn(),
@@ -82,6 +90,7 @@ describe('QueueProcessor', () => {
       {} as any, // config
       userRepo as any,
       notificationsService as any,
+      emailTemplates as any,
       logger as any,
       idempotency as unknown as IdempotencyService,
     );

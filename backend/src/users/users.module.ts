@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { UsersController } from './users.controller';
+import { EmailPreferencesController } from './email-preferences.controller';
 import { UsersService } from './users.service';
 import { User } from '../auth/entities/user.entity';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
@@ -26,7 +27,7 @@ import { TradeDealsModule } from '../trade-deals/trade-deals.module';
     ]),
     TradeDealsModule,
   ],
-  controllers: [UsersController],
+  controllers: [UsersController, EmailPreferencesController],
   providers: [UsersService],
   exports: [UsersService],
 })

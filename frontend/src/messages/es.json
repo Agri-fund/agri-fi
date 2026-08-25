@@ -192,6 +192,18 @@
     "txFailed": "Transacción fallida"
   },
   "deals": {
+    "coFarmers": {
+      "title": "Cocultivadores",
+      "description": "Invita a otros agricultores a este trato: cada cocultivador es responsable de su porción de la entrega y recibe esa parte del pago.",
+      "emailLabel": "Correo del cocultivador",
+      "portionLabel": "Porción (%)",
+      "add": "Añadir cocultivador",
+      "remove": "Quitar",
+      "invalidEmail": "Introduce un correo electrónico válido.",
+      "invalidPortion": "La porción debe estar entre 0 y 100.",
+      "totalTooHigh": "El total de las porciones no puede superar el 100 %.",
+      "inviteFailed": "El trato se creó, pero no se pudieron enviar algunas invitaciones."
+    },
     "createTitle": "Crear Nuevo Acuerdo Comercial",
     "draftRestored": "Borrador restaurado de {time}",
     "commodity": "Nombre de la Mercancía",

@@ -1,5 +1,6 @@
 import {
   Controller,
+  Delete,
   Get,
   Post,
   Param,
@@ -35,6 +36,12 @@ import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { OptionalJwtGuard } from '../auth/optional-jwt.guard';
 import { CreateTradeDealDto } from './dto/create-trade-deal.dto';
+import { DealCoFarmersService } from './deal-co-farmers.service';
+import {
+  AcceptCoFarmerInvitationDto,
+  InviteCoFarmerDto,
+} from './dto/co-farmer.dto';
+import { DealCoFarmer } from './entities/deal-co-farmer.entity';
 
 import { TradeDealAccessRequest, TradeDealsGuard } from './trade-deals.guard';
 
@@ -47,6 +54,7 @@ interface AuthRequest extends Request {
 export class TradeDealsController {
   constructor(
     private readonly tradeDealsService: TradeDealsService,
+    private readonly dealCoFarmersService: DealCoFarmersService,
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
   ) {}
 
@@ -91,15 +99,112 @@ export class TradeDealsController {
   @ApiResponse({ status: 404, description: 'Trade deal not found' })
   @ApiResponse({
     status: 422,
-    description: 'Deal not in draft status or missing documents',
+    description:
+      'Deal not in draft status, missing documents, or co-farmers not accepted/KYC verified',
   })
   async publishDeal(
     @Param('id') id: string,
     @Request() req: AuthRequest,
   ): Promise<TradeDeal> {
+    // #891 KYC gate — a deal cannot go live until every invited co-farmer has
+    // accepted the invitation and passed KYC verification.
+    await this.dealCoFarmersService.assertAllCoFarmersVerified(id);
+
     const deal = await this.tradeDealsService.publishDeal(id, req.user.id);
     await this.cacheManager.reset();
     return deal;
+  }
+
+  // ── Co-investment endpoints (#891) ─────────────────────────────────────────
+
+  @Post(':id/co-farmers')
+  @UseGuards(AuthGuard('jwt'), RolesGuard, KycGuard)
+  @Roles('trader', 'farmer')
+  @HttpCode(201)
+  @ApiBearerAuth('jwt')
+  @ApiOperation({
+    summary:
+      'Invite an existing farmer user as a co-farmer on a deal (lead farmer or trader)',
+  })
+  @ApiResponse({ status: 201, description: 'Invitation created and emailed' })
+  @ApiResponse({ status: 400, description: 'Portion exceeds 100% or invalid target' })
+  @ApiResponse({ status: 403, description: 'Not the lead farmer or assigned trader' })
+  @ApiResponse({ status: 404, description: 'Trade deal not found' })
+  async inviteCoFarmer(
+    @Param('id') id: string,
+    @Request() req: AuthRequest,
+    @Body() dto: InviteCoFarmerDto,
+  ): Promise<DealCoFarmer> {
+    return this.dealCoFarmersService.inviteCoFarmer(id, req.user.id, dto);
+  }
+
+  @Get(':id/co-farmers')
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth('jwt')
+  @ApiOperation({ summary: 'List co-farmers for a trade deal' })
+  @ApiResponse({ status: 200, description: 'Co-farmer list (invitation tokens hidden)' })
+  async listCoFarmers(@Param('id') id: string): Promise<DealCoFarmer[]> {
+    const records = await this.dealCoFarmersService.listCoFarmers(id);
+    // Never expose invitation tokens through the API.
+    return records.map((r) => ({ ...r, invitationToken: undefined }));
+  }
+
+  @Post(':id/co-farmers/accept')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('farmer')
+  @HttpCode(200)
+  @ApiBearerAuth('jwt')
+  @ApiOperation({
+    summary: 'Accept a co-farmer invitation using the emailed token',
+  })
+  @ApiResponse({ status: 200, description: 'Invitation accepted' })
+  @ApiResponse({ status: 400, description: 'Invalid or expired token' })
+  @ApiResponse({ status: 404, description: 'No invitation found' })
+  async acceptCoFarmer(
+    @Param('id') id: string,
+    @Request() req: AuthRequest,
+    @Body() dto: AcceptCoFarmerInvitationDto,
+  ): Promise<DealCoFarmer> {
+    return this.dealCoFarmersService.acceptInvitation(id, req.user.id, dto.token);
+  }
+
+  @Post(':id/co-farmers/decline')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('farmer')
+  @HttpCode(200)
+  @ApiBearerAuth('jwt')
+  @ApiOperation({
+    summary: 'Decline a co-farmer invitation using the emailed token',
+  })
+  @ApiResponse({ status: 200, description: 'Invitation declined' })
+  @ApiResponse({ status: 400, description: 'Invalid token' })
+  @ApiResponse({ status: 404, description: 'No invitation found' })
+  async declineCoFarmer(
+    @Param('id') id: string,
+    @Request() req: AuthRequest,
+    @Body() dto: AcceptCoFarmerInvitationDto,
+  ): Promise<DealCoFarmer> {
+    return this.dealCoFarmersService.declineInvitation(id, req.user.id, dto.token);
+  }
+
+  @Delete(':id/co-farmers/:farmerId')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('trader', 'farmer')
+  @HttpCode(204)
+  @ApiBearerAuth('jwt')
+  @ApiOperation({
+    summary:
+      'Remove a co-farmer from a deal before delivery (lead farmer or trader)',
+  })
+  @ApiResponse({ status: 204, description: 'Co-farmer removed' })
+  @ApiResponse({ status: 403, description: 'Not the lead farmer or assigned trader' })
+  @ApiResponse({ status: 404, description: 'Trade deal or co-farmer not found' })
+  async removeCoFarmer(
+    @Param('id') id: string,
+    @Param('farmerId') farmerId: string,
+    @Request() req: AuthRequest,
+  ): Promise<void> {
+    await this.dealCoFarmersService.removeCoFarmer(id, farmerId, req.user.id);
   }
 
   @Get()

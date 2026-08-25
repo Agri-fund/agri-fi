@@ -4,6 +4,9 @@ import {
   UnauthorizedException,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
+  HttpException,
+  HttpStatus,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -38,9 +41,17 @@ import { AdminAction } from '../database/entities/admin-action.entity';
 import { authenticator } from 'otplib';
 import * as QRCode from 'qrcode';
 import { TokenBlocklistService } from './token-blocklist.service';
+import { SecurityThreatService } from './security-threat.service';
 
 const LOCKOUT_MAX_ATTEMPTS = 5;
 const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
+
+/** Request context used by credential-stuffing detection (#898). */
+export interface LoginMeta {
+  ip?: string;
+  userAgent?: string;
+  country?: string;
+}
 
 @Injectable()
 export class AuthService {
@@ -62,6 +73,7 @@ export class AuthService {
     private readonly queueService: QueueService,
     private readonly ofacSanctionsCheck: OfacSanctionsCheckService,
     private readonly tokenBlocklistService: TokenBlocklistService,
+    private readonly securityThreat: SecurityThreatService,
   ) {
     const network = this.configService.get<string>('STELLAR_NETWORK', 'testnet');
     this.networkPassphrase =
@@ -238,9 +250,58 @@ export class AuthService {
 
   async login(
     dto: LoginDto,
+    meta?: LoginMeta,
   ): Promise<{ accessToken: string; refreshToken: string; redirect?: string }> {
+    // ── #898: distributed credential-stuffing gate ──────────────────────────
+    // Runs BEFORE user lookup / password verification so blocked traffic
+    // never burns bcrypt/argon2 cycles (DoS safety).
+    const threat = await this.securityThreat.checkLogin(dto.email, meta?.ip);
+    if (threat.action === 'blocked') {
+      throw new HttpException(
+        {
+          statusCode: HttpStatus.TOO_MANY_REQUESTS,
+          code: 'LOGIN_RATE_LIMITED',
+          message:
+            'Too many suspicious login attempts. Please try again later.',
+          reasons: threat.reasons,
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    if (threat.captchaRequired) {
+      // CAPTCHA was demanded for this email — a valid token must accompany
+      // the attempt (tested end-to-end via mocked hCaptcha siteverify).
+      if (!dto.captchaToken) {
+        throw new ForbiddenException({
+          code: 'CAPTCHA_REQUIRED',
+          message:
+            'Unusual activity detected. Please complete the CAPTCHA challenge.',
+        });
+      }
+      const captchaOk = await this.securityThreat.verifyCaptcha(
+        dto.captchaToken,
+        meta?.ip,
+      );
+      if (!captchaOk) {
+        throw new ForbiddenException({
+          code: 'CAPTCHA_INVALID',
+          message: 'CAPTCHA verification failed. Please try again.',
+        });
+      }
+    }
+
     const user = await this.userRepo.findOne({ where: { email: dto.email } });
-    if (!user) throw new UnauthorizedException('Invalid credentials.');
+    if (!user) {
+      // Unknown emails still feed the detection windows — stuffing attacks
+      // rarely target real accounts exclusively.
+      await this.securityThreat.recordFailedLogin(
+        dto.email,
+        meta?.ip,
+        meta?.country,
+      );
+      throw new UnauthorizedException('Invalid credentials.');
+    }
 
     // Check lockout
     if (user.lockoutUntil && user.lockoutUntil > new Date()) {
@@ -261,6 +322,20 @@ export class AuthService {
 
     if (!valid) {
       user.failedLoginAttempts = (user.failedLoginAttempts ?? 0) + 1;
+
+      // Feed the distributed-attack detectors (#898): distinct-IP-per-email
+      // window, /16 subnet failure counter and geo-diversity flag all run
+      // off every failed attempt.
+      try {
+        await this.securityThreat.recordFailedLogin(
+          dto.email,
+          meta?.ip,
+          meta?.country,
+        );
+      } catch (err: any) {
+        // Detection is best-effort; never mask the auth error.
+        this.loggerWarn('recordFailedLogin failed', err);
+      }
 
       if (user.failedLoginAttempts >= LOCKOUT_MAX_ATTEMPTS) {
         user.lockoutUntil = new Date(Date.now() + LOCKOUT_DURATION_MS);
@@ -295,12 +370,72 @@ export class AuthService {
 
     await this.userRepo.save(user);
 
+    // ── #898/#897: audit log + localized new-device security alert ──────────
+    if (meta?.ip || meta?.userAgent) {
+      try {
+        await this.recordSuccessfulLogin(user, meta);
+      } catch (err: any) {
+        this.loggerWarn('recordSuccessfulLogin failed', err);
+      }
+    }
+
     const tokens = this.issueTokenPair(user);
     const safeRedirect = sanitizeRedirectUrl(dto.redirect);
     return {
       ...tokens,
       redirect: safeRedirect || undefined,
     };
+  }
+
+  /** Persists a LoginLog row and alerts the user about unrecognized devices. */
+  private async recordSuccessfulLogin(
+    user: User,
+    meta?: LoginMeta,
+  ): Promise<void> {
+    if (!meta?.ip) return;
+
+    const previousLogs =
+      this.loginLogRepo && (this.loginLogRepo as any).find
+        ? await this.loginLogRepo.find({
+            where: { userId: user.id },
+            order: { createdAt: 'DESC' },
+            take: 10,
+          })
+        : [];
+
+    await this.loginLogRepo.save(
+      this.loginLogRepo.create({
+        userId: user.id,
+        ipAddress: meta.ip ?? 'unknown',
+        userAgent: meta.userAgent ?? 'unknown',
+        country: meta.country ?? null,
+      }),
+    );
+
+    const knownDevice = previousLogs.some(
+      (log) =>
+        log.ipAddress === meta.ip &&
+        log.userAgent === (meta.userAgent ?? 'unknown'),
+    );
+
+    if (previousLogs.length > 0 && !knownDevice) {
+      this.queueService.emit('email.notification', {
+        type: 'security_alert_new_device',
+        userId: user.id,
+        email: user.email,
+        details: {
+          ipAddress: meta.ip,
+          device: meta.userAgent ?? 'unknown device',
+          time: new Date().toISOString(),
+        },
+      });
+    }
+  }
+
+  /** Minimal warning logging that works with or without an injected logger. */
+  private loggerWarn(message: string, err: unknown): void {
+    // eslint-disable-next-line no-console
+    console.warn(`[AuthService] ${message}:`, (err as Error)?.message);
   }
 
   // ── refresh ────────────────────────────────────────────────────────────────
