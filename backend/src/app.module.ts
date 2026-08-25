@@ -36,6 +36,7 @@ import { AuditModule } from './audit/audit.module';
 
 import { AchievementModule } from './achievements/achievement.module';
 import { EmailSequenceModule } from './email-sequence/email-sequence.module';
+import { ArchivalModule } from './archival/archival.module';
 
 @Module({
   controllers: [AppController],
@@ -97,6 +98,7 @@ import { EmailSequenceModule } from './email-sequence/email-sequence.module';
     AuditModule,
     AchievementModule,
     EmailSequenceModule,
+    ArchivalModule,
   ],
   providers: [
     {
