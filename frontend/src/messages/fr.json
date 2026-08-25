@@ -147,6 +147,18 @@
     }
   },
   "deals": {
+    "coFarmers": {
+      "title": "Co-agriculteurs",
+      "description": "Invitez d'autres agriculteurs sur cette offre : chaque co-agriculteur est responsable de sa part de la livraison et reçoit cette part du paiement.",
+      "emailLabel": "E-mail du co-agriculteur",
+      "portionLabel": "Part (%)",
+      "add": "Ajouter un co-agriculteur",
+      "remove": "Retirer",
+      "invalidEmail": "Saisissez une adresse e-mail valide.",
+      "invalidPortion": "La part doit être comprise entre 0 et 100.",
+      "totalTooHigh": "Le total des parts ne peut pas dépasser 100 %.",
+      "inviteFailed": "L'offre a été créée, mais certaines invitations n'ont pas pu être envoyées."
+    },
     "createTitle": "Créer un nouveau contrat commercial",
     "draftRestored": "Brouillon restauré depuis {time}",
     "commodity": "Nom de la marchandise",

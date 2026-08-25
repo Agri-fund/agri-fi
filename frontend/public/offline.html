@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AgriFi — You are Offline</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+        'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+        sans-serif;
+      background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      text-align: center;
+      max-width: 500px;
+    }
+
+    .logo {
+      width: 80px;
+      height: 80px;
+      margin: 0 auto 30px;
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 40px;
+      font-weight: bold;
+      color: white;
+    }
+
+    h1 {
+      color: white;
+      font-size: 28px;
+      margin-bottom: 12px;
+      font-weight: 700;
+    }
+
+    .subtitle {
+      color: #d1d5db;
+      font-size: 16px;
+      margin-bottom: 32px;
+      line-height: 1.5;
+    }
+
+    .status {
+      background: rgba(255, 193, 7, 0.1);
+      border: 1px solid rgba(255, 193, 7, 0.3);
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 32px;
+    }
+
+    .status-icon {
+      font-size: 32px;
+      margin-bottom: 12px;
+    }
+
+    .status-text {
+      color: #fbbf24;
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .help-text {
+      color: #9ca3af;
+      font-size: 13px;
+      margin-bottom: 30px;
+      line-height: 1.6;
+    }
+
+    .actions {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    button {
+      padding: 12px 24px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .btn-retry {
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      color: white;
+    }
+
+    .btn-retry:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 16px rgba(16, 185, 129, 0.3);
+    }
+
+    .btn-home {
+      background: rgba(255, 255, 255, 0.1);
+      color: #e5e7eb;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .btn-home:hover {
+      background: rgba(255, 255, 255, 0.15);
+      border-color: rgba(255, 255, 255, 0.3);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      button {
+        transition: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">🌾</div>
+
+    <h1>You are Offline</h1>
+    <p class="subtitle">
+      AgriFi requires an internet connection to access deals, view your portfolio, and manage investments.
+    </p>
+
+    <div class="status">
+      <div class="status-icon">📡</div>
+      <div class="status-text">Check your internet connection and try again</div>
+    </div>
+
+    <p class="help-text">
+      Once you're back online, your cached content will be available instantly. Previously loaded pages and data will remain accessible.
+    </p>
+
+    <div class="actions">
+      <button class="btn-retry" onclick="location.reload()">
+        ↻ Retry Connection
+      </button>
+      <button class="btn-home" onclick="location.href='/'">
+        ← Go to Home
+      </button>
+    </div>
+  </div>
+
+  <script>
+    // Listen for when connection is restored
+    window.addEventListener('online', () => {
+      document.querySelector('.status-icon').textContent = '✓';
+      document.querySelector('.status-text').textContent = 'Connection restored!';
+      document.querySelector('.status').style.borderColor = 'rgba(16, 185, 129, 0.3)';
+      document.querySelector('.status').style.background = 'rgba(16, 185, 129, 0.1)';
+      
+      setTimeout(() => {
+        location.reload();
+      }, 2000);
+    });
+
+    // Auto-retry connection every 5 seconds
+    setInterval(() => {
+      fetch('/', { method: 'HEAD', cache: 'no-store' })
+        .then(() => {
+          window.dispatchEvent(new Event('online'));
+        })
+        .catch(() => {
+          // Still offline
+        });
+    }, 5000);
+  </script>
+</body>
+</html>

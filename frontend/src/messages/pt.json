@@ -192,6 +192,18 @@
     }
   },
   "deals": {
+    "coFarmers": {
+      "title": "Coagricultores",
+      "description": "Convide outros agricultores para esta negociação — cada coagricultor é responsável pela sua parcela da entrega e recebe essa fração do pagamento.",
+      "emailLabel": "E-mail do coagricultor",
+      "portionLabel": "Parcela (%)",
+      "add": "Adicionar coagricultor",
+      "remove": "Remover",
+      "invalidEmail": "Insira um endereço de e-mail válido.",
+      "invalidPortion": "A parcela deve estar entre 0 e 100.",
+      "totalTooHigh": "O total das parcelas não pode exceder 100 %.",
+      "inviteFailed": "A negociação foi criada, mas não foi possível enviar alguns convites."
+    },
     "createTitle": "Criar Novo Negócio Comercial",
     "draftRestored": "Rascunho restaurado de {time}",
     "commodity": "Nome da Mercadoria",

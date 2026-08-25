@@ -1,8 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { Horizon, Keypair } from '@stellar/stellar-sdk';
 import axios from 'axios';
+import { AccountMergeRecovery } from './entities/account-merge-recovery.entity';
+import { StellarService } from './stellar.service';
 
 /**
  * Monitors Stellar platform wallet health.
@@ -29,7 +33,12 @@ export class StellarMonitorService {
   private transactionHistory: Array<{ timestamp: number; fee: number }> = [];
   private readonly MAX_HISTORY_ENTRIES = 1000;
 
-  constructor(private readonly config: ConfigService) {
+  constructor(
+    private readonly config: ConfigService,
+    @InjectRepository(AccountMergeRecovery)
+    private readonly mergeRecoveryRepo: Repository<AccountMergeRecovery>,
+    private readonly stellarService: StellarService,
+  ) {
     const horizonUrl = this.config.get<string>(
       'STELLAR_HORIZON_URL',
       'https://horizon-testnet.stellar.org',
@@ -42,7 +51,10 @@ export class StellarMonitorService {
       50,
     );
 
-    const platformSecret = this.config.get<string>('STELLAR_PLATFORM_SECRET', '');
+    const platformSecret = this.config.get<string>(
+      'STELLAR_PLATFORM_SECRET',
+      '',
+    );
     if (platformSecret) {
       try {
         const keypair = Keypair.fromSecret(platformSecret);
@@ -52,7 +64,9 @@ export class StellarMonitorService {
       }
     }
 
-    this.logger.log(`StellarMonitorService initialized with balance threshold: ${this.BALANCE_THRESHOLD_XLM} XLM`);
+    this.logger.log(
+      `StellarMonitorService initialized with balance threshold: ${this.BALANCE_THRESHOLD_XLM} XLM`,
+    );
   }
 
   /**
@@ -64,7 +78,9 @@ export class StellarMonitorService {
     this.logger.log('Starting platform wallet health check...');
 
     if (!this.platformAccountId) {
-      this.logger.warn('No platform account configured. Skipping balance check.');
+      this.logger.warn(
+        'No platform account configured. Skipping balance check.',
+      );
       return;
     }
 
@@ -72,7 +88,8 @@ export class StellarMonitorService {
       const account = await this.server.loadAccount(this.platformAccountId);
 
       // Find native XLM balance
-      const nativeBalanceStr = account.balances.find((b) => b.asset_type === 'native')?.balance || '0';
+      const nativeBalanceStr =
+        account.balances.find((b) => b.asset_type === 'native')?.balance || '0';
       const nativeBalance = parseFloat(nativeBalanceStr);
 
       // Get sequence number and subentry count for activity metrics
@@ -103,7 +120,9 @@ export class StellarMonitorService {
         await this.triggerLowBalanceAlert(nativeBalance, feeMetrics);
       } else if (this.lastAlertTime > 0) {
         // Reset cooldown if balance is restored above threshold
-        this.logger.log('Balance restored above threshold, resetting alert cooldown.');
+        this.logger.log(
+          'Balance restored above threshold, resetting alert cooldown.',
+        );
         this.lastAlertTime = 0;
       }
     } catch (error: any) {
@@ -153,18 +172,23 @@ export class StellarMonitorService {
     }
 
     // Convert stroops (1 XLM = 10,000,000 stroops) to XLM
-    const feesInXlm = transactions.map((tx) => parseFloat(tx.fee_charged) / 10_000_000);
+    const feesInXlm = transactions.map(
+      (tx) => parseFloat(tx.fee_charged) / 10_000_000,
+    );
     const totalFeesXlm = feesInXlm.reduce((sum, fee) => sum + fee, 0);
     const avgFeeXlm = totalFeesXlm / transactions.length;
 
     // Calculate time span of transactions
     const oldestTx = transactions[transactions.length - 1];
     const newestTx = transactions[0];
-    const timeSpanMs = new Date(newestTx.created_at).getTime() - new Date(oldestTx.created_at).getTime();
+    const timeSpanMs =
+      new Date(newestTx.created_at).getTime() -
+      new Date(oldestTx.created_at).getTime();
     const timeSpanDays = timeSpanMs / (1000 * 60 * 60 * 24);
 
     // Project monthly burn (30 days)
-    const projectedMonthlyBurnXlm = timeSpanDays > 0 ? (totalFeesXlm / timeSpanDays) * 30 : 0;
+    const projectedMonthlyBurnXlm =
+      timeSpanDays > 0 ? (totalFeesXlm / timeSpanDays) * 30 : 0;
 
     return {
       avgFeeXlm: Math.round(avgFeeXlm * 1_000_000) / 1_000_000,
@@ -194,9 +218,10 @@ export class StellarMonitorService {
     }
 
     const webhookUrl = this.config.get<string>('ALERT_WEBHOOK_URL');
-    const daysUntilEmpty = feeMetrics.projectedMonthlyBurnXlm > 0
-      ? Math.floor((balance / feeMetrics.projectedMonthlyBurnXlm) * 30)
-      : -1;
+    const daysUntilEmpty =
+      feeMetrics.projectedMonthlyBurnXlm > 0
+        ? Math.floor((balance / feeMetrics.projectedMonthlyBurnXlm) * 30)
+        : -1;
 
     const alertMessage = {
       // Discord embed format
@@ -274,6 +299,250 @@ export class StellarMonitorService {
       );
       // Also update last alert time even if webhook isn't configured so we don't spam the logs
       this.lastAlertTime = now;
+    }
+  }
+
+  /**
+   * Detects Stellar account merge operations every 5 minutes.
+   * Creates AccountMergeRecovery records for tracking and initiates recovery.
+   * Issue #683 — Account merge handler re-establishes trustlines
+   */
+  @Cron(CronExpression.EVERY_5_MINUTES)
+  async detectAccountMerges() {
+    this.logger.log('Starting account merge detection...');
+
+    try {
+      // Get all unresolved merge records (detected but not yet recovered)
+      const pendingMerges = await this.mergeRecoveryRepo.find({
+        where: [{ status: 'detected' }, { status: 'replacement_created' }],
+      });
+
+      this.logger.debug(
+        { count: pendingMerges.length },
+        'Found pending merge recovery records',
+      );
+
+      // Attempt recovery for each pending merge
+      for (const mergeRecord of pendingMerges) {
+        await this.attemptMergeRecovery(mergeRecord);
+      }
+
+      // Scan recent transactions for new merges
+      const recentTxs = await this.fetchRecentTransactions();
+      const mergeTxs = recentTxs.filter((tx: any) =>
+        tx.operations?.some((op: any) => op.type === 'account_merge'),
+      );
+
+      this.logger.debug(
+        { count: mergeTxs.length },
+        'Found recent account merge transactions',
+      );
+
+      for (const tx of mergeTxs) {
+        await this.processAccountMergeTx(tx);
+      }
+    } catch (error: any) {
+      this.logger.error(
+        { error: error.message },
+        'Error detecting account merges',
+      );
+    }
+  }
+
+  /**
+   * Processes a Stellar transaction containing an account merge operation.
+   * Creates recovery record and initiates replacement account creation.
+   */
+  private async processAccountMergeTx(tx: any): Promise<void> {
+    const mergeOps = tx.operations.filter(
+      (op: any) => op.type === 'account_merge',
+    );
+
+    for (const op of mergeOps) {
+      const originalPublicKey = op.source_account || tx.source_account;
+      const mergedPublicKey = op.into; // Destination account that receives the merge
+
+      // Check if already tracked
+      const existing = await this.mergeRecoveryRepo.findOne({
+        where: { originalPublicKey, mergedPublicKey },
+      });
+
+      if (existing) {
+        this.logger.debug(
+          { originalPublicKey, mergedPublicKey },
+          'Merge already tracked, skipping',
+        );
+        continue;
+      }
+
+      // Create new recovery record
+      const recovery = this.mergeRecoveryRepo.create({
+        originalPublicKey,
+        mergedPublicKey,
+        status: 'detected',
+        detectedInTxHash: tx.id,
+      });
+
+      await this.mergeRecoveryRepo.save(recovery);
+
+      this.logger.info(
+        { recoveryId: recovery.id, originalPublicKey, mergedPublicKey },
+        'Account merge detected, recovery record created',
+      );
+    }
+  }
+
+  /**
+   * Attempts to recover a merged account by creating a replacement with trustlines.
+   */
+  private async attemptMergeRecovery(
+    recovery: AccountMergeRecovery,
+  ): Promise<void> {
+    try {
+      if (recovery.status === 'detected') {
+        // Create replacement account
+        const { publicKey, secretKey } =
+          await this.stellarService.createReplacementAccount();
+
+        recovery.replacementPublicKey = publicKey;
+        recovery.replacementSecretKeyEncrypted =
+          this.stellarService.encryptSecret(secretKey);
+        recovery.status = 'replacement_created';
+
+        await this.mergeRecoveryRepo.save(recovery);
+
+        this.logger.info(
+          {
+            recoveryId: recovery.id,
+            replacementPublicKey: publicKey,
+          },
+          'Replacement account created for merge recovery',
+        );
+      }
+
+      if (
+        recovery.status === 'replacement_created' &&
+        recovery.replacementPublicKey
+      ) {
+        // Verify trustline is established
+        const account = await this.server.loadAccount(
+          recovery.replacementPublicKey,
+        );
+        const hasTrustline = account.balances.some(
+          (b: any) =>
+            b.asset_code === 'USDC' &&
+            b.asset_issuer === this.config.get('USDC_ISSUER'),
+        );
+
+        if (hasTrustline) {
+          recovery.status = 'trustline_established';
+          recovery.recoveredAt = new Date();
+          await this.mergeRecoveryRepo.save(recovery);
+
+          this.logger.info(
+            {
+              recoveryId: recovery.id,
+              replacementPublicKey: recovery.replacementPublicKey,
+            },
+            'Account merge recovery completed - trustline established',
+          );
+        }
+      }
+    } catch (error: any) {
+      recovery.lastErrorMessage = error.message;
+      recovery.paymentRetryAttempts++;
+
+      if (recovery.paymentRetryAttempts >= 3) {
+        recovery.status = 'failed';
+        await this.mergeRecoveryRepo.save(recovery);
+
+        // Alert ops after 3 failed attempts
+        await this.alertMergeRecoveryFailure(recovery, error);
+
+        this.logger.error(
+          {
+            recoveryId: recovery.id,
+            attempts: recovery.paymentRetryAttempts,
+            error: error.message,
+          },
+          'Account merge recovery failed after 3 attempts - ops alert sent',
+        );
+      } else {
+        await this.mergeRecoveryRepo.save(recovery);
+        this.logger.warn(
+          {
+            recoveryId: recovery.id,
+            attempts: recovery.paymentRetryAttempts,
+            error: error.message,
+          },
+          'Account merge recovery attempt failed, will retry',
+        );
+      }
+    }
+  }
+
+  /**
+   * Alerts ops when account merge recovery fails after max retries.
+   */
+  private async alertMergeRecoveryFailure(
+    recovery: AccountMergeRecovery,
+    error: Error,
+  ): Promise<void> {
+    const webhookUrl = this.config.get<string>('ALERT_WEBHOOK_URL');
+    if (!webhookUrl) {
+      this.logger.warn(
+        'ALERT_WEBHOOK_URL not configured - skipping merge recovery alert',
+      );
+      return;
+    }
+
+    const alertMessage = {
+      embeds: [
+        {
+          title: '🚨 Account Merge Recovery Failed',
+          description: `Failed to recover from account merge after 3 attempts.`,
+          color: 16711680, // Red
+          fields: [
+            {
+              name: 'Recovery ID',
+              value: recovery.id,
+              inline: true,
+            },
+            {
+              name: 'Original Account',
+              value: `\`${recovery.originalPublicKey}\``,
+              inline: false,
+            },
+            {
+              name: 'Merged Into',
+              value: `\`${recovery.mergedPublicKey}\``,
+              inline: false,
+            },
+            {
+              name: 'Last Error',
+              value: error.message,
+              inline: false,
+            },
+            {
+              name: 'Attempts',
+              value: recovery.paymentRetryAttempts.toString(),
+              inline: true,
+            },
+          ],
+          footer: {
+            text: 'Stellar Account Merge Monitor',
+          },
+          timestamp: new Date().toISOString(),
+        },
+      ],
+      text: `🚨 Account merge recovery failed for ${recovery.originalPublicKey}`,
+    };
+
+    try {
+      await axios.post(webhookUrl, alertMessage);
+      this.logger.log('Merge recovery failure alert sent');
+    } catch (err: any) {
+      this.logger.error('Failed to send merge recovery alert', err.message);
     }
   }
 }

@@ -20,9 +20,11 @@ import { Document } from '../trade-deals/entities/document.entity';
 import { OfacSanctionsCheckService } from './utils/ofac-sanctions-check';
 import { LoginLog } from '../database/entities/login-log.entity';
 import { AdminAction } from '../database/entities/admin-action.entity';
+import { SecurityIpBlock } from '../database/entities/security-ip-block.entity';
 import { KycCronService } from './kyc-cron.service';
 import { RedisConfig } from '../config/redis.config';
 import { TokenBlocklistService } from './token-blocklist.service';
+import { SecurityThreatService } from './security-threat.service';
 import { MfaGuard } from './guards/mfa.guard';
 import { EscrowModule } from '../escrow/escrow.module';
 
@@ -35,6 +37,7 @@ import { EscrowModule } from '../escrow/escrow.module';
       Document,
       LoginLog,
       AdminAction,
+      SecurityIpBlock,
     ]),
     QueueModule,
     NotificationsModule,
@@ -58,6 +61,7 @@ import { EscrowModule } from '../escrow/escrow.module';
     MfaGuard,
     RedisConfig,
     TokenBlocklistService,
+    SecurityThreatService,
     OfacSanctionsCheckService,
     KycCronService,
   ],
@@ -70,6 +74,7 @@ import { EscrowModule } from '../escrow/escrow.module';
     MfaGuard,
     RedisConfig,
     TokenBlocklistService,
+    SecurityThreatService,
   ],
 })
 export class AuthModule {}
