@@ -34,6 +34,8 @@ import { APP_FILTER } from '@nestjs/core';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { AuditModule } from './audit/audit.module';
 
+import { AchievementModule } from './achievements/achievement.module';
+
 @Module({
   controllers: [AppController],
   imports: [
@@ -92,17 +94,13 @@ import { AuditModule } from './audit/audit.module';
     SorobanModule,
     MetricsModule,
     AuditModule,
+    AchievementModule,
   ],
   providers: [
     {
       provide: APP_FILTER,
       useClass: HttpExceptionFilter,
     },
-  ],
-  providers: [
-    // Apply ThrottlerGuard globally — all endpoints are rate-limited by default.
-    // Use @SkipThrottle() on controllers/routes that should be exempt
-    // (e.g. the health check endpoint used by Kubernetes probes).
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,

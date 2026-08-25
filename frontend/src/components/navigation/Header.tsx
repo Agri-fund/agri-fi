@@ -8,6 +8,7 @@ import { WalletModal } from '../wallet/WalletModal';
 import { useStellarWallet, DisconnectReason } from '@/hooks/useStellarWallet';
 import { useToast } from '@/components/ui/ToastProvider';
 import { LanguageSwitcher } from '../LanguageSwitcher';
+import { NotificationBell } from './NotificationBell';
 
 interface HeaderProps {
   user: User;
@@ -97,6 +98,8 @@ export const Header: React.FC<HeaderProps> = ({ user, onLogout }) => {
               {link.label}
             </Link>
           ))}
+          <div className="h-6 w-px bg-slate-200 mx-2" />
+          <NotificationBell />
           <div className="h-6 w-px bg-slate-200 mx-2" />
           <LanguageSwitcher />
           <div className="h-6 w-px bg-slate-200 mx-2" />
