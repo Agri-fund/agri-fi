@@ -7,12 +7,14 @@ import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
 import { User } from '../auth/entities/user.entity';
 import { StellarModule } from '../stellar/stellar.module';
 import { QueueModule } from '../queue/queue.module';
+import { ReferralModule } from '../auth/referral.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Investment, TradeDeal, User]),
     StellarModule,
     QueueModule,
+    ReferralModule,
   ],
   controllers: [InvestmentsController],
   providers: [InvestmentsService],

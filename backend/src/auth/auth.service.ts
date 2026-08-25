@@ -18,6 +18,7 @@ import { KycDto } from './dto/kyc.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { QueueService } from '../queue/queue.service';
 import { JwtPayload } from './jwt.strategy';
+import { ReferralService } from './referral.service';
 
 @Injectable()
 export class AuthService {
@@ -28,6 +29,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly queueService: QueueService,
+    private readonly referralService: ReferralService,
   ) {}
 
   async register(
@@ -53,6 +55,16 @@ export class AuthService {
     });
 
     const saved = await this.userRepo.save(user);
+
+    // Track referral if code provided
+    if (dto.referralCode) {
+      try {
+        await this.referralService.trackRegistration(saved.id, dto.referralCode);
+      } catch {
+        // Non-blocking: don't fail registration if referral tracking fails
+      }
+    }
+
     return {
       id: saved.id,
       email: saved.email,

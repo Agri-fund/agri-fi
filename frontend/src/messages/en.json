@@ -179,6 +179,26 @@
     "processing": "Processing...",
     "dismiss": "Dismiss"
   },
+  "referrals": {
+    "title": "Referral Program",
+    "description": "Share your referral link and earn rewards when referred users make their first investment.",
+    "yourLink": "Your Referral Link",
+    "copy": "Copy",
+    "copied": "Copied!",
+    "whatsapp": "WhatsApp",
+    "twitter": "Twitter",
+    "referredUsers": "Referred Users",
+    "noReferrals": "No referrals yet",
+    "shareToStart": "Share your link to start earning rewards!",
+    "linkClicks": "Link Clicks",
+    "registered": "Registered",
+    "rewarded": "Rewarded",
+    "totalEarned": "Total Earned",
+    "user": "User",
+    "status": "Status",
+    "reward": "Reward",
+    "date": "Date"
+  },
   "format": {
     "currency": "{value, number, currency}",
     "date": "{value, date, short}",

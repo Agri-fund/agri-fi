@@ -1,4 +1,5 @@
-const API_BASE = "http://localhost:3001"; // Use relative URLs to hit Next.js API proxy routes
+const API_BASE = "http://localhost:3001";
+const API_VERSION = "/v1";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -195,7 +196,10 @@ function authHeaders(): Record<string, string> {
 }
 
 async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const versionedPath = path.startsWith('/v1') || path.startsWith('/v2')
+    ? path
+    : `${API_VERSION}${path}`;
+  const res = await fetch(`${API_BASE}${versionedPath}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",

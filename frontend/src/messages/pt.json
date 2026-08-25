@@ -224,6 +224,26 @@
     "processing": "Processando...",
     "dismiss": "Descartar"
   },
+  "referrals": {
+    "title": "Programa de Indicação",
+    "description": "Compartilhe seu link de indicação e ganhe recompensas quando os usuários indicados fizerem seu primeiro investimento.",
+    "yourLink": "Seu Link de Indicação",
+    "copy": "Copiar",
+    "copied": "Copiado!",
+    "whatsapp": "WhatsApp",
+    "twitter": "Twitter",
+    "referredUsers": "Usuários Indicados",
+    "noReferrals": "Nenhuma indicação ainda",
+    "shareToStart": "Compartilhe seu link para começar a ganhar recompensas!",
+    "linkClicks": "Cliques no Link",
+    "registered": "Registrados",
+    "rewarded": "Recompensados",
+    "totalEarned": "Total Ganho",
+    "user": "Usuário",
+    "status": "Status",
+    "reward": "Recompensa",
+    "date": "Data"
+  },
   "format": {
     "currency": "{value, number, currency}",
     "date": "{value, date, short}",

@@ -9,6 +9,7 @@ import {
   HttpCode,
   HttpStatus,
   ForbiddenException,
+  Version,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -29,6 +30,7 @@ interface AuthRequest extends Request {
 @ApiTags('shipments')
 @ApiBearerAuth('jwt')
 @UseGuards(AuthGuard('jwt'))
+@Version('1')
 @Controller('shipments')
 export class ShipmentsController {
   constructor(private readonly shipmentsService: ShipmentsService) {}

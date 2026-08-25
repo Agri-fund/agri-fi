@@ -3,6 +3,7 @@ import {
   IsEmail,
   IsIn,
   IsNotEmpty,
+  IsOptional,
   IsString,
   MinLength,
 } from 'class-validator';
@@ -43,4 +44,13 @@ export class RegisterDto {
   @IsString()
   @IsNotEmpty()
   country: string;
+
+  @ApiProperty({
+    example: 'ABC12345',
+    description: 'Optional referral code',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  referralCode?: string;
 }

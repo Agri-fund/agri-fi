@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Version } from '@nestjs/common';
 import {
   HealthCheckService,
   HealthCheck,
@@ -12,6 +12,7 @@ import { Transport } from '@nestjs/microservices';
 import { ConfigService } from '@nestjs/config';
 
 @ApiTags('health')
+@Version('1')
 @Controller('health')
 export class HealthController {
   constructor(

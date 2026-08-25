@@ -8,6 +8,7 @@ import {
   UseGuards,
   Request,
   HttpCode,
+  Version,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -33,6 +34,7 @@ interface AuthRequest extends Request {
 }
 
 @ApiTags('trade-deals')
+@Version('1')
 @Controller('trade-deals')
 export class TradeDealsController {
   constructor(private readonly tradeDealsService: TradeDealsService) {}

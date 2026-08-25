@@ -8,6 +8,7 @@ import {
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { applySecurityHeaders } from './common/middleware/security-headers.middleware';
+import { VersionInterceptor } from './common/interceptors/version.interceptor';
 
 async function bootstrap() {
   // rawBody: true preserves the unparsed request buffer on req.rawBody,
@@ -41,6 +42,7 @@ async function bootstrap() {
   );
 
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
+  app.useGlobalInterceptors(new VersionInterceptor());
 
   app.enableCors({
     origin: process.env.ALLOWED_ORIGINS?.split(',') ?? [

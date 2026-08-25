@@ -109,4 +109,22 @@ describe('WebSocket authentication (E2E)', () => {
 
     expect(result).toEqual({ connected: true });
   });
+
+  it('rejects connections with an expired JWT', async () => {
+    const token = jwtService.sign(
+      {
+        sub: 'a0000000-0000-0000-0000-000000000004',
+        email: 'expired@agri-fi.demo',
+        role: 'investor',
+      },
+      { expiresIn: '0s' },
+    );
+
+    const result = await tryConnect(baseUrl, { token });
+
+    expect(result).toMatchObject({ connected: false });
+    if (result.connected === false) {
+      expect(result.error.message).toMatch(/expired|unauthorized/i);
+    }
+  });
 });

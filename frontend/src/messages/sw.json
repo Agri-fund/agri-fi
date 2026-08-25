@@ -179,6 +179,26 @@
     "processing": "Inashughulikia...",
     "dismiss": "Funga"
   },
+  "referrals": {
+    "title": "Programu ya Rufaa",
+    "description": "Shiriki kiungo chako cha rufaa na uongeze zawodi watumiaji waliorudishwa wanapofanya uwekezaji wao wa kwanza.",
+    "yourLink": "Kiungo Chako cha Rufaa",
+    "copy": "Nakili",
+    "copied": "Imenakiliwa!",
+    "whatsapp": "WhatsApp",
+    "twitter": "Twitter",
+    "referredUsers": "Watumiaji Waliorudishwa",
+    "noReferrals": "Hakuna rufaa bado",
+    "shareToStart": "Shiriki kiungo chako kuanza kupata zawodi!",
+    "linkClicks": "Mibofyo ya Kiungo",
+    "registered": "Walioidhinishwa",
+    "rewarded": "Waliozawadiwa",
+    "totalEarned": "Jumla Iliyopatikana",
+    "user": "Mtumiaji",
+    "status": "Hali",
+    "reward": "Zawodi",
+    "date": "Tarehe"
+  },
   "format": {
     "currency": "{value, number, currency}",
     "date": "{value, date, short}",

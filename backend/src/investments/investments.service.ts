@@ -16,6 +16,7 @@ import {
 import { User } from '../auth/entities/user.entity';
 import { StellarService } from '../stellar/stellar.service';
 import { QueueService } from '../queue/queue.service';
+import { ReferralService } from '../auth/referral.service';
 import {
   normalizePagination,
   PaginatedResult,
@@ -42,6 +43,7 @@ export class InvestmentsService {
     private readonly stellarService: StellarService,
     private readonly dataSource: DataSource,
     private readonly queueService: QueueService,
+    private readonly referralService: ReferralService,
   ) {}
 
   async createInvestment(
@@ -237,6 +239,9 @@ export class InvestmentsService {
     if (becameFunded) {
       this.sendFundedNotification(tradeDeal).catch(() => {});
     }
+
+    // Trigger referral reward for first investment
+    this.referralService.triggerReward(investorId).catch(() => {});
 
     // Return the updated investment by fetching it from the database
     const updatedInvestment = await this.investmentRepo.findOne({

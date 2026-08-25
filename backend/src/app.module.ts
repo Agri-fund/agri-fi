@@ -5,6 +5,7 @@ import { LoggerModule } from 'nestjs-pino';
 import { ClsModule, ClsMiddleware } from 'nestjs-cls';
 import { DatabaseConfig } from './database/database.config';
 import { AuthModule } from './auth/auth.module';
+import { ReferralModule } from './auth/referral.module';
 import { StellarModule } from './stellar/stellar.module';
 import { ShipmentsModule } from './shipments/shipments.module';
 import { TradeDealsModule } from './trade-deals/trade-deals.module';
@@ -48,6 +49,7 @@ import { ScheduleModule } from '@nestjs/schedule';
       useClass: DatabaseConfig,
     }),
     AuthModule,
+    ReferralModule,
     StellarModule,
     ShipmentsModule,
     TradeDealsModule,

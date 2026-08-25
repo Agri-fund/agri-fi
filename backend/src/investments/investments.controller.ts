@@ -9,6 +9,7 @@ import {
   HttpCode,
   HttpStatus,
   Query,
+  Version,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -31,6 +32,7 @@ import { PaginatedResult } from '../common/pagination';
 @ApiTags('investments')
 @ApiBearerAuth('jwt')
 @UseGuards(AuthGuard('jwt'))
+@Version('1')
 @Controller('investments')
 export class InvestmentsController {
   constructor(

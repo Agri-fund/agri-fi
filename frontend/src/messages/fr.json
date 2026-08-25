@@ -179,6 +179,26 @@
     "processing": "Traitement...",
     "dismiss": "Ignorer"
   },
+  "referrals": {
+    "title": "Programme de parrainage",
+    "description": "Partagez votre lien de parrainage et gagnez des récompenses lorsque les utilisateurs parrainés effectuent leur premier investissement.",
+    "yourLink": "Votre lien de parrainage",
+    "copy": "Copier",
+    "copied": "Copié !",
+    "whatsapp": "WhatsApp",
+    "twitter": "Twitter",
+    "referredUsers": "Utilisateurs parrainés",
+    "noReferrals": "Pas encore de parrainages",
+    "shareToStart": "Partagez votre lien pour commencer à gagner des récompenses !",
+    "linkClicks": "Clics sur le lien",
+    "registered": "Inscrits",
+    "rewarded": "Récompensés",
+    "totalEarned": "Total gagné",
+    "user": "Utilisateur",
+    "status": "Statut",
+    "reward": "Récompense",
+    "date": "Date"
+  },
   "format": {
     "currency": "{value, number, currency}",
     "date": "{value, date, short}",

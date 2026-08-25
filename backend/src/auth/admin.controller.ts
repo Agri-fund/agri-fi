@@ -9,6 +9,7 @@ import {
   Query,
   NotFoundException,
   BadRequestException,
+  Version,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -48,6 +49,7 @@ interface AuthRequest extends Request {
 }
 
 @ApiTags('admin')
+@Version('1')
 @Controller('admin')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 @Roles('admin')

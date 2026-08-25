@@ -7,6 +7,7 @@ import {
   HttpStatus,
   Req,
   HttpException,
+  Version,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -30,6 +31,7 @@ import {
 @ApiTags('stellar')
 @ApiBearerAuth('jwt')
 @UseGuards(AuthGuard('jwt'))
+@Version('1')
 @Controller('stellar')
 export class StellarController {
   private readonly networkPassphrase: string;

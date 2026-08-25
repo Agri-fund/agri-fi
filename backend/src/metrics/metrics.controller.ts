@@ -1,10 +1,11 @@
-import { Controller, Get, Res } from '@nestjs/common';
+import { Controller, Get, Res, Version } from '@nestjs/common';
 import { PrometheusController } from '@willsoto/nestjs-prometheus';
 import { Response } from 'express';
 
 // Exposes GET /metrics in the Prometheus text exposition format. Subclassing the
 // library controller lets us own the route (and add guards later if needed)
 // instead of relying on the module's auto-registered default controller.
+@Version('1')
 @Controller('metrics')
 export class MetricsController extends PrometheusController {
   @Get()

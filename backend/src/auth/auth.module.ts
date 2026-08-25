@@ -9,14 +9,17 @@ import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt.strategy';
 import { User } from './entities/user.entity';
 import { KycSubmission } from './entities/kyc-submission.entity';
+import { ReferralCode } from './entities/referral-code.entity';
+import { Referral } from './entities/referral.entity';
 import { KycGuard } from './kyc.guard';
 import { RolesGuard } from './roles.guard';
 import { QueueModule } from '../queue/queue.module';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
+import { ReferralService } from './referral.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, KycSubmission, TradeDeal]),
+    TypeOrmModule.forFeature([User, KycSubmission, TradeDeal, ReferralCode, Referral]),
     QueueModule,
     PassportModule,
     JwtModule.registerAsync({
@@ -29,7 +32,7 @@ import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
     }),
   ],
   controllers: [AuthController, AdminController],
-  providers: [AuthService, JwtStrategy, KycGuard, RolesGuard],
+  providers: [AuthService, JwtStrategy, KycGuard, RolesGuard, ReferralService],
   exports: [AuthService, JwtModule, TypeOrmModule, KycGuard, RolesGuard],
 })
 export class AuthModule {}

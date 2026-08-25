@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { apiClient } from '@/lib/api';
 import { useToast } from '@/components/ui/ToastProvider';
 
@@ -17,12 +17,22 @@ const STEPS = ['Choose role', 'Your details', 'Done'];
 
 export default function RegisterPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { toast } = useToast();
   const [step, setStep] = useState(0);
-  const [form, setForm] = useState({ name: '', email: '', password: '', role: '', country: '' });
+  const [form, setForm] = useState({ name: '', email: '', password: '', role: '', country: '', referralCode: '' });
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const ref = searchParams.get('ref');
+    if (ref) {
+      setForm(f => ({ ...f, referralCode: ref }));
+      // Track the click via Next.js API proxy
+      fetch(`/api/users/me/referrals/track/${ref}`, { method: 'POST' }).catch(() => {});
+    }
+  }, [searchParams]);
 
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm(f => ({ ...f, [k]: e.target.value }));
@@ -31,10 +41,12 @@ export default function RegisterPage() {
     e.preventDefault();
     setLoading(true); setError(null);
     try {
+      const { referralCode, ...rest } = form;
+      const body = referralCode ? { ...rest, referralCode } : rest;
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         const d = await res.json();
@@ -215,6 +227,12 @@ export default function RegisterPage() {
                   <label className="label">Country</label>
                   <input className="input" type="text" required placeholder="Nigeria"
                     value={form.country} onChange={set('country')} />
+                </div>
+
+                <div>
+                  <label className="label">Referral Code <span className="text-slate-400 font-normal">(optional)</span></label>
+                  <input className="input" type="text" placeholder="ABC12345"
+                    value={form.referralCode} onChange={set('referralCode')} />
                 </div>
 
                 <div className="flex gap-3 pt-1">
