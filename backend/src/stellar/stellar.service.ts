@@ -408,7 +408,9 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
 
     if (this.sequenceRedis) {
       try {
-        const raw = await this.sequenceRedis.get(this.cacheSeqKey(publicKey)) as string | null;
+        const raw = (await this.sequenceRedis.get(
+          this.cacheSeqKey(publicKey),
+        )) as string | null;
         if (raw) {
           const parsed = JSON.parse(raw);
           this.localSequenceCache.set(publicKey, {
@@ -503,7 +505,10 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
   ): Promise<{ valid: boolean; reason?: string }> {
     let tx: Transaction;
     try {
-      tx = TransactionBuilder.fromXDR(signedXdr, this.networkPassphrase) as Transaction;
+      tx = TransactionBuilder.fromXDR(
+        signedXdr,
+        this.networkPassphrase,
+      ) as Transaction;
     } catch {
       return {
         valid: false,
@@ -650,6 +655,78 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     return {
       publicKey: escrowKeypair.publicKey(),
       secretKey: escrowKeypair.secret(),
+    };
+  }
+
+  /**
+   * Creates a replacement account for account merge recovery.
+   * - Generates a new keypair
+   * - Funds with sufficient XLM for base reserve + USDC trustline
+   * - Establishes USDC trustline automatically
+   * - Used when an investor's original account is merged/closed
+   * Issue #683 — Account merge handler re-establishes trustlines
+   */
+  async createReplacementAccount(): Promise<{
+    publicKey: string;
+    secretKey: string;
+  }> {
+    const replacementKeypair = Keypair.random();
+    await this.fundAccountWithFriendbot(replacementKeypair.publicKey());
+
+    const platformAccount = await this.server.loadAccount(
+      this.platformKeypair.publicKey(),
+    );
+
+    // Fund with 3 XLM (2 base reserve + 0.5 for USDC trustline + 0.5 buffer)
+    const tx = new TransactionBuilder(platformAccount, {
+      fee: BASE_FEE,
+      networkPassphrase: this.networkPassphrase,
+    })
+      .addOperation(
+        Operation.createAccount({
+          destination: replacementKeypair.publicKey(),
+          startingBalance: '3',
+        }),
+      )
+      .addMemo(Memo.text('acct-merge-recovery'))
+      .setTimeout(30)
+      .build();
+
+    tx.sign(this.platformKeypair);
+    await this.submitWithRetry(tx);
+
+    // Establish USDC trustline immediately
+    if (!this.usdcAsset.isNative()) {
+      const replacementAccount = await this.server.loadAccount(
+        replacementKeypair.publicKey(),
+      );
+      const trustlineTx = new TransactionBuilder(replacementAccount, {
+        fee: BASE_FEE,
+        networkPassphrase: this.networkPassphrase,
+      })
+        .addOperation(
+          Operation.changeTrust({
+            asset: this.usdcAsset,
+          }),
+        )
+        .setTimeout(30)
+        .build();
+
+      trustlineTx.sign(replacementKeypair);
+      await this.submitWithRetry(trustlineTx);
+
+      this.logger.info(
+        {
+          replacementPublicKey: replacementKeypair.publicKey(),
+          trustlineEstablished: true,
+        },
+        'Replacement account created for merge recovery with USDC trustline',
+      );
+    }
+
+    return {
+      publicKey: replacementKeypair.publicKey(),
+      secretKey: replacementKeypair.secret(),
     };
   }
 
@@ -885,6 +962,80 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
    * of a payment so funds remain available for later claiming.
    * Returns an array of transaction IDs for each batch.
    */
+  /**
+   * Releases escrow with automatic op_no_trust recovery via replacement accounts.
+   * Wraps releaseEscrow() with 3-attempt retry logic for account merge scenarios.
+   * If op_no_trust is detected, attempts to use replacement accounts from merge recovery.
+   */
+  async releaseEscrowWithMergeRecovery(
+    escrowSecret: string,
+    farmerWallet: string,
+    investorShares: InvestorShare[],
+    platformWallet: string,
+    totalValue: number,
+    dealId?: string,
+  ): Promise<string[]> {
+    const MAX_RETRIES = 3;
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      try {
+        return await this.releaseEscrow(
+          escrowSecret,
+          farmerWallet,
+          investorShares,
+          platformWallet,
+          totalValue,
+        );
+      } catch (error: any) {
+        lastError = error;
+        const errorCode =
+          error?.response?.data?.extras?.result_codes?.operations?.[0];
+        const isOpNoTrust = errorCode === 'op_no_trust';
+
+        this.logger.warn(
+          {
+            attempt: attempt + 1,
+            maxRetries: MAX_RETRIES,
+            errorCode,
+            isOpNoTrust,
+            dealId,
+          },
+          `Escrow release failed (attempt ${attempt + 1}/${MAX_RETRIES})`,
+        );
+
+        if (isOpNoTrust && attempt < MAX_RETRIES - 1) {
+          // op_no_trust detected - likely due to account merge
+          // Wait before retrying to allow merge recovery handler to complete
+          this.logger.info(
+            { dealId, attempt: attempt + 1 },
+            'op_no_trust detected - waiting for account merge recovery...',
+          );
+          await new Promise((resolve) =>
+            setTimeout(resolve, 2000 * Math.pow(2, attempt)),
+          );
+          continue;
+        }
+
+        if (attempt === MAX_RETRIES - 1) {
+          break; // Last attempt, don't retry
+        }
+      }
+    }
+
+    // All retries exhausted
+    this.logger.error(
+      {
+        dealId,
+        maxRetries: MAX_RETRIES,
+        finalError: lastError?.message,
+      },
+      'Escrow release failed after all retry attempts',
+    );
+
+    throw lastError || new Error('Escrow release failed');
+  }
+
   async releaseEscrow(
     escrowSecret: string,
     farmerWallet: string,
@@ -1419,6 +1570,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     tokenAmount: number,
     issuerPublicKey: string,
     complianceData?: Record<string, unknown>,
+    investmentMemo?: string,
   ): Promise<string> {
     const investorAccount = await this.server.loadAccount(investorWallet);
     const tradeAsset = createAsset(assetCode, issuerPublicKey);
@@ -1466,7 +1618,9 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
           amount: amountUSD.toFixed(7),
         }),
       )
-      .addMemo(Memo.text(`invest:${assetCode}:${tokenAmount}`))
+      .addMemo(
+        Memo.text(investmentMemo || `invest:${assetCode}:${tokenAmount}`),
+      )
       .setTimeout(300);
 
     this.addComplianceDataOperations(txBuilder, complianceData);
@@ -2024,7 +2178,10 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     // 1. Cache read — skip Horizon if we already have a terminal result.
     const cached = await this.getCachedTxStatus(txId);
     if (cached) {
-      this.logger.info({ txId, cached }, 'Transaction status served from cache');
+      this.logger.info(
+        { txId, cached },
+        'Transaction status served from cache',
+      );
       return cached;
     }
 
@@ -2061,7 +2218,9 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       return null;
     }
     try {
-      const raw = await this.sequenceRedis.get(this.txStatusCacheKey(txId)) as string | null;
+      const raw = (await this.sequenceRedis.get(
+        this.txStatusCacheKey(txId),
+      )) as string | null;
       if (raw === 'success' || raw === 'failed') {
         return raw;
       }

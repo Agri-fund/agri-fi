@@ -12,6 +12,10 @@ import { Investment } from '../investments/entities/investment.entity';
 import { User } from '../auth/entities/user.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import {
+  EmailTemplateService,
+  RenderedEmail,
+} from '../notifications/email-template.service';
+import {
   DealPublishPayload,
   InvestmentFundPayload,
   DealFundedPayload,
@@ -49,6 +53,7 @@ export class QueueProcessor implements OnApplicationShutdown {
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly notificationsService: NotificationsService,
+    private readonly emailTemplates: EmailTemplateService,
     private readonly logger: PinoLogger,
     private readonly idempotency: IdempotencyService,
   ) {
@@ -536,61 +541,39 @@ export class QueueProcessor implements OnApplicationShutdown {
 
     try {
       let emailAddress = data.email;
+      let user: User | null = null;
       if (!emailAddress && data.userId) {
-        const user = await this.userRepo.findOne({
+        user = await this.userRepo.findOne({
           where: { id: data.userId },
         });
         if (user) {
           emailAddress = user.email;
         }
+      } else if (data.userId) {
+        // Localised emails need the user's preferred language (#897)
+        user = await this.userRepo.findOne({ where: { id: data.userId } });
       }
 
       if (emailAddress) {
-        let subject = '';
-        let text = '';
-        let html = '';
-
-        if (data.type === 'kyc_verified') {
-          subject = 'KYC Verification Approved';
-          text = `Your KYC verification has been approved. You can now participate in investments.`;
-          html = `<h3>KYC Approved</h3><p>Your KYC verification has been approved. You can now participate in investments.</p>`;
-        } else if (data.type === 'kyc_expiration_30') {
-          subject = 'KYC Document Expiring in 30 Days';
-          text = `Your KYC documents will expire in 30 days. Please update them to continue using our services.`;
-          html = `<h3>KYC Documents Expiring Soon</h3><p>Your KYC documents will expire in 30 days. Please update them to continue using our services.</p>`;
-        } else if (data.type === 'kyc_expiration_15') {
-          subject = 'KYC Document Expiring in 15 Days';
-          text = `Your KYC documents will expire in 15 days. Please update them to continue using our services.`;
-          html = `<h3>KYC Documents Expiring Soon</h3><p>Your KYC documents will expire in 15 days. Please update them to continue using our services.</p>`;
-        } else if (data.type === 'kyc_expiration_3') {
-          subject = 'KYC Document Expiring in 3 Days';
-          text = `Your KYC documents will expire in 3 days. Please update them immediately to continue using our services.`;
-          html = `<h3>KYC Documents Expiring Soon</h3><p>Your KYC documents will expire in 3 days. Please update them immediately to continue using our services.</p>`;
-        } else if (data.type === 'kyc_expired') {
-          subject = 'KYC Documents Expired';
-          text = `Your KYC documents have expired. Your account has been restricted. Please update your documents to restore access.`;
-          html = `<h3>KYC Documents Expired</h3><p>Your KYC documents have expired. Your account has been restricted. Please update your documents to restore access.</p>`;
-        } else if (data.type === 'deal_completed') {
-          subject = `Deal Completed: ${data.dealDetails?.commodity}`;
-          text = `The deal you participated in (${data.dealDetails?.commodity}) has been completed.`;
-          html = `<h3>Deal Completed</h3><p>The deal you participated in (<strong>${data.dealDetails?.commodity}</strong>) has been completed.</p>`;
-
-          if (data.recipient === 'investor') {
-            text += `\nYour return: $${data.dealDetails?.returnAmount?.toFixed(2)}`;
-            html += `<p>Your return: $${data.dealDetails?.returnAmount?.toFixed(2)}</p>`;
-          } else if (data.recipient === 'farmer') {
-            text += `\nYour payout: $${data.dealDetails?.farmerAmount?.toFixed(2)}`;
-            html += `<p>Your payout: $${data.dealDetails?.farmerAmount?.toFixed(2)}</p>`;
-          }
-        }
-
-        if (subject) {
+        const templateName = EMAIL_TYPE_TO_TEMPLATE[data.type];
+        if (templateName) {
+          const rendered = this.renderLocalized(templateName, data, user);
           await this.notificationsService.sendEmail(
             emailAddress,
-            subject,
-            text,
-            html,
+            rendered.subject,
+            rendered.text,
+            rendered.html,
           );
+        } else {
+          const { subject, text, html } = this.buildLegacyNotification(data);
+          if (subject) {
+            await this.notificationsService.sendEmail(
+              emailAddress,
+              subject,
+              text,
+              html,
+            );
+          }
         }
       } else {
         this.logger.warn(
@@ -609,6 +592,106 @@ export class QueueProcessor implements OnApplicationShutdown {
     }
 
     channel.ack(originalMsg);
+  }
+
+  /**
+   * Renders a localized template for an `email.notification` payload using
+   * the recipient's preferred language, falling back to English (#897).
+   */
+  private renderLocalized(
+    templateName: string,
+    data: any,
+    user: User | null,
+  ): RenderedEmail {
+    const details = data.dealDetails ?? {};
+    const displayName =
+      data.userName ??
+      details.farmerName ??
+      details.investorName ??
+      (user?.fullName ?? deriveNameFromEmail(user?.email ?? data.email ?? ''));
+
+    const vars: Record<string, unknown> = {
+      userName: displayName,
+      farmerName: displayName,
+      investorName: displayName,
+      leadFarmerName: details.leadFarmerName ?? displayName,
+      dealName: details.commodity ?? data.commodity ?? details.dealName,
+      amount: formatUsd(details.amount ?? data.amount),
+      farmerAmount: formatUsd(details.farmerAmount),
+      returnAmount: formatUsd(details.returnAmount),
+      investmentAmount: formatUsd(details.investmentAmount),
+      tokenAmount: details.tokenAmount ?? data.tokenAmount,
+      txId: data.stellarTxId ?? details.stellarTxId ?? '',
+      unlockAt: data.unlockAt ?? '',
+      ipAddress: data.ipAddress ?? '',
+      device: data.device ?? '',
+      time: data.time ?? new Date().toISOString(),
+      verifyUrl: data.verifyUrl ?? '',
+      resetUrl: data.resetUrl ?? '',
+      expiresInMinutes: data.expiresInMinutes ?? 30,
+      acceptUrl: data.acceptUrl ?? '',
+      portionPercent: details.portionPercent ?? data.portionPercent ?? '',
+      reason: details.reason ?? data.reason ?? '',
+      kycUrl: `${this.config.get<string>('APP_BASE_URL', 'http://localhost:3001')}/dashboard/kyc`,
+      ...details,
+    };
+
+    return this.emailTemplates.render(
+      templateName,
+      vars,
+      user?.preferredLanguage,
+    );
+  }
+
+  /** Legacy inline copy for event types without localized templates yet. */
+  private buildLegacyNotification(data: any): {
+    subject: string;
+    text: string;
+    html: string;
+  } {
+    if (data.type === 'kyc_expiration_30') {
+      return {
+        subject: 'KYC Document Expiring in 30 Days',
+        text: `Your KYC documents will expire in 30 days. Please update them to continue using our services.`,
+        html: `<h3>KYC Documents Expiring Soon</h3><p>Your KYC documents will expire in 30 days. Please update them to continue using our services.</p>`,
+      };
+    }
+    if (data.type === 'kyc_expiration_15') {
+      return {
+        subject: 'KYC Document Expiring in 15 Days',
+        text: `Your KYC documents will expire in 15 days. Please update them to continue using our services.`,
+        html: `<h3>KYC Documents Expiring Soon</h3><p>Your KYC documents will expire in 15 days. Please update them to continue using our services.</p>`,
+      };
+    }
+    if (data.type === 'kyc_expiration_3') {
+      return {
+        subject: 'KYC Document Expiring in 3 Days',
+        text: `Your KYC documents will expire in 3 days. Please update them immediately to continue using our services.`,
+        html: `<h3>KYC Documents Expiring Soon</h3><p>Your KYC documents will expire in 3 days. Please update them immediately to continue using our services.</p>`,
+      };
+    }
+    if (data.type === 'kyc_expired') {
+      return {
+        subject: 'KYC Documents Expired',
+        text: `Your KYC documents have expired. Your account has been restricted. Please update your documents to restore access.`,
+        html: `<h3>KYC Documents Expired</h3><p>Your KYC documents have expired. Your account has been restricted. Please update your documents to restore access.</p>`,
+      };
+    }
+    if (data.type === 'deal_completed') {
+      let subject = `Deal Completed: ${data.dealDetails?.commodity}`;
+      let text = `The deal you participated in (${data.dealDetails?.commodity}) has been completed.`;
+      let html = `<h3>Deal Completed</h3><p>The deal you participated in (<strong>${data.dealDetails?.commodity}</strong>) has been completed.</p>`;
+
+      if (data.recipient === 'investor') {
+        text += `\nYour return: $${data.dealDetails?.returnAmount?.toFixed(2)}`;
+        html += `<p>Your return: $${data.dealDetails?.returnAmount?.toFixed(2)}</p>`;
+      } else if (data.recipient === 'farmer') {
+        text += `\nYour payout: $${data.dealDetails?.farmerAmount?.toFixed(2)}`;
+        html += `<p>Your payout: $${data.dealDetails?.farmerAmount?.toFixed(2)}</p>`;
+      }
+      return { subject, text, html };
+    }
+    return { subject: '', text: '', html: '' };
   }
 
   @EventPattern('deal.cleanup')
@@ -791,4 +874,41 @@ export class QueueProcessor implements OnApplicationShutdown {
 
     this.logger.info({ dealId, txHash }, 'Soroban FarmCampaign initialized');
   }
+}
+
+/**
+ * Maps `email.notification` event types to localized template names (#897).
+ * Types absent from this map keep their legacy inline copy.
+ */
+const EMAIL_TYPE_TO_TEMPLATE: Record<string, string> = {
+  welcome: 'welcome',
+  kyc_verified: 'kyc-approved',
+  kyc_rejected: 'kyc-rejected',
+  investment_confirmed: 'investment-confirmed',
+  payment_distributed: 'payment-distributed',
+  deal_funded: 'deal-funded',
+  deal_expired: 'deal-expired',
+  password_reset: 'password-reset',
+  account_lockout: 'account-lockout',
+  security_alert_new_device: 'security-alert',
+  co_farmer_invitation: 'co-farmer-invitation',
+};
+
+function formatUsd(value: unknown): string {
+  const num = Number(value);
+  if (value === null || value === undefined || Number.isNaN(num)) return '';
+  return num.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function deriveNameFromEmail(email: string): string {
+  const local = email.split('@')[0] ?? '';
+  if (!local) return 'there';
+  return local
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
 }

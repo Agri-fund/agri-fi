@@ -1,4 +1,5 @@
-const API_BASE = "http://localhost:3001"; // Use relative URLs to hit Next.js API proxy routes
+const API_BASE = "http://localhost:3001";
+const API_VERSION = "/v1";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -10,6 +11,7 @@ export interface User {
   kycStatus?: string;
   walletAddress?: string | null;
   isCompany?: boolean;
+  preferredCurrency?: string;
   companyDetails?: {
     companyName?: string;
     registrationNumber?: string;
@@ -176,7 +178,7 @@ function normalizeDeal(raw: any): Deal {
     status: raw.status ?? "draft",
     delivery_date: raw.delivery_date ?? raw.deliveryDate ?? "",
     annual_roi: raw.annual_roi ?? raw.annualRoi ?? 0.15, // Default 15%
-    term_days: raw.term_days ?? raw.termDays ?? 90,     // Default 90 days
+    term_days: raw.term_days ?? raw.termDays ?? 90, // Default 90 days
     created_at: raw.created_at ?? raw.createdAt ?? "",
     documents: raw.documents,
     milestones: raw.milestones,
@@ -197,7 +199,10 @@ function authHeaders(): Record<string, string> {
 }
 
 async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const versionedPath = path.startsWith('/v1') || path.startsWith('/v2')
+    ? path
+    : `${API_VERSION}${path}`;
+  const res = await fetch(`${API_BASE}${versionedPath}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
@@ -281,7 +286,7 @@ export const apiClient = {
   async createDeal(data: {
     commodity: string;
     quantity: number;
-    quantity_unit: 'kg' | 'tons';
+    quantity_unit: "kg" | "tons";
     total_value: number;
     delivery_date: string;
   }): Promise<Deal> {
@@ -361,7 +366,7 @@ export async function getOpenDeals(
   page = 1,
   limit = 12,
   sortBy?: string,
-  sortOrder?: 'ASC' | 'DESC'
+  sortOrder?: "ASC" | "DESC",
 ): Promise<PaginatedDeals> {
   let url = `/trade-deals?page=${page}&limit=${limit}`;
   if (sortBy) {
@@ -370,7 +375,12 @@ export async function getOpenDeals(
   if (sortOrder) {
     url += `&sortOrder=${sortOrder}`;
   }
-  const raw = await apiFetch<{ data: any[]; total: number; page: number; limit: number }>(url);
+  const raw = await apiFetch<{
+    data: any[];
+    total: number;
+    page: number;
+    limit: number;
+  }>(url);
   return {
     data: raw.data.map(normalizeDeal),
     total: raw.total,

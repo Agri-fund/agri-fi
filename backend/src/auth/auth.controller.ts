@@ -11,6 +11,7 @@ import {
   Res,
   HttpCode,
   HttpStatus,
+  Version,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -41,6 +42,7 @@ interface AuthRequest extends ExpressRequest {
 }
 
 @ApiTags('auth')
+@Version('1')
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
@@ -69,12 +71,33 @@ export class AuthController {
   @ApiOperation({ summary: 'Authenticate and receive a JWT' })
   @ApiResponse({ status: 200, description: 'Returns access and refresh JWTs' })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
-  @ApiResponse({ status: 429, description: 'Too many requests' })
+  @ApiResponse({
+    status: 403,
+    description: 'CAPTCHA required or invalid (credential-stuffing protection)',
+  })
+  @ApiResponse({ status: 429, description: 'Too many requests / login rate limited' })
   async login(
     @Body() dto: LoginDto,
+    @Req() req: ExpressRequest,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const tokens = await this.authService.login(dto);
+    // #898 — feed request context into the credential-stuffing detectors.
+    const forwarded = req.headers?.['x-forwarded-for'];
+    const ip =
+      (typeof forwarded === 'string' ? forwarded.split(',')[0]?.trim() : undefined) ||
+      req.ip ||
+      undefined;
+    const meta = {
+      ip,
+      userAgent: typeof req.headers?.['user-agent'] === 'string'
+        ? req.headers['user-agent']
+        : undefined,
+      country:
+        (req.headers?.['cf-ipcountry'] as string | undefined) ||
+        (req.headers?.['x-geo-country'] as string | undefined),
+    };
+
+    const tokens = await this.authService.login(dto, meta);
     const opts = this.authService.cookieOptions();
     res.cookie('access_token', tokens.accessToken, opts);
     res.cookie('refresh_token', tokens.refreshToken, opts);

@@ -8,6 +8,7 @@ import { ClsModule, ClsMiddleware } from 'nestjs-cls';
 import { DatabaseConfig } from './database/database.config';
 import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './auth/auth.module';
+import { ReferralModule } from './auth/referral.module';
 import { StellarModule } from './stellar/stellar.module';
 import { ShipmentsModule } from './shipments/shipments.module';
 import { TradeDealsModule } from './trade-deals/trade-deals.module';
@@ -32,6 +33,8 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { APP_FILTER } from '@nestjs/core';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { AuditModule } from './audit/audit.module';
+
+import { AchievementModule } from './achievements/achievement.module';
 
 @Module({
   controllers: [AppController],
@@ -74,6 +77,7 @@ import { AuditModule } from './audit/audit.module';
     }),
     DatabaseModule,
     AuthModule,
+    ReferralModule,
     StellarModule,
     ShipmentsModule,
     TradeDealsModule,
@@ -90,17 +94,13 @@ import { AuditModule } from './audit/audit.module';
     SorobanModule,
     MetricsModule,
     AuditModule,
+    AchievementModule,
   ],
   providers: [
     {
       provide: APP_FILTER,
       useClass: HttpExceptionFilter,
     },
-  ],
-  providers: [
-    // Apply ThrottlerGuard globally — all endpoints are rate-limited by default.
-    // Use @SkipThrottle() on controllers/routes that should be exempt
-    // (e.g. the health check endpoint used by Kubernetes probes).
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,

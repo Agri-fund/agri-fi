@@ -191,6 +191,18 @@
     "txFailed": "Transaction failed"
   },
   "deals": {
+    "coFarmers": {
+      "title": "Co-farmers",
+      "description": "Invite other farmers onto this deal — each co-farmer is responsible for their portion of the delivery and receives that share of the payout.",
+      "emailLabel": "Co-farmer email",
+      "portionLabel": "Portion (%)",
+      "add": "Add co-farmer",
+      "remove": "Remove",
+      "invalidEmail": "Enter a valid email address.",
+      "invalidPortion": "Portion must be between 0 and 100.",
+      "totalTooHigh": "Total portions cannot exceed 100%.",
+      "inviteFailed": "The deal was created, but some invitations could not be sent."
+    },
     "createTitle": "Create New Trade Deal",
     "draftRestored": "Restored draft from {time}",
     "commodity": "Commodity Name",
@@ -253,6 +265,26 @@
         "description": "Actions requiring internet access are disabled until connection is restored."
       }
     }
+  },
+  "referrals": {
+    "title": "Referral Program",
+    "description": "Share your referral link and earn rewards when referred users make their first investment.",
+    "yourLink": "Your Referral Link",
+    "copy": "Copy",
+    "copied": "Copied!",
+    "whatsapp": "WhatsApp",
+    "twitter": "Twitter",
+    "referredUsers": "Referred Users",
+    "noReferrals": "No referrals yet",
+    "shareToStart": "Share your link to start earning rewards!",
+    "linkClicks": "Link Clicks",
+    "registered": "Registered",
+    "rewarded": "Rewarded",
+    "totalEarned": "Total Earned",
+    "user": "User",
+    "status": "Status",
+    "reward": "Reward",
+    "date": "Date"
   },
   "format": {
     "currency": "{value, number, currency}",

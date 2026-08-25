@@ -5,6 +5,12 @@ import { ConfigService } from '@nestjs/config';
 import { PinoLogger } from 'nestjs-pino';
 import { PaymentDistribution } from './entities/payment-distribution.entity';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
+import { DealCoFarmer } from '../trade-deals/entities/deal-co-farmer.entity';
+import {
+  computeFarmerPayoutSplits,
+  FarmerPayout,
+  PayoutParticipant,
+} from './payout-split';
 import {
   Investment,
   InvestmentStatus,
@@ -12,6 +18,7 @@ import {
 import { User } from '../auth/entities/user.entity';
 import { StellarService, InvestorShare } from '../stellar/stellar.service';
 import { QueueService } from '../queue/queue.service';
+import { IdempotencyService } from '../queue/idempotency.service';
 import { Keypair } from '@stellar/stellar-sdk';
 
 interface DealDeliveredPayload {
@@ -31,6 +38,7 @@ export class EscrowService {
     private readonly userRepo: Repository<User>,
     private readonly stellarService: StellarService,
     private readonly queueService: QueueService,
+    private readonly idempotency: IdempotencyService,
     private readonly config: ConfigService,
     private readonly dataSource: DataSource,
     private readonly logger: PinoLogger,
@@ -125,6 +133,22 @@ export class EscrowService {
       throw new Error(`Escrow secret key missing for deal ${tradeDealId}`);
     }
 
+    const idempotencyKey = IdempotencyService.buildKey(
+      'payment.distribution',
+      tradeDealId,
+    );
+    const lease = await this.idempotency.acquireLease(idempotencyKey, 900);
+
+    if (!lease.acquired) {
+      this.logger.warn(
+        `Payment distribution for deal ${tradeDealId} is already ${lease.status ?? 'processing'}; skipping duplicate release.`,
+      );
+      return;
+    }
+
+    let idempotencyMarkedDone = false;
+
+    try {
     // ── Phase 2: Stellar escrow release (irreversible, outside any DB tx) ─────
     // The Stellar ledger is append-only; there is no rollback. We execute this
     // before opening the DB transaction so a Stellar failure leaves the database
@@ -161,6 +185,10 @@ export class EscrowService {
     await qr.connect();
     await qr.startTransaction();
 
+    // Farmer-side payout rows produced inside the transaction; consumed by the
+    // post-commit notification pass below.
+    let farmerDistributions: PaymentDistribution[] = [];
+
     try {
       const totalValue = Number(deal.totalValue);
       const [platformAmount, investorPool] = this.splitTotalValue(totalValue);
@@ -168,6 +196,15 @@ export class EscrowService {
         investorPool,
         investments.map((inv) => inv.tokenAmount),
       );
+
+      // #891 — farmer-side payouts: the 98% pool is split between the lead
+      // farmer and accepted co-farmers according to committed portions.
+      // Rows are persisted here inside the same transaction so a failure
+      // rolls back farmer + investor + platform records together.
+      farmerDistributions = await this.distributePayment(tradeDealId, {
+        qr,
+        stellarTxId,
+      });
 
       // Build PaymentDistribution records for all investors
       const paymentDistributions: PaymentDistribution[] = [];
@@ -199,7 +236,8 @@ export class EscrowService {
         }),
       );
 
-      // Persist all distributions atomically
+      // Persist investor + platform distributions atomically (farmer rows were
+      // already persisted by distributePayment within this same transaction).
       await qr.manager.save(PaymentDistribution, paymentDistributions);
 
       // Mark deal as completed
@@ -211,6 +249,8 @@ export class EscrowService {
 
       // All DB writes succeeded — commit
       await qr.commitTransaction();
+      await this.idempotency.markDone(idempotencyKey);
+      idempotencyMarkedDone = true;
 
       this.logger.info(
         `Deal ${tradeDealId} committed to completed. Stellar TX: ${stellarTxId}`,
@@ -239,11 +279,126 @@ export class EscrowService {
 
     // ── Phase 4: Side-effects (outside transaction to avoid rollback on non-critical failures) ──
     setTimeout(() => {
-      this.sendCompletionNotifications(tradeDealId, deal, investments);
+      this.sendCompletionNotifications(
+        tradeDealId,
+        deal,
+        investments,
+        farmerDistributions.map((d) => ({
+          recipientId: d.recipientId,
+          amountUsd: Number(d.amountUsd),
+        })),
+      );
       this.queueService.enqueueDealCleanup(tradeDealId).catch((err: Error) => {
         this.logger.error(`Failed to enqueue deal cleanup: ${err.message}`);
       });
     }, 0);
+    } catch (error) {
+      if (!idempotencyMarkedDone) {
+        await this.idempotency.releaseLease(idempotencyKey);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * #891 — Splits and persists the farmer-side payout for a deal.
+   *
+   * The net delivery payment (total value minus the 2% platform fee) is split
+   * between the lead farmer and every *accepted* co-farmer according to each
+   * co-farmer's committed `portionPercent`; the lead farmer receives whatever
+   * remains. One `PaymentDistribution` row (`recipientType: 'farmer'`) is
+   * written per recipient.
+   *
+   * When called with an external QueryRunner (from processDealDelivered) the
+   * rows join that transaction and no commit/release is performed here.
+   * Called standalone it runs in its own transaction, which makes this the
+   * safe entry point for manual reconciliation after a partial failure.
+   */
+  async distributePayment(
+    tradeDealId: string,
+    options: { qr?: QueryRunner; stellarTxId?: string | null } = {},
+  ): Promise<PaymentDistribution[]> {
+    const ownsTransaction = !options.qr;
+    const qr = options.qr ?? this.dataSource.createQueryRunner();
+
+    if (ownsTransaction) {
+      await qr.connect();
+      await qr.startTransaction();
+    }
+
+    try {
+      const deal = await qr.manager.findOne(TradeDeal, {
+        where: { id: tradeDealId },
+        relations: ['farmer'],
+      });
+      if (!deal) {
+        throw new NotFoundException(`Trade deal ${tradeDealId} not found`);
+      }
+      if (!deal.farmer?.walletAddress) {
+        throw new Error(
+          `Farmer wallet address not found for deal ${tradeDealId}`,
+        );
+      }
+
+      // Only accepted co-farmers participate in payouts; invited/declined/
+      // removed records are ignored by design (#891).
+      const coFarmers: DealCoFarmer[] = await qr.manager.find(DealCoFarmer, {
+        where: { tradeDealId, status: 'accepted' },
+        relations: ['farmer'],
+      });
+
+      const participants: PayoutParticipant[] = [
+        {
+          farmerId: deal.farmerId,
+          walletAddress: deal.farmer.walletAddress,
+          portionPercent:
+            100 -
+            coFarmers.reduce(
+              (sum, cf) => sum + Number(cf.portionPercent),
+              0,
+            ),
+        },
+        ...coFarmers.map((cf) => ({
+          farmerId: cf.farmerId,
+          walletAddress: cf.farmer?.walletAddress ?? null,
+          portionPercent: Number(cf.portionPercent),
+        })),
+      ];
+
+      // The farmer/co-farmer pool mirrors splitTotalValue(): total minus the
+      // 2% platform fee.
+      const [, netPool] = this.splitTotalValue(Number(deal.totalValue));
+      const payouts = computeFarmerPayoutSplits(netPool, participants);
+      if (payouts.length === 0) return [];
+
+      const distributions = payouts.map((payout) =>
+        qr.manager.create(PaymentDistribution, {
+          tradeDealId,
+          recipientType: 'farmer',
+          recipientId: payout.recipientId,
+          walletAddress: payout.walletAddress,
+          amountUsd: payout.amountUsd,
+          stellarTxId: options.stellarTxId ?? null,
+          status: 'confirmed',
+        }),
+      );
+
+      const saved = await qr.manager.save(PaymentDistribution, distributions);
+
+      this.logger.info(
+        `Distributed ${payouts.length} farmer payout(s) for deal ${tradeDealId}`,
+      );
+      return Array.isArray(saved) ? saved : [saved];
+    } catch (error) {
+      if (ownsTransaction) {
+        await qr.rollbackTransaction();
+      }
+      throw error;
+    } finally {
+      if (ownsTransaction) {
+        await qr.release();
+      }
+    }
   }
 
   /** Resolves the platform wallet address from config. */
@@ -305,6 +460,7 @@ export class EscrowService {
     tradeDealId: string,
     deal: TradeDeal,
     investments: Investment[],
+    farmerPayouts: { recipientId: string; amountUsd: number }[] = [],
   ): Promise<void> {
     try {
       const totalValue = Number(deal.totalValue);
@@ -314,6 +470,9 @@ export class EscrowService {
         investorPool,
         investments.map((inv) => inv.tokenAmount),
       );
+      const leadFarmerPayout =
+        farmerPayouts.find((p) => p.recipientId === deal.farmerId)?.amountUsd ??
+        investorPool;
 
       await this.queueService.emit('email.notification', {
         type: 'deal_completed',
@@ -323,9 +482,24 @@ export class EscrowService {
         dealDetails: {
           commodity: deal.commodity,
           totalValue,
-          farmerAmount: investorPool,
+          farmerAmount: leadFarmerPayout,
         },
       });
+
+      // #891 — each accepted co-farmer gets a localized payout email for
+      // their own portion of the delivery payment.
+      for (const payout of farmerPayouts) {
+        if (payout.recipientId === deal.farmerId) continue;
+        await this.queueService.emit('email.notification', {
+          type: 'payment_distributed',
+          userId: payout.recipientId,
+          dealId: tradeDealId,
+          dealDetails: {
+            commodity: deal.commodity,
+            amount: payout.amountUsd,
+          },
+        });
+      }
 
       await this.queueService.emit('email.notification', {
         type: 'deal_completed',

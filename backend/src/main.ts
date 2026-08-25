@@ -129,6 +129,7 @@ async function bootstrap() {
   );
 
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
+  app.useGlobalInterceptors(new VersionInterceptor());
 
   const allowedOrigins = (
     process.env.ALLOWED_ORIGINS ?? 'http://localhost:3000'

@@ -147,6 +147,18 @@
     }
   },
   "deals": {
+    "coFarmers": {
+      "title": "Wakulima Wenza",
+      "description": "Karibisha wakulima wengine kwenye biashara hii — kila mkulima mwenza anawajibu wa sehemu yake ya usambazaji na anapokea sehemu hiyo ya malipo.",
+      "emailLabel": "Barua pepe ya mkulima mwenza",
+      "portionLabel": "Sehemu (%)",
+      "add": "Ongeza mkulima mwenza",
+      "remove": "Ondoa",
+      "invalidEmail": "Weka barua pepe sahihi.",
+      "invalidPortion": "Sehemu lazima iwe kati ya 0 na 100.",
+      "totalTooHigh": "Jumla ya sehemu haiwezi kuzidi asilimia 100.",
+      "inviteFailed": "Biashara imeundwa, lakini baadhi ya mialiko haikutumwa."
+    },
     "createTitle": "Unda Mkataba Mpya wa Biashara",
     "draftRestored": "Rasimu imerejeshwa kutoka {time}",
     "commodity": "Jina la Bidhaa",
@@ -185,6 +197,26 @@
         "description": "Vitendo vinavyohitaji mtandao vimezimwa mpaka muunganisho urudishwe."
       }
     }
+  },
+  "referrals": {
+    "title": "Programu ya Rufaa",
+    "description": "Shiriki kiungo chako cha rufaa na uongeze zawodi watumiaji waliorudishwa wanapofanya uwekezaji wao wa kwanza.",
+    "yourLink": "Kiungo Chako cha Rufaa",
+    "copy": "Nakili",
+    "copied": "Imenakiliwa!",
+    "whatsapp": "WhatsApp",
+    "twitter": "Twitter",
+    "referredUsers": "Watumiaji Waliorudishwa",
+    "noReferrals": "Hakuna rufaa bado",
+    "shareToStart": "Shiriki kiungo chako kuanza kupata zawodi!",
+    "linkClicks": "Mibofyo ya Kiungo",
+    "registered": "Walioidhinishwa",
+    "rewarded": "Waliozawadiwa",
+    "totalEarned": "Jumla Iliyopatikana",
+    "user": "Mtumiaji",
+    "status": "Hali",
+    "reward": "Zawodi",
+    "date": "Tarehe"
   },
   "format": {
     "currency": "{value, number, currency}",
