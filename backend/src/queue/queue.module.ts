@@ -4,6 +4,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { QueueService } from './queue.service';
 import { QueueTopologyService } from './queue-topology.service';
+import { IdempotencyService } from './idempotency.service';
 import { QUEUE_SERVICE } from './queue.constants';
 import {
   MAIN_QUEUE_NAME,
@@ -40,7 +41,13 @@ export { QUEUE_SERVICE } from './queue.constants';
       },
     ]),
   ],
-  providers: [QueueService, QueueAlertService, QueueTopologyService],
-  exports: [QueueService, ClientsModule, QueueAlertService, OutboxModule],
+  providers: [QueueService, QueueAlertService, QueueTopologyService, IdempotencyService],
+  exports: [
+    QueueService,
+    ClientsModule,
+    QueueAlertService,
+    OutboxModule,
+    IdempotencyService,
+  ],
 })
 export class QueueModule {}

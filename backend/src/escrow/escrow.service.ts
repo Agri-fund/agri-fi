@@ -12,6 +12,7 @@ import {
 import { User } from '../auth/entities/user.entity';
 import { StellarService, InvestorShare } from '../stellar/stellar.service';
 import { QueueService } from '../queue/queue.service';
+import { IdempotencyService } from '../queue/idempotency.service';
 import { Keypair } from '@stellar/stellar-sdk';
 
 interface DealDeliveredPayload {
@@ -31,6 +32,7 @@ export class EscrowService {
     private readonly userRepo: Repository<User>,
     private readonly stellarService: StellarService,
     private readonly queueService: QueueService,
+    private readonly idempotency: IdempotencyService,
     private readonly config: ConfigService,
     private readonly dataSource: DataSource,
     private readonly logger: PinoLogger,
@@ -125,6 +127,22 @@ export class EscrowService {
       throw new Error(`Escrow secret key missing for deal ${tradeDealId}`);
     }
 
+    const idempotencyKey = IdempotencyService.buildKey(
+      'payment.distribution',
+      tradeDealId,
+    );
+    const lease = await this.idempotency.acquireLease(idempotencyKey, 900);
+
+    if (!lease.acquired) {
+      this.logger.warn(
+        `Payment distribution for deal ${tradeDealId} is already ${lease.status ?? 'processing'}; skipping duplicate release.`,
+      );
+      return;
+    }
+
+    let idempotencyMarkedDone = false;
+
+    try {
     // ── Phase 2: Stellar escrow release (irreversible, outside any DB tx) ─────
     // The Stellar ledger is append-only; there is no rollback. We execute this
     // before opening the DB transaction so a Stellar failure leaves the database
@@ -211,6 +229,8 @@ export class EscrowService {
 
       // All DB writes succeeded — commit
       await qr.commitTransaction();
+      await this.idempotency.markDone(idempotencyKey);
+      idempotencyMarkedDone = true;
 
       this.logger.info(
         `Deal ${tradeDealId} committed to completed. Stellar TX: ${stellarTxId}`,
@@ -244,6 +264,12 @@ export class EscrowService {
         this.logger.error(`Failed to enqueue deal cleanup: ${err.message}`);
       });
     }, 0);
+    } catch (error) {
+      if (!idempotencyMarkedDone) {
+        await this.idempotency.releaseLease(idempotencyKey);
+      }
+      throw error;
+    }
   }
 
   /** Resolves the platform wallet address from config. */
