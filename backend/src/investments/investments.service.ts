@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Optional,
   NotFoundException,
   UnprocessableEntityException,
   ForbiddenException,
@@ -26,6 +27,7 @@ import {
 import { FeeCalculatorService, FeeBreakdown } from './fee-calculator.service';
 import { CreateInvestmentResponseDto } from './dto/investment-response.dto';
 import { encodeFeeData, generateInvestmentMemo } from './fee-transaction.utils';
+import { EmailSequenceService } from '../email-sequence/email-sequence.service';
 
 export interface CreateInvestmentResult {
   investment: Investment;
@@ -55,6 +57,7 @@ export class InvestmentsService {
     private readonly dataSource: DataSource,
     private readonly queueService: QueueService,
     private readonly feeCalculatorService: FeeCalculatorService,
+    @Optional() private readonly emailSequenceService: EmailSequenceService,
   ) {}
 
   async createInvestment(
@@ -208,6 +211,15 @@ export class InvestmentsService {
     );
 
     return { investment, unsignedXdr, feeBreakdown };
+  }
+
+  // Halt the investor's drip email sequence now they have created their first
+  // investment. Fire-and-forget — failure must not affect the investment flow.
+  private haltDripSequence(investorId: string): void {
+    if (!this.emailSequenceService) return;
+    this.emailSequenceService.haltForUser(investorId).catch((err) => {
+      console.error('[InvestmentsService] Failed to halt drip sequence', err);
+    });
   }
 
   private assertTravelRuleCompliance(

@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Optional,
   ConflictException,
   UnauthorizedException,
   NotFoundException,
@@ -42,6 +43,7 @@ import { authenticator } from 'otplib';
 import * as QRCode from 'qrcode';
 import { TokenBlocklistService } from './token-blocklist.service';
 import { SecurityThreatService } from './security-threat.service';
+import { EmailSequenceService } from '../email-sequence/email-sequence.service';
 
 const LOCKOUT_MAX_ATTEMPTS = 5;
 const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
@@ -74,6 +76,7 @@ export class AuthService {
     private readonly ofacSanctionsCheck: OfacSanctionsCheckService,
     private readonly tokenBlocklistService: TokenBlocklistService,
     private readonly securityThreat: SecurityThreatService,
+    @Optional() private readonly emailSequenceService: EmailSequenceService,
   ) {
     const network = this.configService.get<string>('STELLAR_NETWORK', 'testnet');
     this.networkPassphrase =
@@ -173,6 +176,15 @@ export class AuthService {
     }
 
     await this.sendVerificationEmail(saved.email, emailVerificationToken);
+
+    // Schedule the investor onboarding drip email sequence for new investors.
+    // Fire-and-forget — a scheduling failure must not block registration.
+    if (saved.role === 'investor' && this.emailSequenceService) {
+      this.emailSequenceService.scheduleForUser(saved.id, saved.createdAt).catch((err) => {
+        // Non-fatal: log and continue
+        console.error('[AuthService] Failed to schedule drip sequence', err);
+      });
+    }
 
     const safeRedirect = sanitizeRedirectUrl(dto.redirect);
     return {

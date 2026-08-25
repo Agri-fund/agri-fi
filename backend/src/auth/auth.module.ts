@@ -27,6 +27,7 @@ import { TokenBlocklistService } from './token-blocklist.service';
 import { SecurityThreatService } from './security-threat.service';
 import { MfaGuard } from './guards/mfa.guard';
 import { EscrowModule } from '../escrow/escrow.module';
+import { EmailSequenceModule } from '../email-sequence/email-sequence.module';
 
 @Module({
   imports: [
@@ -43,6 +44,7 @@ import { EscrowModule } from '../escrow/escrow.module';
     NotificationsModule,
     PassportModule,
     EscrowModule,
+    EmailSequenceModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

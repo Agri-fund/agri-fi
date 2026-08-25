@@ -221,4 +221,15 @@ export class User {
     example: true,
   })
   emailDigestEnabled: boolean;
+
+  /**
+   * Set to true when the investor clicks the unsubscribe link in any drip
+   * email. Stops further sequence steps from being dispatched (GDPR / CAN-SPAM).
+   */
+  @Column({ name: 'email_sequence_unsubscribed', type: 'boolean', default: false })
+  @ApiProperty({
+    description: 'Whether the user has unsubscribed from the onboarding email sequence',
+    example: false,
+  })
+  emailSequenceUnsubscribed: boolean;
 }

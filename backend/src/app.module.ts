@@ -35,6 +35,7 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { AuditModule } from './audit/audit.module';
 
 import { AchievementModule } from './achievements/achievement.module';
+import { EmailSequenceModule } from './email-sequence/email-sequence.module';
 
 @Module({
   controllers: [AppController],
@@ -95,6 +96,7 @@ import { AchievementModule } from './achievements/achievement.module';
     MetricsModule,
     AuditModule,
     AchievementModule,
+    EmailSequenceModule,
   ],
   providers: [
     {
