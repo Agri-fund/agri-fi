@@ -1,0 +1,45 @@
+{
+  "welcome": {
+    "subject": "Karibu Agri-Fi"
+  },
+  "kyc-approved": {
+    "subject": "Uthibitisho wako wa KYC umekidhinishwa"
+  },
+  "kyc-rejected": {
+    "subject": "Uthibitisho wako wa KYC haukukidhinishwa"
+  },
+  "investment-confirmed": {
+    "subject": "Uwekezaji umethibitishwa"
+  },
+  "payment-distributed": {
+    "subject": "Malipo yamegawanywa"
+  },
+  "deal-funded": {
+    "subject": "Mkataba umefadhilika kikamilifu"
+  },
+  "deal-expired": {
+    "subject": "Mkataba uliisha"
+  },
+  "password-reset": {
+    "subject": "Badilisha nenosiri lako"
+  },
+  "account-lockout": {
+    "subject": "Akaunti yako imefungwa"
+  },
+  "security-alert": {
+    "subject": "Tahadhari ya usalama: kuingia kutoka kifaa kipya"
+  },
+  "deal-digest": {
+    "subject": "Muhtasari wako wa wiki wa mikataba",
+    "sections": {
+      "deals": "Maendeleo ya ufadhili",
+      "milestones": "Vihenga vinavyokuja wiki hii",
+      "documents": "Nyaraka zinazosubiri kutumwa",
+      "actions": "Mambo ya kufanya",
+      "unsubscribe": "Jiondoe kwenye barua pepe hizi"
+    }
+  },
+  "co-farmer-invitation": {
+    "subject": "Umealikwa kushirikiana kulima mkataba"
+  }
+}
