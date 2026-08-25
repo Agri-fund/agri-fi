@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { apiClient, User } from "@/lib/api";
 import DashboardLayout from "@/components/DashboardLayout";
+import { resetTour, isTourCompletedStatic } from "@/components/DashboardTour";
 
 type Tab = "account" | "verification" | "wallets" | "currency";
 
@@ -59,6 +60,9 @@ export default function SettingsPage() {
   const [unlinkConfirm, setUnlinkConfirm] = useState(false);
   const [unlinking, setUnlinking] = useState(false);
   const [unlinkMsg, setUnlinkMsg] = useState<string | null>(null);
+
+  // Tour restart state
+  const [tourRestartMsg, setTourRestartMsg] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -152,6 +156,12 @@ export default function SettingsPage() {
     } finally {
       setSavingCurrency(false);
     }
+  };
+
+  const handleRestartTour = () => {
+    resetTour();
+    setTourRestartMsg("Tour reset! Navigate to your dashboard to start the tour.");
+    setTimeout(() => setTourRestartMsg(null), 3000);
   };
 
   if (loading || !user) return null;
@@ -252,6 +262,28 @@ export default function SettingsPage() {
                 {saving ? "Saving…" : "Save Changes"}
               </button>
             </form>
+
+            {/* Help section */}
+            <div className="border-t border-slate-100 pt-5 mt-5">
+              <h3 className="text-sm font-semibold text-slate-700 mb-3">Help</h3>
+              <div className="flex items-center justify-between p-4 rounded-xl bg-slate-50 border border-slate-100">
+                <div>
+                  <p className="text-sm font-medium text-slate-900">Dashboard Tour</p>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Replay the interactive tour to learn about platform features.
+                  </p>
+                </div>
+                <button
+                  onClick={handleRestartTour}
+                  className="btn-secondary text-sm flex-shrink-0"
+                >
+                  Restart Tour
+                </button>
+              </div>
+              {tourRestartMsg && (
+                <p className="text-sm font-medium text-emerald-600 mt-2">{tourRestartMsg}</p>
+              )}
+            </div>
           </div>
         )}
 

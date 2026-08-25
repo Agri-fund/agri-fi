@@ -290,5 +290,38 @@
     "currency": "{value, number, currency}",
     "date": "{value, date, short}",
     "number": "{value, number}"
+  },
+  "tour": {
+    "welcome": {
+      "title": "Welcome to Agri-Fi",
+      "text": "This quick tour will walk you through the key features of the platform. You can restart this tour anytime from Settings."
+    },
+    "browseDeals": {
+      "title": "Browse Deals",
+      "text": "Find investment opportunities in agricultural trade deals. Filter by commodity, status, and more."
+    },
+    "connectWallet": {
+      "title": "Connect Your Wallet",
+      "text": "Connect your Stellar wallet to invest in deals and track your portfolio on-chain."
+    },
+    "portfolioStats": {
+      "title": "Portfolio Stats",
+      "text": "Track your investments, returns, and deal performance at a glance."
+    },
+    "notificationBell": {
+      "title": "Stay Updated",
+      "text": "Get real-time notifications about your deals, investments, and platform updates."
+    },
+    "complete": {
+      "title": "You're All Set!",
+      "text": "You're ready to start exploring Agri-Fi. Happy investing!"
+    },
+    "buttons": {
+      "next": "Next",
+      "back": "Back",
+      "skip": "Skip Tour",
+      "finish": "Get Started"
+    },
+    "restart": "Restart Tour"
   }
 }

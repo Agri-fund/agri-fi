@@ -101,7 +101,7 @@ export default function FarmerDashboard() {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
+        <div data-tour="portfolio-stats" className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
           <StatCard label={t("stats.totalProjects")} value={deals.length} icon="🌱" color="bg-emerald-50" />
           <StatCard label={t("stats.active")} value={active} icon="📈" color="bg-blue-50" />
           <StatCard label={t("stats.totalValue")} value={`$${totalValue.toLocaleString()}`} icon="💰" color="bg-amber-50" />

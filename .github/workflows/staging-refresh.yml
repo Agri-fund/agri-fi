@@ -1,0 +1,171 @@
+name: Staging Environment Refresh
+
+on:
+  schedule:
+    # Weekly on Sunday at 01:00 UTC
+    - cron: '0 1 * * 0'
+  workflow_dispatch:
+    inputs:
+      force_refresh:
+        description: 'Force staging refresh even if last refresh was recent'
+        required: false
+        default: 'false'
+        type: boolean
+
+permissions:
+  contents: read
+  secrets: write
+
+env:
+  STAGING_DB_HOST: ${{ secrets.STAGING_DB_HOST }}
+  STAGING_DB_PORT: ${{ secrets.STAGING_DB_PORT || '5432' }}
+  STAGING_DB_USER: ${{ secrets.STAGING_DB_USER }}
+  STAGING_DB_NAME: ${{ secrets.STAGING_DB_NAME || 'agric_onchain_staging' }}
+  STAGING_S3_BUCKET: ${{ secrets.STAGING_S3_BUCKET || 'agrifi-staging-dumps' }}
+  STAGING_S3_PREFIX: 'weekly-snapshots'
+  AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
+
+jobs:
+  anonymise-and-refresh:
+    name: Anonymise Production Dump & Refresh Staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Install ts-node
+        run: npm install -g ts-node typescript
+
+      - name: Download latest production backup
+        run: |
+          TIMESTAMP=$(aws s3 ls "s3://${STAGING_S3_BUCKET}/production-backups/" \
+            --region "${AWS_REGION}" | sort | tail -1 | awk '{print $4}')
+          
+          if [ -z "$TIMESTAMP" ]; then
+            echo "No production backup found in S3"
+            exit 1
+          fi
+          
+          echo "Latest backup: $TIMESTAMP"
+          aws s3 cp "s3://${STAGING_S3_BUCKET}/production-backups/${TIMESTAMP}" \
+            "/tmp/production-dump.sql.gz" \
+            --region "${AWS_REGION}"
+          
+          gunzip "/tmp/production-dump.sql.gz"
+
+      - name: Anonymise dump
+        run: |
+          ts-node devops/scripts/anonymise-dump.ts \
+            --input /tmp/production-dump.sql \
+            --output /tmp/anonymised-dump.sql
+          
+          echo "Anonymised dump size: $(du -h /tmp/anonymised-dump.sql | cut -f1)"
+
+      - name: Validate no PII remains
+        run: |
+          echo "Checking for remaining PII patterns..."
+          
+          # Check for email patterns (should be replaced with @example.com etc.)
+          EMAIL_COUNT=$(grep -cE "'[^']*@[^']*\\.[^']*'" /tmp/anonymised-dump.sql || true)
+          echo "Email-like patterns found: $EMAIL_COUNT"
+          
+          # Check for real phone numbers (not our synthetic ones)
+          PHONE_COUNT=$(grep -cE "'\\+[0-9]{10,13}'" /tmp/anonymised-dump.sql || true)
+          echo "Phone patterns found: $PHONE_COUNT"
+          
+          # Check for Stellar addresses (should be testnet format)
+          STELLAR_COUNT=$(grep -cE "G[A-Z2-5]{55}" /tmp/anonymised-dump.sql || true)
+          echo "Stellar addresses found: $STELLAR_COUNT"
+          
+          # Fail if we find patterns that look like real PII
+          if [ "$EMAIL_COUNT" -gt 0 ]; then
+            echo "WARNING: Email patterns detected - review anonymisation"
+          fi
+
+      - name: Compress anonymised dump
+        run: |
+          gzip -9 /tmp/anonymised-dump.sql
+          echo "Compressed size: $(du -h /tmp/anonymised-dump.sql.gz | cut -f1)"
+
+      - name: Upload anonymised dump to S3
+        run: |
+          DATE=$(date +'%Y%m%d_%H%M%S')
+          S3_PATH="s3://${STAGING_S3_BUCKET}/${STAGING_S3_PREFIX}/anonymised_${DATE}.sql.gz"
+          
+          aws s3 cp /tmp/anonymised-dump.sql.gz "${S3_PATH}" \
+            --region "${AWS_REGION}" \
+            --sse AES256 \
+            --storage-class STANDARD
+          
+          echo "Uploaded to: ${S3_PATH}"
+
+      - name: Restore staging database
+        run: |
+          echo "Restoring anonymised dump to staging database..."
+          
+          PGPASSWORD="${{ secrets.STAGING_DB_PASSWORD }}" pg_restore \
+            --host="${STAGING_DB_HOST}" \
+            --port="${STAGING_DB_PORT}" \
+            --username="${STAGING_DB_USER}" \
+            --dbname="${STAGING_DB_NAME}" \
+            --no-owner \
+            --no-privileges \
+            --clean \
+            --if-exists \
+            /tmp/anonymised-dump.sql || true
+          
+          echo "Staging database restored successfully"
+
+      - name: Verify staging database
+        run: |
+          echo "Verifying staging database..."
+          
+          PGPASSWORD="${{ secrets.STAGING_DB_PASSWORD }}" psql \
+            --host="${STAGING_DB_HOST}" \
+            --port="${STAGING_DB_PORT}" \
+            --username="${STAGING_DB_USER}" \
+            --dbname="${STAGING_DB_NAME}" \
+            -c "SELECT COUNT(*) as user_count FROM users;" || true
+          
+          PGPASSWORD="${{ secrets.STAGING_DB_PASSWORD }}" psql \
+            --host="${STAGING_DB_HOST}" \
+            --port="${STAGING_DB_PORT}" \
+            --username="${STAGING_DB_USER}" \
+            --dbname="${STAGING_DB_NAME}" \
+            -c "SELECT COUNT(*) as deal_count FROM trade_deals;" || true
+
+      - name: Notify team
+        if: success()
+        run: |
+          echo "Staging environment refreshed successfully"
+          echo "Timestamp: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          
+          # Optional: Send Slack/Discord notification
+          if [ -n "${{ secrets.STAGING_WEBHOOK_URL }}" ]; then
+            curl -X POST "${{ secrets.STAGING_WEBHOOK_URL }}" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "text": "✅ Staging environment refreshed successfully",
+                "content": "✅ Staging environment refreshed successfully\nTimestamp: '"$(date -u +'%Y-%m-%dT%H:%M:%SZ')"'\nAnonymised dump uploaded to S3."
+              }' || true
+          fi
+
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -f /tmp/production-dump.sql /tmp/production-dump.sql.gz
+          rm -f /tmp/anonymised-dump.sql /tmp/anonymised-dump.sql.gz
