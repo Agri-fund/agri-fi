@@ -10,6 +10,8 @@ import {
   HttpStatus,
   Query,
   Version,
+  ForbiddenException,
+  NotFoundException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -30,6 +32,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { StellarService } from '../stellar/stellar.service';
 import { PaginatedResult } from '../common/pagination';
 import { TradeDealsGuard } from '../trade-deals/trade-deals.guard';
+import { InvestmentEventStore } from './investment-event-store.service';
 
 @ApiTags('investments')
 @ApiBearerAuth('jwt')
@@ -39,6 +42,7 @@ export class InvestmentsController {
   constructor(
     private readonly investmentsService: InvestmentsService,
     private readonly stellarService: StellarService,
+    private readonly eventStore: InvestmentEventStore,
   ) {}
 
   @Post()
@@ -386,5 +390,31 @@ export class InvestmentsController {
       tokenCode,
       tokenIssuer,
     );
+  }
+
+  @Get(':id/events')
+  @ApiOperation({
+    summary: 'Get event log history for an investment (admin or investment owner)',
+  })
+  @ApiParam({ name: 'id', description: 'Investment UUID' })
+  @ApiResponse({ status: 200, description: 'List of investment events' })
+  @ApiResponse({ status: 403, description: 'Forbidden - owner or admin only' })
+  @ApiResponse({ status: 404, description: 'Investment not found' })
+  async getInvestmentEvents(
+    @Request() req: { user: { id: string; role: string } },
+    @Param('id') id: string,
+  ) {
+    const investment = await this.investmentsService.getInvestmentById(id);
+    if (!investment) {
+      throw new NotFoundException('Investment not found.');
+    }
+
+    if (req.user.role !== 'admin' && investment.investorId !== req.user.id) {
+      throw new ForbiddenException(
+        'Only investment owner or admin can access investment events.',
+      );
+    }
+
+    return this.eventStore.getEvents(id);
   }
 }

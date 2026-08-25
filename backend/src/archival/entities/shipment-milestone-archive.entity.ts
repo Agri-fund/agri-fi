@@ -1,23 +1,15 @@
-import {
-  Entity,
-  PrimaryGeneratedColumn,
-  Column,
-  CreateDateColumn,
-  DeleteDateColumn,
-} from 'typeorm';
+import { Entity, PrimaryColumn, Column, CreateDateColumn } from 'typeorm';
 
-export type MilestoneType = 'farm' | 'warehouse' | 'port' | 'importer';
-
-@Entity('shipment_milestones')
-export class ShipmentMilestone {
-  @PrimaryGeneratedColumn('uuid')
+@Entity('shipment_milestones_archive')
+export class ShipmentMilestoneArchive {
+  @PrimaryColumn('uuid')
   id: string;
 
   @Column({ name: 'trade_deal_id' })
   tradeDealId: string;
 
   @Column()
-  milestone: MilestoneType;
+  milestone: string;
 
   @Column({ name: 'recorded_by' })
   recordedBy: string;
@@ -37,9 +29,12 @@ export class ShipmentMilestone {
   @Column({ type: 'double precision', nullable: true })
   longitude: number | null;
 
-  @CreateDateColumn({ name: 'recorded_at' })
+  @Column({ name: 'recorded_at', type: 'timestamptz', nullable: true })
   recordedAt: Date;
 
-  @DeleteDateColumn({ name: 'deleted_at', nullable: true })
+  @Column({ name: 'deleted_at', type: 'timestamptz', nullable: true })
   deletedAt: Date | null;
+
+  @CreateDateColumn({ name: 'archived_at' })
+  archivedAt: Date;
 }

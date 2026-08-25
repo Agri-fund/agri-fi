@@ -28,6 +28,7 @@ import { FeeCalculatorService, FeeBreakdown } from './fee-calculator.service';
 import { CreateInvestmentResponseDto } from './dto/investment-response.dto';
 import { encodeFeeData, generateInvestmentMemo } from './fee-transaction.utils';
 import { EmailSequenceService } from '../email-sequence/email-sequence.service';
+import { InvestmentEventStore } from './investment-event-store.service';
 
 export interface CreateInvestmentResult {
   investment: Investment;
@@ -58,6 +59,7 @@ export class InvestmentsService {
     private readonly queueService: QueueService,
     private readonly feeCalculatorService: FeeCalculatorService,
     @Optional() private readonly emailSequenceService: EmailSequenceService,
+    @Optional() private readonly eventStore?: InvestmentEventStore,
   ) {}
 
   async createInvestment(
@@ -210,6 +212,13 @@ export class InvestmentsService {
       ),
     );
 
+    await this.eventStore?.append(
+      investment.id,
+      'InvestmentCreated',
+      { amountUsd: dto.amountUsd, tokenAmount: dto.tokenAmount, tradeDealId: dto.tradeDealId },
+      investorId,
+    );
+
     return { investment, unsignedXdr, feeBreakdown };
   }
 
@@ -330,6 +339,13 @@ export class InvestmentsService {
     // Trigger referral reward for first investment
     this.referralService?.triggerReward(investorId)?.catch(() => {});
 
+    await this.eventStore?.append(
+      investmentId,
+      'InvestmentActivated',
+      { stellarTxId },
+      investorId,
+    );
+
     // Return the updated investment by fetching it from the database
     const updatedInvestment = await this.investmentRepo.findOne({
       where: { id: investmentId },
@@ -337,10 +353,43 @@ export class InvestmentsService {
     return updatedInvestment!;
   }
 
-  async markInvestmentFailed(investmentId: string): Promise<void> {
+  async markInvestmentFailed(investmentId: string, actorId?: string): Promise<void> {
     await this.investmentRepo.update(investmentId, {
       status: InvestmentStatus.FAILED,
     });
+    await this.eventStore?.append(
+      investmentId,
+      'InvestmentFailedEscrow',
+      {},
+      actorId,
+    );
+  }
+
+  async startRelease(investmentId: string, actorId?: string): Promise<void> {
+    await this.investmentRepo.update(investmentId, { status: InvestmentStatus.RELEASING });
+    await this.eventStore?.append(investmentId, 'InvestmentReleaseStarted', {}, actorId);
+  }
+
+  async completeInvestment(investmentId: string, actorId?: string): Promise<void> {
+    await this.investmentRepo.update(investmentId, { status: InvestmentStatus.COMPLETED });
+    await this.eventStore?.append(investmentId, 'InvestmentCompleted', {}, actorId);
+  }
+
+  async cancelInvestment(investmentId: string, actorId?: string, reason?: string): Promise<void> {
+    await this.investmentRepo.update(investmentId, { status: InvestmentStatus.CANCELLED });
+    await this.eventStore?.append(investmentId, 'InvestmentCancelledByUser', { reason }, actorId);
+  }
+
+  async refundInvestment(investmentId: string, actorId?: string, reason?: string): Promise<void> {
+    await this.investmentRepo.update(investmentId, { status: InvestmentStatus.REFUNDED });
+    await this.eventStore?.append(investmentId, 'InvestmentRefunded', { reason }, actorId);
+  }
+
+  async reconcileStateFromEvents(investmentId: string): Promise<Investment> {
+    if (!this.eventStore) throw new Error('InvestmentEventStore is not injected');
+    const projection = await this.eventStore.rebuildStateFromEvents(investmentId);
+    await this.investmentRepo.update(investmentId, { status: projection.status });
+    return (await this.investmentRepo.findOne({ where: { id: investmentId } }))!;
   }
 
   async fundEscrow(
@@ -439,6 +488,10 @@ export class InvestmentsService {
     } catch (err) {
       // non-critical — log and swallow
     }
+  }
+
+  async getInvestmentById(id: string): Promise<Investment | null> {
+    return this.investmentRepo.findOne({ where: { id }, relations: ['tradeDeal'] });
   }
 
   async getInvestmentsByTradeDeal(
