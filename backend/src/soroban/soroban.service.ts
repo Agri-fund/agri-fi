@@ -20,6 +20,8 @@ import {
   Address,
   xdr,
   scValToNative,
+  Operation,
+  SorobanDataBuilder,
 } from '@stellar/stellar-sdk';
 
 export interface CampaignConfig {
@@ -81,6 +83,25 @@ export class SorobanService {
     args: xdr.ScVal[],
     signerKeypair?: Keypair,
   ): Promise<string> {
+    const { hash } = await this.invokeContractWithResult(
+      contractId,
+      method,
+      args,
+      signerKeypair,
+    );
+    return hash;
+  }
+
+  /**
+   * Same as invokeContract, but also returns the contract's return value
+   * (converted to a native JS value) when the transaction succeeded.
+   */
+  async invokeContractWithResult(
+    contractId: string,
+    method: string,
+    args: xdr.ScVal[],
+    signerKeypair?: Keypair,
+  ): Promise<{ hash: string; result: unknown }> {
     const signer = signerKeypair ?? this.platformKeypair;
     const account = await this.rpcServer.getAccount(signer.publicKey());
 
@@ -138,11 +159,16 @@ export class SorobanService {
       throw new Error(`Soroban tx failed or timed out: ${getResult.status}`);
     }
 
+    const result =
+      getResult.returnValue !== undefined
+        ? scValToNative(getResult.returnValue)
+        : null;
+
     this.logger.info(
       { contractId, method, hash },
       'Soroban contract call succeeded',
     );
-    return hash;
+    return { hash, result };
   }
 
   /**
@@ -257,6 +283,59 @@ export class SorobanService {
 
   // ── ProjectFactory contract methods ─────────────────────────────────────────
 
+  /**
+   * Deploys a new FarmCampaign contract through the ProjectFactory (#830).
+   * Returns the deployed campaign contract address.
+   */
+  async deployFarmCampaign(
+    dealId: string,
+    params: {
+      farmerAddress: string;
+      targetAmount: bigint; // USDC stroops
+      durationLedgers: number;
+      commodityCode: string;
+    },
+  ): Promise<string> {
+    const factoryContractId = this.config.get<string>(
+      'SOROBAN_FACTORY_CONTRACT_ID',
+    );
+    if (!factoryContractId) {
+      throw new Error('SOROBAN_FACTORY_CONTRACT_ID is not configured');
+    }
+
+    const args = [
+      new Address(this.platformKeypair.publicKey()).toScVal(),
+      new Address(params.farmerAddress).toScVal(),
+      nativeToScVal(params.targetAmount, { type: 'i128' }),
+      nativeToScVal(params.durationLedgers, { type: 'u32' }),
+      nativeToScVal(params.commodityCode, { type: 'symbol' }),
+    ];
+
+    const { hash, result } = await this.invokeContractWithResult(
+      factoryContractId,
+      'deploy',
+      args,
+    );
+
+    const contractAddress = typeof result === 'string' ? result : null;
+    if (!contractAddress) {
+      throw new Error(
+        `Factory deploy did not return a contract address (tx ${hash})`,
+      );
+    }
+
+    this.logger.info(
+      { dealId, factoryContractId, campaignContractId: contractAddress, hash },
+      'FarmCampaign deployed via ProjectFactory',
+    );
+    return contractAddress;
+  }
+
+  /** Platform (deployer) wallet public key — used for audit logging (#830). */
+  platformPublicKey(): string {
+    return this.platformKeypair.publicKey();
+  }
+
   async registerCampaignOnChain(
     factoryContractId: string,
     dealId: string,
@@ -283,6 +362,26 @@ export class SorobanService {
   }
 
   // ── MarketplaceSettlement contract methods ──────────────────────────────────
+
+  /**
+   * Invokes the marketplace_settlement contract to create and settle a secondary trade order.
+   */
+  async invokeMarketplaceSettlement(
+    settlementContractId: string,
+    orderId: string,
+    buyerAddress: string,
+    sellerAddress: string,
+    amountStroops: number,
+  ): Promise<string> {
+    const args = [
+      new Address(buyerAddress).toScVal(),
+      nativeToScVal(orderId, { type: 'string' }),
+      new Address(sellerAddress).toScVal(),
+      nativeToScVal(amountStroops, { type: 'i128' }),
+      new xdr.ScVal(xdr.ScVal.scvVec([])), // Empty investor_shares for direct trades
+    ];
+    return this.invokeContract(settlementContractId, 'create_order', args);
+  }
 
   async confirmMarketplaceDelivery(
     settlementContractId: string,
@@ -312,5 +411,172 @@ export class SorobanService {
   ): Promise<unknown> {
     const args = [nativeToScVal(orderId, { type: 'string' })];
     return this.readContract(settlementContractId, 'get_order', args);
+  }
+
+  // ── Rent / State Expiration Management (#698) ────────────────────────────────
+
+  /**
+   * Extends the TTL (Time-To-Live) of a contract's persistent storage so that
+   * the contract state does not expire and become archived on the Soroban ledger.
+   *
+   * Soroban charges "rent" for persistent storage. If a contract's storage entries
+   * are not refreshed before their ledger sequence expiry, they become ARCHIVED and
+   * the contract becomes unusable — escrow payouts would fail.
+   *
+   * @param contractId  - Soroban contract address (C…)
+   * @param extendTo    - Target TTL in ledgers from the current ledger sequence.
+   *                      Default: 535_680 (~30 days at 5 s/ledger on testnet).
+   */
+  async extendContractTtl(
+    contractId: string,
+    extendTo = 535_680,
+  ): Promise<string> {
+    const signer = this.platformKeypair;
+    const account = await this.rpcServer.getAccount(signer.publicKey());
+
+    const contract = new Contract(contractId);
+    // getFootprint() returns the LedgerKey set covering the contract instance
+    // and its backing WASM code — the full footprint needed for TTL extension.
+    const footprint = contract.getFootprint();
+
+    const sorobanData = new SorobanDataBuilder()
+      .setReadOnly([footprint])
+      .build();
+
+    let tx = new TransactionBuilder(account, {
+      fee: BASE_FEE,
+      networkPassphrase: this.networkPassphrase,
+    })
+      .setSorobanData(sorobanData)
+      .addOperation(Operation.extendFootprintTtl({ extendTo }))
+      .setTimeout(30)
+      .build();
+
+    // prepareTransaction simulates + assembles the transaction with correct fees
+    tx = await this.rpcServer.prepareTransaction(tx);
+    tx.sign(signer);
+
+    const sendResult = await this.rpcServer.sendTransaction(tx);
+    if (sendResult.status === 'ERROR') {
+      throw new Error(
+        `extend_footprint_ttl submission failed for ${contractId}: ${sendResult.errorResult}`,
+      );
+    }
+
+    const hash = sendResult.hash;
+    await this.waitForTransaction(hash);
+
+    this.logger.info(
+      { contractId, extendTo, hash },
+      'Contract TTL extended successfully',
+    );
+    return hash;
+  }
+
+  /**
+   * Restores an ARCHIVED contract instance so it can be used again.
+   *
+   * When a contract's persistent storage expires it enters the ARCHIVED state.
+   * A restore_footprint operation pays the required rent and unarchives the
+   * storage entries, bringing the contract back to a usable state.
+   *
+   * After restoration, call extendContractTtl() to set a long TTL so the
+   * contract doesn't immediately expire again.
+   *
+   * @param contractId - Soroban contract address (C…) to restore
+   */
+  async restoreArchivedContract(contractId: string): Promise<string> {
+    const signer = this.platformKeypair;
+    const account = await this.rpcServer.getAccount(signer.publicKey());
+
+    const contract = new Contract(contractId);
+    const footprint = contract.getFootprint();
+
+    const sorobanData = new SorobanDataBuilder()
+      .setReadWrite([footprint])
+      .build();
+
+    let tx = new TransactionBuilder(account, {
+      fee: BASE_FEE,
+      networkPassphrase: this.networkPassphrase,
+    })
+      .setSorobanData(sorobanData)
+      .addOperation(Operation.restoreFootprint({}))
+      .setTimeout(30)
+      .build();
+
+    tx = await this.rpcServer.prepareTransaction(tx);
+    tx.sign(signer);
+
+    const sendResult = await this.rpcServer.sendTransaction(tx);
+    if (sendResult.status === 'ERROR') {
+      throw new Error(
+        `restore_footprint submission failed for ${contractId}: ${sendResult.errorResult}`,
+      );
+    }
+
+    const hash = sendResult.hash;
+    await this.waitForTransaction(hash);
+
+    this.logger.info(
+      { contractId, hash },
+      'Archived contract restored successfully',
+    );
+    return hash;
+  }
+
+  /**
+   * Returns the current TTL (ledgers until expiry) for a contract's instance
+   * storage entry, or null if the entry is not found / already archived.
+   */
+  async getContractTtl(contractId: string): Promise<number | null> {
+    try {
+      const contract = new Contract(contractId);
+      const instanceKey = xdr.LedgerKey.contractData(
+        new xdr.LedgerKeyContractData({
+          contract: contract.address().toScAddress(),
+          key: xdr.ScVal.scvLedgerKeyContractInstance(),
+          durability: xdr.ContractDataDurability.persistent(),
+        }),
+      );
+
+      const response = await this.rpcServer.getLedgerEntries(instanceKey);
+      if (!response.entries || response.entries.length === 0) return null;
+
+      const entry = response.entries[0];
+      const currentLedger = response.latestLedger;
+      const expiresAt = (entry as any).liveUntilLedgerSeq as number | undefined;
+      if (expiresAt == null) return null;
+
+      return Math.max(0, expiresAt - currentLedger);
+    } catch (err: any) {
+      this.logger.warn(
+        { contractId, err: err.message },
+        'Failed to fetch contract TTL',
+      );
+      return null;
+    }
+  }
+
+  // ── Private helpers ─────────────────────────────────────────────────────────
+
+  private async waitForTransaction(hash: string): Promise<void> {
+    let getResult = await this.rpcServer.getTransaction(hash);
+    let attempts = 0;
+
+    while (
+      getResult.status === rpc.Api.GetTransactionStatus.NOT_FOUND &&
+      attempts < 20
+    ) {
+      await new Promise((r) => setTimeout(r, 1500));
+      getResult = await this.rpcServer.getTransaction(hash);
+      attempts++;
+    }
+
+    if (getResult.status !== rpc.Api.GetTransactionStatus.SUCCESS) {
+      throw new Error(
+        `Transaction timed out or failed: ${getResult.status} (hash: ${hash})`,
+      );
+    }
   }
 }

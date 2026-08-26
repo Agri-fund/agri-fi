@@ -2,6 +2,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { NotificationsService } from './notifications.service';
 import { ConfigService } from '@nestjs/config';
 import { PinoLogger } from 'nestjs-pino';
+import { getRepositoryToken } from '@nestjs/typeorm';
+import { NotificationEntity } from './entities/notification.entity';
 import * as nodemailer from 'nodemailer';
 
 jest.mock('nodemailer');
@@ -45,6 +47,7 @@ describe('NotificationsService', () => {
           NotificationsService,
           { provide: ConfigService, useValue: configService },
           { provide: PinoLogger, useValue: logger },
+          { provide: getRepositoryToken(NotificationEntity), useValue: { find: jest.fn(), count: jest.fn(), create: jest.fn(), save: jest.fn(), update: jest.fn() } },
         ],
       }).compile();
 
@@ -125,6 +128,7 @@ describe('NotificationsService', () => {
           NotificationsService,
           { provide: ConfigService, useValue: configService },
           { provide: PinoLogger, useValue: logger },
+          { provide: getRepositoryToken(NotificationEntity), useValue: { find: jest.fn(), count: jest.fn(), create: jest.fn(), save: jest.fn(), update: jest.fn() } },
         ],
       }).compile();
 

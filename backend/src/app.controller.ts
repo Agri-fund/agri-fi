@@ -1,8 +1,10 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, UseInterceptors } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { ETagInterceptor } from './common/interceptors/etag.interceptor';
 
 @ApiTags('config')
+@UseInterceptors(ETagInterceptor)
 @Controller('config')
 export class AppController {
   private cachedConfig: Record<string, unknown> | null = null;

@@ -11,6 +11,7 @@ if (!(BigInt.prototype as any).toJSON) {
 }
 
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import {
   ValidationPipe,
@@ -21,9 +22,10 @@ import { SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { buildOpenApiConfig } from './common/swagger/swagger.config';
 import { applySecurityHeaders } from './common/middleware/security-headers.middleware';
-import { CustomLogger } from './common/logger/custom-logger.service';
+import { Logger } from 'nestjs-pino';
 import { JsonBigIntInterceptor } from './common/interceptors/json-bigint.interceptor';
 import { UserContextInterceptor } from './common/interceptors/user-context.interceptor';
+import { VersionInterceptor } from './common/interceptors/version.interceptor';
 import { ClsService } from 'nestjs-cls';
 import * as cookieParser from 'cookie-parser';
 import * as csrf from 'csurf';
@@ -31,12 +33,25 @@ import * as csrf from 'csurf';
 async function bootstrap() {
   // rawBody: true preserves the unparsed request buffer on req.rawBody,
   // which is required by WebhookSignatureGuard for HMAC verification.
-  const app = await NestFactory.create(AppModule, {
+  //
+  // bufferLogs: true — buffer bootstrap log lines until the Pino logger is
+  // wired up, ensuring early startup messages are also structured JSON.
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     rawBody: true,
-    logger: new CustomLogger(),
+    bufferLogs: true,
   });
 
+  // Set query parser to 'extended' for Express v5 compatibility
+  // This restores the nested object/array parsing behavior from Express v4
+  app.set('query parser', 'extended');
+
+  // Replace the default NestJS ConsoleLogger with the Pino-backed Logger so
+  // every log line (including NestJS framework messages) is structured JSON.
+  // This is the canonical way recommended by nestjs-pino.
+  app.useLogger(app.get(Logger));
+
   app.getHttpAdapter().getInstance().disable('x-powered-by');
+  app.getHttpAdapter().getInstance().set('etag', 'strong');
   app.use(
     helmet({
       contentSecurityPolicy: {
@@ -120,6 +135,7 @@ async function bootstrap() {
   );
 
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
+  app.useGlobalInterceptors(new VersionInterceptor());
 
   const allowedOrigins = (
     process.env.ALLOWED_ORIGINS ?? 'http://localhost:3000'

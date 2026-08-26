@@ -6,7 +6,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, Repository, QueryRunner } from 'typeorm';
 import { PinoLogger } from 'nestjs-pino';
 import { TradeDeal, TradeDealStatus } from './entities/trade-deal.entity';
 import { Document, DocumentType } from './entities/document.entity';
@@ -19,6 +19,7 @@ import {
 } from '../investments/entities/investment.entity';
 import { StellarService } from '../stellar/stellar.service';
 import { QueueService } from '../queue/queue.service';
+import { RiskScoringService } from './risk-scoring.service';
 
 const VALID_DOC_TYPES: DocumentType[] = [
   'purchase_agreement',
@@ -83,6 +84,7 @@ export class TradeDealsService {
     private readonly investmentRepo: Repository<Investment>,
     private readonly stellarService: StellarService,
     private readonly queueService: QueueService,
+    private readonly riskScoringService: RiskScoringService,
     private readonly logger: PinoLogger,
     private readonly dataSource: DataSource,
   ) {
@@ -168,6 +170,8 @@ export class TradeDealsService {
       traderId: effectiveTraderId,
       totalInvested: 0,
       deliveryDate: new Date(dto.delivery_date),
+      minLotSize: dto.min_lot_size ?? 1,
+      lotStep: dto.lot_step ?? 1,
       escrowPublicKey: null,
       escrowSecretKey: null,
       issuerPublicKey: null,
@@ -182,7 +186,14 @@ export class TradeDealsService {
       savedDeal.id,
     );
 
-    return this.tradeDealRepo.save(savedDeal);
+    const saved = await this.tradeDealRepo.save(savedDeal);
+
+    // #828 — compute initial risk score (non-blocking)
+    this.riskScoringService.computeAndPersist(saved.id).catch((err) => {
+      this.logger.warn({ dealId: saved.id, error: err.message }, 'Failed to compute initial risk score');
+    });
+
+    return saved;
   }
 
   async findOpen(query: {
@@ -234,6 +245,8 @@ export class TradeDealsService {
         'deal.farmLocation',
         'deal.farmerId',
         'deal.traderId',
+        'deal.riskScore',
+        'deal.riskRating',
       ])
       .skip(skip)
       .take(limit);
@@ -365,12 +378,10 @@ export class TradeDealsService {
         farmer_id: deal.farmerId,
         trader_id: deal.traderId,
         remaining_funding: Number(deal.totalValue) - Number(deal.totalInvested),
-        funding_status:
-          Number(deal.totalInvested) >= Number(deal.totalValue)
-            ? 'fully funded'
-            : Number(deal.totalInvested) >= Number(deal.totalValue) * 0.5
-              ? 'almost funded'
-              : 'open',
+        risk_score: deal.riskScore,
+        risk_rating: deal.riskRating,
+        min_lot_size: Number(deal.minLotSize),
+        lot_step: Number(deal.lotStep),
       })),
       total,
       page,
@@ -431,11 +442,17 @@ export class TradeDealsService {
       logistics_plan: deal.logisticsPlan,
       tokens_remaining: tokensRemaining,
       trader_name: deal.trader?.email || 'Unknown Trader',
-      description:
-        deal.shortDescription ||
-        `${deal.quantity} ${deal.quantityUnit} of ${deal.commodity} for delivery by ${new Date(
-          deal.deliveryDate,
-        ).toLocaleDateString()}`,
+      description: `${deal.quantity} ${deal.quantityUnit} of ${deal.commodity} for delivery by ${new Date(
+        deal.deliveryDate,
+      ).toLocaleDateString()}`,
+      risk_score: deal.riskScore,
+      risk_rating: deal.riskRating,
+      risk_breakdown: deal.riskBreakdown,
+      // #835 — lot sizing exposed to the investment form
+      min_lot_size: Number(deal.minLotSize),
+      lot_step: Number(deal.lotStep),
+      // #830 — on-chain FarmCampaign contract address for this deal
+      soroban_contract_address: deal.sorobanCampaignContractId ?? null,
     };
 
     if (!canViewSensitive) {
@@ -505,8 +522,9 @@ export class TradeDealsService {
       // if enqueueing fails, the escrow-key write must roll back too, since
       // the deal would otherwise be stuck holding an escrow account no job
       // will ever process.
-      await this.dataSource.transaction(async (manager) => {
-        await manager.update(TradeDeal, dealId, {
+      // Use transactional outbox for atomic DB update + event publish
+      return await this.dataSource.transaction(async (entityManager) => {
+        await entityManager.update(TradeDeal, dealId, {
           escrowPublicKey,
           escrowSecretKey: encryptedEscrowSecret,
         });
@@ -516,21 +534,21 @@ export class TradeDealsService {
           'Escrow account created, enqueuing token issuance',
         );
 
-        await this.queueService.enqueueDealPublish({
+        await this.queueService.enqueueDealPublishTransactional(entityManager, {
           dealId,
           tokenSymbol: deal.tokenSymbol,
           escrowPublicKey,
           encryptedEscrowSecret,
           tokenCount: deal.tokenCount,
         });
-      });
 
-      // Return deal with escrow data (status still draft, will be updated by queue processor)
-      return {
-        ...deal,
-        escrowPublicKey,
-        escrowSecretKey: encryptedEscrowSecret,
-      };
+        // Return deal with escrow data (status still draft, will be updated by queue processor)
+        return {
+          ...deal,
+          escrowPublicKey,
+          escrowSecretKey: encryptedEscrowSecret,
+        };
+      });
     } catch (error) {
       this.logger.error(
         { dealId, error: error.message },
@@ -646,7 +664,7 @@ export class TradeDealsService {
       }
 
       if (investorShares.length > 0) {
-        const issuerSecret = this.stellarService.decryptSecret(
+        const issuerSecret = await this.stellarService.decryptSecret(
           deal.issuerSecretKey,
         );
 
@@ -806,12 +824,16 @@ export class TradeDealsService {
       relations: ['farmer', 'trader', 'milestones'],
     });
 
-    // Get document count for each deal (placeholder - would need documents entity)
+    // Get document count for each deal
     const dealsWithCounts = await Promise.all(
       deals.map(async (deal) => {
         const latestMilestone = await this.milestoneRepo.findOne({
           where: { tradeDealId: deal.id },
           order: { recordedAt: 'DESC' },
+        });
+
+        const documentCount = await this.documentRepo.count({
+          where: { tradeDealId: deal.id },
         });
 
         return {
@@ -824,12 +846,55 @@ export class TradeDealsService {
           status: deal.status,
           delivery_date: deal.deliveryDate,
           latest_milestone: latestMilestone || null,
-          document_count: 0, // TODO: Implement when documents entity is available
+          document_count: documentCount,
         };
       }),
     );
 
     return dealsWithCounts;
+  }
+
+  /**
+   * Soft-delete a trade deal (admin only).
+   * This preserves audit history while excluding the deal from standard queries.
+   * Soft-deleted deals can be restored with restore().
+   *
+   * @param dealId  UUID of the deal to soft-delete
+   * @returns       void (throws NotFoundException if deal doesn't exist)
+   */
+  async softDeleteDeal(dealId: string): Promise<void> {
+    const deal = await this.tradeDealRepo.findOne({ where: { id: dealId } });
+    if (!deal) {
+      throw new NotFoundException('Trade deal not found.');
+    }
+
+    await this.tradeDealRepo.softDelete(dealId);
+    this.logger.info({ dealId }, 'Trade deal soft-deleted by admin');
+  }
+
+  /**
+   * Restore a soft-deleted trade deal (admin only).
+   *
+   * @param dealId  UUID of the deal to restore
+   * @returns       void (throws NotFoundException if deal doesn't exist)
+   */
+  async restoreDeal(dealId: string): Promise<void> {
+    const deal = await this.tradeDealRepo.findOne({
+      where: { id: dealId },
+      withDeleted: true,
+    });
+
+    if (!deal) {
+      throw new NotFoundException('Trade deal not found.');
+    }
+
+    if (!deal.deletedAt) {
+      this.logger.warn({ dealId }, 'Attempted restore on non-deleted deal');
+      return;
+    }
+
+    await this.tradeDealRepo.restore(dealId);
+    this.logger.info({ dealId }, 'Trade deal restored by admin');
   }
 
   private generateTokenSymbol(commodity: string, dealId: string): string {

@@ -5,7 +5,9 @@ import {
   ManyToOne,
   JoinColumn,
   CreateDateColumn,
+  DeleteDateColumn,
   OneToMany,
+  Index,
 } from 'typeorm';
 import { ApiProperty } from '@nestjs/swagger';
 import { Exclude } from 'class-transformer';
@@ -24,6 +26,8 @@ export type TradeDealStatus =
   | 'expired';
 
 @Entity('trade_deals')
+@Index(['farmerId', 'status'])
+@Index(['traderId', 'status'])
 export class TradeDeal {
   @PrimaryGeneratedColumn('uuid')
   @ApiProperty({
@@ -39,50 +43,7 @@ export class TradeDeal {
   })
   commodity: string;
 
-  @Column({ nullable: true })
-  @ApiProperty({
-    description: 'Human-friendly listing title',
-    example: 'Ogun State Cocoa Expansion',
-    required: false,
-    nullable: true,
-  })
-  title: string | null;
-
-  @Column({ name: 'short_description', type: 'text', nullable: true })
-  @ApiProperty({
-    description: 'Short summary of the deal',
-    required: false,
-    nullable: true,
-  })
-  shortDescription: string | null;
-
-  @Column({ name: 'long_description', type: 'text', nullable: true })
-  @ApiProperty({
-    description: 'Long-form story and impact description',
-    required: false,
-    nullable: true,
-  })
-  longDescription: string | null;
-
-  @Column({ nullable: true })
-  @ApiProperty({
-    description: 'Country where the farm is located',
-    required: false,
-    nullable: true,
-    example: 'Nigeria',
-  })
-  country: string | null;
-
-  @Column({ nullable: true })
-  @ApiProperty({
-    description: 'Region or state for the farm location',
-    required: false,
-    nullable: true,
-    example: 'Ogun',
-  })
-  region: string | null;
-
-  @Column({ type: 'decimal', precision: 18, scale: 2 })
+  @Column({ type: 'decimal', precision: 36, scale: 7 })
   @ApiProperty({
     description: 'Quantity of the commodity',
     example: '1000.00',
@@ -97,7 +58,7 @@ export class TradeDeal {
   })
   quantityUnit: string;
 
-  @Column({ name: 'total_value', type: 'decimal', precision: 18, scale: 2 })
+  @Column({ name: 'total_value', type: 'decimal', precision: 36, scale: 7 })
   @ApiProperty({
     description: 'Total deal value in USD',
     example: '50000.00',
@@ -145,10 +106,12 @@ export class TradeDeal {
   })
   tokenSymbol: string;
 
+  @Index()
   @Column({
     type: 'text',
     default: 'draft',
   })
+  @Index('IDX_trade_deals_status')
   @ApiProperty({
     description: 'Current deal status',
     enum: [
@@ -169,6 +132,7 @@ export class TradeDeal {
   @JoinColumn({ name: 'farmer_id' })
   farmer: User;
 
+  @Index()
   @Column({ name: 'farmer_id' })
   @ApiProperty({
     description: 'Farmer user UUID',
@@ -180,6 +144,7 @@ export class TradeDeal {
   @JoinColumn({ name: 'trader_id' })
   trader: User;
 
+  @Index()
   @Column({ name: 'trader_id' })
   @ApiProperty({
     description: 'Trader user UUID',
@@ -214,8 +179,8 @@ export class TradeDeal {
   @Column({
     name: 'total_invested',
     type: 'decimal',
-    precision: 18,
-    scale: 2,
+    precision: 36,
+    scale: 7,
     default: 0,
   })
   @ApiProperty({
@@ -312,6 +277,19 @@ export class TradeDeal {
   })
   createdAt: Date;
 
+  /**
+   * Soft-delete timestamp. When set, the record is considered deleted and
+   * TypeORM will automatically exclude it from standard queries.
+   * Use repository.softDelete() / restore() to manage this field.
+   */
+  @DeleteDateColumn({ name: 'deleted_at', nullable: true })
+  @ApiProperty({
+    description: 'Soft-delete timestamp; null means the deal is active',
+    nullable: true,
+    example: null,
+  })
+  deletedAt: Date | null;
+
   @Column({ name: 'app_trace_id', nullable: true })
   @ApiProperty({
     description: 'Application-generated trace ID for authorized updates',
@@ -320,4 +298,57 @@ export class TradeDeal {
     nullable: true,
   })
   appTraceId: string | null;
+
+  // #828 — Risk scoring
+  @Column({ name: 'risk_score', type: 'decimal', precision: 5, scale: 2, nullable: true })
+  @ApiProperty({
+    description: 'Composite risk score (0-100, higher = riskier)',
+    nullable: true,
+    example: 42.5,
+  })
+  riskScore: number | null;
+
+  @Column({ name: 'risk_rating', type: 'varchar', length: 16, nullable: true })
+  @ApiProperty({
+    description: 'Risk rating derived from risk_score',
+    enum: ['Low', 'Medium', 'High', 'Very High'],
+    nullable: true,
+    example: 'Medium',
+  })
+  riskRating: string | null;
+
+  @Column({ name: 'risk_breakdown', type: 'simple-json', nullable: true })
+  @ApiProperty({
+    description: 'Per-dimension risk score breakdown',
+    nullable: true,
+  })
+  riskBreakdown: Record<string, number> | null;
+
+  // #835 — Fractional investment lot sizing
+  @Column({
+    name: 'min_lot_size',
+    type: 'decimal',
+    precision: 36,
+    scale: 7,
+    default: 1,
+  })
+  @ApiProperty({
+    description: 'Minimum investment amount in USD for this deal',
+    example: 50,
+  })
+  minLotSize: number;
+
+  @Column({
+    name: 'lot_step',
+    type: 'decimal',
+    precision: 36,
+    scale: 7,
+    default: 1,
+  })
+  @ApiProperty({
+    description:
+      'Investment increment in USD above the minimum (amount - min_lot_size) must be a multiple of lot_step',
+    example: 10,
+  })
+  lotStep: number;
 }

@@ -6,193 +6,34 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { getOpenDeals, Deal } from '@/lib/api';
 import MarketplaceSkeleton from '@/components/marketplace/MarketplaceSkeleton';
 import Pagination from '@/components/ui/Pagination';
+import DealCard from '@/components/marketplace/DealCard';
 
 const LIMIT = 12;
 const SEARCH_DEBOUNCE_MS = 300;
-const SESSION_KEY = 'marketplace.filters.v1';
+const SKELETON_FALLBACK_COUNT = 6;
 
-const COMMODITIES = ['maize', 'wheat', 'coffee', 'cocoa', 'rice', 'soybean'];
-const DURATION_OPTIONS = ['<3 months', '3-6 months', '6-12 months', '>12 months'] as const;
+function parsePageParam(raw: string | null): number {
+  const parsed = raw ? Number.parseInt(raw, 10) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+}
+
 const SORT_OPTIONS = [
-  { value: 'newest', label: 'Newest' },
-  { value: 'highest_roi', label: 'Highest ROI' },
-  { value: 'closing_soon', label: 'Closing soon' },
-  { value: 'most_funded', label: 'Most funded' },
+  { value: 'created_at', label: 'Launch Date' },
+  { value: 'roi', label: 'Yield Rate' },
+  { value: 'total_value', label: 'Total Value' },
+  { value: 'progress', label: 'Progress' },
 ] as const;
-const STATUS_OPTIONS = ['open', 'almost funded', 'fully funded'] as const;
-const RISK_OPTIONS = ['Low', 'Medium', 'High'] as const;
-
-interface Filters {
-  q: string;
-  commodity: string[];
-  country: string;
-  region: string;
-  minAmount: number;
-  maxAmount: number;
-  minRoi: number;
-  maxRoi: number;
-  duration: string;
-  riskRating: string;
-  status: string;
-  sortBy: string;
-}
-
-const DEFAULT_FILTERS: Filters = {
-  q: '',
-  commodity: [],
-  country: '',
-  region: '',
-  minAmount: 0,
-  maxAmount: 5000,
-  minRoi: 0,
-  maxRoi: 100,
-  duration: '',
-  riskRating: '',
-  status: '',
-  sortBy: 'newest',
-};
-
-function parsePage(raw: string | null): number {
-  const page = Number.parseInt(raw ?? '1', 10);
-  return Number.isFinite(page) && page > 0 ? page : 1;
-}
-
-function parseFilters(params: URLSearchParams): Filters {
-  const commodity = params.get('commodity')?.split(',').map((item) => item.trim()).filter(Boolean) ?? [];
-  return {
-    q: params.get('q') ?? '',
-    commodity,
-    country: params.get('country') ?? '',
-    region: params.get('region') ?? '',
-    minAmount: Number(params.get('minAmount') ?? DEFAULT_FILTERS.minAmount),
-    maxAmount: Number(params.get('maxAmount') ?? DEFAULT_FILTERS.maxAmount),
-    minRoi: Number(params.get('minRoi') ?? DEFAULT_FILTERS.minRoi),
-    maxRoi: Number(params.get('maxRoi') ?? DEFAULT_FILTERS.maxRoi),
-    duration: params.get('duration') ?? '',
-    riskRating: params.get('riskRating') ?? '',
-    status: params.get('status') ?? '',
-    sortBy: params.get('sortBy') ?? 'newest',
-  };
-}
-
-function buildQuery(filters: Filters, page: number): string {
-  const params = new URLSearchParams();
-  if (filters.q) params.set('q', filters.q);
-  if (filters.commodity.length > 0) params.set('commodity', filters.commodity.join(','));
-  if (filters.country) params.set('country', filters.country);
-  if (filters.region) params.set('region', filters.region);
-  if (filters.minAmount > 0) params.set('minAmount', String(filters.minAmount));
-  if (filters.maxAmount < DEFAULT_FILTERS.maxAmount) params.set('maxAmount', String(filters.maxAmount));
-  if (filters.minRoi > 0) params.set('minRoi', String(filters.minRoi));
-  if (filters.maxRoi < DEFAULT_FILTERS.maxRoi) params.set('maxRoi', String(filters.maxRoi));
-  if (filters.duration) params.set('duration', filters.duration);
-  if (filters.riskRating) params.set('riskRating', filters.riskRating);
-  if (filters.status) params.set('status', filters.status);
-  if (filters.sortBy && filters.sortBy !== 'newest') params.set('sortBy', filters.sortBy);
-  if (page > 1) params.set('page', String(page));
-  return params.toString();
-}
-
-function highlight(text: string, query: string) {
-  if (!query.trim()) return text;
-  const needle = query.trim().toLowerCase();
-  const idx = text.toLowerCase().indexOf(needle);
-  if (idx === -1) return text;
-  return (
-    <>
-      {text.slice(0, idx)}
-      <mark className="rounded px-1 bg-amber-200 text-slate-900">{text.slice(idx, idx + needle.length)}</mark>
-      {text.slice(idx + needle.length)}
-    </>
-  );
-}
-
-function fundingLabel(status?: string | null) {
-  if (status === 'fully funded') return 'Fully Funded';
-  if (status === 'almost funded') return 'Almost Funded';
-  return 'Open';
-}
-
-function statusClass(status?: string | null) {
-  if (status === 'fully funded') return 'badge-blue';
-  if (status === 'almost funded') return 'badge-yellow';
-  return 'badge-green';
-}
-
-function DealCard({ deal, query }: { deal: Deal; query: string }) {
-  const pct = deal.total_value > 0 ? Math.min((Number(deal.total_invested) / Number(deal.total_value)) * 100, 100) : 0;
-  const tokensLeft = Math.max(0, Number(deal.token_count) - Math.floor(Number(deal.total_invested) / 100));
-  const daysLeft = Math.max(0, Math.ceil((new Date(deal.delivery_date).getTime() - Date.now()) / 86400000));
-  const title = deal.title || deal.commodity;
-  const summary = deal.short_description || `${deal.commodity} deal`;
-
-  return (
-    <Link href={`/marketplace/${deal.id}`} className="card-interactive flex flex-col overflow-hidden group">
-      <div className={`h-1.5 w-full ${pct >= 100 ? 'bg-gradient-to-r from-blue-400 to-indigo-500' : 'bg-gradient-to-r from-emerald-400 to-lime-500'}`} />
-      <div className="p-5 flex flex-col flex-1 gap-4">
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex-1 min-w-0">
-            <h3 className="font-bold text-slate-900 text-base truncate group-hover:text-emerald-700 transition-colors">
-              {highlight(title, query)}
-            </h3>
-            <p className="text-xs text-slate-400 font-mono mt-0.5">{deal.token_symbol}</p>
-          </div>
-          <span className={`${statusClass(deal.funding_status)} flex-shrink-0`}>
-            {fundingLabel(deal.funding_status)}
-          </span>
-        </div>
-
-        <p className="text-sm text-slate-600 line-clamp-3">
-          {highlight(summary, query)}
-        </p>
-
-        <div className="grid grid-cols-2 gap-3">
-          <Stat label="Country" value={deal.country || 'Global'} />
-          <Stat label="ROI" value={deal.expected_roi ? `${deal.expected_roi}%` : 'N/A'} />
-          <Stat label="Min. lot" value={`$${Number(deal.min_investment_lot ?? 0).toLocaleString()}`} />
-          <Stat label="Delivery" value={daysLeft > 0 ? `${daysLeft}d left` : 'Closing'} />
-        </div>
-
-        <div className="mt-auto space-y-1.5">
-          <div className="flex justify-between items-center text-xs">
-            <span className="text-slate-500 font-medium">${Number(deal.total_invested).toLocaleString()} raised</span>
-            <span className="font-bold text-emerald-600">{pct.toFixed(1)}%</span>
-          </div>
-          <div className="progress-track">
-            <div className={pct >= 100 ? 'progress-blue' : 'progress-green'} style={{ width: `${pct}%` }} />
-          </div>
-          <p className="text-[10px] text-slate-400">{tokensLeft.toLocaleString()} tokens remaining</p>
-        </div>
-      </div>
-
-      <div className="px-5 pb-5">
-        <div className="w-full py-2.5 rounded-xl bg-emerald-50 text-emerald-700 text-xs font-semibold text-center group-hover:bg-emerald-600 group-hover:text-white transition-all duration-200">
-          View Deal →
-        </div>
-      </div>
-    </Link>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="bg-slate-50 rounded-xl p-3">
-      <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide">{label}</p>
-      <p className="font-bold text-slate-900 text-sm mt-0.5">{value}</p>
-    </div>
-  );
-}
 
 function MarketplaceContent() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const initialPage = parsePage(searchParams.get('page'));
-  const initialFilters = useMemo(() => parseFilters(searchParams), [searchParams]);
-  const [page, setPage] = useState(initialPage);
-  const [filters, setFilters] = useState<Filters>(initialFilters);
-  const [searchInput, setSearchInput] = useState(initialFilters.q);
+  const urlPage = parsePageParam(searchParams.get('page'));
+  const urlSearch = searchParams.get('q') ?? '';
+  const urlSortBy = searchParams.get('sortBy') ?? 'created_at';
+  const urlSortOrder = (searchParams.get('sortOrder') ?? 'DESC') as 'ASC' | 'DESC';
+
   const [deals, setDeals] = useState<Deal[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -240,32 +81,15 @@ function MarketplaceContent() {
   useEffect(() => {
     let active = true;
     setLoading(true);
-    const params = {
-      commodity: filters.commodity.length > 0 ? filters.commodity.join(',') : undefined,
-      country: filters.country || undefined,
-      minAmount: filters.minAmount > 0 ? filters.minAmount : undefined,
-      maxAmount: filters.maxAmount < DEFAULT_FILTERS.maxAmount ? filters.maxAmount : undefined,
-      minRoi: filters.minRoi > 0 ? filters.minRoi : undefined,
-      maxRoi: filters.maxRoi < DEFAULT_FILTERS.maxRoi ? filters.maxRoi : undefined,
-      duration: filters.duration || undefined,
-      riskRating: filters.riskRating || undefined,
-      status: filters.status || undefined,
-      sortBy: filters.sortBy || undefined,
-      q: filters.q || undefined,
-    };
-
-    getOpenDeals(page, LIMIT, params)
+    getOpenDeals(urlPage, LIMIT, urlSortBy, urlSortOrder)
       .then((res) => {
         if (!active) return;
         setDeals(res.data);
         setTotal(res.total);
       })
-      .catch(() => {
-        if (active) setDeals([]);
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
+      .catch(() => setDeals([]))
+      .finally(() => setLoading(false));
+  }, [urlPage, urlSortBy, urlSortOrder]);
 
     return () => {
       active = false;
@@ -314,6 +138,21 @@ function MarketplaceContent() {
     setPage(1);
   };
 
+  const handleSortChange = (sortBy: string) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('sortBy', sortBy);
+    const query = params.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  };
+
+  const toggleSortOrder = () => {
+    const newOrder = urlSortOrder === 'ASC' ? 'DESC' : 'ASC';
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('sortOrder', newOrder);
+    const query = params.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  };
+
   return (
     <div className="min-h-screen bg-slate-50">
       <nav className="glass sticky top-0 z-20 border-b border-slate-100">
@@ -353,12 +192,51 @@ function MarketplaceContent() {
               aria-label="Search deals"
             />
           </div>
-          <button className="btn-secondary lg:hidden" onClick={() => setFiltersOpen((current) => !current)}>
-            {filtersOpen ? 'Hide filters' : 'Show filters'}
+          
+          {/* Sort dropdown */}
+          <div className="relative">
+            <select
+              className="input pr-8 appearance-none cursor-pointer"
+              value={urlSortBy}
+              onChange={(e) => handleSortChange(e.target.value)}
+              aria-label="Sort deals by"
+            >
+              {SORT_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </span>
+          </div>
+
+          {/* Sort order toggle */}
+          <button
+            onClick={toggleSortOrder}
+            className="btn-secondary text-sm px-4 flex items-center gap-2"
+            aria-label={`Sort ${urlSortOrder === 'ASC' ? 'ascending' : 'descending'}`}
+          >
+            {urlSortOrder === 'ASC' ? (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 4h13M3 8h9m-9 4h9m5-4v12m0 0l-4-4m4 4l4-4" />
+              </svg>
+            )}
+            {urlSortOrder}
           </button>
-          <button className="btn-secondary hidden lg:inline-flex" onClick={clearAll}>
-            Clear all filters
-          </button>
+
+          {searchInput && (
+            <button onClick={clearSearch} className="btn-secondary text-sm px-4">
+              Clear ×
+            </button>
+          )}
         </div>
 
         <div className="grid gap-6 lg:grid-cols-[320px_1fr]">

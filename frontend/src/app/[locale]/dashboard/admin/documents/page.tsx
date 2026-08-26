@@ -170,7 +170,7 @@ export default function AdminDocumentsPage() {
         </div>
 
         {loading ? (
-          <div className="grid lg:grid-cols-[340px_1fr] gap-5">
+          <div className="grid md:grid-cols-1 lg:grid-cols-[340px_1fr] gap-5">
             <div className="card h-96 skeleton" />
             <div className="card h-96 skeleton" />
           </div>

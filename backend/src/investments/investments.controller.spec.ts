@@ -8,6 +8,10 @@ import { InvestmentsService } from './investments.service';
 import { StellarService } from '../stellar/stellar.service';
 import { CreateInvestmentDto } from './dto/create-investment.dto';
 
+import { getRepositoryToken } from '@nestjs/typeorm';
+import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
+import { Investment } from './entities/investment.entity';
+
 const mockInvestmentsService = {
   createInvestment: jest.fn(),
   confirmInvestment: jest.fn(),
@@ -30,6 +34,8 @@ describe('InvestmentsController', () => {
       providers: [
         { provide: InvestmentsService, useValue: mockInvestmentsService },
         { provide: StellarService, useValue: mockStellarService },
+        { provide: getRepositoryToken(TradeDeal), useValue: {} },
+        { provide: getRepositoryToken(Investment), useValue: {} },
         { provide: APP_GUARD, useClass: ThrottlerGuard },
       ],
     }).compile();

@@ -147,6 +147,18 @@
     }
   },
   "deals": {
+    "coFarmers": {
+      "title": "Wakulima Wenza",
+      "description": "Karibisha wakulima wengine kwenye biashara hii — kila mkulima mwenza anawajibu wa sehemu yake ya usambazaji na anapokea sehemu hiyo ya malipo.",
+      "emailLabel": "Barua pepe ya mkulima mwenza",
+      "portionLabel": "Sehemu (%)",
+      "add": "Ongeza mkulima mwenza",
+      "remove": "Ondoa",
+      "invalidEmail": "Weka barua pepe sahihi.",
+      "invalidPortion": "Sehemu lazima iwe kati ya 0 na 100.",
+      "totalTooHigh": "Jumla ya sehemu haiwezi kuzidi asilimia 100.",
+      "inviteFailed": "Biashara imeundwa, lakini baadhi ya mialiko haikutumwa."
+    },
     "createTitle": "Unda Mkataba Mpya wa Biashara",
     "draftRestored": "Rasimu imerejeshwa kutoka {time}",
     "wizardBadge": "Msaidizi wa orodha",
@@ -294,11 +306,70 @@
     "error": "Kosa",
     "success": "Mafanikio",
     "processing": "Inashughulikia...",
-    "dismiss": "Funga"
+    "dismiss": "Funga",
+    "network": {
+      "offline": {
+        "title": "Uko nje ya mtandao.",
+        "description": "Vitendo vinavyohitaji mtandao vimezimwa mpaka muunganisho urudishwe."
+      }
+    }
+  },
+  "referrals": {
+    "title": "Programu ya Rufaa",
+    "description": "Shiriki kiungo chako cha rufaa na uongeze zawodi watumiaji waliorudishwa wanapofanya uwekezaji wao wa kwanza.",
+    "yourLink": "Kiungo Chako cha Rufaa",
+    "copy": "Nakili",
+    "copied": "Imenakiliwa!",
+    "whatsapp": "WhatsApp",
+    "twitter": "Twitter",
+    "referredUsers": "Watumiaji Waliorudishwa",
+    "noReferrals": "Hakuna rufaa bado",
+    "shareToStart": "Shiriki kiungo chako kuanza kupata zawodi!",
+    "linkClicks": "Mibofyo ya Kiungo",
+    "registered": "Walioidhinishwa",
+    "rewarded": "Waliozawadiwa",
+    "totalEarned": "Jumla Iliyopatikana",
+    "user": "Mtumiaji",
+    "status": "Hali",
+    "reward": "Zawodi",
+    "date": "Tarehe"
   },
   "format": {
     "currency": "{value, number, currency}",
     "date": "{value, date, short}",
     "number": "{value, number}"
+  },
+  "tour": {
+    "welcome": {
+      "title": "Karibu Agri-Fi",
+      "text": "Hii ndio ziara ya haraka itakayokutambulisha na vipengele muhimu vya jukwaa. Unaweza kuanzisha upya ziara hii wakati wowote kutoka kwa Mipangilio."
+    },
+    "browseDeals": {
+      "title": "Vinjari Mikataba",
+      "text": "Tafuta fursa za uwekezaji katika mikataba ya biashara ya kilimo. Chuja kwa zao, hali, na zaidi."
+    },
+    "connectWallet": {
+      "title": "Unganisha Mfoldi Yako",
+      "text": "Unganisha mfoldi yako ya Stellar ili kuwekeza katika mikataba na kufuatilia portfolio yako kwenye mtandao."
+    },
+    "portfolioStats": {
+      "title": "Takwimu za Portfolio",
+      "text": "Fuatilia uwekezaji wako, faida, na utendaji wa mikataba kwa mtazamo mmoja."
+    },
+    "notificationBell": {
+      "title": "Kaa Umefahamishwa",
+      "text": "Pata arifa za wakati halisi kuhusu mikataba yako, uwekezaji, na masasisho ya jukwaa."
+    },
+    "complete": {
+      "title": "Uko Tayari!",
+      "text": "Uko tayari kuanza kuchunguza Agri-Fi. Furahia uwekezaji!"
+    },
+    "buttons": {
+      "next": "Ifuatayo",
+      "back": "Rudi",
+      "skip": "Ruka Ziara",
+      "finish": "Anza"
+    },
+    "restart": "Anza Upya Ziara"
   }
 }

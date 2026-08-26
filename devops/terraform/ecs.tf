@@ -84,6 +84,10 @@ resource "aws_ecs_task_definition" "backend" {
           value = var.db_name
         },
         {
+          name  = "DATABASE_REPLICA_HOST"
+          value = aws_db_instance.postgres_replica.address
+        },
+        {
           name  = "STELLAR_NETWORK"
           value = "testnet"
         },

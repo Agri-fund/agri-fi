@@ -147,6 +147,18 @@
     }
   },
   "deals": {
+    "coFarmers": {
+      "title": "Co-agriculteurs",
+      "description": "Invitez d'autres agriculteurs sur cette offre : chaque co-agriculteur est responsable de sa part de la livraison et reçoit cette part du paiement.",
+      "emailLabel": "E-mail du co-agriculteur",
+      "portionLabel": "Part (%)",
+      "add": "Ajouter un co-agriculteur",
+      "remove": "Retirer",
+      "invalidEmail": "Saisissez une adresse e-mail valide.",
+      "invalidPortion": "La part doit être comprise entre 0 et 100.",
+      "totalTooHigh": "Le total des parts ne peut pas dépasser 100 %.",
+      "inviteFailed": "L'offre a été créée, mais certaines invitations n'ont pas pu être envoyées."
+    },
     "createTitle": "Créer un nouveau contrat commercial",
     "draftRestored": "Brouillon restauré depuis {time}",
     "wizardBadge": "Assistant de création d'offre",
@@ -294,11 +306,70 @@
     "error": "Erreur",
     "success": "Succès",
     "processing": "Traitement...",
-    "dismiss": "Ignorer"
+    "dismiss": "Ignorer",
+    "network": {
+      "offline": {
+        "title": "Vous êtes hors ligne.",
+        "description": "Les actions nécessitant un accès à Internet sont désactivées jusqu'au rétablissement de la connexion."
+      }
+    }
+  },
+  "referrals": {
+    "title": "Programme de parrainage",
+    "description": "Partagez votre lien de parrainage et gagnez des récompenses lorsque les utilisateurs parrainés effectuent leur premier investissement.",
+    "yourLink": "Votre lien de parrainage",
+    "copy": "Copier",
+    "copied": "Copié !",
+    "whatsapp": "WhatsApp",
+    "twitter": "Twitter",
+    "referredUsers": "Utilisateurs parrainés",
+    "noReferrals": "Pas encore de parrainages",
+    "shareToStart": "Partagez votre lien pour commencer à gagner des récompenses !",
+    "linkClicks": "Clics sur le lien",
+    "registered": "Inscrits",
+    "rewarded": "Récompensés",
+    "totalEarned": "Total gagné",
+    "user": "Utilisateur",
+    "status": "Statut",
+    "reward": "Récompense",
+    "date": "Date"
   },
   "format": {
     "currency": "{value, number, currency}",
     "date": "{value, date, short}",
     "number": "{value, number}"
+  },
+  "tour": {
+    "welcome": {
+      "title": "Bienvenue sur Agri-Fi",
+      "text": "Cette visite rapide vous présentera les principales fonctionnalités de la plateforme. Vous pouvez redémarrer cette visite à tout moment depuis les paramètres."
+    },
+    "browseDeals": {
+      "title": "Parcourir les Offres",
+      "text": "Trouvez des opportunités d'investissement dans les transactions commerciales agricoles. Filtrez par produit, statut et plus encore."
+    },
+    "connectWallet": {
+      "title": "Connectez votre Portefeuille",
+      "text": "Connectez votre portefeuille Stellar pour investir dans les offres et suivre votre portefeuille sur la chaîne."
+    },
+    "portfolioStats": {
+      "title": "Statistiques du Portefeuille",
+      "text": "Suivez vos investissements, rendements et la performance des offres en un coup d'œil."
+    },
+    "notificationBell": {
+      "title": "Restez Informé",
+      "text": "Recevez des notifications en temps réel sur vos offres, investissements et mises à jour de la plateforme."
+    },
+    "complete": {
+      "title": "Vous êtes Prêt !",
+      "text": "Vous êtes prêt à explorer Agri-Fi. Bon investissement !"
+    },
+    "buttons": {
+      "next": "Suivant",
+      "back": "Retour",
+      "skip": "Passer la Visite",
+      "finish": "Commencer"
+    },
+    "restart": "Redémarrer la Visite"
   }
 }

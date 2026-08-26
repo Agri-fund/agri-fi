@@ -9,6 +9,8 @@ import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt.strategy';
 import { User } from './entities/user.entity';
 import { KycSubmission } from './entities/kyc-submission.entity';
+import { ReferralCode } from './entities/referral-code.entity';
+import { Referral } from './entities/referral.entity';
 import { KycGuard } from './kyc.guard';
 import { RolesGuard } from './roles.guard';
 import { QueueModule } from '../queue/queue.module';
@@ -18,7 +20,14 @@ import { Document } from '../trade-deals/entities/document.entity';
 import { OfacSanctionsCheckService } from './utils/ofac-sanctions-check';
 import { LoginLog } from '../database/entities/login-log.entity';
 import { AdminAction } from '../database/entities/admin-action.entity';
+import { SecurityIpBlock } from '../database/entities/security-ip-block.entity';
 import { KycCronService } from './kyc-cron.service';
+import { RedisConfig } from '../config/redis.config';
+import { TokenBlocklistService } from './token-blocklist.service';
+import { SecurityThreatService } from './security-threat.service';
+import { MfaGuard } from './guards/mfa.guard';
+import { EscrowModule } from '../escrow/escrow.module';
+import { EmailSequenceModule } from '../email-sequence/email-sequence.module';
 
 @Module({
   imports: [
@@ -29,10 +38,13 @@ import { KycCronService } from './kyc-cron.service';
       Document,
       LoginLog,
       AdminAction,
+      SecurityIpBlock,
     ]),
     QueueModule,
     NotificationsModule,
     PassportModule,
+    EscrowModule,
+    EmailSequenceModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -48,9 +60,24 @@ import { KycCronService } from './kyc-cron.service';
     JwtStrategy,
     KycGuard,
     RolesGuard,
+    MfaGuard,
+    RedisConfig,
+    TokenBlocklistService,
+    SecurityThreatService,
     OfacSanctionsCheckService,
     KycCronService,
   ],
-  exports: [AuthService, JwtModule, TypeOrmModule, KycGuard, RolesGuard],
+  exports: [
+    AuthService,
+    JwtModule,
+    TypeOrmModule,
+    KycGuard,
+    RolesGuard,
+    MfaGuard,
+    RedisConfig,
+    TokenBlocklistService,
+    SecurityThreatService,
+    OfacSanctionsCheckService,
+  ],
 })
 export class AuthModule {}

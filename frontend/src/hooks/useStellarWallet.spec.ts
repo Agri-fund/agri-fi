@@ -739,4 +739,203 @@ describe("useStellarWallet", () => {
       expect(result.current.error).toBeNull();
     });
   });
+
+  // ── Graceful disconnect / polling behaviour ──────────────────────────────
+  describe("Graceful Disconnect — disconnectReason & onDisconnect callback", () => {
+    const baseConnected = {
+      isConnected: true,
+      isLoading: false,
+      publicKey: mockPublicKey,
+      availableWallets: ["freighter"],
+      error: null,
+      disconnectReason: null as null | "user" | "external" | "account_changed",
+      connect: jest.fn(),
+      disconnect: jest.fn(),
+      signTransaction: jest.fn(),
+    };
+
+    const baseDisconnected = {
+      isConnected: false,
+      isLoading: false,
+      publicKey: null,
+      availableWallets: ["freighter"],
+      error: null,
+      disconnectReason: null as null | "user" | "external" | "account_changed",
+      connect: jest.fn(),
+      disconnect: jest.fn(),
+      signTransaction: jest.fn(),
+    };
+
+    it("exposes disconnectReason from the underlying useWallet hook", () => {
+      mockUseWallet.mockReturnValue({
+        ...baseDisconnected,
+        disconnectReason: "external",
+      });
+
+      const { result } = renderHook(() => useStellarWallet());
+
+      expect(result.current.disconnectReason).toBe("external");
+    });
+
+    it("reports disconnectReason as null when connected", () => {
+      mockUseWallet.mockReturnValue({ ...baseConnected, disconnectReason: null });
+
+      const { result } = renderHook(() => useStellarWallet());
+
+      expect(result.current.disconnectReason).toBeNull();
+      expect(result.current.status).toBe("connected");
+    });
+
+    it("fires onDisconnect callback when reason transitions to 'external'", () => {
+      const onDisconnect = jest.fn();
+
+      // Start connected (no reason)
+      mockUseWallet.mockReturnValue({ ...baseConnected, disconnectReason: null });
+      const { rerender } = renderHook(() =>
+        useStellarWallet({ onDisconnect }),
+      );
+
+      expect(onDisconnect).not.toHaveBeenCalled();
+
+      // Simulate external disconnect detected by the poll
+      mockUseWallet.mockReturnValue({
+        ...baseDisconnected,
+        disconnectReason: "external",
+      });
+      rerender();
+
+      expect(onDisconnect).toHaveBeenCalledTimes(1);
+      expect(onDisconnect).toHaveBeenCalledWith("external");
+    });
+
+    it("fires onDisconnect callback when reason transitions to 'account_changed'", () => {
+      const onDisconnect = jest.fn();
+
+      mockUseWallet.mockReturnValue({ ...baseConnected, disconnectReason: null });
+      const { rerender } = renderHook(() =>
+        useStellarWallet({ onDisconnect }),
+      );
+
+      mockUseWallet.mockReturnValue({
+        ...baseDisconnected,
+        disconnectReason: "account_changed",
+      });
+      rerender();
+
+      expect(onDisconnect).toHaveBeenCalledTimes(1);
+      expect(onDisconnect).toHaveBeenCalledWith("account_changed");
+    });
+
+    it("does NOT fire onDisconnect for a user-initiated disconnect (reason='user')", () => {
+      const onDisconnect = jest.fn();
+
+      mockUseWallet.mockReturnValue({ ...baseConnected, disconnectReason: null });
+      const { rerender } = renderHook(() =>
+        useStellarWallet({ onDisconnect }),
+      );
+
+      mockUseWallet.mockReturnValue({
+        ...baseDisconnected,
+        disconnectReason: "user",
+      });
+      rerender();
+
+      // 'user' reason must NOT trigger the callback — the user deliberately clicked Disconnect
+      expect(onDisconnect).not.toHaveBeenCalled();
+    });
+
+    it("does NOT fire onDisconnect twice for the same reason value", () => {
+      const onDisconnect = jest.fn();
+
+      mockUseWallet.mockReturnValue({ ...baseConnected, disconnectReason: null });
+      const { rerender } = renderHook(() =>
+        useStellarWallet({ onDisconnect }),
+      );
+
+      // Transition to external
+      mockUseWallet.mockReturnValue({
+        ...baseDisconnected,
+        disconnectReason: "external",
+      });
+      rerender();
+
+      // Re-render without changing reason — callback must NOT fire again
+      rerender();
+      rerender();
+
+      expect(onDisconnect).toHaveBeenCalledTimes(1);
+    });
+
+    it("does NOT fire onDisconnect when there is no callback (safe default)", () => {
+      mockUseWallet.mockReturnValue({ ...baseConnected, disconnectReason: null });
+      const { rerender } = renderHook(() => useStellarWallet());
+
+      // Should not throw even without a callback
+      expect(() => {
+        mockUseWallet.mockReturnValue({
+          ...baseDisconnected,
+          disconnectReason: "external",
+        });
+        rerender();
+      }).not.toThrow();
+    });
+
+    it("resets disconnectReason to null after a fresh connect", () => {
+      const onDisconnect = jest.fn();
+
+      // External disconnect
+      mockUseWallet.mockReturnValue({
+        ...baseDisconnected,
+        disconnectReason: "external",
+      });
+      const { result, rerender } = renderHook(() =>
+        useStellarWallet({ onDisconnect }),
+      );
+
+      expect(result.current.disconnectReason).toBe("external");
+
+      // User reconnects — reason is reset
+      mockUseWallet.mockReturnValue({
+        ...baseConnected,
+        disconnectReason: null,
+      });
+      rerender();
+
+      expect(result.current.disconnectReason).toBeNull();
+      expect(result.current.status).toBe("connected");
+    });
+
+    it("fires onDisconnect again if a second external disconnect follows a reconnect", () => {
+      const onDisconnect = jest.fn();
+
+      mockUseWallet.mockReturnValue({ ...baseConnected, disconnectReason: null });
+      const { rerender } = renderHook(() =>
+        useStellarWallet({ onDisconnect }),
+      );
+
+      // First external disconnect
+      mockUseWallet.mockReturnValue({
+        ...baseDisconnected,
+        disconnectReason: "external",
+      });
+      rerender();
+      expect(onDisconnect).toHaveBeenCalledTimes(1);
+
+      // Reconnect
+      mockUseWallet.mockReturnValue({
+        ...baseConnected,
+        disconnectReason: null,
+      });
+      rerender();
+
+      // Second external disconnect
+      mockUseWallet.mockReturnValue({
+        ...baseDisconnected,
+        disconnectReason: "external",
+      });
+      rerender();
+
+      expect(onDisconnect).toHaveBeenCalledTimes(2);
+    });
+  });
 });

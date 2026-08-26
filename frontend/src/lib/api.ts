@@ -1,4 +1,5 @@
-const API_BASE = "http://localhost:3001"; // Use relative URLs to hit Next.js API proxy routes
+const API_BASE = "http://localhost:3001";
+const API_VERSION = "/v1";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -10,6 +11,7 @@ export interface User {
   kycStatus?: string;
   walletAddress?: string | null;
   isCompany?: boolean;
+  preferredCurrency?: string;
   companyDetails?: {
     companyName?: string;
     registrationNumber?: string;
@@ -73,6 +75,7 @@ export interface Deal {
   created_at: string;
   documents?: Document[];
   milestones?: Milestone[];
+  cover_image_url?: string | null;
 }
 
 export type TradeDeal = Deal;
@@ -189,18 +192,11 @@ function normalizeDeal(raw: any): Deal {
     status: raw.status ?? "draft",
     delivery_date: raw.delivery_date ?? raw.deliveryDate ?? "",
     annual_roi: raw.annual_roi ?? raw.annualRoi ?? 0.15, // Default 15%
-    term_days: raw.term_days ?? raw.termDays ?? 90,     // Default 90 days
-    expected_roi: raw.expected_roi ?? raw.expectedRoi ?? null,
-    duration_days: raw.duration_days ?? raw.durationDays ?? null,
-    min_investment_lot: raw.min_investment_lot ?? raw.minInvestmentLot ?? null,
-    risk_rating: raw.risk_rating ?? raw.riskRating ?? null,
-    short_description: raw.short_description ?? raw.shortDescription ?? null,
-    long_description: raw.long_description ?? raw.longDescription ?? null,
-    farm_location: raw.farm_location ?? raw.farmLocation ?? null,
-    funding_status: raw.funding_status ?? raw.fundingStatus ?? null,
+    term_days: raw.term_days ?? raw.termDays ?? 90, // Default 90 days
     created_at: raw.created_at ?? raw.createdAt ?? "",
     documents: raw.documents,
     milestones: raw.milestones,
+    cover_image_url: raw.cover_image_url ?? raw.coverImageUrl ?? null,
   };
 }
 
@@ -217,7 +213,10 @@ function authHeaders(): Record<string, string> {
 }
 
 async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const versionedPath = path.startsWith('/v1') || path.startsWith('/v2')
+    ? path
+    : `${API_VERSION}${path}`;
+  const res = await fetch(`${API_BASE}${versionedPath}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
@@ -301,7 +300,7 @@ export const apiClient = {
   async createDeal(data: {
     commodity: string;
     quantity: number;
-    quantity_unit: 'kg' | 'tons';
+    quantity_unit: "kg" | "tons";
     total_value: number;
     delivery_date: string;
   }): Promise<Deal> {
@@ -386,17 +385,22 @@ export interface PaginatedDeals {
 export async function getOpenDeals(
   page = 1,
   limit = 12,
-  params: Record<string, string | number | undefined> = {},
+  sortBy?: string,
+  sortOrder?: "ASC" | "DESC",
 ): Promise<PaginatedDeals> {
-  const query = new URLSearchParams({ page: String(page), limit: String(limit) });
-  Object.entries(params).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && `${value}`.length > 0) {
-      query.set(key, String(value));
-    }
-  });
-  const raw = await apiFetch<{ data: any[]; total: number; page: number; limit: number }>(
-    `/trade-deals?${query.toString()}`,
-  );
+  let url = `/trade-deals?page=${page}&limit=${limit}`;
+  if (sortBy) {
+    url += `&sortBy=${sortBy}`;
+  }
+  if (sortOrder) {
+    url += `&sortOrder=${sortOrder}`;
+  }
+  const raw = await apiFetch<{
+    data: any[];
+    total: number;
+    page: number;
+    limit: number;
+  }>(url);
   return {
     data: raw.data.map(normalizeDeal),
     total: raw.total,

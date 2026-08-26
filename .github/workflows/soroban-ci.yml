@@ -1,0 +1,169 @@
+name: Soroban CI — WASM Build & TypeScript Bindings
+
+# Triggers:
+#  • Any push that touches a contract source file or its Cargo manifests.
+#  • Any PR that touches the same paths, or this workflow file itself.
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'blockchain/**'
+      - '.github/workflows/soroban-ci.yml'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'blockchain/**'
+      - '.github/workflows/soroban-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-bind:
+    name: Compile contracts & generate TypeScript bindings
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── Checkout ─────────────────────────────────────────────────────────────
+      - uses: actions/checkout@v4
+
+      # ── Rust toolchain ────────────────────────────────────────────────────────
+      # Pin to the stable channel used by Soroban contracts. The wasm32 target
+      # must be added explicitly; it is not included in the default toolchain.
+      - name: Install Rust stable + wasm32 target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      # Cache Cargo registry and compiled artifacts to speed up subsequent runs.
+      - name: Cache Cargo registry & build artefacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            blockchain/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('blockchain/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      # ── Stellar CLI ───────────────────────────────────────────────────────────
+      # Install the Stellar CLI (which ships the `stellar contract bindings`
+      # sub-command formerly known as `soroban contract bindings typescript`).
+      - name: Install Stellar CLI
+        run: cargo install --locked stellar-cli --features opt
+        env:
+          CARGO_NET_RETRY: "5"
+
+      # ── Node.js (for post-binding steps) ─────────────────────────────────────
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      # ── Compile all contracts ─────────────────────────────────────────────────
+      # Fail the pipeline on any compilation error, satisfying the acceptance
+      # criterion "Build pipeline fails if compilation errors occur."
+      - name: Build all Soroban contracts (WASM)
+        run: cargo build --release --target wasm32-unknown-unknown --verbose
+        working-directory: blockchain
+
+      # ── Verify artefacts ──────────────────────────────────────────────────────
+      - name: Verify WASM artefacts exist
+        run: |
+          echo "── WASM artefacts ──"
+          ls -lh target/wasm32-unknown-unknown/release/*.wasm
+          echo "── Sizes ──"
+          du -sh target/wasm32-unknown-unknown/release/*.wasm
+        working-directory: blockchain
+
+      # ── Run contract unit tests ───────────────────────────────────────────────
+      - name: Run Soroban contract tests
+        run: cargo test --verbose --all
+        working-directory: blockchain
+
+      # ── Lint (Clippy) ─────────────────────────────────────────────────────────
+      - name: Clippy — deny warnings
+        run: cargo clippy --target wasm32-unknown-unknown -- -D warnings
+        working-directory: blockchain
+
+      # ── Generate TypeScript bindings ──────────────────────────────────────────
+      # The `stellar contract bindings typescript` command generates a
+      # fully-typed SDK for each contract. Bindings are written to
+      # frontend/src/lib/contracts/<contract-name>/ so the frontend can import
+      # them without any manual copy step.
+      - name: Generate TypeScript bindings for all contracts
+        run: |
+          set -euo pipefail
+          CONTRACTS=(
+            escrow
+            farm_campaign
+            farm_campaign_settlement
+            marketplace_settlement
+            project_factory
+            revenue_distributor
+          )
+          for contract in "${CONTRACTS[@]}"; do
+            WASM="blockchain/target/wasm32-unknown-unknown/release/${contract}.wasm"
+            OUT_DIR="frontend/src/lib/contracts/${contract}"
+            if [ ! -f "$WASM" ]; then
+              echo "::error::WASM file not found for contract '${contract}': ${WASM}"
+              exit 1
+            fi
+            echo "Generating bindings for ${contract} → ${OUT_DIR}"
+            mkdir -p "${OUT_DIR}"
+            stellar contract bindings typescript \
+              --wasm "${WASM}" \
+              --contract-id "placeholder-${contract}" \
+              --output-dir "${OUT_DIR}" \
+              --overwrite
+          done
+          echo "✓ TypeScript bindings generated for all contracts."
+
+      # ── Verify generated files ────────────────────────────────────────────────
+      - name: Verify TypeScript binding files exist
+        run: |
+          set -euo pipefail
+          CONTRACTS=(
+            escrow
+            farm_campaign
+            farm_campaign_settlement
+            marketplace_settlement
+            project_factory
+            revenue_distributor
+          )
+          all_ok=true
+          for contract in "${CONTRACTS[@]}"; do
+            dir="frontend/src/lib/contracts/${contract}"
+            if [ -d "${dir}" ] && [ "$(ls -A ${dir})" ]; then
+              echo "✓ ${contract}: bindings present"
+            else
+              echo "✗ ${contract}: binding directory missing or empty"
+              all_ok=false
+            fi
+          done
+          if [ "$all_ok" = false ]; then
+            echo "::error::One or more contracts failed to generate TypeScript bindings."
+            exit 1
+          fi
+
+      # ── Upload WASM artefacts ──────────────────────────────────────────────────
+      - name: Upload WASM artefacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: soroban-wasm-${{ github.sha }}
+          path: blockchain/target/wasm32-unknown-unknown/release/*.wasm
+          retention-days: 30
+
+      # ── Upload TypeScript bindings ─────────────────────────────────────────────
+      - name: Upload TypeScript binding artefacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: soroban-ts-bindings-${{ github.sha }}
+          path: frontend/src/lib/contracts/
+          retention-days: 30

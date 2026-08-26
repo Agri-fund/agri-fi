@@ -9,12 +9,16 @@ import {
   Query,
   NotFoundException,
   BadRequestException,
+  Version,
+  ParseIntPipe,
+  DefaultValuePipe,
 } from '@nestjs/common';
 import {
   ApiTags,
   ApiOperation,
   ApiResponse,
   ApiBearerAuth,
+  ApiQuery,
 } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from './auth.service';
@@ -36,6 +40,8 @@ import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
 import { Document } from '../trade-deals/entities/document.entity';
 import { StellarService } from '../stellar/stellar.service';
 import { AdminAction } from '../database/entities/admin-action.entity';
+import { FailedPaymentsService } from '../escrow/failed-payments.service';
+import { SecurityThreatService } from './security-threat.service';
 
 class UpdateUserRoleDto {
   @IsIn(['farmer', 'trader', 'investor', 'company_admin', 'admin'])
@@ -67,6 +73,7 @@ interface AuthRequest extends Request {
 }
 
 @ApiTags('admin')
+@Version('1')
 @Controller('admin')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 @Roles('admin')
@@ -75,6 +82,8 @@ export class AdminController {
   constructor(
     private readonly authService: AuthService,
     private readonly stellarService: StellarService,
+    private readonly failedPaymentsService: FailedPaymentsService,
+    private readonly securityThreat: SecurityThreatService,
     @InjectRepository(TradeDeal)
     private readonly tradeDealRepo: Repository<TradeDeal>,
     @InjectRepository(Document)
@@ -269,5 +278,99 @@ export class AdminController {
     );
 
     return { txId };
+  }
+
+  // ── Failed Payment Alerts ─────────────────────────────────────────────────
+
+  /**
+   * GET /admin/payments/failed
+   *
+   * Returns a paginated list of escrow transactions that have status='failed',
+   * ordered by creation date descending. Each entry includes the deal commodity
+   * and error code so admins can quickly triage issues.
+   */
+  @Get('payments/failed')
+  @ApiOperation({
+    summary: 'List failed escrow payment transactions for admin review',
+  })
+  @ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number (default 1)' })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Items per page (default 20, max 100)' })
+  @ApiResponse({ status: 200, description: 'Paginated list of failed payments' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
+  async getFailedPayments(
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+  ) {
+    return this.failedPaymentsService.getFailedPayments(page, limit);
+  }
+
+  /**
+   * POST /admin/payments/failed/:id/retry
+   *
+   * Manually re-enqueues the `deal.delivered` event for the deal associated
+   * with the failed transaction, allowing the escrow release to be retried.
+   *
+   * Acceptance criterion: "Admins can trigger manual retries directly from the UI."
+   */
+  @Post('payments/failed/:id/retry')
+  @ApiOperation({
+    summary: 'Trigger a manual retry for a failed escrow payment',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Retry event enqueued',
+    schema: { properties: { queued: { type: 'boolean' }, dealId: { type: 'string' } } },
+  })
+  @ApiResponse({ status: 400, description: 'Transaction not in failed state or has no deal' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
+  @ApiResponse({ status: 404, description: 'Transaction log not found' })
+  async retryFailedPayment(@Param('id') id: string) {
+    return this.failedPaymentsService.retryFailedPayment(id);
+  }
+
+  // ── Security blocks (#898) ────────────────────────────────────────────────
+
+  @Get('security/blocks')
+  @ApiOperation({
+    summary: 'List credential-stuffing enforcement blocks (CAPTCHA, rate limits, subnets)',
+  })
+  @ApiResponse({ status: 200, description: 'List of security blocks' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
+  async listSecurityBlocks() {
+    return this.securityThreat.listBlocks();
+  }
+
+  @Post('security/blocks/:id/approve')
+  @ApiOperation({
+    summary: 'Approve a pending /16 subnet block proposed by detection',
+  })
+  @ApiResponse({ status: 200, description: 'Subnet block approved and enforced' })
+  @ApiResponse({ status: 400, description: 'Block is not a pending subnet block' })
+  @ApiResponse({ status: 404, description: 'Block not found' })
+  async approveSecurityBlock(
+    @Request() req: AuthRequest,
+    @Param('id') id: string,
+  ) {
+    const block = await this.securityThreat.approveBlock(id, req.user.id);
+
+    await this.adminActionRepo.save(
+      this.adminActionRepo.create({
+        adminId: req.user.id,
+        targetUserId: null as any,
+        action: 'approve_security_block',
+        payload: { blockId: id, cidr: block.cidr },
+        reason: null,
+      }),
+    );
+
+    return block;
+  }
+
+  @Post('security/blocks/:id/lift')
+  @ApiOperation({ summary: 'Lift (deactivate) a security block' })
+  @ApiResponse({ status: 200, description: 'Block lifted' })
+  @ApiResponse({ status: 404, description: 'Block not found' })
+  async liftSecurityBlock(@Param('id') id: string) {
+    return this.securityThreat.liftBlock(id);
   }
 }

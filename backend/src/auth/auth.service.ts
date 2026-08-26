@@ -1,9 +1,13 @@
 import {
   Injectable,
+  Optional,
   ConflictException,
   UnauthorizedException,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
+  HttpException,
+  HttpStatus,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -11,7 +15,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import * as argon2 from 'argon2';
-import { randomBytes } from 'crypto';
+import { randomBytes, createHash } from 'crypto';
 import crypto from 'crypto';
 import {
   Keypair,
@@ -35,9 +39,22 @@ import { sanitizeRedirectUrl } from './utils/redirect-sanitizer';
 import { OfacSanctionsCheckService } from './utils/ofac-sanctions-check';
 import { LoginLog } from '../database/entities/login-log.entity';
 import { AdminAction } from '../database/entities/admin-action.entity';
+import { authenticator } from 'otplib';
+import * as QRCode from 'qrcode';
+import { TokenBlocklistService } from './token-blocklist.service';
+import { SecurityThreatService } from './security-threat.service';
+import { EmailSequenceService } from '../email-sequence/email-sequence.service';
 
 const LOCKOUT_MAX_ATTEMPTS = 5;
 const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
+
+/** Request context used by credential-stuffing detection (#898). */
+export interface LoginMeta {
+  ip?: string;
+  userAgent?: string;
+  country?: string;
+  acceptLanguage?: string;
+}
 
 @Injectable()
 export class AuthService {
@@ -58,6 +75,9 @@ export class AuthService {
     private readonly configService: ConfigService,
     private readonly queueService: QueueService,
     private readonly ofacSanctionsCheck: OfacSanctionsCheckService,
+    private readonly tokenBlocklistService: TokenBlocklistService,
+    private readonly securityThreat: SecurityThreatService,
+    @Optional() private readonly emailSequenceService: EmailSequenceService,
   ) {
     const network = this.configService.get<string>('STELLAR_NETWORK', 'testnet');
     this.networkPassphrase =
@@ -158,6 +178,15 @@ export class AuthService {
 
     await this.sendVerificationEmail(saved.email, emailVerificationToken);
 
+    // Schedule the investor onboarding drip email sequence for new investors.
+    // Fire-and-forget — a scheduling failure must not block registration.
+    if (saved.role === 'investor' && this.emailSequenceService) {
+      this.emailSequenceService.scheduleForUser(saved.id, saved.createdAt).catch((err) => {
+        // Non-fatal: log and continue
+        console.error('[AuthService] Failed to schedule drip sequence', err);
+      });
+    }
+
     const safeRedirect = sanitizeRedirectUrl(dto.redirect);
     return {
       id: saved.id,
@@ -234,9 +263,58 @@ export class AuthService {
 
   async login(
     dto: LoginDto,
+    meta?: LoginMeta,
   ): Promise<{ accessToken: string; refreshToken: string; redirect?: string }> {
+    // ── #898: distributed credential-stuffing gate ──────────────────────────
+    // Runs BEFORE user lookup / password verification so blocked traffic
+    // never burns bcrypt/argon2 cycles (DoS safety).
+    const threat = await this.securityThreat.checkLogin(dto.email, meta?.ip);
+    if (threat.action === 'blocked') {
+      throw new HttpException(
+        {
+          statusCode: HttpStatus.TOO_MANY_REQUESTS,
+          code: 'LOGIN_RATE_LIMITED',
+          message:
+            'Too many suspicious login attempts. Please try again later.',
+          reasons: threat.reasons,
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    if (threat.captchaRequired) {
+      // CAPTCHA was demanded for this email — a valid token must accompany
+      // the attempt (tested end-to-end via mocked hCaptcha siteverify).
+      if (!dto.captchaToken) {
+        throw new ForbiddenException({
+          code: 'CAPTCHA_REQUIRED',
+          message:
+            'Unusual activity detected. Please complete the CAPTCHA challenge.',
+        });
+      }
+      const captchaOk = await this.securityThreat.verifyCaptcha(
+        dto.captchaToken,
+        meta?.ip,
+      );
+      if (!captchaOk) {
+        throw new ForbiddenException({
+          code: 'CAPTCHA_INVALID',
+          message: 'CAPTCHA verification failed. Please try again.',
+        });
+      }
+    }
+
     const user = await this.userRepo.findOne({ where: { email: dto.email } });
-    if (!user) throw new UnauthorizedException('Invalid credentials.');
+    if (!user) {
+      // Unknown emails still feed the detection windows — stuffing attacks
+      // rarely target real accounts exclusively.
+      await this.securityThreat.recordFailedLogin(
+        dto.email,
+        meta?.ip,
+        meta?.country,
+      );
+      throw new UnauthorizedException('Invalid credentials.');
+    }
 
     // Check lockout
     if (user.lockoutUntil && user.lockoutUntil > new Date()) {
@@ -257,6 +335,20 @@ export class AuthService {
 
     if (!valid) {
       user.failedLoginAttempts = (user.failedLoginAttempts ?? 0) + 1;
+
+      // Feed the distributed-attack detectors (#898): distinct-IP-per-email
+      // window, /16 subnet failure counter and geo-diversity flag all run
+      // off every failed attempt.
+      try {
+        await this.securityThreat.recordFailedLogin(
+          dto.email,
+          meta?.ip,
+          meta?.country,
+        );
+      } catch (err: any) {
+        // Detection is best-effort; never mask the auth error.
+        this.loggerWarn('recordFailedLogin failed', err);
+      }
 
       if (user.failedLoginAttempts >= LOCKOUT_MAX_ATTEMPTS) {
         user.lockoutUntil = new Date(Date.now() + LOCKOUT_DURATION_MS);
@@ -291,12 +383,132 @@ export class AuthService {
 
     await this.userRepo.save(user);
 
+    // ── #898/#897: audit log + localized new-device security alert ──────────
+    if (meta?.ip || meta?.userAgent) {
+      try {
+        await this.recordSuccessfulLogin(user, meta);
+      } catch (err: any) {
+        this.loggerWarn('recordSuccessfulLogin failed', err);
+      }
+    }
+
     const tokens = this.issueTokenPair(user);
     const safeRedirect = sanitizeRedirectUrl(dto.redirect);
     return {
       ...tokens,
       redirect: safeRedirect || undefined,
     };
+  }
+
+  /** Persists a LoginLog row and alerts the user about unrecognized devices. */
+  private async recordSuccessfulLogin(
+    user: User,
+    meta?: LoginMeta,
+  ): Promise<void> {
+    if (!meta?.ip) return;
+
+    const deviceFingerprint = this.computeDeviceFingerprint(
+      meta.userAgent,
+      meta.acceptLanguage,
+    );
+    const countryCode = meta.country
+      ? meta.country.toUpperCase().slice(0, 2)
+      : null;
+
+    const previousLogs =
+      this.loginLogRepo && (this.loginLogRepo as any).find
+        ? await this.loginLogRepo.find({
+            where: { userId: user.id },
+            order: { createdAt: 'DESC' },
+            take: 5,
+          })
+        : [];
+
+    await this.loginLogRepo.save(
+      this.loginLogRepo.create({
+        userId: user.id,
+        ipAddress: meta.ip ?? 'unknown',
+        userAgent: meta.userAgent ?? 'unknown',
+        country: meta.country ?? null,
+        countryCode,
+        deviceFingerprint,
+      }),
+    );
+
+    const knownDevice = previousLogs.some(
+      (log) => log.deviceFingerprint === deviceFingerprint,
+    );
+
+    if (previousLogs.length > 0 && !knownDevice) {
+      const revokeToken = randomBytes(32).toString('hex');
+      const revokeUrl = `${this.appBaseUrl()}/auth/revoke-session/${revokeToken}`;
+
+      await this.queueService.emit('email.notification', {
+        type: 'security_alert_new_device',
+        userId: user.id,
+        email: user.email,
+        details: {
+          ipAddress: meta.ip,
+          country: meta.country ?? 'Unknown',
+          device: meta.userAgent ?? 'unknown device',
+          time: new Date().toISOString(),
+          revokeUrl,
+        },
+      });
+    }
+  }
+
+  private computeDeviceFingerprint(
+    userAgent?: string,
+    acceptLanguage?: string,
+  ): string {
+    const raw = `${userAgent ?? ''}|${acceptLanguage ?? ''}`;
+    return createHash('sha256').update(raw).digest('hex').slice(0, 32);
+  }
+
+  async revokeSession(revokeToken: string): Promise<{ message: string }> {
+    const userId = await this.findUserByRevokeToken(revokeToken);
+    if (!userId) {
+      throw new BadRequestException('Invalid or expired revocation link.');
+    }
+
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('User not found.');
+    }
+
+    user.tokenVersion = (user.tokenVersion ?? 0) + 1;
+    await this.userRepo.save(user);
+
+    return { message: 'All sessions have been revoked. Please log in again.' };
+  }
+
+  private async findUserByRevokeToken(revokeToken: string): Promise<string | null> {
+    try {
+      const log = await this.loginLogRepo
+        .createQueryBuilder('log')
+        .innerJoin(
+          (qb) => {
+            qb.select('user_id')
+              .from('login_logs', 'll')
+              .orderBy('created_at', 'DESC')
+              .limit(1);
+          },
+          'latest',
+          'latest.user_id = log.user_id',
+        )
+        .where(`log.user_agent LIKE :token`, { token: `%revoke:${revokeToken}%` })
+        .getOne();
+      return log?.userId ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Minimal warning logging that works with or without an injected logger. */
+  private loggerWarn(message: string, err: unknown): void {
+    // eslint-disable-next-line no-console
+    console.warn(`[AuthService] ${message}:`, (err as Error)?.message);
   }
 
   // ── refresh ────────────────────────────────────────────────────────────────
@@ -324,6 +536,200 @@ export class AuthService {
     }
 
     return this.issueTokenPair(user);
+  }
+
+  // ── logout & token revocation ──────────────────────────────────────────────
+
+  async logout(userId: string, token?: string): Promise<{ message: string }> {
+    if (token) {
+      try {
+        const decoded: any = this.jwtService.decode(token);
+        if (decoded && typeof decoded.exp === 'number') {
+          const remainingSeconds = decoded.exp - Math.floor(Date.now() / 1000);
+          if (remainingSeconds > 0) {
+            await this.tokenBlocklistService.blocklistToken(
+              token,
+              remainingSeconds,
+            );
+          }
+        }
+      } catch {
+        // decode error ignored
+      }
+    }
+    return { message: 'Logged out successfully' };
+  }
+
+  // ── MFA ───────────────────────────────────────────────────────────────────
+
+  private static readonly MFA_MAX_ATTEMPTS = 5;
+  private static readonly MFA_LOCKOUT_MS = 10 * 60 * 1000; // 10 minutes
+
+  async setupMfa(
+    userId: string,
+  ): Promise<{ secret: string; otpauthUrl: string; qrCodeUrl: string; backupCodes: string[] }> {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found.');
+
+    const secret = authenticator.generateSecret();
+    user.mfaSecret = secret;
+
+    // Generate 8 backup codes (plaintext returned once, bcrypt-hashed stored)
+    const backupCodes = Array.from({ length: 8 }, () =>
+      randomBytes(4).toString('hex').toUpperCase(),
+    );
+    const hashedBackupCodes = await Promise.all(
+      backupCodes.map((code) => bcrypt.hash(code, 10)),
+    );
+    user.mfaBackupCodes = hashedBackupCodes;
+
+    await this.userRepo.save(user);
+
+    const issuer = this.configService.get<string>(
+      'MFA_ISSUER',
+      'Agri-Fi Platform',
+    );
+    const otpauthUrl = authenticator.keyuri(user.email, issuer, secret);
+    const qrCodeUrl = await QRCode.toDataURL(otpauthUrl);
+
+    return { secret, otpauthUrl, qrCodeUrl, backupCodes };
+  }
+
+  async enableMfa(
+    userId: string,
+    token: string,
+  ): Promise<{ success: boolean; message: string }> {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found.');
+
+    if (!user.mfaSecret) {
+      throw new BadRequestException(
+        'MFA secret not setup. Call /auth/mfa/setup first.',
+      );
+    }
+
+    let isValid = false;
+    try {
+      isValid = authenticator.verify({
+        token: token.trim(),
+        secret: user.mfaSecret,
+      });
+    } catch {
+      isValid = false;
+    }
+
+    if (!isValid) {
+      throw new BadRequestException('Invalid MFA verification code.');
+    }
+
+    user.isMfaEnabled = true;
+    user.mfaFailedAttempts = 0;
+    user.mfaLockedUntil = null;
+    await this.userRepo.save(user);
+
+    return { success: true, message: 'MFA enabled successfully.' };
+  }
+
+  async disableMfa(
+    userId: string,
+    token: string,
+    password: string,
+  ): Promise<{ success: boolean; message: string }> {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found.');
+
+    if (!user.isMfaEnabled) {
+      throw new BadRequestException('MFA is not enabled for this account.');
+    }
+
+    // Verify password
+    const passwordValid = await this.verifyPassword(password, user.passwordHash);
+    if (!passwordValid) {
+      throw new BadRequestException('Invalid password.');
+    }
+
+    // Verify TOTP
+    const totpValid = this.verifyTotpToken(user.mfaSecret!, token);
+    if (!totpValid) {
+      throw new BadRequestException('Invalid MFA token.');
+    }
+
+    user.isMfaEnabled = false;
+    user.mfaSecret = null;
+    user.mfaBackupCodes = null;
+    user.mfaFailedAttempts = 0;
+    user.mfaLockedUntil = null;
+    await this.userRepo.save(user);
+
+    return { success: true, message: 'MFA disabled successfully.' };
+  }
+
+  async verifyMfa(
+    userId: string,
+    token: string,
+  ): Promise<{ valid: boolean }> {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found.');
+
+    if (!user.isMfaEnabled || !user.mfaSecret) {
+      throw new BadRequestException('MFA is not enabled for this account.');
+    }
+
+    // Check lockout
+    if (user.mfaLockedUntil && user.mfaLockedUntil > new Date()) {
+      throw new ForbiddenException({
+        code: 'MFA_LOCKED_OUT',
+        message: `Too many failed attempts. Try again after ${user.mfaLockedUntil.toISOString()}.`,
+      });
+    }
+
+    // Try TOTP first
+    let isValid = this.verifyTotpToken(user.mfaSecret, token.trim());
+
+    // If TOTP fails, try backup codes
+    if (!isValid && user.mfaBackupCodes?.length) {
+      for (let i = 0; i < user.mfaBackupCodes.length; i++) {
+        const codeMatch = await bcrypt.compare(token.trim(), user.mfaBackupCodes[i]);
+        if (codeMatch) {
+          isValid = true;
+          // Remove used backup code (single-use)
+          user.mfaBackupCodes.splice(i, 1);
+          break;
+        }
+      }
+    }
+
+    if (!isValid) {
+      user.mfaFailedAttempts = (user.mfaFailedAttempts || 0) + 1;
+      if (user.mfaFailedAttempts >= AuthService.MFA_MAX_ATTEMPTS) {
+        user.mfaLockedUntil = new Date(Date.now() + AuthService.MFA_LOCKOUT_MS);
+        user.mfaFailedAttempts = 0;
+      }
+      await this.userRepo.save(user);
+      throw new BadRequestException('Invalid MFA token.');
+    }
+
+    // Success — reset failed attempts
+    user.mfaFailedAttempts = 0;
+    user.mfaLockedUntil = null;
+    await this.userRepo.save(user);
+
+    return { valid: true };
+  }
+
+  private verifyTotpToken(secret: string, token: string): boolean {
+    try {
+      return authenticator.verify({ token: token.trim(), secret });
+    } catch {
+      return false;
+    }
+  }
+
+  private async verifyPassword(password: string, hash: string): Promise<boolean> {
+    if (this.isBcryptHash(hash)) {
+      return bcrypt.compare(password, hash);
+    }
+    return argon2.verify(hash, password);
   }
 
   // ── wallet ─────────────────────────────────────────────────────────────────

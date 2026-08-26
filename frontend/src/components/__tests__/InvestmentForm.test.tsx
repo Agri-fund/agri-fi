@@ -51,7 +51,7 @@ describe('InvestmentForm', () => {
     expect(tokenInput).toHaveValue(1);
 
     // Check initial calculation
-    expect(screen.getByText('Token Price:')).toBeInTheDocument();
+    expect(screen.getByText('Price per lot:')).toBeInTheDocument();
     expect(screen.getByText('Quantity:')).toBeInTheDocument();
     expect(screen.getByText('Total Investment:')).toBeInTheDocument();
 

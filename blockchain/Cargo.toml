@@ -27,6 +27,21 @@ members = [
 resolver = "2"
 
 [profile.release]
+# ── WASM size optimisation (#697) ────────────────────────────────────────────
+# Stellar charges storage fees proportional to WASM binary size, so we
+# minimise every byte.  These settings target <15 KB per compiled contract.
+#
+#   opt-level = "z"   — optimise for smallest code size (vs "s" or "3")
+#   lto        = true — full link-time optimisation; eliminates dead code
+#                       across the entire crate graph at link time
+#   codegen-units = 1 — single CGU is required for LTO to be maximally
+#                       effective (multiple CGUs would limit inlining scope)
+#   panic = "abort"   — replaces panic unwinding machinery with a single
+#                       wasm `unreachable` instruction, saving ~5–10 KB
+#   strip = "symbols" — removes symbol names from the final binary
+#
+# After cargo build, run wasm-opt -Oz (see blockchain/scripts/build.sh or
+# blockchain/scripts/deploy.sh) for an additional 5–20% size reduction.
 opt-level = "z"
 overflow-checks = true
 debug = 0

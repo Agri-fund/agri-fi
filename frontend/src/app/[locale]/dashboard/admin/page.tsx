@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient, User, getStoredToken } from '@/lib/api';
 import DashboardLayout from '@/components/DashboardLayout';
@@ -10,6 +10,22 @@ import { useToast } from '@/components/ui/ToastProvider';
 interface AdminUser {
   id: string; email: string; role: string; kycStatus: string;
   country: string; createdAt: string; walletAddress?: string | null;
+}
+
+/** Shape returned by GET /admin/payments/failed */
+interface FailedPayment {
+  id: string;
+  dealId: string | null;
+  userId: string | null;
+  txHash: string | null;
+  errorCode: string | null;
+  createdAt: string;
+  dealCommodity: string | null;
+}
+
+interface PaginatedFailedPayments {
+  data: FailedPayment[];
+  meta: { total: number; page: number; limit: number; totalPages: number };
 }
 
 const ROLE_BADGE: Record<string, string> = {
@@ -26,9 +42,16 @@ export default function AdminDashboard() {
   const [user, setUser] = useState<User | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<'overview' | 'users' | 'kyc' | 'blockchain'>('overview');
+  const [tab, setTab] = useState<'overview' | 'users' | 'kyc' | 'blockchain' | 'payments'>('overview');
   const [search, setSearch] = useState('');
   const [actionId, setActionId] = useState<string | null>(null);
+
+  // ── Failed Payments State ─────────────────────────────────────────────────
+  const [failedPayments, setFailedPayments] = useState<FailedPayment[]>([]);
+  const [failedPaymentsMeta, setFailedPaymentsMeta] = useState<PaginatedFailedPayments['meta'] | null>(null);
+  const [failedPaymentsLoading, setFailedPaymentsLoading] = useState(false);
+  const [failedPaymentsPage, setFailedPaymentsPage] = useState(1);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -50,6 +73,56 @@ export default function AdminDashboard() {
       if (res.ok) { const d = await res.json(); setUsers(d.users ?? d ?? []); }
     } catch {}
     setLoading(false);
+  };
+
+  const loadFailedPayments = useCallback(async (page = 1) => {
+    setFailedPaymentsLoading(true);
+    try {
+      const token = getStoredToken();
+      const res = await fetch(`/api/admin/payments/failed?page=${page}&limit=20`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const d: PaginatedFailedPayments = await res.json();
+        setFailedPayments(d.data ?? []);
+        setFailedPaymentsMeta(d.meta ?? null);
+        setFailedPaymentsPage(page);
+      } else {
+        toast('Failed to load payment alerts', 'error');
+      }
+    } catch {
+      toast('Could not fetch payment data', 'error');
+    }
+    setFailedPaymentsLoading(false);
+  }, [toast]);
+
+  // Load failed payments when the payments tab is first selected
+  useEffect(() => {
+    if (tab === 'payments' && failedPayments.length === 0 && !failedPaymentsLoading) {
+      loadFailedPayments(1);
+    }
+  }, [tab, failedPayments.length, failedPaymentsLoading, loadFailedPayments]);
+
+  const retryPayment = async (txId: string) => {
+    setRetryingId(txId);
+    try {
+      const token = getStoredToken();
+      const res = await fetch(`/api/admin/payments/failed/${txId}/retry`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        toast('Retry enqueued successfully ✅', 'success');
+        // Refresh the list after a short delay so the user sees updated state
+        setTimeout(() => loadFailedPayments(failedPaymentsPage), 1000);
+      } else {
+        const d = await res.json();
+        toast(d.message ?? 'Retry failed', 'error');
+      }
+    } catch {
+      toast('Request failed', 'error');
+    }
+    setRetryingId(null);
   };
 
   const approveKyc = async (userId: string) => {
@@ -99,7 +172,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div data-tour="portfolio-stats" className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
           <StatCard label="Total Users"  value={users.length}    icon="👥" color="bg-blue-50" />
           <StatCard label="Farmers"      value={byRole('farmer')} icon="🌱" color="bg-emerald-50" />
           <StatCard label="Investors"    value={byRole('investor')} icon="💼" color="bg-violet-50" />
@@ -109,15 +182,20 @@ export default function AdminDashboard() {
 
         {/* Tabs */}
         <div className="flex gap-1 bg-slate-100 rounded-xl p-1 w-fit">
-          {(['overview', 'users', 'kyc', 'blockchain'] as const).map(t => (
+          {(['overview', 'users', 'kyc', 'blockchain', 'payments'] as const).map(t => (
             <button key={t} onClick={() => setTab(t)}
               className={`px-4 py-2 rounded-lg text-sm font-semibold capitalize transition-all ${
                 tab === t ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'
               }`}>
-              {t === 'blockchain' ? '⛓ Blockchain' : t}
+              {t === 'blockchain' ? '⛓ Blockchain' : t === 'payments' ? '⚠️ Payments' : t}
               {t === 'kyc' && pendingKyc.length > 0 && (
                 <span className="ml-1.5 bg-red-500 text-white text-[10px] rounded-full px-1.5 py-0.5 font-bold">
                   {pendingKyc.length}
+                </span>
+              )}
+              {t === 'payments' && (failedPaymentsMeta?.total ?? 0) > 0 && (
+                <span className="ml-1.5 bg-red-500 text-white text-[10px] rounded-full px-1.5 py-0.5 font-bold">
+                  {failedPaymentsMeta!.total}
                 </span>
               )}
             </button>
@@ -126,7 +204,7 @@ export default function AdminDashboard() {
 
         {/* Overview */}
         {tab === 'overview' && (
-          <div className="grid sm:grid-cols-2 gap-5">
+          <div className="grid sm:grid-cols-2 md:grid-cols-2 gap-5">
             <div className="card p-5">
               <h3 className="section-title mb-5">Users by Role</h3>
               <div className="space-y-3">
@@ -251,7 +329,7 @@ export default function AdminDashboard() {
                 <p className="text-slate-500 text-sm">No pending KYC submissions to review.</p>
               </div>
             ) : (
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                 {pendingKyc.map(u => (
                   <div key={u.id} className="card p-5 space-y-4">
                     <div className="flex items-start justify-between gap-2">
@@ -260,7 +338,7 @@ export default function AdminDashboard() {
                           {u.email[0].toUpperCase()}
                         </div>
                         <div>
-                          <p className="font-semibold text-slate-900 text-sm truncate max-w-[140px]">{u.email}</p>
+                          <p className="font-semibold text-slate-900 text-sm truncate max-w-[160px] md:max-w-[180px] lg:max-w-[200px]">{u.email}</p>
                           <p className="text-xs text-slate-400">{u.country}</p>
                         </div>
                       </div>
@@ -297,8 +375,242 @@ export default function AdminDashboard() {
         {tab === 'blockchain' && (
           <BlockchainTab token={getStoredToken() ?? ''} toast={toast} />
         )}
+
+        {/* Failed Payments tab */}
+        {tab === 'payments' && (
+          <FailedPaymentsTab
+            payments={failedPayments}
+            meta={failedPaymentsMeta}
+            loading={failedPaymentsLoading}
+            retryingId={retryingId}
+            page={failedPaymentsPage}
+            onRetry={retryPayment}
+            onPageChange={loadFailedPayments}
+            onRefresh={() => loadFailedPayments(failedPaymentsPage)}
+          />
+        )}
       </div>
     </DashboardLayout>
+  );
+}
+
+// ── Failed Payments Tab ───────────────────────────────────────────────────────
+
+interface FailedPaymentsTabProps {
+  payments: FailedPayment[];
+  meta: PaginatedFailedPayments['meta'] | null;
+  loading: boolean;
+  retryingId: string | null;
+  page: number;
+  onRetry: (txId: string) => void;
+  onPageChange: (page: number) => void;
+  onRefresh: () => void;
+}
+
+function FailedPaymentsTab({
+  payments,
+  meta,
+  loading,
+  retryingId,
+  page,
+  onRetry,
+  onPageChange,
+  onRefresh,
+}: FailedPaymentsTabProps) {
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="section-title">Failed Payment Alerts</h2>
+          <p className="text-sm text-slate-500 mt-1">
+            Escrow transactions that failed and require admin attention.
+          </p>
+        </div>
+        <button
+          onClick={onRefresh}
+          disabled={loading}
+          className="btn-secondary flex items-center gap-2 text-sm px-4 py-2"
+          aria-label="Refresh failed payments list"
+        >
+          <svg
+            className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+            />
+          </svg>
+          {loading ? 'Loading…' : 'Refresh'}
+        </button>
+      </div>
+
+      {/* Summary badge */}
+      {meta && meta.total > 0 && (
+        <div className="flex items-center gap-3 p-4 bg-red-50 border border-red-200 rounded-xl">
+          <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center text-xl" aria-hidden="true">
+            ⚠️
+          </div>
+          <div>
+            <p className="font-semibold text-red-800 text-sm">
+              {meta.total} failed payment{meta.total !== 1 ? 's' : ''} require attention
+            </p>
+            <p className="text-xs text-red-600 mt-0.5">
+              Review each transaction below and trigger a retry if appropriate.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Loading skeleton */}
+      {loading && (
+        <div className="space-y-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="card h-20 skeleton" />
+          ))}
+        </div>
+      )}
+
+      {/* Empty state */}
+      {!loading && payments.length === 0 && (
+        <div className="card p-14 text-center">
+          <div className="w-16 h-16 rounded-3xl bg-emerald-50 flex items-center justify-center text-3xl mx-auto mb-5" aria-hidden="true">
+            ✅
+          </div>
+          <h3 className="font-bold text-slate-900 text-lg mb-2">No failed payments</h3>
+          <p className="text-slate-500 text-sm">
+            All escrow transactions are processing normally.
+          </p>
+        </div>
+      )}
+
+      {/* Payments table */}
+      {!loading && payments.length > 0 && (
+        <div className="table-wrapper">
+          <div className="overflow-x-auto">
+            <table className="w-full" aria-label="Failed escrow payments">
+              <thead className="table-head">
+                <tr>
+                  {['Transaction ID', 'Deal / Commodity', 'Error Code', 'TX Hash', 'Date', 'Action'].map((h) => (
+                    <th key={h} className="table-th" scope="col">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {payments.map((payment) => (
+                  <tr key={payment.id} className="table-row">
+                    {/* Transaction ID */}
+                    <td className="table-td font-mono text-xs text-slate-600" title={payment.id}>
+                      {payment.id.substring(0, 8)}…
+                    </td>
+
+                    {/* Deal / Commodity */}
+                    <td className="table-td">
+                      {payment.dealId ? (
+                        <div>
+                          <p className="text-sm font-medium text-slate-900">
+                            {payment.dealCommodity ?? 'Unknown commodity'}
+                          </p>
+                          <p className="font-mono text-[10px] text-slate-400" title={payment.dealId}>
+                            {payment.dealId.substring(0, 8)}…
+                          </p>
+                        </div>
+                      ) : (
+                        <span className="text-slate-400 text-sm italic">No deal linked</span>
+                      )}
+                    </td>
+
+                    {/* Error Code */}
+                    <td className="table-td">
+                      {payment.errorCode ? (
+                        <span className="badge-red font-mono text-xs">
+                          {payment.errorCode}
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 text-xs">—</span>
+                      )}
+                    </td>
+
+                    {/* TX Hash */}
+                    <td className="table-td font-mono text-xs text-slate-500" title={payment.txHash ?? ''}>
+                      {payment.txHash ? `${payment.txHash.substring(0, 12)}…` : '—'}
+                    </td>
+
+                    {/* Date */}
+                    <td className="table-td text-xs text-slate-400">
+                      <time dateTime={payment.createdAt}>
+                        {new Date(payment.createdAt).toLocaleString()}
+                      </time>
+                    </td>
+
+                    {/* Retry action */}
+                    <td className="table-td">
+                      <button
+                        disabled={retryingId === payment.id || !payment.dealId}
+                        onClick={() => onRetry(payment.id)}
+                        title={!payment.dealId ? 'Cannot retry: no deal linked' : 'Trigger manual retry'}
+                        aria-label={`Retry transaction ${payment.id.substring(0, 8)}`}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        {retryingId === payment.id ? (
+                          <>
+                            <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                            </svg>
+                            Retrying…
+                          </>
+                        ) : (
+                          <>
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden="true">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                            </svg>
+                            Retry
+                          </>
+                        )}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination */}
+          {meta && meta.totalPages > 1 && (
+            <div className="flex items-center justify-between px-5 py-4 border-t border-slate-100">
+              <p className="text-xs text-slate-500">
+                Showing page {meta.page} of {meta.totalPages} ({meta.total} total)
+              </p>
+              <div className="flex gap-2">
+                <button
+                  disabled={page <= 1}
+                  onClick={() => onPageChange(page - 1)}
+                  aria-label="Previous page"
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  ← Prev
+                </button>
+                <button
+                  disabled={page >= meta.totalPages}
+                  onClick={() => onPageChange(page + 1)}
+                  aria-label="Next page"
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Next →
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

@@ -1,4 +1,4 @@
-import { Controller } from '@nestjs/common';
+import { Controller, OnApplicationShutdown } from '@nestjs/common';
 import { Ctx, EventPattern, Payload, RmqContext } from '@nestjs/microservices';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -12,6 +12,10 @@ import { Investment } from '../investments/entities/investment.entity';
 import { User } from '../auth/entities/user.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import {
+  EmailTemplateService,
+  RenderedEmail,
+} from '../notifications/email-template.service';
+import {
   DealPublishPayload,
   InvestmentFundPayload,
   DealFundedPayload,
@@ -24,9 +28,19 @@ import {
   getDeliveryAttempt,
 } from './retry-policy';
 import { decryptPayload } from './queue.crypto';
+import { IdempotencyService } from './idempotency.service';
 
 @Controller()
-export class QueueProcessor {
+export class QueueProcessor implements OnApplicationShutdown {
+  /**
+   * Tracks all in-flight handler promises so onApplicationShutdown can await
+   * them before the process exits, satisfying #696.
+   */
+  private readonly activeJobs = new Set<Promise<void>>();
+
+  /** Set to true once shutdown is signalled — new messages are nacked. */
+  private shuttingDown = false;
+
   constructor(
     private readonly stellarService: StellarService,
     private readonly sorobanService: SorobanService,
@@ -39,10 +53,60 @@ export class QueueProcessor {
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly notificationsService: NotificationsService,
+    private readonly emailTemplates: EmailTemplateService,
     private readonly logger: PinoLogger,
+    private readonly idempotency: IdempotencyService,
   ) {
     this.logger.setContext(QueueProcessor.name);
   }
+
+  // ── Shutdown hook (#696) ────────────────────────────────────────────────────
+
+  /**
+   * Called by NestJS when the application receives a shutdown signal
+   * (SIGTERM/SIGINT). Stops accepting new messages and waits for all
+   * in-flight handlers to complete before allowing the process to exit.
+   */
+  async onApplicationShutdown(signal?: string): Promise<void> {
+    this.shuttingDown = true;
+    this.logger.info(
+      { signal, inflightCount: this.activeJobs.size },
+      'QueueProcessor shutting down — waiting for in-flight jobs to complete',
+    );
+
+    if (this.activeJobs.size > 0) {
+      await Promise.allSettled(Array.from(this.activeJobs));
+    }
+
+    this.logger.info('QueueProcessor shutdown complete — all jobs finished');
+  }
+
+  /**
+   * Wraps a handler body so it is tracked in activeJobs and graceful-shutdown
+   * aware.  Returns immediately (nacks) if shutting down.
+   */
+  private track(
+    fn: () => Promise<void>,
+    channel: any,
+    msg: any,
+    pattern: string,
+  ): void {
+    if (this.shuttingDown) {
+      // Return the message to the queue safely — it will be reprocessed
+      // by the next healthy replica.
+      this.logger.warn(
+        { event: pattern },
+        `${pattern} received during shutdown — requeueing message`,
+      );
+      channel.nack(msg, false, true);
+      return;
+    }
+
+    const job = fn().finally(() => this.activeJobs.delete(job));
+    this.activeJobs.add(job);
+  }
+
+  // ── Internal helpers ─────────────────────────────────────────────────────────
 
   private setCorrelationId(payload: BasePayload): void {
     if (payload.correlationId) {
@@ -112,13 +176,29 @@ export class QueueProcessor {
     channel.nack(msg, false, !exhausted);
   }
 
+  // ── Event handlers ──────────────────────────────────────────────────────────
+
   @EventPattern('deal.publish')
-  async handleDealPublish(
+  handleDealPublish(
     @Payload() encrypted: string,
     @Ctx() context: RmqContext,
-  ) {
+  ): void {
     const channel = context.getChannelRef();
     const originalMsg = context.getMessage();
+
+    this.track(
+      () => this.processDealPublish(encrypted, channel, originalMsg),
+      channel,
+      originalMsg,
+      'deal.publish',
+    );
+  }
+
+  private async processDealPublish(
+    encrypted: string,
+    channel: any,
+    originalMsg: any,
+  ): Promise<void> {
     const data = this.unwrap<DealPublishPayload>(
       encrypted,
       'deal.publish',
@@ -128,6 +208,19 @@ export class QueueProcessor {
     if (!data) return;
 
     this.setCorrelationId(data);
+
+    // ── Idempotency check (#687) ───────────────────────────────────────────
+    const idemKey = IdempotencyService.buildKey('deal.publish', data.dealId);
+    const lease = await this.idempotency.acquireLease(idemKey);
+    if (!lease.acquired) {
+      this.logger.info(
+        { dealId: data.dealId, status: lease.status },
+        'deal.publish duplicate — acking without reprocessing',
+      );
+      channel.ack(originalMsg);
+      return;
+    }
+
     this.logger.info(
       { dealId: data.dealId },
       `Processing deal.publish for deal ${data.dealId}`,
@@ -176,6 +269,8 @@ export class QueueProcessor {
         { dealId: data.dealId, txId: result.txId },
         `Successfully published deal ${data.dealId} with txId ${result.txId}`,
       );
+
+      await this.idempotency.markDone(idemKey);
     } catch (error) {
       this.logger.error(
         { dealId: data.dealId, error: error.message },
@@ -189,6 +284,9 @@ export class QueueProcessor {
         appTraceId,
       });
 
+      // Release idempotency lease so retry can re-acquire
+      await this.idempotency.releaseLease(idemKey);
+
       this.nackWithRetryLimit(channel, originalMsg, 'deal.publish', {
         dealId: data.dealId,
       });
@@ -200,12 +298,26 @@ export class QueueProcessor {
   }
 
   @EventPattern('investment.fund')
-  async handleInvestmentFund(
+  handleInvestmentFund(
     @Payload() encrypted: string,
     @Ctx() context: RmqContext,
-  ) {
+  ): void {
     const channel = context.getChannelRef();
     const originalMsg = context.getMessage();
+
+    this.track(
+      () => this.processInvestmentFund(encrypted, channel, originalMsg),
+      channel,
+      originalMsg,
+      'investment.fund',
+    );
+  }
+
+  private async processInvestmentFund(
+    encrypted: string,
+    channel: any,
+    originalMsg: any,
+  ): Promise<void> {
     const data = this.unwrap<InvestmentFundPayload>(
       encrypted,
       'investment.fund',
@@ -215,6 +327,22 @@ export class QueueProcessor {
     if (!data) return;
 
     this.setCorrelationId(data);
+
+    // ── Idempotency check (#687) ───────────────────────────────────────────
+    const idemKey = IdempotencyService.buildKey(
+      'investment.fund',
+      data.investmentId,
+    );
+    const lease = await this.idempotency.acquireLease(idemKey);
+    if (!lease.acquired) {
+      this.logger.info(
+        { investmentId: data.investmentId, status: lease.status },
+        'investment.fund duplicate — acking without reprocessing',
+      );
+      channel.ack(originalMsg);
+      return;
+    }
+
     this.logger.info(
       { investmentId: data.investmentId },
       `Processing investment.fund for investment ${data.investmentId}`,
@@ -231,11 +359,7 @@ export class QueueProcessor {
         );
         const stellarTxId: string = result.hash;
 
-        // 4. Transfer Trade_Tokens from escrow account to investor wallet.
-        // Decrypt the escrow secret from the payload and use the typed
-        // InvestmentFundPayload fields directly — the previously referenced
-        // variables (escrowSecret, deal, investment) were never declared in
-        // this method and would cause a ReferenceError at runtime.
+        // Transfer Trade_Tokens from escrow account to investor wallet.
         const escrowSecret = await this.stellarService.decryptSecret(
           data.encryptedEscrowSecret,
         );
@@ -258,6 +382,7 @@ export class QueueProcessor {
           `Successfully funded investment ${data.investmentId} with txId ${stellarTxId}`,
         );
 
+        await this.idempotency.markDone(idemKey);
         channel.ack(originalMsg);
         return;
       } catch (error) {
@@ -281,9 +406,7 @@ export class QueueProcessor {
       }
     }
 
-    // In-process retries exhausted — mark investment as failed and route the
-    // message to the DLQ (rather than ack-and-forget) so it's visible for
-    // manual inspection/retry.
+    // In-process retries exhausted — mark investment as failed and release lease
     this.logger.error(
       {
         investmentId: data.investmentId,
@@ -296,16 +419,31 @@ export class QueueProcessor {
       status: 'failed' as any,
     });
 
+    await this.idempotency.releaseLease(idemKey);
     channel.nack(originalMsg, false, false);
   }
 
   @EventPattern('deal.funded')
-  async handleDealFunded(
+  handleDealFunded(
     @Payload() encrypted: string,
     @Ctx() context: RmqContext,
-  ) {
+  ): void {
     const channel = context.getChannelRef();
     const originalMsg = context.getMessage();
+
+    this.track(
+      () => this.processDealFunded(encrypted, channel, originalMsg),
+      channel,
+      originalMsg,
+      'deal.funded',
+    );
+  }
+
+  private async processDealFunded(
+    encrypted: string,
+    channel: any,
+    originalMsg: any,
+  ): Promise<void> {
     const data = this.unwrap<DealFundedPayload>(
       encrypted,
       'deal.funded',
@@ -315,6 +453,22 @@ export class QueueProcessor {
     if (!data) return;
 
     this.setCorrelationId(data);
+
+    // ── Idempotency check (#687) ───────────────────────────────────────────
+    const idemKey = IdempotencyService.buildKey(
+      'deal.funded',
+      data.tradeDealId,
+    );
+    const lease = await this.idempotency.acquireLease(idemKey);
+    if (!lease.acquired) {
+      this.logger.info(
+        { tradeDealId: data.tradeDealId, status: lease.status },
+        'deal.funded duplicate — acking without reprocessing',
+      );
+      channel.ack(originalMsg);
+      return;
+    }
+
     this.logger.info(
       { tradeDealId: data.tradeDealId },
       `Processing deal.funded for deal ${data.tradeDealId}`,
@@ -329,23 +483,41 @@ export class QueueProcessor {
           `<h3>Deal Fully Funded</h3><p>Good news! The deal for <strong>${data.commodity}</strong> you invested in (Deal ID: ${data.tradeDealId}) is now fully funded.</p><p>You invested ${investor.tokenAmount} tokens.</p>`,
         );
       }
+      await this.idempotency.markDone(idemKey);
     } catch (e: any) {
       this.logger.error(
         { error: e.message },
         `Failed to send deal.funded notifications: ${e.message}`,
       );
+      // Notification failures are non-critical — release lease and ack anyway
+      // so the deal record is not stuck; alerts go via queue-alert service.
+      await this.idempotency.releaseLease(idemKey);
     }
 
     channel.ack(originalMsg);
   }
 
   @EventPattern('email.notification')
-  async handleEmailNotification(
+  handleEmailNotification(
     @Payload() encrypted: string,
     @Ctx() context: RmqContext,
-  ) {
+  ): void {
     const channel = context.getChannelRef();
     const originalMsg = context.getMessage();
+
+    this.track(
+      () => this.processEmailNotification(encrypted, channel, originalMsg),
+      channel,
+      originalMsg,
+      'email.notification',
+    );
+  }
+
+  private async processEmailNotification(
+    encrypted: string,
+    channel: any,
+    originalMsg: any,
+  ): Promise<void> {
     const data = this.unwrap<any>(
       encrypted,
       'email.notification',
@@ -355,6 +527,26 @@ export class QueueProcessor {
     if (!data) return;
 
     this.setCorrelationId(data);
+
+    // Derive a stable idempotency key: prefer an explicit messageId on the
+    // payload; fall back to userId+type for notification events.
+    const businessId =
+      data.messageId ??
+      `${data.userId ?? 'unknown'}-${data.type ?? 'unknown'}`;
+    const idemKey = IdempotencyService.buildKey(
+      'email.notification',
+      businessId,
+    );
+    const lease = await this.idempotency.acquireLease(idemKey);
+    if (!lease.acquired) {
+      this.logger.info(
+        { businessId, status: lease.status },
+        'email.notification duplicate — acking without reprocessing',
+      );
+      channel.ack(originalMsg);
+      return;
+    }
+
     this.logger.info(
       { type: data.type },
       `Processing email.notification of type ${data.type}`,
@@ -362,61 +554,39 @@ export class QueueProcessor {
 
     try {
       let emailAddress = data.email;
+      let user: User | null = null;
       if (!emailAddress && data.userId) {
-        const user = await this.userRepo.findOne({
+        user = await this.userRepo.findOne({
           where: { id: data.userId },
         });
         if (user) {
           emailAddress = user.email;
         }
+      } else if (data.userId) {
+        // Localised emails need the user's preferred language (#897)
+        user = await this.userRepo.findOne({ where: { id: data.userId } });
       }
 
       if (emailAddress) {
-        let subject = '';
-        let text = '';
-        let html = '';
-
-        if (data.type === 'kyc_verified') {
-          subject = 'KYC Verification Approved';
-          text = `Your KYC verification has been approved. You can now participate in investments.`;
-          html = `<h3>KYC Approved</h3><p>Your KYC verification has been approved. You can now participate in investments.</p>`;
-        } else if (data.type === 'kyc_expiration_30') {
-          subject = 'KYC Document Expiring in 30 Days';
-          text = `Your KYC documents will expire in 30 days. Please update them to continue using our services.`;
-          html = `<h3>KYC Documents Expiring Soon</h3><p>Your KYC documents will expire in 30 days. Please update them to continue using our services.</p>`;
-        } else if (data.type === 'kyc_expiration_15') {
-          subject = 'KYC Document Expiring in 15 Days';
-          text = `Your KYC documents will expire in 15 days. Please update them to continue using our services.`;
-          html = `<h3>KYC Documents Expiring Soon</h3><p>Your KYC documents will expire in 15 days. Please update them to continue using our services.</p>`;
-        } else if (data.type === 'kyc_expiration_3') {
-          subject = 'KYC Document Expiring in 3 Days';
-          text = `Your KYC documents will expire in 3 days. Please update them immediately to continue using our services.`;
-          html = `<h3>KYC Documents Expiring Soon</h3><p>Your KYC documents will expire in 3 days. Please update them immediately to continue using our services.</p>`;
-        } else if (data.type === 'kyc_expired') {
-          subject = 'KYC Documents Expired';
-          text = `Your KYC documents have expired. Your account has been restricted. Please update your documents to restore access.`;
-          html = `<h3>KYC Documents Expired</h3><p>Your KYC documents have expired. Your account has been restricted. Please update your documents to restore access.</p>`;
-        } else if (data.type === 'deal_completed') {
-          subject = `Deal Completed: ${data.dealDetails?.commodity}`;
-          text = `The deal you participated in (${data.dealDetails?.commodity}) has been completed.`;
-          html = `<h3>Deal Completed</h3><p>The deal you participated in (<strong>${data.dealDetails?.commodity}</strong>) has been completed.</p>`;
-
-          if (data.recipient === 'investor') {
-            text += `\nYour return: $${data.dealDetails?.returnAmount?.toFixed(2)}`;
-            html += `<p>Your return: $${data.dealDetails?.returnAmount?.toFixed(2)}</p>`;
-          } else if (data.recipient === 'farmer') {
-            text += `\nYour payout: $${data.dealDetails?.farmerAmount?.toFixed(2)}`;
-            html += `<p>Your payout: $${data.dealDetails?.farmerAmount?.toFixed(2)}</p>`;
-          }
-        }
-
-        if (subject) {
+        const templateName = EMAIL_TYPE_TO_TEMPLATE[data.type];
+        if (templateName) {
+          const rendered = this.renderLocalized(templateName, data, user);
           await this.notificationsService.sendEmail(
             emailAddress,
-            subject,
-            text,
-            html,
+            rendered.subject,
+            rendered.text,
+            rendered.html,
           );
+        } else {
+          const { subject, text, html } = this.buildLegacyNotification(data);
+          if (subject) {
+            await this.notificationsService.sendEmail(
+              emailAddress,
+              subject,
+              text,
+              html,
+            );
+          }
         }
       } else {
         this.logger.warn(
@@ -424,23 +594,140 @@ export class QueueProcessor {
           'No email address found for user notification',
         );
       }
+
+      await this.idempotency.markDone(idemKey);
     } catch (e: any) {
       this.logger.error(
         { error: e.message },
         `Failed to send email.notification: ${e.message}`,
       );
+      await this.idempotency.releaseLease(idemKey);
     }
 
     channel.ack(originalMsg);
   }
 
+  /**
+   * Renders a localized template for an `email.notification` payload using
+   * the recipient's preferred language, falling back to English (#897).
+   */
+  private renderLocalized(
+    templateName: string,
+    data: any,
+    user: User | null,
+  ): RenderedEmail {
+    const details = data.dealDetails ?? {};
+    const displayName =
+      data.userName ??
+      details.farmerName ??
+      details.investorName ??
+      (user?.fullName ?? deriveNameFromEmail(user?.email ?? data.email ?? ''));
+
+    const vars: Record<string, unknown> = {
+      userName: displayName,
+      farmerName: displayName,
+      investorName: displayName,
+      leadFarmerName: details.leadFarmerName ?? displayName,
+      dealName: details.commodity ?? data.commodity ?? details.dealName,
+      amount: formatUsd(details.amount ?? data.amount),
+      farmerAmount: formatUsd(details.farmerAmount),
+      returnAmount: formatUsd(details.returnAmount),
+      investmentAmount: formatUsd(details.investmentAmount),
+      tokenAmount: details.tokenAmount ?? data.tokenAmount,
+      txId: data.stellarTxId ?? details.stellarTxId ?? '',
+      unlockAt: data.unlockAt ?? '',
+      ipAddress: data.ipAddress ?? '',
+      device: data.device ?? '',
+      time: data.time ?? new Date().toISOString(),
+      verifyUrl: data.verifyUrl ?? '',
+      resetUrl: data.resetUrl ?? '',
+      expiresInMinutes: data.expiresInMinutes ?? 30,
+      acceptUrl: data.acceptUrl ?? '',
+      portionPercent: details.portionPercent ?? data.portionPercent ?? '',
+      reason: details.reason ?? data.reason ?? '',
+      kycUrl: `${this.config.get<string>('APP_BASE_URL', 'http://localhost:3001')}/dashboard/kyc`,
+      ...details,
+    };
+
+    return this.emailTemplates.render(
+      templateName,
+      vars,
+      user?.preferredLanguage,
+    );
+  }
+
+  /** Legacy inline copy for event types without localized templates yet. */
+  private buildLegacyNotification(data: any): {
+    subject: string;
+    text: string;
+    html: string;
+  } {
+    if (data.type === 'kyc_expiration_30') {
+      return {
+        subject: 'KYC Document Expiring in 30 Days',
+        text: `Your KYC documents will expire in 30 days. Please update them to continue using our services.`,
+        html: `<h3>KYC Documents Expiring Soon</h3><p>Your KYC documents will expire in 30 days. Please update them to continue using our services.</p>`,
+      };
+    }
+    if (data.type === 'kyc_expiration_15') {
+      return {
+        subject: 'KYC Document Expiring in 15 Days',
+        text: `Your KYC documents will expire in 15 days. Please update them to continue using our services.`,
+        html: `<h3>KYC Documents Expiring Soon</h3><p>Your KYC documents will expire in 15 days. Please update them to continue using our services.</p>`,
+      };
+    }
+    if (data.type === 'kyc_expiration_3') {
+      return {
+        subject: 'KYC Document Expiring in 3 Days',
+        text: `Your KYC documents will expire in 3 days. Please update them immediately to continue using our services.`,
+        html: `<h3>KYC Documents Expiring Soon</h3><p>Your KYC documents will expire in 3 days. Please update them immediately to continue using our services.</p>`,
+      };
+    }
+    if (data.type === 'kyc_expired') {
+      return {
+        subject: 'KYC Documents Expired',
+        text: `Your KYC documents have expired. Your account has been restricted. Please update your documents to restore access.`,
+        html: `<h3>KYC Documents Expired</h3><p>Your KYC documents have expired. Your account has been restricted. Please update your documents to restore access.</p>`,
+      };
+    }
+    if (data.type === 'deal_completed') {
+      let subject = `Deal Completed: ${data.dealDetails?.commodity}`;
+      let text = `The deal you participated in (${data.dealDetails?.commodity}) has been completed.`;
+      let html = `<h3>Deal Completed</h3><p>The deal you participated in (<strong>${data.dealDetails?.commodity}</strong>) has been completed.</p>`;
+
+      if (data.recipient === 'investor') {
+        text += `\nYour return: $${data.dealDetails?.returnAmount?.toFixed(2)}`;
+        html += `<p>Your return: $${data.dealDetails?.returnAmount?.toFixed(2)}</p>`;
+      } else if (data.recipient === 'farmer') {
+        text += `\nYour payout: $${data.dealDetails?.farmerAmount?.toFixed(2)}`;
+        html += `<p>Your payout: $${data.dealDetails?.farmerAmount?.toFixed(2)}</p>`;
+      }
+      return { subject, text, html };
+    }
+    return { subject: '', text: '', html: '' };
+  }
+
   @EventPattern('deal.cleanup')
-  async handleDealCleanup(
+  handleDealCleanup(
     @Payload() encrypted: string,
     @Ctx() context: RmqContext,
-  ) {
+  ): void {
     const channel = context.getChannelRef();
     const originalMsg = context.getMessage();
+
+    this.track(
+      () => this.processDealCleanup(encrypted, channel, originalMsg),
+      channel,
+      originalMsg,
+      'deal.cleanup',
+    );
+  }
+
+  private async processDealCleanup(
+    encrypted: string,
+    channel: any,
+    originalMsg: any,
+  ): Promise<void> {
     const data = this.unwrap<DealCleanupPayload>(
       encrypted,
       'deal.cleanup',
@@ -450,6 +737,22 @@ export class QueueProcessor {
     if (!data) return;
 
     this.setCorrelationId(data);
+
+    // ── Idempotency check (#687) ───────────────────────────────────────────
+    const idemKey = IdempotencyService.buildKey(
+      'deal.cleanup',
+      data.tradeDealId,
+    );
+    const lease = await this.idempotency.acquireLease(idemKey);
+    if (!lease.acquired) {
+      this.logger.info(
+        { tradeDealId: data.tradeDealId, status: lease.status },
+        'deal.cleanup duplicate — acking without reprocessing',
+      );
+      channel.ack(originalMsg);
+      return;
+    }
+
     this.logger.info(
       { dealId: data.tradeDealId },
       `Processing deal.cleanup for deal ${data.tradeDealId}`,
@@ -459,6 +762,7 @@ export class QueueProcessor {
       const deal = await this.tradeDealsService.findOne(data.tradeDealId);
       if (!deal) {
         this.logger.warn(`Deal ${data.tradeDealId} not found for cleanup`);
+        await this.idempotency.markDone(idemKey);
         channel.ack(originalMsg);
         return;
       }
@@ -514,12 +818,15 @@ export class QueueProcessor {
         { dealId: data.tradeDealId },
         `Successfully completed deal cleanup for deal ${data.tradeDealId}`,
       );
+
+      await this.idempotency.markDone(idemKey);
     } catch (error) {
       this.logger.error(
         { dealId: data.tradeDealId, error: error.message },
         `Deal cleanup failed for deal ${data.tradeDealId}: ${error.message}`,
       );
-      // We still ack the message, it's a best-effort cleanup
+      // Best-effort cleanup — still release lease and ack
+      await this.idempotency.releaseLease(idemKey);
     }
 
     channel.ack(originalMsg);
@@ -580,4 +887,41 @@ export class QueueProcessor {
 
     this.logger.info({ dealId, txHash }, 'Soroban FarmCampaign initialized');
   }
+}
+
+/**
+ * Maps `email.notification` event types to localized template names (#897).
+ * Types absent from this map keep their legacy inline copy.
+ */
+const EMAIL_TYPE_TO_TEMPLATE: Record<string, string> = {
+  welcome: 'welcome',
+  kyc_verified: 'kyc-approved',
+  kyc_rejected: 'kyc-rejected',
+  investment_confirmed: 'investment-confirmed',
+  payment_distributed: 'payment-distributed',
+  deal_funded: 'deal-funded',
+  deal_expired: 'deal-expired',
+  password_reset: 'password-reset',
+  account_lockout: 'account-lockout',
+  security_alert_new_device: 'security-alert',
+  co_farmer_invitation: 'co-farmer-invitation',
+};
+
+function formatUsd(value: unknown): string {
+  const num = Number(value);
+  if (value === null || value === undefined || Number.isNaN(num)) return '';
+  return num.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function deriveNameFromEmail(email: string): string {
+  const local = email.split('@')[0] ?? '';
+  if (!local) return 'there';
+  return local
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
 }

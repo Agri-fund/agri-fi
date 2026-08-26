@@ -70,6 +70,10 @@ export class KycSubmission {
   @Column({ default: 'pending_review' })
   status: KycSubmissionStatus;
 
+  /** SEP-12 customer payload stored alongside the internal format (#837) */
+  @Column({ name: 'sep12_data', type: 'jsonb', nullable: true })
+  sep12Data: Record<string, unknown> | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 }
