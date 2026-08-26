@@ -226,4 +226,29 @@ export class TradeDeal {
     nullable: true,
   })
   appTraceId: string | null;
+
+  // #828 — Risk scoring
+  @Column({ name: 'risk_score', type: 'decimal', precision: 5, scale: 2, nullable: true })
+  @ApiProperty({
+    description: 'Composite risk score (0-100, higher = riskier)',
+    nullable: true,
+    example: 42.5,
+  })
+  riskScore: number | null;
+
+  @Column({ name: 'risk_rating', type: 'varchar', length: 16, nullable: true })
+  @ApiProperty({
+    description: 'Risk rating derived from risk_score',
+    enum: ['Low', 'Medium', 'High', 'Very High'],
+    nullable: true,
+    example: 'Medium',
+  })
+  riskRating: string | null;
+
+  @Column({ name: 'risk_breakdown', type: 'simple-json', nullable: true })
+  @ApiProperty({
+    description: 'Per-dimension risk score breakdown',
+    nullable: true,
+  })
+  riskBreakdown: Record<string, number> | null;
 }

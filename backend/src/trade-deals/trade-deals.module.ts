@@ -20,6 +20,7 @@ import { TradeDealsGuard } from './trade-deals.guard';
 import { TradeDealsCronService } from './trade-deals-cron.service';
 import { DealFundingAlertService } from './deal-funding-alert.service';
 import { DealDigestService } from './deal-digest.service';
+import { RiskScoringService } from './risk-scoring.service';
 import { DealHealthMonitorService } from './deal-health-monitor.service';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { AuditModule } from '../audit/audit.module';
@@ -86,6 +87,7 @@ const DEALS_CACHE_TTL_MS = 30_000;
     TradeDealsCronService,
     DealFundingAlertService,
     DealDigestService,
+    RiskScoringService,
     DealHealthMonitorService,
     makeGaugeProvider({
       name: 'deal_health_alerts_active_total',
@@ -93,6 +95,6 @@ const DEALS_CACHE_TTL_MS = 30_000;
       labelNames: ['alertType'],
     }),
   ],
-  exports: [TradeDealsService, DealCoFarmersService, DealDigestService],
+  exports: [TradeDealsService, DealCoFarmersService, DealDigestService, RiskScoringService],
 })
 export class TradeDealsModule {}

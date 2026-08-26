@@ -135,6 +135,18 @@ export class User {
   })
   isMfaEnabled: boolean;
 
+  // #827 — MFA backup codes (bcrypt-hashed, single-use)
+  @Exclude()
+  @Column({ name: 'mfa_backup_codes', type: 'simple-json', nullable: true })
+  mfaBackupCodes: string[] | null;
+
+  // #827 — MFA failed attempt tracking
+  @Column({ name: 'mfa_failed_attempts', default: 0 })
+  mfaFailedAttempts: number;
+
+  @Column({ name: 'mfa_locked_until', type: 'timestamptz', nullable: true })
+  mfaLockedUntil: Date | null;
+
   @CreateDateColumn({ name: 'created_at' })
   @ApiProperty({
     description: 'Account creation timestamp',

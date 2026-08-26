@@ -67,7 +67,9 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
+    if (isSubmitting) return;
+
     if (!isConnected || !publicKey) {
       toast('Please connect your wallet first', 'warning');
       return;
@@ -91,11 +93,13 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
       }
 
       // Step 1: Create pending investment (simulating phase)
+      const idempotencyKey = crypto.randomUUID();
       const createResponse = await fetch('/api/investments', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
+          'X-Idempotency-Key': idempotencyKey,
         },
         body: JSON.stringify({
           tradeDealId: dealId,

@@ -34,7 +34,7 @@ import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { Sep10ChallengeDto } from './dto/sep10-challenge.dto';
 import { Sep10ResponseDto } from './dto/sep10-response.dto';
-import { EnableMfaDto } from './dto/mfa.dto';
+import { EnableMfaDto, VerifyMfaDto, DisableMfaDto } from './dto/mfa.dto';
 import { WebhookSignatureGuard } from './webhook-signature.guard';
 import { User } from './entities/user.entity';
 
@@ -235,6 +235,31 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   enableMfa(@Request() req: AuthRequest, @Body() dto: EnableMfaDto) {
     return this.authService.enableMfa(req.user.id, dto.token);
+  }
+
+  @Post('mfa/verify')
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth('jwt')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Verify a TOTP token or backup code (login step-up)' })
+  @ApiResponse({ status: 200, description: 'MFA verification successful' })
+  @ApiResponse({ status: 400, description: 'Invalid token' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'MFA locked out due to too many attempts' })
+  verifyMfa(@Request() req: AuthRequest, @Body() dto: VerifyMfaDto) {
+    return this.authService.verifyMfa(req.user.id, dto.token);
+  }
+
+  @Post('mfa/disable')
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth('jwt')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Disable MFA (requires current TOTP + password)' })
+  @ApiResponse({ status: 200, description: 'MFA disabled successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid token or password' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  disableMfa(@Request() req: AuthRequest, @Body() dto: DisableMfaDto) {
+    return this.authService.disableMfa(req.user.id, dto.token, dto.password);
   }
 
   @Get('stellar-challenge')
