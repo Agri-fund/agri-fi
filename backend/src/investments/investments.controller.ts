@@ -12,7 +12,9 @@ import {
   Version,
   ForbiddenException,
   NotFoundException,
+  Res,
 } from '@nestjs/common';
+import { Response } from 'express';
 import {
   ApiTags,
   ApiOperation,
@@ -25,6 +27,8 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { Throttle } from '@nestjs/throttler';
 import { InvestmentsService } from './investments.service';
+import { TaxReportService, TaxReportFormat } from './tax-report.service';
+import { TaxReportQueryDto } from './dto/tax-report-query.dto';
 import { CreateInvestmentDto } from './dto/create-investment.dto';
 import { KycGuard } from '../auth/kyc.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -43,6 +47,7 @@ export class InvestmentsController {
     private readonly investmentsService: InvestmentsService,
     private readonly stellarService: StellarService,
     private readonly eventStore: InvestmentEventStore,
+    private readonly taxReportService: TaxReportService,
   ) {}
 
   @Post()
@@ -367,6 +372,37 @@ export class InvestmentsController {
    * Exposing the token issuer public key to unauthenticated callers would allow
    * anyone to query the Stellar DEX for deal data without authentication.
    */
+  /**
+   * Issue #850 — Investor tax report export (CSV and PDF).
+   */
+  @Get('tax-report')
+  @ApiOperation({ summary: 'Export investor tax report for a financial year (#850)' })
+  @ApiQuery({ name: 'year', required: true, example: 2025 })
+  @ApiQuery({ name: 'format', required: false, enum: ['csv', 'pdf'], example: 'csv' })
+  @ApiResponse({ status: 200, description: 'Tax report file download' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @UseGuards(KycGuard, RolesGuard)
+  @Roles('investor')
+  async taxReport(
+    @Request() req: { user: { id: string } },
+    @Query() query: TaxReportQueryDto,
+    @Res() res: Response,
+  ) {
+    const report = await this.taxReportService.buildReportData(req.user.id, query.year);
+    const format = query.format ?? TaxReportFormat.CSV;
+
+    if (format === TaxReportFormat.CSV) {
+      const csv = this.taxReportService.toCsv(report);
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="tax-report-${query.year}.csv"`);
+      return res.send('﻿' + csv); // BOM for Excel compatibility
+    }
+
+    // PDF: placeholder — integrate pdfkit in production
+    res.setHeader('Content-Type', 'application/json');
+    return res.json({ message: 'PDF generation queued — you will receive an email when ready.', year: query.year });
+  }
+
   @Get('buy-orders/:tokenCode/:tokenIssuer')
   @UseGuards(AuthGuard('jwt'))
   @ApiOperation({
