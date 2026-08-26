@@ -19,6 +19,7 @@ import {
 } from '../investments/entities/investment.entity';
 import { StellarService } from '../stellar/stellar.service';
 import { QueueService } from '../queue/queue.service';
+import { RiskScoringService } from './risk-scoring.service';
 
 const VALID_DOC_TYPES: DocumentType[] = [
   'purchase_agreement',
@@ -55,6 +56,7 @@ export class TradeDealsService {
     private readonly investmentRepo: Repository<Investment>,
     private readonly stellarService: StellarService,
     private readonly queueService: QueueService,
+    private readonly riskScoringService: RiskScoringService,
     private readonly logger: PinoLogger,
     private readonly dataSource: DataSource,
   ) {
@@ -127,7 +129,14 @@ export class TradeDealsService {
       savedDeal.id,
     );
 
-    return this.tradeDealRepo.save(savedDeal);
+    const saved = await this.tradeDealRepo.save(savedDeal);
+
+    // #828 — compute initial risk score (non-blocking)
+    this.riskScoringService.computeAndPersist(saved.id).catch((err) => {
+      this.logger.warn({ dealId: saved.id, error: err.message }, 'Failed to compute initial risk score');
+    });
+
+    return saved;
   }
 
   async findOpen(query: {
@@ -158,6 +167,8 @@ export class TradeDealsService {
         'deal.deliveryDate',
         'deal.farmerId',
         'deal.traderId',
+        'deal.riskScore',
+        'deal.riskRating',
       ])
       .skip(skip)
       .take(limit);
@@ -185,6 +196,8 @@ export class TradeDealsService {
         farmer_id: deal.farmerId,
         trader_id: deal.traderId,
         remaining_funding: Number(deal.totalValue) - Number(deal.totalInvested),
+        risk_score: deal.riskScore,
+        risk_rating: deal.riskRating,
       })),
       total,
       page,
@@ -236,6 +249,9 @@ export class TradeDealsService {
       description: `${deal.quantity} ${deal.quantityUnit} of ${deal.commodity} for delivery by ${new Date(
         deal.deliveryDate,
       ).toLocaleDateString()}`,
+      risk_score: deal.riskScore,
+      risk_rating: deal.riskRating,
+      risk_breakdown: deal.riskBreakdown,
     };
 
     if (!canViewSensitive) {

@@ -1106,80 +1106,88 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       const batchStart = batchIdx * BATCH_SIZE;
       const batch = investorShares.slice(batchStart, batchStart + BATCH_SIZE);
 
-      const batchAccount = this.enableSequenceCache
-        ? await this.loadAccountCached(escrowKeypair.publicKey())
-        : await this.server.loadAccount(escrowKeypair.publicKey());
-      const txBuilder = new TransactionBuilder(batchAccount, {
-        fee: BASE_FEE,
-        networkPassphrase: this.networkPassphrase,
-      });
-
-      batch.forEach((share, localIdx) => {
-        const globalIdx = batchStart + localIdx;
-        let shareStroops = Math.floor(
-          (share.tokenAmount / totalTokens) * investorPoolStroops,
-        );
-
-        if (globalIdx === investorShares.length - 1) {
-          shareStroops = investorPoolStroops - distributedToInvestors;
-        }
-
-        distributedToInvestors += shareStroops;
-
-        const shareAmount = new BigNumber(shareStroops)
-          .dividedBy(1e7)
-          .toFixed(7);
-        if (parseFloat(shareAmount) > 0) {
-          if (hasUsdcTrustline[globalIdx]) {
-            txBuilder.addOperation(
-              Operation.payment({
-                destination: share.walletAddress,
-                asset: this.usdcAsset,
-                amount: shareAmount,
-              }),
-            );
-          } else {
-            // Investor lacks USDC trustline — create claimable balance
-            txBuilder.addOperation(
-              Operation.createClaimableBalance({
-                asset: this.usdcAsset,
-                amount: shareAmount,
-                claimants: [
-                  new Claimant(
-                    share.walletAddress,
-                    Claimant.predicateUnconditional(),
-                  ),
-                ],
-              }),
-            );
-            claimableInvestors.push({
-              walletAddress: share.walletAddress,
-              amount: shareAmount,
-            });
-          }
-        }
-      });
-
-      if (batchIdx === batchCount - 1) {
-        txBuilder.addOperation(
-          Operation.payment({
-            destination: platformWallet,
-            asset: this.usdcAsset,
-            amount: new BigNumber(platformStroops).dividedBy(1e7).toFixed(7),
-          }),
-        );
-      }
-
-      const tx = txBuilder.setTimeout(30).build();
-      tx.sign(escrowKeypair);
-
-      // Increment local sequence for next batch
-      if (this.enableSequenceCache) {
-        await this.incrementLocalSequence(escrowKeypair.publicKey());
-      }
+      // Capture batch-scoped variables for the buildTx closure
+      const capturedBatch = batch;
+      const capturedBatchStart = batchStart;
+      const isLastBatch = batchIdx === batchCount - 1;
 
       try {
-        const result = await this.submitWithRetry(tx);
+        // #826 — use fee-bump retry to handle tx_insufficient_fee on congested networks
+        const result = await this.submitWithFeeBumpRetry(
+          async (fee: string) => {
+            const batchAccount = this.enableSequenceCache
+              ? await this.loadAccountCached(escrowKeypair.publicKey())
+              : await this.server.loadAccount(escrowKeypair.publicKey());
+            const txBuilder = new TransactionBuilder(batchAccount, {
+              fee,
+              networkPassphrase: this.networkPassphrase,
+            });
+
+            capturedBatch.forEach((share, localIdx) => {
+              const globalIdx = capturedBatchStart + localIdx;
+              let shareStroops = Math.floor(
+                (share.tokenAmount / totalTokens) * investorPoolStroops,
+              );
+
+              if (globalIdx === investorShares.length - 1) {
+                shareStroops = investorPoolStroops - distributedToInvestors;
+              }
+
+              distributedToInvestors += shareStroops;
+
+              const shareAmount = new BigNumber(shareStroops)
+                .dividedBy(1e7)
+                .toFixed(7);
+              if (parseFloat(shareAmount) > 0) {
+                if (hasUsdcTrustline[globalIdx]) {
+                  txBuilder.addOperation(
+                    Operation.payment({
+                      destination: share.walletAddress,
+                      asset: this.usdcAsset,
+                      amount: shareAmount,
+                    }),
+                  );
+                } else {
+                  txBuilder.addOperation(
+                    Operation.createClaimableBalance({
+                      asset: this.usdcAsset,
+                      amount: shareAmount,
+                      claimants: [
+                        new Claimant(
+                          share.walletAddress,
+                          Claimant.predicateUnconditional(),
+                        ),
+                      ],
+                    }),
+                  );
+                  claimableInvestors.push({
+                    walletAddress: share.walletAddress,
+                    amount: shareAmount,
+                  });
+                }
+              }
+            });
+
+            if (isLastBatch) {
+              txBuilder.addOperation(
+                Operation.payment({
+                  destination: platformWallet,
+                  asset: this.usdcAsset,
+                  amount: new BigNumber(platformStroops).dividedBy(1e7).toFixed(7),
+                }),
+              );
+            }
+
+            return txBuilder.setTimeout(30).build();
+          },
+          escrowKeypair,
+        );
+
+        // Increment local sequence for next batch
+        if (this.enableSequenceCache) {
+          await this.incrementLocalSequence(escrowKeypair.publicKey());
+        }
+
         const txHash = (result as any).hash as string;
         txIds.push(txHash);
 
@@ -1187,7 +1195,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         const batchClaimable = claimableInvestors.filter(
           (ci) =>
             !ci.txHash &&
-            batch.some((s) => s.walletAddress === ci.walletAddress),
+            capturedBatch.some((s) => s.walletAddress === ci.walletAddress),
         );
         for (const ci of batchClaimable) {
           ci.txHash = txHash;
@@ -2119,6 +2127,55 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         await new Promise((resolve) => setTimeout(resolve, delayMs));
       }
     }
+  }
+
+  /**
+   * Checks whether a Horizon submission error indicates tx_insufficient_fee.
+   */
+  private isInsufficientFeeError(err: any): boolean {
+    const resultCodes = err?.response?.data?.extras?.result_codes;
+    if (resultCodes?.transaction === 'tx_insufficient_fee') return true;
+    if (typeof err?.message === 'string' && err.message.includes('tx_insufficient_fee')) return true;
+    return false;
+  }
+
+  /**
+   * Submits a transaction with fee-bump retry on tx_insufficient_fee.
+   * Doubles the fee each attempt up to STELLAR_MAX_FEE (default: 10000 stroops).
+   * Used for escrow release where fee surges can cause silent failures (#826).
+   */
+  private async submitWithFeeBumpRetry(
+    buildTx: (fee: string) => Promise<any>,
+    signer: Keypair,
+  ): Promise<any> {
+    const maxFee = this.config.get<string>('STELLAR_MAX_FEE', '10000');
+    const maxFeeNum = parseInt(maxFee, 10);
+    let currentFee = parseInt(BASE_FEE, 10);
+    const MAX_ATTEMPTS = 4;
+
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      const tx = await buildTx(currentFee.toString());
+      tx.sign(signer);
+
+      try {
+        const result = await this.server.submitTransaction(tx);
+        return result;
+      } catch (err: any) {
+        if (this.isInsufficientFeeError(err) && currentFee < maxFeeNum) {
+          currentFee = Math.min(currentFee * 2, maxFeeNum);
+          this.logger.warn(
+            { attempt, newFee: currentFee, maxFee: maxFeeNum },
+            `tx_insufficient_fee detected — retrying with higher fee (${currentFee} stroops)`,
+          );
+          continue;
+        }
+        throw err;
+      }
+    }
+
+    throw new Error(
+      `Escrow release failed: fee exceeded max (${maxFeeNum} stroops) after ${MAX_ATTEMPTS} attempts`,
+    );
   }
 
   /**

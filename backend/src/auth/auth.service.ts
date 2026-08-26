@@ -489,14 +489,27 @@ export class AuthService {
 
   // ── MFA ───────────────────────────────────────────────────────────────────
 
+  private static readonly MFA_MAX_ATTEMPTS = 5;
+  private static readonly MFA_LOCKOUT_MS = 10 * 60 * 1000; // 10 minutes
+
   async setupMfa(
     userId: string,
-  ): Promise<{ secret: string; otpauthUrl: string; qrCodeUrl: string }> {
+  ): Promise<{ secret: string; otpauthUrl: string; qrCodeUrl: string; backupCodes: string[] }> {
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found.');
 
     const secret = authenticator.generateSecret();
     user.mfaSecret = secret;
+
+    // Generate 8 backup codes (plaintext returned once, bcrypt-hashed stored)
+    const backupCodes = Array.from({ length: 8 }, () =>
+      randomBytes(4).toString('hex').toUpperCase(),
+    );
+    const hashedBackupCodes = await Promise.all(
+      backupCodes.map((code) => bcrypt.hash(code, 10)),
+    );
+    user.mfaBackupCodes = hashedBackupCodes;
+
     await this.userRepo.save(user);
 
     const issuer = this.configService.get<string>(
@@ -506,7 +519,7 @@ export class AuthService {
     const otpauthUrl = authenticator.keyuri(user.email, issuer, secret);
     const qrCodeUrl = await QRCode.toDataURL(otpauthUrl);
 
-    return { secret, otpauthUrl, qrCodeUrl };
+    return { secret, otpauthUrl, qrCodeUrl, backupCodes };
   }
 
   async enableMfa(
@@ -537,9 +550,113 @@ export class AuthService {
     }
 
     user.isMfaEnabled = true;
+    user.mfaFailedAttempts = 0;
+    user.mfaLockedUntil = null;
     await this.userRepo.save(user);
 
     return { success: true, message: 'MFA enabled successfully.' };
+  }
+
+  async disableMfa(
+    userId: string,
+    token: string,
+    password: string,
+  ): Promise<{ success: boolean; message: string }> {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found.');
+
+    if (!user.isMfaEnabled) {
+      throw new BadRequestException('MFA is not enabled for this account.');
+    }
+
+    // Verify password
+    const passwordValid = await this.verifyPassword(password, user.passwordHash);
+    if (!passwordValid) {
+      throw new BadRequestException('Invalid password.');
+    }
+
+    // Verify TOTP
+    const totpValid = this.verifyTotpToken(user.mfaSecret!, token);
+    if (!totpValid) {
+      throw new BadRequestException('Invalid MFA token.');
+    }
+
+    user.isMfaEnabled = false;
+    user.mfaSecret = null;
+    user.mfaBackupCodes = null;
+    user.mfaFailedAttempts = 0;
+    user.mfaLockedUntil = null;
+    await this.userRepo.save(user);
+
+    return { success: true, message: 'MFA disabled successfully.' };
+  }
+
+  async verifyMfa(
+    userId: string,
+    token: string,
+  ): Promise<{ valid: boolean }> {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found.');
+
+    if (!user.isMfaEnabled || !user.mfaSecret) {
+      throw new BadRequestException('MFA is not enabled for this account.');
+    }
+
+    // Check lockout
+    if (user.mfaLockedUntil && user.mfaLockedUntil > new Date()) {
+      throw new ForbiddenException({
+        code: 'MFA_LOCKED_OUT',
+        message: `Too many failed attempts. Try again after ${user.mfaLockedUntil.toISOString()}.`,
+      });
+    }
+
+    // Try TOTP first
+    let isValid = this.verifyTotpToken(user.mfaSecret, token.trim());
+
+    // If TOTP fails, try backup codes
+    if (!isValid && user.mfaBackupCodes?.length) {
+      for (let i = 0; i < user.mfaBackupCodes.length; i++) {
+        const codeMatch = await bcrypt.compare(token.trim(), user.mfaBackupCodes[i]);
+        if (codeMatch) {
+          isValid = true;
+          // Remove used backup code (single-use)
+          user.mfaBackupCodes.splice(i, 1);
+          break;
+        }
+      }
+    }
+
+    if (!isValid) {
+      user.mfaFailedAttempts = (user.mfaFailedAttempts || 0) + 1;
+      if (user.mfaFailedAttempts >= AuthService.MFA_MAX_ATTEMPTS) {
+        user.mfaLockedUntil = new Date(Date.now() + AuthService.MFA_LOCKOUT_MS);
+        user.mfaFailedAttempts = 0;
+      }
+      await this.userRepo.save(user);
+      throw new BadRequestException('Invalid MFA token.');
+    }
+
+    // Success — reset failed attempts
+    user.mfaFailedAttempts = 0;
+    user.mfaLockedUntil = null;
+    await this.userRepo.save(user);
+
+    return { valid: true };
+  }
+
+  private verifyTotpToken(secret: string, token: string): boolean {
+    try {
+      return authenticator.verify({ token: token.trim(), secret });
+    } catch {
+      return false;
+    }
+  }
+
+  private async verifyPassword(password: string, hash: string): Promise<boolean> {
+    if (this.isBcryptHash(hash)) {
+      return bcrypt.compare(password, hash);
+    }
+    return argon2.verify(hash, password);
   }
 
   // ── wallet ─────────────────────────────────────────────────────────────────

@@ -18,6 +18,7 @@ import { TradeDealsGuard } from './trade-deals.guard';
 import { TradeDealsCronService } from './trade-deals-cron.service';
 import { DealFundingAlertService } from './deal-funding-alert.service';
 import { DealDigestService } from './deal-digest.service';
+import { RiskScoringService } from './risk-scoring.service';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { redisCacheStore } from '../config/redis-cache.store';
 
@@ -80,7 +81,8 @@ const DEALS_CACHE_TTL_MS = 30_000;
     TradeDealsCronService,
     DealFundingAlertService,
     DealDigestService,
+    RiskScoringService,
   ],
-  exports: [TradeDealsService, DealCoFarmersService, DealDigestService],
+  exports: [TradeDealsService, DealCoFarmersService, DealDigestService, RiskScoringService],
 })
 export class TradeDealsModule {}

@@ -10,6 +10,8 @@ import {
   HttpStatus,
   Query,
   Version,
+  Headers,
+  ConflictException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -30,6 +32,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { StellarService } from '../stellar/stellar.service';
 import { PaginatedResult } from '../common/pagination';
 import { TradeDealsGuard } from '../trade-deals/trade-deals.guard';
+import { IdempotencyService } from '../queue/idempotency.service';
 
 @ApiTags('investments')
 @ApiBearerAuth('jwt')
@@ -40,6 +43,7 @@ export class InvestmentsController {
   constructor(
     private readonly investmentsService: InvestmentsService,
     private readonly stellarService: StellarService,
+    private readonly idempotency: IdempotencyService,
   ) {}
 
   @Post()
@@ -91,7 +95,15 @@ export class InvestmentsController {
   async createInvestment(
     @Request() req: { user: { id: string; role: string } },
     @Body() createInvestmentDto: CreateInvestmentDto,
+    @Headers('x-idempotency-key') idempotencyKey?: string,
   ) {
+    if (idempotencyKey) {
+      const key = IdempotencyService.buildKey('investment.create', idempotencyKey);
+      const lease = await this.idempotency.acquireLease(key, 300);
+      if (!lease.acquired) {
+        throw new ConflictException('Duplicate investment request detected.');
+      }
+    }
     return this.investmentsService.createInvestment(
       req.user.id,
       createInvestmentDto,
