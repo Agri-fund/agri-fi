@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, QueryRunner } from 'typeorm';
 import { PinoLogger } from 'nestjs-pino';
+import { InjectMetric } from '@willsoto/nestjs-prometheus';
+import { Counter, Gauge } from 'prom-client';
 import { OutboxEntity, OutboxEvent } from './outbox.entity';
 
 @Injectable()
@@ -11,6 +13,10 @@ export class OutboxService {
     private readonly outboxRepo: Repository<OutboxEntity>,
     private readonly dataSource: DataSource,
     private readonly logger: PinoLogger,
+    @InjectMetric('outbox_pending_events_total')
+    private readonly pendingEventsGauge: Gauge<string>,
+    @InjectMetric('outbox_publish_errors_total')
+    private readonly publishErrorsCounter: Counter<string>,
   ) {
     this.logger.setContext(OutboxService.name);
   }
@@ -96,6 +102,61 @@ export class OutboxService {
   }
 
   /**
+   * Atomically claim a batch of unprocessed outbox events using
+   * SELECT FOR UPDATE SKIP LOCKED so concurrent processors do not
+   * block each other. Returns the claimed events (already locked
+   * to this transaction) or an empty array if nothing is available.
+   */
+  async publishPending(limit: number = 50): Promise<OutboxEntity[]> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    try {
+      await queryRunner.query('BEGIN');
+
+      const rows = await queryRunner.query(
+        `SELECT id, event_type, payload, processed, retry_count, last_error,
+                created_at, updated_at, processed_at
+         FROM outbox
+         WHERE processed = FALSE AND retry_count < 10
+         ORDER BY created_at ASC
+         LIMIT $1
+         FOR UPDATE SKIP LOCKED`,
+        [limit],
+      );
+
+      await queryRunner.query('COMMIT');
+
+      this.pendingEventsGauge.set(rows.length);
+
+      return rows.map((row: any) => {
+        const entity = new OutboxEntity();
+        entity.id = row.id;
+        entity.eventType = row.event_type;
+        entity.payload = row.payload;
+        entity.processed = row.processed;
+        entity.retryCount = row.retry_count;
+        entity.lastError = row.last_error;
+        entity.createdAt = row.created_at;
+        entity.updatedAt = row.updated_at;
+        entity.processedAt = row.processed_at;
+        return entity;
+      });
+    } catch (error) {
+      await queryRunner.query('ROLLBACK');
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  /**
+   * Record a publish error for Prometheus tracking.
+   */
+  recordPublishError(eventType: string): void {
+    this.publishErrorsCounter.inc({ event_type: eventType });
+  }
+
+  /**
    * Mark an outbox event as processed.
    */
   async markProcessed(id: string): Promise<void> {
@@ -132,5 +193,43 @@ export class OutboxService {
       processedAt: olderThan,
     });
     return result.affected ?? 0;
+  }
+
+  /**
+   * Move events that have exceeded max retries to the dead-letter table
+   * and delete them from the outbox.
+   */
+  async moveToDeadLetter(maxRetries: number = 10): Promise<number> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    try {
+      await queryRunner.query('BEGIN');
+
+      const moved = await queryRunner.query(
+        `INSERT INTO outbox_dead_letter
+           (original_event_id, event_type, payload, retry_count, last_error)
+         SELECT id, event_type, payload, retry_count, last_error
+         FROM outbox
+         WHERE processed = FALSE AND retry_count >= $1
+         RETURNING original_event_id`,
+        [maxRetries],
+      );
+
+      if (moved.length > 0) {
+        const ids = moved.map((r: any) => r.original_event_id);
+        await queryRunner.query(
+          `DELETE FROM outbox WHERE id = ANY($1::uuid[])`,
+          [ids],
+        );
+      }
+
+      await queryRunner.query('COMMIT');
+      return moved.length;
+    } catch (error) {
+      await queryRunner.query('ROLLBACK');
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
   }
 }

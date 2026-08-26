@@ -3,6 +3,7 @@ import {
   Post,
   Get,
   Body,
+  Param,
   Query,
   UseGuards,
   Request,
@@ -95,6 +96,9 @@ export class AuthController {
       country:
         (req.headers?.['cf-ipcountry'] as string | undefined) ||
         (req.headers?.['x-geo-country'] as string | undefined),
+      acceptLanguage: typeof req.headers?.['accept-language'] === 'string'
+        ? req.headers['accept-language']
+        : undefined,
     };
 
     const tokens = await this.authService.login(dto, meta);
@@ -211,6 +215,14 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   setupMfa(@Request() req: AuthRequest) {
     return this.authService.setupMfa(req.user.id);
+  }
+
+  @Get('revoke-session/:token')
+  @ApiOperation({ summary: 'Revoke all sessions for a user via a revocation token' })
+  @ApiResponse({ status: 200, description: 'All sessions revoked' })
+  @ApiResponse({ status: 400, description: 'Invalid or expired revocation link' })
+  async revokeSession(@Param('token') token: string) {
+    return this.authService.revokeSession(token);
   }
 
   @Post('mfa/enable')
