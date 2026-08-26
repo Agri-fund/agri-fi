@@ -115,6 +115,8 @@ export class TradeDealsService {
       traderId: effectiveTraderId,
       totalInvested: 0,
       deliveryDate: new Date(dto.delivery_date),
+      minLotSize: dto.min_lot_size ?? 1,
+      lotStep: dto.lot_step ?? 1,
       escrowPublicKey: null,
       escrowSecretKey: null,
       issuerPublicKey: null,
@@ -198,6 +200,8 @@ export class TradeDealsService {
         remaining_funding: Number(deal.totalValue) - Number(deal.totalInvested),
         risk_score: deal.riskScore,
         risk_rating: deal.riskRating,
+        min_lot_size: Number(deal.minLotSize),
+        lot_step: Number(deal.lotStep),
       })),
       total,
       page,
@@ -252,6 +256,11 @@ export class TradeDealsService {
       risk_score: deal.riskScore,
       risk_rating: deal.riskRating,
       risk_breakdown: deal.riskBreakdown,
+      // #835 — lot sizing exposed to the investment form
+      min_lot_size: Number(deal.minLotSize),
+      lot_step: Number(deal.lotStep),
+      // #830 — on-chain FarmCampaign contract address for this deal
+      soroban_contract_address: deal.sorobanCampaignContractId ?? null,
     };
 
     if (!canViewSensitive) {

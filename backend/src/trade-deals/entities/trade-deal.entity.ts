@@ -251,4 +251,32 @@ export class TradeDeal {
     nullable: true,
   })
   riskBreakdown: Record<string, number> | null;
+
+  // #835 — Fractional investment lot sizing
+  @Column({
+    name: 'min_lot_size',
+    type: 'decimal',
+    precision: 36,
+    scale: 7,
+    default: 1,
+  })
+  @ApiProperty({
+    description: 'Minimum investment amount in USD for this deal',
+    example: 50,
+  })
+  minLotSize: number;
+
+  @Column({
+    name: 'lot_step',
+    type: 'decimal',
+    precision: 36,
+    scale: 7,
+    default: 1,
+  })
+  @ApiProperty({
+    description:
+      'Investment increment in USD above the minimum (amount - min_lot_size) must be a multiple of lot_step',
+    example: 10,
+  })
+  lotStep: number;
 }

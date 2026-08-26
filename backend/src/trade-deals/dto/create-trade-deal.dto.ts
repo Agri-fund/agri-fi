@@ -71,4 +71,26 @@ export class CreateTradeDealDto {
     description: 'Expected delivery date (must be in the future)',
   })
   delivery_date: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @ApiPropertyOptional({
+    example: 50,
+    minimum: 0,
+    description: 'Minimum investment lot size in USD (#835, default 1)',
+  })
+  min_lot_size?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @ApiPropertyOptional({
+    example: 10,
+    minimum: 0,
+    description: 'Investment increment above the minimum in USD (#835, default 1)',
+  })
+  lot_step?: number;
 }

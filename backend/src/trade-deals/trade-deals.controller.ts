@@ -37,6 +37,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { OptionalJwtGuard } from '../auth/optional-jwt.guard';
 import { CreateTradeDealDto } from './dto/create-trade-deal.dto';
 import { DealCoFarmersService } from './deal-co-farmers.service';
+import { DealDeploymentService } from './deal-deployment.service';
 import {
   AcceptCoFarmerInvitationDto,
   InviteCoFarmerDto,
@@ -55,6 +56,7 @@ export class TradeDealsController {
   constructor(
     private readonly tradeDealsService: TradeDealsService,
     private readonly dealCoFarmersService: DealCoFarmersService,
+    private readonly dealDeploymentService: DealDeploymentService,
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
   ) {}
 
@@ -111,6 +113,34 @@ export class TradeDealsController {
     await this.dealCoFarmersService.assertAllCoFarmersVerified(id);
 
     const deal = await this.tradeDealsService.publishDeal(id, req.user.id);
+    await this.cacheManager.stores[0].reset();
+    return deal;
+  }
+
+  // ── Admin approval + on-chain deployment (#830) ────────────────────────────
+
+  @Post(':id/approve')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('admin')
+  @HttpCode(200)
+  @ApiBearerAuth('jwt')
+  @ApiOperation({
+    summary:
+      'Approve a draft deal and deploy its FarmCampaign contract via ProjectFactory (admin only)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Deal approved; campaign contract deployed and deal is open',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Admin role required' })
+  @ApiResponse({ status: 404, description: 'Trade deal not found' })
+  @ApiResponse({ status: 422, description: 'Deal not in draft or deployment failed' })
+  async approveDeal(
+    @Param('id') id: string,
+    @Request() req: AuthRequest,
+  ): Promise<TradeDeal> {
+    const deal = await this.dealDeploymentService.approveDeal(id, req.user.id);
     await this.cacheManager.stores[0].reset();
     return deal;
   }
