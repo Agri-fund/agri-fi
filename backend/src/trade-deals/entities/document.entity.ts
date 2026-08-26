@@ -13,7 +13,8 @@ export type DocumentType =
   | 'purchase_agreement'
   | 'bill_of_lading'
   | 'export_certificate'
-  | 'warehouse_receipt';
+  | 'warehouse_receipt'
+  | 'harvest_completion';
 
 export interface DocumentMetadata {
   dimensions?: {
@@ -54,6 +55,9 @@ export class Document {
 
   @Column({ name: 'signature_verified', default: false })
   signatureVerified: boolean;
+
+  @Column({ nullable: true })
+  title: string | null;
 
   @Column({ name: 'metadata', type: 'jsonb', default: {} })
   metadata: DocumentMetadata;

@@ -25,6 +25,12 @@ export type TradeDealStatus =
   | 'canceled'
   | 'expired';
 
+export type SettlementStatus =
+  | 'pending'
+  | 'settling'
+  | 'settled'
+  | 'settlement_failed';
+
 @Entity('trade_deals')
 @Index(['farmerId', 'status'])
 @Index(['traderId', 'status'])
@@ -42,6 +48,21 @@ export class TradeDeal {
     example: 'Cocoa',
   })
   commodity: string;
+
+  @Column({ nullable: true })
+  @ApiProperty({
+    description: 'Human-readable deal title',
+    nullable: true,
+    example: 'Premium Maize — Kenya 2026',
+  })
+  title: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  @ApiProperty({
+    description: 'Deal description for marketplace display',
+    nullable: true,
+  })
+  description: string | null;
 
   @Column({ type: 'decimal', precision: 36, scale: 7 })
   @ApiProperty({
@@ -351,4 +372,28 @@ export class TradeDeal {
     example: 10,
   })
   lotStep: number;
+
+  @Column({ name: 'settlement_status', type: 'varchar', length: 32, default: 'pending' })
+  @ApiProperty({
+    description: 'On-chain settlement status (#899)',
+    enum: ['pending', 'settling', 'settled', 'settlement_failed'],
+    example: 'pending',
+  })
+  settlementStatus: SettlementStatus;
+
+  @Column({ name: 'settlement_tx_hash', nullable: true })
+  @ApiProperty({
+    description: 'Stellar transaction hash for on-chain settlement',
+    nullable: true,
+  })
+  settlementTxHash: string | null;
+
+  @Column({ name: 'settlement_harvest_amount', type: 'decimal', precision: 18, scale: 7, nullable: true })
+  settlementHarvestAmount: number | null;
+
+  @Column({ name: 'settlement_quality_grade', type: 'int', nullable: true })
+  settlementQualityGrade: number | null;
+
+  @Column({ name: 'settled_at', type: 'timestamptz', nullable: true })
+  settledAt: Date | null;
 }

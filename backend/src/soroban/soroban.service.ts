@@ -558,6 +558,42 @@ export class SorobanService {
     }
   }
 
+  // ── Contract Upgrade Management (#901) ─────────────────────────────────────
+
+  /**
+   * Upgrades a Soroban contract to a new WASM hash.
+   * Invokes the contract's upgrade() method with the platform admin keypair.
+   */
+  async upgradeContract(
+    contractId: string,
+    wasmHashHex: string,
+  ): Promise<string> {
+    const wasmHashBytes = Buffer.from(wasmHashHex, 'hex');
+    const args = [
+      new Address(this.platformKeypair.publicKey()).toScVal(),
+      xdr.ScVal.scvBytes(wasmHashBytes),
+    ];
+    return this.invokeContract(contractId, 'upgrade', args);
+  }
+
+  /**
+   * Invokes farm_campaign_settlement.settle() to finalize a campaign (#899).
+   */
+  async settleCampaign(
+    settlementContractId: string,
+    campaignId: string,
+    harvestAmount: number,
+    qualityGrade: number,
+  ): Promise<string> {
+    const args = [
+      new Address(this.platformKeypair.publicKey()).toScVal(),
+      nativeToScVal(campaignId, { type: 'string' }),
+      nativeToScVal(BigInt(Math.round(harvestAmount)), { type: 'i128' }),
+      nativeToScVal(qualityGrade, { type: 'u32' }),
+    ];
+    return this.invokeContract(settlementContractId, 'settle', args);
+  }
+
   // ── Private helpers ─────────────────────────────────────────────────────────
 
   private async waitForTransaction(hash: string): Promise<void> {
