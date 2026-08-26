@@ -31,8 +31,7 @@ interface AuthRequest extends Request {
 @ApiTags('users')
 @ApiBearerAuth('jwt')
 @UseGuards(AuthGuard('jwt'))
-@Version('1')
-@Controller('users')
+@Controller({ version: '1', path: 'users' })
 export class UsersController {
   constructor(
     private readonly usersService: UsersService,

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, QueryRunner } from 'typeorm';
+import { Repository, DataSource, EntityManager } from 'typeorm';
 import { PinoLogger } from 'nestjs-pino';
 import { OutboxEntity, OutboxEvent } from './outbox.entity';
 
@@ -17,10 +17,10 @@ export class OutboxService {
 
   /**
    * Write an event to the outbox table within the current transaction.
-   * This should be called from within a transactional context (e.g., using @Transactional or QueryRunner).
+   * This should be called from within a transactional context (e.g., using @Transactional or EntityManager).
    */
   async writeEvent(
-    queryRunner: QueryRunner,
+    entityManager: EntityManager,
     eventType: string,
     payload: Record<string, unknown>,
   ): Promise<void> {
@@ -31,7 +31,7 @@ export class OutboxService {
       retryCount: 0,
     });
 
-    await queryRunner.manager.save(outboxEvent);
+    await entityManager.save(outboxEvent);
     this.logger.debug(
       { eventType, payloadKeys: Object.keys(payload) },
       `Event written to outbox: ${eventType}`,
@@ -64,7 +64,7 @@ export class OutboxService {
    * Write multiple events to the outbox within a transaction.
    */
   async writeEvents(
-    queryRunner: QueryRunner,
+    entityManager: EntityManager,
     events: OutboxEvent[],
   ): Promise<void> {
     const outboxEvents = events.map((event) =>
@@ -76,7 +76,7 @@ export class OutboxService {
       }),
     );
 
-    await queryRunner.manager.save(outboxEvents);
+    await entityManager.save(outboxEvents);
     this.logger.debug(
       { eventCount: events.length, eventTypes: events.map((e) => e.eventType) },
       `Batch wrote ${events.length} events to outbox`,

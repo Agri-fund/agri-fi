@@ -306,8 +306,8 @@ export class TradeDealsService {
       // the deal would otherwise be stuck holding an escrow account no job
       // will ever process.
       // Use transactional outbox for atomic DB update + event publish
-      return await this.dataSource.transaction(async (queryRunner: QueryRunner) => {
-        await queryRunner.manager.update(TradeDeal, dealId, {
+      return await this.dataSource.transaction(async (entityManager) => {
+        await entityManager.update(TradeDeal, dealId, {
           escrowPublicKey,
           escrowSecretKey: encryptedEscrowSecret,
         });
@@ -317,7 +317,7 @@ export class TradeDealsService {
           'Escrow account created, enqueuing token issuance',
         );
 
-        await this.queueService.enqueueDealPublishTransactional(queryRunner, {
+        await this.queueService.enqueueDealPublishTransactional(entityManager, {
           dealId,
           tokenSymbol: deal.tokenSymbol,
           escrowPublicKey,
@@ -447,7 +447,7 @@ export class TradeDealsService {
       }
 
       if (investorShares.length > 0) {
-        const issuerSecret = this.stellarService.decryptSecret(
+        const issuerSecret = await this.stellarService.decryptSecret(
           deal.issuerSecretKey,
         );
 

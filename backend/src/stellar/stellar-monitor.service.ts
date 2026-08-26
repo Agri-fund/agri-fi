@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+import { PinoLogger } from 'nestjs-pino';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -17,7 +18,6 @@ import { StellarService } from './stellar.service';
  */
 @Injectable()
 export class StellarMonitorService {
-  private readonly logger = new Logger(StellarMonitorService.name);
   private readonly server: Horizon.Server;
   private readonly platformAccountId: string | null = null;
 
@@ -34,11 +34,13 @@ export class StellarMonitorService {
   private readonly MAX_HISTORY_ENTRIES = 1000;
 
   constructor(
+    private readonly logger: PinoLogger,
     private readonly config: ConfigService,
     @InjectRepository(AccountMergeRecovery)
     private readonly mergeRecoveryRepo: Repository<AccountMergeRecovery>,
     private readonly stellarService: StellarService,
   ) {
+    this.logger.setContext(StellarMonitorService.name);
     const horizonUrl = this.config.get<string>(
       'STELLAR_HORIZON_URL',
       'https://horizon-testnet.stellar.org',
@@ -75,7 +77,7 @@ export class StellarMonitorService {
    */
   @Cron(CronExpression.EVERY_10_MINUTES)
   async checkFeePoolBalance() {
-    this.logger.log('Starting platform wallet health check...');
+    this.logger.info('Starting platform wallet health check...');
 
     if (!this.platformAccountId) {
       this.logger.warn(
@@ -101,7 +103,7 @@ export class StellarMonitorService {
       const feeMetrics = this.analyzeFeeMetrics(transactions);
 
       // Log comprehensive metrics
-      this.logger.log(
+      this.logger.info(
         {
           xlmBalance: nativeBalance,
           thresholdXlm: this.BALANCE_THRESHOLD_XLM,
@@ -120,7 +122,7 @@ export class StellarMonitorService {
         await this.triggerLowBalanceAlert(nativeBalance, feeMetrics);
       } else if (this.lastAlertTime > 0) {
         // Reset cooldown if balance is restored above threshold
-        this.logger.log(
+        this.logger.info(
           'Balance restored above threshold, resetting alert cooldown.',
         );
         this.lastAlertTime = 0;
@@ -145,7 +147,10 @@ export class StellarMonitorService {
         .limit(100)
         .call();
 
-      return transactions.records || [];
+      return (transactions.records || []).map(record => ({
+        fee_charged: typeof record.fee_charged === 'string' ? record.fee_charged : String(record.fee_charged),
+        created_at: record.created_at,
+      }));
     } catch (error: any) {
       this.logger.warn('Failed to fetch recent transactions', error.message);
       return [];
@@ -288,7 +293,7 @@ export class StellarMonitorService {
     if (webhookUrl) {
       try {
         await axios.post(webhookUrl, alertMessage);
-        this.logger.log('Successfully triggered low balance webhook alert.');
+        this.logger.info('Successfully triggered low balance webhook alert.');
         this.lastAlertTime = now;
       } catch (error: any) {
         this.logger.error('Failed to trigger webhook alert', error.message);
@@ -406,7 +411,7 @@ export class StellarMonitorService {
 
         recovery.replacementPublicKey = publicKey;
         recovery.replacementSecretKeyEncrypted =
-          this.stellarService.encryptSecret(secretKey);
+          await this.stellarService.encryptSecret(secretKey);
         recovery.status = 'replacement_created';
 
         await this.mergeRecoveryRepo.save(recovery);
@@ -540,7 +545,7 @@ export class StellarMonitorService {
 
     try {
       await axios.post(webhookUrl, alertMessage);
-      this.logger.log('Merge recovery failure alert sent');
+      this.logger.info('Merge recovery failure alert sent');
     } catch (err: any) {
       this.logger.error('Failed to send merge recovery alert', err.message);
     }

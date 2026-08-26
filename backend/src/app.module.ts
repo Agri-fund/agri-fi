@@ -117,6 +117,6 @@ export class AppModule implements NestModule {
     // ClsMiddleware MUST run before CorrelationIdMiddleware so it can safely call cls.set()
     consumer
       .apply(HttpLoggerMiddleware, ClsMiddleware, CorrelationIdMiddleware)
-      .forRoutes('*');
+      .forRoutes('{*splat}');
   }
 }
