@@ -286,6 +286,26 @@ export class SorobanService {
 
   // ── MarketplaceSettlement contract methods ──────────────────────────────────
 
+  /**
+   * Invokes the marketplace_settlement contract to create and settle a secondary trade order.
+   */
+  async invokeMarketplaceSettlement(
+    settlementContractId: string,
+    orderId: string,
+    buyerAddress: string,
+    sellerAddress: string,
+    amountStroops: number,
+  ): Promise<string> {
+    const args = [
+      new Address(buyerAddress).toScVal(),
+      nativeToScVal(orderId, { type: 'string' }),
+      new Address(sellerAddress).toScVal(),
+      nativeToScVal(amountStroops, { type: 'i128' }),
+      new xdr.ScVal(xdr.ScVal.scvVec([])), // Empty investor_shares for direct trades
+    ];
+    return this.invokeContract(settlementContractId, 'create_order', args);
+  }
+
   async confirmMarketplaceDelivery(
     settlementContractId: string,
     orderId: string,
@@ -343,7 +363,7 @@ export class SorobanService {
     const footprint = contract.getFootprint();
 
     const sorobanData = new SorobanDataBuilder()
-      .setReadOnly(footprint)
+      .setReadOnly([footprint])
       .build();
 
     let tx = new TransactionBuilder(account, {
@@ -398,7 +418,7 @@ export class SorobanService {
     const footprint = contract.getFootprint();
 
     const sorobanData = new SorobanDataBuilder()
-      .setReadWrite(footprint)
+      .setReadWrite([footprint])
       .build();
 
     let tx = new TransactionBuilder(account, {

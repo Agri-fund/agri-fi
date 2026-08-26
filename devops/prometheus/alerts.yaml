@@ -231,3 +231,133 @@ groups:
           description: >
             Replica {{ $labels.instance }} is {{ $value | printf "%.1f" }}s
             behind the primary for more than 1 minute.
+
+  # ── Escrow Queue & DLQ Alerts (#847) ───────────────────────────────────────
+  - name: agri_fi_escrow_queue
+    interval: 15s
+    rules:
+
+      # ── Escrow queue depth warning (>500 for 5m) ───────────────────────────
+      - alert: EscrowQueueDepthHigh
+        expr: rabbitmq_queue_messages{queue="escrow.process"} > 500
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+          component: escrow
+        annotations:
+          summary: "Escrow queue depth above 500"
+          description: >
+            The escrow processing queue on {{ $labels.instance }} has exceeded
+            500 pending messages for more than 5 minutes.
+            Current depth: {{ $value }}.
+            Consumer throughput may be insufficient to keep up with incoming
+            investment confirmations. Check consumer health and scaling.
+
+      # ── Escrow queue depth critical (>2000 for 2m) ─────────────────────────
+      - alert: EscrowQueueDepthCritical
+        expr: rabbitmq_queue_messages{queue="escrow.process"} > 2000
+        for: 2m
+        labels:
+          severity: critical
+          team: backend
+          component: escrow
+          pagerduty: "true"
+        annotations:
+          summary: "Escrow queue depth critically high (>2000)"
+          description: >
+            The escrow processing queue on {{ $labels.instance }} has exceeded
+            2000 pending messages for more than 2 minutes.
+            Current depth: {{ $value }}.
+            Escrow releases are significantly backlogged. Investors may
+            experience delayed token delivery. Scale consumers immediately.
+
+      # ── DLQ message count increased in last 15m ────────────────────────────
+      - alert: DLQGrowing
+        expr: increase(rabbitmq_queue_messages{queue="escrow.dlq"}[15m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+          team: backend
+          component: escrow
+        annotations:
+          summary: "Dead-letter queue is accumulating messages"
+          description: >
+            The escrow DLQ on {{ $labels.instance }} has received
+            {{ $value }} new messages in the last 15 minutes.
+            Failed escrow transactions are accumulating. Investigate
+            root cause and use `npm run queue:retry-dlq` to retry.
+
+      # ── DLQ has messages for more than 1h ──────────────────────────────────
+      - alert: DLQNotEmpty
+        expr: rabbitmq_queue_messages{queue="escrow.dlq"} > 0
+        for: 1h
+        labels:
+          severity: critical
+          team: backend
+          component: escrow
+          pagerduty: "true"
+        annotations:
+          summary: "Escrow DLQ has unprocessed messages for >1 hour"
+          description: >
+            The escrow DLQ on {{ $labels.instance }} has {{ $value }}
+            messages that have been sitting for more than 1 hour.
+            These represent failed escrow settlements that require manual
+            intervention. Run `npm run queue:retry-dlq` or investigate
+            the root cause.
+
+      # ── Consumer lag exceeds 100 for 10m ───────────────────────────────────
+      - alert: EscrowConsumerLag
+        expr: rabbitmq_queue_consumers{queue="escrow.process"} == 0
+        for: 10m
+        labels:
+          severity: warning
+          team: backend
+          component: escrow
+        annotations:
+          summary: "Escrow consumer has no active consumers"
+          description: >
+            The escrow processing queue on {{ $labels.instance }} has had
+            zero active consumers for more than 10 minutes.
+            Messages will accumulate in the queue. Verify the consumer
+            service is running and healthy.
+
+      # ── Stellar transaction failure rate (>5% in 5m) ───────────────────────
+      - alert: StellarTxFailureRate
+        expr: |
+          (
+            rate(escrow_stellar_tx_failures_total[5m])
+            /
+            rate(escrow_stellar_tx_total[5m])
+          ) * 100 > 5
+        for: 5m
+        labels:
+          severity: critical
+          team: backend
+          component: stellar
+          pagerduty: "true"
+        annotations:
+          summary: "Stellar transaction failure rate above 5%"
+          description: >
+            More than 5% of Stellar escrow transactions on
+            {{ $labels.instance }} are failing.
+            Failure rate: {{ $value | printf "%.1f" }}%.
+            This may indicate network congestion, insufficient base fee,
+            or contract invocation errors. Check Stellar network status
+            and contract health.
+
+      # ── Outbox stalled events (>50 pending for 10m) ────────────────────────
+      - alert: OutboxStalledEvents
+        expr: outbox_pending_count > 50
+        for: 10m
+        labels:
+          severity: warning
+          team: backend
+          component: outbox
+        annotations:
+          summary: "Outbox has more than 50 pending events"
+          description: >
+            The transactional outbox on {{ $labels.instance }} has
+            {{ $value }} pending events for more than 10 minutes.
+            Events are not being published to the message broker.
+            Check the outbox relay process and RabbitMQ connectivity.

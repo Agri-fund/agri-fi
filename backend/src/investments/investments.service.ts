@@ -29,6 +29,7 @@ import { CreateInvestmentResponseDto } from './dto/investment-response.dto';
 import { encodeFeeData, generateInvestmentMemo } from './fee-transaction.utils';
 import { EmailSequenceService } from '../email-sequence/email-sequence.service';
 import { InvestmentEventStore } from './investment-event-store.service';
+import { OfacSanctionsCheckService } from '../auth/utils/ofac-sanctions-check';
 
 export interface CreateInvestmentResult {
   investment: Investment;
@@ -58,6 +59,7 @@ export class InvestmentsService {
     private readonly dataSource: DataSource,
     private readonly queueService: QueueService,
     private readonly feeCalculatorService: FeeCalculatorService,
+    private readonly ofacCheckService: OfacSanctionsCheckService,
     @Optional() private readonly emailSequenceService: EmailSequenceService,
     @Optional() private readonly eventStore?: InvestmentEventStore,
   ) {}
@@ -90,6 +92,17 @@ export class InvestmentsService {
         code: 'NO_USDC_TRUSTLINE',
         message:
           'Investor wallet has not established a USDC trustline. Please add a USDC trustline to your Stellar wallet before investing.',
+      });
+    }
+
+    // OFAC sanctions screening on every investment (#845)
+    const isSanctioned = await this.ofacCheckService.isAddressSanctioned(
+      investor.walletAddress,
+    );
+    if (isSanctioned) {
+      throw new ForbiddenException({
+        code: 'SANCTIONED_ADDRESS',
+        message: 'Investment rejected: wallet address is on the OFAC sanctions list.',
       });
     }
 
