@@ -17,6 +17,10 @@ export type UserRole =
   | 'admin';
 export type KycStatus = 'pending' | 'verified' | 'rejected' | 'expired';
 
+// #902 — Accreditation tiers
+export type AccreditationTier = 'retail' | 'accredited' | 'institutional';
+export type AccreditationStatus = 'none' | 'pending' | 'approved' | 'expired';
+
 export interface CompanyDetails {
   companyName?: string;
   registrationNumber?: string;
@@ -244,4 +248,42 @@ export class User {
     example: false,
   })
   emailSequenceUnsubscribed: boolean;
+
+  // #902 — Investor accreditation tier
+  @Column({
+    name: 'accreditation_tier',
+    type: 'enum',
+    enum: ['retail', 'accredited', 'institutional'],
+    default: 'retail',
+  })
+  @ApiProperty({
+    description: 'Investor accreditation tier',
+    enum: ['retail', 'accredited', 'institutional'],
+    example: 'retail',
+  })
+  accreditationTier: AccreditationTier;
+
+  @Column({ name: 'accreditation_expires_at', type: 'timestamptz', nullable: true })
+  @ApiProperty({
+    description: 'Expiry date of accreditation approval (null = not approved or permanent)',
+    nullable: true,
+    example: '2028-08-26T00:00:00Z',
+  })
+  accreditationExpiresAt: Date | null;
+
+  @Column({ name: 'accreditation_document_url', type: 'text', nullable: true })
+  @ApiProperty({
+    description: 'URL of the supporting accreditation document',
+    nullable: true,
+    example: 'https://ipfs.io/ipfs/QmXxxx',
+  })
+  accreditationDocumentUrl: string | null;
+
+  @Column({ name: 'accreditation_status', type: 'text', default: 'none' })
+  @ApiProperty({
+    description: 'Status of the accreditation review',
+    enum: ['none', 'pending', 'approved', 'expired'],
+    example: 'none',
+  })
+  accreditationStatus: AccreditationStatus;
 }

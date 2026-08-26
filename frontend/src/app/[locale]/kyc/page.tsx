@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api';
 import { useToast } from '@/components/ui/ToastProvider';
 import { Dropzone, DropzoneFile } from '@/components/ui/Dropzone';
+import { FormField } from '@/components/ui/FormField';
 
 type Mode = 'individual' | 'business';
 
@@ -62,6 +63,13 @@ export default function KycPage() {
   const [articlesFile, setArticlesFile] = useState<DropzoneFile | null>(null);
   const [licenseFile, setLicenseFile] = useState<DropzoneFile | null>(null);
 
+  // Business field validation state
+  const [businessTouched, setBusinessTouched] = useState({ companyName: false, registrationNumber: false });
+  const [businessErrors, setBusinessErrors] = useState<{ companyName: string | undefined; registrationNumber: string | undefined }>({
+    companyName: undefined,
+    registrationNumber: undefined,
+  });
+
   // Upload progress tracking
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
 
@@ -87,6 +95,20 @@ export default function KycPage() {
     setLoading(true);
     setError(null);
     setUploadProgress({});
+
+    // Validate business fields before submitting
+    if (mode === 'business') {
+      const companyNameErr = companyName.trim() ? undefined : 'Company name is required';
+      const registrationNumberErr = registrationNumber.trim() ? undefined : 'Registration number is required';
+      setBusinessErrors({ companyName: companyNameErr, registrationNumber: registrationNumberErr });
+      setBusinessTouched({ companyName: true, registrationNumber: true });
+      if (companyNameErr || registrationNumberErr) {
+        setLoading(false);
+        const focusId = companyNameErr ? 'kyc-company-name' : 'kyc-registration-number';
+        setTimeout(() => (document.getElementById(focusId) as HTMLElement | null)?.focus(), 0);
+        return;
+      }
+    }
 
     try {
       // KYC submissions use a placeholder deal ID for document anchoring
@@ -279,26 +301,44 @@ export default function KycPage() {
                 </>
               ) : (
                 <>
-                  <div>
-                    <label className="label">Company Name</label>
-                    <input
-                      className="input"
-                      placeholder="Acme Agriculture Ltd."
-                      value={companyName}
-                      onChange={(e) => setCompanyName(e.target.value)}
-                      disabled={loading}
-                    />
-                  </div>
-                  <div>
-                    <label className="label">Registration Number</label>
-                    <input
-                      className="input"
-                      placeholder="RC-123456"
-                      value={registrationNumber}
-                      onChange={(e) => setRegistrationNumber(e.target.value)}
-                      disabled={loading}
-                    />
-                  </div>
+                  <FormField
+                    id="kyc-company-name"
+                    label="Company Name"
+                    type="text"
+                    placeholder="Acme Agriculture Ltd."
+                    value={companyName}
+                    onChange={(e) => setCompanyName(e.target.value)}
+                    onBlur={() => {
+                      setBusinessTouched(t => ({ ...t, companyName: true }));
+                      setBusinessErrors(err => ({
+                        ...err,
+                        companyName: companyName.trim() ? undefined : 'Company name is required',
+                      }));
+                    }}
+                    error={businessErrors.companyName}
+                    touched={businessTouched.companyName}
+                    disabled={loading}
+                    required
+                  />
+                  <FormField
+                    id="kyc-registration-number"
+                    label="Registration Number"
+                    type="text"
+                    placeholder="RC-123456"
+                    value={registrationNumber}
+                    onChange={(e) => setRegistrationNumber(e.target.value)}
+                    onBlur={() => {
+                      setBusinessTouched(t => ({ ...t, registrationNumber: true }));
+                      setBusinessErrors(err => ({
+                        ...err,
+                        registrationNumber: registrationNumber.trim() ? undefined : 'Registration number is required',
+                      }));
+                    }}
+                    error={businessErrors.registrationNumber}
+                    touched={businessTouched.registrationNumber}
+                    disabled={loading}
+                    required
+                  />
                   <Dropzone
                     label="Articles of Incorporation"
                     hint="PDF, PNG, or JPG · max 5 MB"

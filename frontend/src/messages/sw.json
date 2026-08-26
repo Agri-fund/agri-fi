@@ -255,5 +255,14 @@
       "finish": "Anza"
     },
     "restart": "Anza Upya Ziara"
+  },
+  "validation": {
+    "required": "{field} inahitajika",
+    "emailInvalid": "Anwani ya barua pepe si sahihi",
+    "passwordTooShort": "Nywila lazima iwe na angalau herufi 8",
+    "passwordMismatch": "Nywila hazilingani",
+    "amountMin": "Kiasi lazima kiwe angalau {min}",
+    "amountMax": "Kiasi haiwezi kuzidi {max}",
+    "fieldInvalid": "{field} si sahihi"
   }
 }

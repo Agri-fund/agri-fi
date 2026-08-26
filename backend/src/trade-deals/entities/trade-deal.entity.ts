@@ -14,6 +14,7 @@ import { Exclude } from 'class-transformer';
 import { User } from '../../auth/entities/user.entity';
 import { Document } from './document.entity';
 import { Investment } from '../../investments/entities/investment.entity';
+import { AccreditationTier } from '../../auth/entities/user.entity';
 
 export type TradeDealStatus =
   | 'draft'
@@ -279,4 +280,18 @@ export class TradeDeal {
     example: 10,
   })
   lotStep: number;
+
+  // #902 — Minimum accreditation tier required to invest in this deal
+  @Column({
+    name: 'minimum_tier',
+    type: 'enum',
+    enum: ['retail', 'accredited', 'institutional'],
+    default: 'retail',
+  })
+  @ApiProperty({
+    description: 'Minimum investor accreditation tier required to participate',
+    enum: ['retail', 'accredited', 'institutional'],
+    example: 'retail',
+  })
+  minimumTier: AccreditationTier;
 }

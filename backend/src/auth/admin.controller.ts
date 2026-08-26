@@ -42,6 +42,7 @@ import { StellarService } from '../stellar/stellar.service';
 import { AdminAction } from '../database/entities/admin-action.entity';
 import { FailedPaymentsService } from '../escrow/failed-payments.service';
 import { SecurityThreatService } from './security-threat.service';
+import { AccreditationService } from './accreditation.service';
 
 class UpdateUserRoleDto {
   @IsIn(['farmer', 'trader', 'investor', 'company_admin', 'admin'])
@@ -84,6 +85,7 @@ export class AdminController {
     private readonly stellarService: StellarService,
     private readonly failedPaymentsService: FailedPaymentsService,
     private readonly securityThreat: SecurityThreatService,
+    private readonly accreditationService: AccreditationService,
     @InjectRepository(TradeDeal)
     private readonly tradeDealRepo: Repository<TradeDeal>,
     @InjectRepository(Document)
@@ -372,5 +374,39 @@ export class AdminController {
   @ApiResponse({ status: 404, description: 'Block not found' })
   async liftSecurityBlock(@Param('id') id: string) {
     return this.securityThreat.liftBlock(id);
+  }
+
+  // ── Accreditation Review (#902) ───────────────────────────────────────────
+
+  @Get('accreditation/pending')
+  @ApiOperation({ summary: 'List all pending accreditation review submissions' })
+  @ApiResponse({ status: 200, description: 'List of pending accreditation reviews' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
+  async getPendingAccreditation() {
+    return this.accreditationService.getPendingReviews();
+  }
+
+  @Post('accreditation/:userId/approve')
+  @ApiOperation({ summary: 'Approve an accreditation submission for a user' })
+  @ApiResponse({ status: 201, description: 'Accreditation approved' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
+  @ApiResponse({ status: 404, description: 'No pending review found for user' })
+  async approveAccreditation(
+    @Request() req: AuthRequest,
+    @Param('userId') userId: string,
+  ) {
+    return this.accreditationService.approveAccreditation(userId, req.user.id);
+  }
+
+  @Post('accreditation/:userId/reject')
+  @ApiOperation({ summary: 'Reject an accreditation submission for a user' })
+  @ApiResponse({ status: 201, description: 'Accreditation rejected' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
+  @ApiResponse({ status: 404, description: 'No pending review found for user' })
+  async rejectAccreditation(
+    @Request() req: AuthRequest,
+    @Param('userId') userId: string,
+  ) {
+    return this.accreditationService.rejectAccreditation(userId, req.user.id);
   }
 }

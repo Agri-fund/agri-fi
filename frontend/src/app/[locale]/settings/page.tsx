@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { apiClient, User } from "@/lib/api";
 import DashboardLayout from "@/components/DashboardLayout";
 import { resetTour, isTourCompletedStatic } from "@/components/DashboardTour";
+import { FormField } from "@/components/ui/FormField";
 
 type Tab = "account" | "verification" | "wallets" | "currency" | "notifications";
 
@@ -50,6 +51,29 @@ export default function SettingsPage() {
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
+
+  // Password change state
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showCurrentPw, setShowCurrentPw] = useState(false);
+  const [showNewPw, setShowNewPw] = useState(false);
+  const [savingPassword, setSavingPassword] = useState(false);
+  const [passwordMsg, setPasswordMsg] = useState<string | null>(null);
+  const [passwordTouched, setPasswordTouched] = useState({
+    currentPassword: false,
+    newPassword: false,
+    confirmPassword: false,
+  });
+  const [passwordErrors, setPasswordErrors] = useState<{
+    currentPassword: string | undefined;
+    newPassword: string | undefined;
+    confirmPassword: string | undefined;
+  }>({
+    currentPassword: undefined,
+    newPassword: undefined,
+    confirmPassword: undefined,
+  });
 
   // Currency preference state
   const [preferredCurrency, setPreferredCurrency] = useState("USD");
@@ -124,6 +148,90 @@ export default function SettingsPage() {
       setSaveMsg("Failed to save changes. Please try again.");
     } finally {
       setSaving(false);
+    }
+  };
+
+  function validatePasswordField(
+    field: "currentPassword" | "newPassword" | "confirmPassword",
+    val: string,
+  ): string | undefined {
+    if (field === "currentPassword") {
+      return val ? undefined : "Current password is required";
+    }
+    if (field === "newPassword") {
+      if (!val) return "New password is required";
+      if (val.length < 8) return "Password must be at least 8 characters";
+      return undefined;
+    }
+    if (field === "confirmPassword") {
+      if (!val) return "Please confirm your new password";
+      if (val !== newPassword) return "Passwords do not match";
+      return undefined;
+    }
+    return undefined;
+  }
+
+  const handlePasswordBlur =
+    (field: "currentPassword" | "newPassword" | "confirmPassword") =>
+    (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      setPasswordTouched((t) => ({ ...t, [field]: true }));
+      setPasswordErrors((err) => ({
+        ...err,
+        [field]: validatePasswordField(field, e.target.value),
+      }));
+    };
+
+  const handleChangePassword = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const fields = ["currentPassword", "newPassword", "confirmPassword"] as const;
+    const vals = { currentPassword, newPassword, confirmPassword };
+    const newErrors = fields.reduce(
+      (acc, f) => ({ ...acc, [f]: validatePasswordField(f, vals[f]) }),
+      {} as typeof passwordErrors,
+    );
+    setPasswordErrors(newErrors);
+    setPasswordTouched({ currentPassword: true, newPassword: true, confirmPassword: true });
+
+    if (fields.some((f) => newErrors[f])) {
+      const firstInvalid = fields.find((f) => newErrors[f]);
+      if (firstInvalid) {
+        setTimeout(
+          () =>
+            (
+              document.getElementById(`settings-${firstInvalid}`) as HTMLElement | null
+            )?.focus(),
+          0,
+        );
+      }
+      return;
+    }
+
+    setSavingPassword(true);
+    setPasswordMsg(null);
+    try {
+      const token = localStorage.getItem("auth_token");
+      const res = await fetch("/api/users/me/password", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d?.message ?? "Failed to change password");
+      }
+      setPasswordMsg("Password changed successfully.");
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setPasswordTouched({ currentPassword: false, newPassword: false, confirmPassword: false });
+      setPasswordErrors({ currentPassword: undefined, newPassword: undefined, confirmPassword: undefined });
+    } catch (err: any) {
+      setPasswordMsg(err?.message ?? "Failed to change password. Please try again.");
+    } finally {
+      setSavingPassword(false);
     }
   };
 
@@ -282,17 +390,14 @@ export default function SettingsPage() {
               </div>
 
               <div>
-                <label className="label" htmlFor="settings-name">
-                  Full Name
-                </label>
-                <input
+                <FormField
                   id="settings-name"
+                  label="Full Name"
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Your full name"
-                  className="input"
-                  maxLength={100}
+                  className="max-w-full"
                 />
               </div>
 
@@ -319,6 +424,165 @@ export default function SettingsPage() {
                 {saving ? "Saving…" : "Save Changes"}
               </button>
             </form>
+
+            {/* ── Password change section ── */}
+            <div className="border-t border-slate-100 pt-5 mt-5">
+              <h2 className="section-title mb-4">Change Password</h2>
+              <form onSubmit={handleChangePassword} className="space-y-4" noValidate>
+                <div className="space-y-1">
+                  <label htmlFor="settings-currentPassword" className="label">
+                    Current Password
+                    <span className="text-red-500 ml-0.5" aria-hidden="true"> *</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      id="settings-currentPassword"
+                      type={showCurrentPw ? "text" : "password"}
+                      autoComplete="current-password"
+                      placeholder="Your current password"
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                      onBlur={handlePasswordBlur("currentPassword")}
+                      required
+                      aria-invalid={
+                        passwordTouched.currentPassword && !!passwordErrors.currentPassword
+                          ? true
+                          : undefined
+                      }
+                      aria-describedby={
+                        passwordTouched.currentPassword && passwordErrors.currentPassword
+                          ? "settings-currentPassword-error"
+                          : undefined
+                      }
+                      className={[
+                        "input pr-11",
+                        passwordTouched.currentPassword && passwordErrors.currentPassword
+                          ? "border-red-500"
+                          : "",
+                        passwordTouched.currentPassword &&
+                        !passwordErrors.currentPassword &&
+                        currentPassword
+                          ? "border-green-500"
+                          : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                    />
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      onClick={() => setShowCurrentPw((v) => !v)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-sm"
+                    >
+                      {showCurrentPw ? "🙈" : "👁"}
+                    </button>
+                  </div>
+                  {passwordTouched.currentPassword && passwordErrors.currentPassword && (
+                    <p
+                      id="settings-currentPassword-error"
+                      role="alert"
+                      className="text-xs text-red-600 flex items-center gap-1 mt-0.5"
+                    >
+                      <span aria-hidden="true">⚠</span>
+                      {passwordErrors.currentPassword}
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-1">
+                  <label htmlFor="settings-newPassword" className="label">
+                    New Password
+                    <span className="text-red-500 ml-0.5" aria-hidden="true"> *</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      id="settings-newPassword"
+                      type={showNewPw ? "text" : "password"}
+                      autoComplete="new-password"
+                      placeholder="Min. 8 characters"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      onBlur={handlePasswordBlur("newPassword")}
+                      required
+                      minLength={8}
+                      aria-invalid={
+                        passwordTouched.newPassword && !!passwordErrors.newPassword
+                          ? true
+                          : undefined
+                      }
+                      aria-describedby={
+                        passwordTouched.newPassword && passwordErrors.newPassword
+                          ? "settings-newPassword-error"
+                          : undefined
+                      }
+                      className={[
+                        "input pr-11",
+                        passwordTouched.newPassword && passwordErrors.newPassword
+                          ? "border-red-500"
+                          : "",
+                        passwordTouched.newPassword &&
+                        !passwordErrors.newPassword &&
+                        newPassword
+                          ? "border-green-500"
+                          : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                    />
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      onClick={() => setShowNewPw((v) => !v)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-sm"
+                    >
+                      {showNewPw ? "🙈" : "👁"}
+                    </button>
+                  </div>
+                  {passwordTouched.newPassword && passwordErrors.newPassword && (
+                    <p
+                      id="settings-newPassword-error"
+                      role="alert"
+                      className="text-xs text-red-600 flex items-center gap-1 mt-0.5"
+                    >
+                      <span aria-hidden="true">⚠</span>
+                      {passwordErrors.newPassword}
+                    </p>
+                  )}
+                </div>
+
+                <FormField
+                  id="settings-confirmPassword"
+                  label="Confirm New Password"
+                  type="password"
+                  autoComplete="new-password"
+                  placeholder="Repeat new password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  onBlur={handlePasswordBlur("confirmPassword")}
+                  error={passwordErrors.confirmPassword}
+                  touched={passwordTouched.confirmPassword}
+                  required
+                />
+
+                {passwordMsg && (
+                  <p
+                    className={`text-sm font-medium ${
+                      passwordMsg.includes("success") ? "text-brand-600" : "text-red-500"
+                    }`}
+                  >
+                    {passwordMsg}
+                  </p>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={savingPassword}
+                  className="btn-primary w-full"
+                >
+                  {savingPassword ? "Saving…" : "Change Password"}
+                </button>
+              </form>
+            </div>
 
             {/* Help section */}
             <div className="border-t border-slate-100 pt-5 mt-5">

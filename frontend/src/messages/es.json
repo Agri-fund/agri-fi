@@ -388,5 +388,14 @@
       "finish": "Comenzar"
     },
     "restart": "Reiniciar Recorrido"
+  },
+  "validation": {
+    "required": "{field} es requerido",
+    "emailInvalid": "La dirección de correo electrónico no es válida",
+    "passwordTooShort": "La contraseña debe tener al menos 8 caracteres",
+    "passwordMismatch": "Las contraseñas no coinciden",
+    "amountMin": "El monto debe ser al menos {min}",
+    "amountMax": "El monto no puede exceder {max}",
+    "fieldInvalid": "{field} no es válido"
   }
 }

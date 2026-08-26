@@ -29,6 +29,9 @@ import { encodeFeeData, generateInvestmentMemo } from './fee-transaction.utils';
 import { EmailSequenceService } from '../email-sequence/email-sequence.service';
 import { InvestmentEventStore } from './investment-event-store.service';
 import { OfacSanctionsCheckService } from '../auth/utils/ofac-sanctions-check';
+import { AccreditationService } from '../auth/accreditation.service';
+import { AnnualCapService } from '../auth/annual-cap.service';
+import { AccreditationTier } from '../auth/entities/user.entity';
 
 export interface CreateInvestmentResult {
   investment: Investment;
@@ -38,6 +41,20 @@ export interface CreateInvestmentResult {
 
 const STELLAR_TX_HASH_PATTERN = /^[a-f0-9]{64}$/i;
 const TRAVEL_RULE_THRESHOLD_USD = 1000;
+
+// #902 — Tier ordering for accreditation gate checks
+const TIER_ORDER: Record<AccreditationTier, number> = {
+  retail: 0,
+  accredited: 1,
+  institutional: 2,
+};
+
+// #902 — Per-deal maximum investment caps by tier (USD)
+const PER_DEAL_CAPS: Record<AccreditationTier, number> = {
+  retail: 1_000,
+  accredited: 100_000,
+  institutional: Infinity,
+};
 
 type TravelRuleParty = {
   name?: unknown;
@@ -59,6 +76,8 @@ export class InvestmentsService {
     private readonly queueService: QueueService,
     private readonly feeCalculatorService: FeeCalculatorService,
     private readonly ofacCheckService: OfacSanctionsCheckService,
+    private readonly accreditationService: AccreditationService,
+    private readonly annualCapService: AnnualCapService,
     @Optional() private readonly emailSequenceService: EmailSequenceService,
     @Optional() private readonly eventStore?: InvestmentEventStore,
   ) {}
@@ -103,6 +122,43 @@ export class InvestmentsService {
         code: 'SANCTIONED_ADDRESS',
         message:
           'Investment rejected: wallet address is on the OFAC sanctions list.',
+      });
+    }
+
+    // #902 — Accreditation tier gate: load the deal first to check minimum_tier
+    const dealForTierCheck = await this.tradeDealRepo.findOne({
+      where: { id: dto.tradeDealId },
+    });
+    if (!dealForTierCheck) {
+      throw new NotFoundException('Trade deal not found.');
+    }
+
+    const effectiveTier = this.accreditationService.getUserTier(investor);
+    if (TIER_ORDER[effectiveTier] < TIER_ORDER[dealForTierCheck.minimumTier]) {
+      throw new ForbiddenException(
+        'Your accreditation tier does not meet the minimum required for this deal',
+      );
+    }
+
+    // #902 — Per-deal cap check
+    const perDealLimit = PER_DEAL_CAPS[effectiveTier];
+    if (perDealLimit !== Infinity && dto.amountUsd > perDealLimit) {
+      throw new ForbiddenException({
+        code: 'PER_DEAL_CAP_EXCEEDED',
+        message: `Your accreditation tier limits single-deal investments to $${perDealLimit.toLocaleString()}.`,
+      });
+    }
+
+    // #902 — Annual cap check
+    const capCheck = await this.annualCapService.checkCap(
+      investorId,
+      dto.amountUsd,
+      effectiveTier,
+    );
+    if (!capCheck.allowed) {
+      throw new ForbiddenException({
+        code: 'ANNUAL_CAP_EXCEEDED',
+        message: `Investment would exceed your annual investment cap. Remaining capacity: $${capCheck.remainingUsd.toLocaleString()}.`,
       });
     }
 
@@ -248,6 +304,9 @@ export class InvestmentsService {
       },
       investorId,
     );
+
+    // #902 — Record annual cap usage after successful investment creation
+    await this.annualCapService.addInvestment(investorId, dto.amountUsd);
 
     return { investment, unsignedXdr, feeBreakdown };
   }
@@ -605,5 +664,50 @@ export class InvestmentsService {
     });
 
     return toPaginatedResult(data, total, page, limit);
+  }
+
+  /**
+   * Confirms a pending investment that was matched via the Stellar payment
+   * stream.  Called by StellarMonitorService when a payment memo matches the
+   * `DEAL-{dealId}-INV-{investmentId}` pattern.
+   *
+   * Idempotent: if the investment already has a `stellarTxId` set it was
+   * already confirmed (either by the user-facing flow or a previous stream
+   * event) and the call is a safe no-op.
+   *
+   * Issue #905 — Stellar payment streaming & reconciliation
+   */
+  async confirmPaymentFromStream(
+    investmentId: string,
+    txHash: string,
+    amount: string,
+  ): Promise<void> {
+    const investment = await this.investmentRepo.findOne({
+      where: { id: investmentId },
+    });
+
+    if (!investment) {
+      console.error(
+        `[InvestmentsService] confirmPaymentFromStream: investment ${investmentId} not found`,
+      );
+      return;
+    }
+
+    // Idempotency guard — already confirmed by another path.
+    if (investment.stellarTxId) {
+      console.log(
+        `[InvestmentsService] confirmPaymentFromStream: investment ${investmentId} already confirmed (txId=${investment.stellarTxId}), skipping`,
+      );
+      return;
+    }
+
+    await this.investmentRepo.update(investmentId, {
+      status: InvestmentStatus.CONFIRMED,
+      stellarTxId: txHash,
+    });
+
+    console.log(
+      `[InvestmentsService] confirmPaymentFromStream: investment ${investmentId} confirmed via stream (txHash=${txHash}, amount=${amount})`,
+    );
   }
 }

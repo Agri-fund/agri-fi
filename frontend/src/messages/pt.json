@@ -300,5 +300,14 @@
       "finish": "Começar"
     },
     "restart": "Reiniciar Tour"
+  },
+  "validation": {
+    "required": "{field} é obrigatório",
+    "emailInvalid": "O endereço de e-mail não é válido",
+    "passwordTooShort": "A senha deve ter pelo menos 8 caracteres",
+    "passwordMismatch": "As senhas não coincidem",
+    "amountMin": "O valor deve ser pelo menos {min}",
+    "amountMax": "O valor não pode exceder {max}",
+    "fieldInvalid": "{field} não é válido"
   }
 }
