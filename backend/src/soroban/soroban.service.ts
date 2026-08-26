@@ -371,9 +371,7 @@ export class SorobanService {
       networkPassphrase: this.networkPassphrase,
     })
       .setSorobanData(sorobanData)
-      .addOperation(
-        Operation.extendFootprintTtl({ extendTo }),
-      )
+      .addOperation(Operation.extendFootprintTtl({ extendTo }))
       .setTimeout(30)
       .build();
 
@@ -499,7 +497,9 @@ export class SorobanService {
     }
 
     if (getResult.status !== rpc.Api.GetTransactionStatus.SUCCESS) {
-      throw new Error(`Transaction timed out or failed: ${getResult.status} (hash: ${hash})`);
+      throw new Error(
+        `Transaction timed out or failed: ${getResult.status} (hash: ${hash})`,
+      );
     }
   }
 }

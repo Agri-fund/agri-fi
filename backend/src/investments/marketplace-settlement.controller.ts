@@ -18,7 +18,10 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { KycGuard } from '../auth/kyc.guard';
-import { MarketplaceSettlementService, CreateSecondaryTradeDto } from './marketplace-settlement.service';
+import {
+  MarketplaceSettlementService,
+  CreateSecondaryTradeDto,
+} from './marketplace-settlement.service';
 
 @ApiTags('Marketplace Settlement')
 @ApiBearerAuth()
@@ -44,7 +47,10 @@ export class MarketplaceSettlementController {
   @ApiResponse({ status: 400, description: 'Invalid input data' })
   @ApiResponse({ status: 403, description: 'KYC verification required' })
   @ApiResponse({ status: 404, description: 'Seller or buyer not found' })
-  @ApiResponse({ status: 422, description: 'Settlement failed - order remains open' })
+  @ApiResponse({
+    status: 422,
+    description: 'Settlement failed - order remains open',
+  })
   async createSecondaryTrade(
     @Request() req: any,
     @Body() dto: CreateSecondaryTradeDto,
@@ -69,7 +75,8 @@ export class MarketplaceSettlementController {
   @Get('secondary-trades')
   @ApiOperation({
     summary: 'Get secondary trades for current user',
-    description: 'Retrieves secondary trades where the user is either seller or buyer.',
+    description:
+      'Retrieves secondary trades where the user is either seller or buyer.',
   })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })

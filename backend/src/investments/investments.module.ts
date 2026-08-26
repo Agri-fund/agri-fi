@@ -22,13 +22,24 @@ import { MarketplaceSettlementController } from './marketplace-settlement.contro
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Investment, InvestmentEvent, SecondaryTrade, TradeDeal, User, FeeConfiguration]),
+    TypeOrmModule.forFeature([
+      Investment,
+      InvestmentEvent,
+      SecondaryTrade,
+      TradeDeal,
+      User,
+      FeeConfiguration,
+    ]),
     StellarModule,
     QueueModule,
     ReferralModule,
     AuthModule,
   ],
-  controllers: [InvestmentsController, FeeConfigurationController, MarketplaceSettlementController],
+  controllers: [
+    InvestmentsController,
+    FeeConfigurationController,
+    MarketplaceSettlementController,
+  ],
   providers: [
     InvestmentsService,
     InvestmentEventStore,

@@ -2,14 +2,16 @@ import {
   Injectable,
   NotFoundException,
   UnprocessableEntityException,
-  ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { PinoLogger } from 'nestjs-pino';
-import { SecondaryTrade, SecondaryTradeStatus } from './entities/secondary-trade.entity';
+import {
+  SecondaryTrade,
+  SecondaryTradeStatus,
+} from './entities/secondary-trade.entity';
 import { User } from '../auth/entities/user.entity';
 import { SorobanService } from '../soroban/soroban.service';
 import { QueueService } from '../queue/queue.service';
@@ -44,8 +46,14 @@ export class MarketplaceSettlementService {
     private readonly logger: PinoLogger,
   ) {
     this.logger.setContext(MarketplaceSettlementService.name);
-    this.settlementContractId = config.get<string>('MARKETPLACE_SETTLEMENT_CONTRACT', '');
-    this.platformFeeBps = config.get<number>('MARKETPLACE_PLATFORM_FEE_BPS', 200);
+    this.settlementContractId = config.get<string>(
+      'MARKETPLACE_SETTLEMENT_CONTRACT',
+      '',
+    );
+    this.platformFeeBps = config.get<number>(
+      'MARKETPLACE_PLATFORM_FEE_BPS',
+      200,
+    );
   }
 
   /**
@@ -64,9 +72,12 @@ export class MarketplaceSettlementService {
 
     if (!seller) throw new NotFoundException('Seller not found');
     if (!buyer) throw new NotFoundException('Buyer not found');
-    if (!seller.walletAddress) throw new UnprocessableEntityException('Seller has no linked wallet');
-    if (!buyer.walletAddress) throw new UnprocessableEntityException('Buyer has no linked wallet');
-    if (sellerId === buyerId) throw new BadRequestException('Seller and buyer cannot be the same user');
+    if (!seller.walletAddress)
+      throw new UnprocessableEntityException('Seller has no linked wallet');
+    if (!buyer.walletAddress)
+      throw new UnprocessableEntityException('Buyer has no linked wallet');
+    if (sellerId === buyerId)
+      throw new BadRequestException('Seller and buyer cannot be the same user');
 
     const totalAmountUsd = tokenAmount * pricePerToken;
     const platformFeeUsd = (totalAmountUsd * this.platformFeeBps) / 10000;
@@ -109,7 +120,10 @@ export class MarketplaceSettlementService {
 
       // Notify parties
       this.notifyParties(trade).catch((err) => {
-        this.logger.error({ err, tradeId: trade.id }, 'Failed to notify trade parties');
+        this.logger.error(
+          { err, tradeId: trade.id },
+          'Failed to notify trade parties',
+        );
       });
 
       this.logger.info(
@@ -127,7 +141,8 @@ export class MarketplaceSettlementService {
 
       throw new UnprocessableEntityException({
         code: 'SETTLEMENT_FAILED',
-        message: 'On-chain settlement failed. The trade order remains open for retry.',
+        message:
+          'On-chain settlement failed. The trade order remains open for retry.',
         orderId,
       });
     }
@@ -167,7 +182,9 @@ export class MarketplaceSettlementService {
   /**
    * Gets a secondary trade by Soroban order ID.
    */
-  async getSecondaryTradeByOrderId(orderId: string): Promise<SecondaryTrade | null> {
+  async getSecondaryTradeByOrderId(
+    orderId: string,
+  ): Promise<SecondaryTrade | null> {
     return this.tradeRepo.findOne({
       where: { orderId },
       relations: ['seller', 'buyer'],

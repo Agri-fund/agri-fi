@@ -72,18 +72,29 @@ export class SecondaryTrade {
   @Column({ name: 'price_per_token', type: 'decimal', precision: 36, scale: 7 })
   @ApiProperty({
     description: 'Price per token in USD',
-    example: 10.50,
+    example: 10.5,
   })
   pricePerToken: number;
 
-  @Column({ name: 'total_amount_usd', type: 'decimal', precision: 36, scale: 7 })
+  @Column({
+    name: 'total_amount_usd',
+    type: 'decimal',
+    precision: 36,
+    scale: 7,
+  })
   @ApiProperty({
     description: 'Total trade amount in USD',
     example: 1050.0,
   })
   totalAmountUsd: number;
 
-  @Column({ name: 'platform_fee_usd', type: 'decimal', precision: 36, scale: 7, default: 0 })
+  @Column({
+    name: 'platform_fee_usd',
+    type: 'decimal',
+    precision: 36,
+    scale: 7,
+    default: 0,
+  })
   @ApiProperty({
     description: 'Platform fee deducted in USD',
     example: 21.0,
