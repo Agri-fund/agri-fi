@@ -244,4 +244,16 @@ export class User {
     example: false,
   })
   emailSequenceUnsubscribed: boolean;
+
+  @DeleteDateColumn({ name: 'deleted_at', nullable: true })
+  deletedAt: Date | null;
+
+  @Column({ name: 'gdpr_erasure_requested_at', type: 'timestamptz', nullable: true })
+  gdprErasureRequestedAt: Date | null;
+
+  @Column({ name: 'gdpr_erasure_due_at', type: 'timestamptz', nullable: true })
+  gdprErasureDueAt: Date | null;
+
+  @Column({ name: 'gdpr_status', type: 'varchar', default: 'active' })
+  gdprStatus: 'active' | 'pending_erasure' | 'erased';
 }

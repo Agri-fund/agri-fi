@@ -150,4 +150,16 @@ export class UsersController {
     const userData = await this.usersService.exportUserData(id);
     res.json(userData);
   }
+
+  @Get('admin/gdpr-erasure-queue')
+  @ApiOperation({ summary: 'View pending GDPR erasure queue (Admin only)' })
+  @ApiResponse({ status: 200, description: 'List of users pending GDPR erasure' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Admin access required' })
+  async getPendingErasureQueue(@Request() req: AuthRequest) {
+    if (req.user.role !== 'admin') {
+      throw new ForbiddenException('Admin access required');
+    }
+    return this.usersService.getPendingErasureQueue();
+  }
 }
