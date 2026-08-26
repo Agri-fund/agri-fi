@@ -775,7 +775,9 @@ export class AuthService {
     const submission = this.kycRepo.create({
       userId,
       governmentIdUrl: dto.governmentIdUrl,
+      identityDocumentBackUrl: dto.identityDocumentBackUrl,
       proofOfAddressUrl: dto.proofOfAddressUrl,
+      selfieUrl: dto.selfieUrl,
       isCorporate: dto.isCorporate ?? false,
       companyName: dto.companyName,
       registrationNumber: dto.registrationNumber,
@@ -798,6 +800,7 @@ export class AuthService {
 
     if (automatedApproval) {
       user.kycStatus = 'verified';
+      user.kycDraft = null;
       await this.userRepo.save(user);
       console.log(
         `KYC auto-verified for user ${user.email} (Method: ${dto.isCorporate ? 'Automated Corporate' : 'System Config'}).`,
@@ -812,6 +815,25 @@ export class AuthService {
     }
 
     return { kycStatus: user.kycStatus };
+  }
+
+  async getKycDraft(
+    userId: string,
+  ): Promise<{ draft: Record<string, unknown> | null }> {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found.');
+    return { draft: user.kycDraft ?? null };
+  }
+
+  async saveKycDraft(
+    userId: string,
+    draft: Record<string, unknown>,
+  ): Promise<{ draft: Record<string, unknown> | null }> {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found.');
+    user.kycDraft = draft;
+    await this.userRepo.save(user);
+    return { draft: user.kycDraft };
   }
 
   private asRecord(value: unknown): Record<string, unknown> | null {

@@ -5,6 +5,7 @@ import {
   Body,
   Param,
   Query,
+  Patch,
   UseGuards,
   Request,
   RawBodyRequest,
@@ -156,6 +157,24 @@ export class AuthController {
   @ApiResponse({ status: 422, description: 'Unsupported document type' })
   submitKyc(@Request() req: AuthRequest, @Body() dto: SubmitKycDto) {
     return this.authService.submitKyc(req.user.id, dto);
+  }
+
+  @Get('kyc/draft')
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth('jwt')
+  @ApiOperation({ summary: 'Get the current user KYC draft' })
+  @ApiResponse({ status: 200, description: 'KYC draft returned' })
+  async getKycDraft(@Request() req: AuthRequest) {
+    return this.authService.getKycDraft(req.user.id);
+  }
+
+  @Patch('kyc/draft')
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth('jwt')
+  @ApiOperation({ summary: 'Save a KYC draft' })
+  @ApiResponse({ status: 200, description: 'KYC draft saved' })
+  async saveKycDraft(@Request() req: AuthRequest, @Body() draft: Record<string, unknown>) {
+    return this.authService.saveKycDraft(req.user.id, draft);
   }
 
   @Post('change-password')

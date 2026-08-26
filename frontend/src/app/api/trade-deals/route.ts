@@ -4,12 +4,12 @@ import { fetchBackend } from '@/config/backend';
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const page = searchParams.get('page') || '1';
-    const limit = searchParams.get('limit') || '12';
-    const commodity = searchParams.get('commodity') || '';
-
-    const query = new URLSearchParams({ page, limit });
-    if (commodity) query.set('commodity', commodity);
+    const query = new URLSearchParams();
+    for (const [key, value] of searchParams.entries()) {
+      if (value) query.set(key, value);
+    }
+    if (!query.has('page')) query.set('page', '1');
+    if (!query.has('limit')) query.set('limit', '12');
 
     const response = await fetchBackend(`/trade-deals?${query}`, {
       method: 'GET',
