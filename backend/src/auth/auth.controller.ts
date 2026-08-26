@@ -76,7 +76,10 @@ export class AuthController {
     status: 403,
     description: 'CAPTCHA required or invalid (credential-stuffing protection)',
   })
-  @ApiResponse({ status: 429, description: 'Too many requests / login rate limited' })
+  @ApiResponse({
+    status: 429,
+    description: 'Too many requests / login rate limited',
+  })
   async login(
     @Body() dto: LoginDto,
     @Req() req: ExpressRequest,
@@ -85,20 +88,24 @@ export class AuthController {
     // #898 — feed request context into the credential-stuffing detectors.
     const forwarded = req.headers?.['x-forwarded-for'];
     const ip =
-      (typeof forwarded === 'string' ? forwarded.split(',')[0]?.trim() : undefined) ||
+      (typeof forwarded === 'string'
+        ? forwarded.split(',')[0]?.trim()
+        : undefined) ||
       req.ip ||
       undefined;
     const meta = {
       ip,
-      userAgent: typeof req.headers?.['user-agent'] === 'string'
-        ? req.headers['user-agent']
-        : undefined,
+      userAgent:
+        typeof req.headers?.['user-agent'] === 'string'
+          ? req.headers['user-agent']
+          : undefined,
       country:
         (req.headers?.['cf-ipcountry'] as string | undefined) ||
         (req.headers?.['x-geo-country'] as string | undefined),
-      acceptLanguage: typeof req.headers?.['accept-language'] === 'string'
-        ? req.headers['accept-language']
-        : undefined,
+      acceptLanguage:
+        typeof req.headers?.['accept-language'] === 'string'
+          ? req.headers['accept-language']
+          : undefined,
     };
 
     const tokens = await this.authService.login(dto, meta);
@@ -218,11 +225,54 @@ export class AuthController {
   }
 
   @Get('revoke-session/:token')
-  @ApiOperation({ summary: 'Revoke all sessions for a user via a revocation token' })
+  @ApiOperation({
+    summary: 'Revoke all sessions for a user via a revocation token',
+  })
   @ApiResponse({ status: 200, description: 'All sessions revoked' })
-  @ApiResponse({ status: 400, description: 'Invalid or expired revocation link' })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid or expired revocation link',
+  })
   async revokeSession(@Param('token') token: string) {
     return this.authService.revokeSession(token);
+  }
+
+  @Get('unlock/:token')
+  @ApiOperation({
+    summary: 'Unlock a locked account using a signed unlock token',
+    description:
+      'Validates the unlock token sent via email and resets the account lockout. ' +
+      'Logs the unlock attempt to login_logs for audit purposes.',
+  })
+  @ApiResponse({ status: 200, description: 'Account unlocked successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid or expired unlock token' })
+  @ApiResponse({ status: 404, description: 'User not found' })
+  async unlockAccount(
+    @Param('token') token: string,
+    @Req() req: ExpressRequest,
+  ) {
+    const forwarded = req.headers?.['x-forwarded-for'];
+    const ip =
+      (typeof forwarded === 'string'
+        ? forwarded.split(',')[0]?.trim()
+        : undefined) ||
+      req.ip ||
+      undefined;
+    const meta = {
+      ip,
+      userAgent:
+        typeof req.headers?.['user-agent'] === 'string'
+          ? req.headers['user-agent']
+          : undefined,
+      country:
+        (req.headers?.['cf-ipcountry'] as string | undefined) ||
+        (req.headers?.['x-geo-country'] as string | undefined),
+      acceptLanguage:
+        typeof req.headers?.['accept-language'] === 'string'
+          ? req.headers['accept-language']
+          : undefined,
+    };
+    return this.authService.unlockAccount(token, meta);
   }
 
   @Post('mfa/enable')
@@ -241,11 +291,16 @@ export class AuthController {
   @UseGuards(AuthGuard('jwt'))
   @ApiBearerAuth('jwt')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Verify a TOTP token or backup code (login step-up)' })
+  @ApiOperation({
+    summary: 'Verify a TOTP token or backup code (login step-up)',
+  })
   @ApiResponse({ status: 200, description: 'MFA verification successful' })
   @ApiResponse({ status: 400, description: 'Invalid token' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({ status: 403, description: 'MFA locked out due to too many attempts' })
+  @ApiResponse({
+    status: 403,
+    description: 'MFA locked out due to too many attempts',
+  })
   verifyMfa(@Request() req: AuthRequest, @Body() dto: VerifyMfaDto) {
     return this.authService.verifyMfa(req.user.id, dto.token);
   }
@@ -264,7 +319,8 @@ export class AuthController {
 
   @Get('stellar-challenge')
   @ApiOperation({
-    summary: 'Get a SEP-10 challenge transaction for Stellar Web Authentication',
+    summary:
+      'Get a SEP-10 challenge transaction for Stellar Web Authentication',
     description:
       'Returns an XDR challenge transaction that the client must sign with their Stellar wallet key',
   })
@@ -287,7 +343,8 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @Throttle({ login: { limit: 5, ttl: 60000 } })
   @ApiOperation({
-    summary: 'Authenticate via SEP-10 by submitting a signed challenge transaction',
+    summary:
+      'Authenticate via SEP-10 by submitting a signed challenge transaction',
   })
   @ApiResponse({
     status: 200,
@@ -305,7 +362,8 @@ export class AuthController {
   @UseGuards(WebhookSignatureGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Receive third-party webhook events (payment / KYC status updates)',
+    summary:
+      'Receive third-party webhook events (payment / KYC status updates)',
     description:
       'Caller must include an `x-webhook-signature` header containing ' +
       'the HMAC-SHA256 hex digest of the raw request body, signed with ' +
