@@ -7,6 +7,7 @@ import { apiClient, User } from '@/lib/api';
 import { Header } from './navigation/Header';
 import KycStatusBanner from './dashboard/KycStatusBanner';
 import { DashboardTourWrapper } from './DashboardTourWrapper';
+import SearchBar from './SearchBar';
 
 /* ── Nav config ───────────────────────────────────────────────────────────── */
 interface NavItem { label: string; href: string; icon: ReactNode; exact?: boolean; }
@@ -29,6 +30,7 @@ const investorNav: NavItem[] = [
 const adminNav: NavItem[] = [
   { label: 'Dashboard',   href: '/dashboard/admin',   icon: <HomeIcon />,   exact: true },
   { label: 'Verify Documents', href: '/dashboard/admin/documents', icon: <DocsIcon /> },
+  { label: 'Contract Deployments', href: '/dashboard/admin/deployments', icon: <SettingsIcon /> },
   { label: 'Marketplace', href: '/marketplace',        icon: <ShopIcon /> },
   { label: 'Referrals',   href: '/dashboard/referrals', icon: <ReferralIcon /> },
 ];
@@ -147,6 +149,11 @@ export default function DashboardLayout({ user, children }: Props) {
         {/* Mobile responsive header */}
         <div className="md:hidden">
           <Header user={user} onLogout={handleLogout} />
+        </div>
+
+        {/* Global search bar */}
+        <div className="hidden md:flex items-center px-6 py-3 border-b border-slate-100 bg-white">
+          <SearchBar />
         </div>
 
         {/* Page content */}
