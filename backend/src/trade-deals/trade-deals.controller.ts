@@ -42,6 +42,8 @@ import {
   InviteCoFarmerDto,
 } from './dto/co-farmer.dto';
 import { DealCoFarmer } from './entities/deal-co-farmer.entity';
+import { ActivityFeedService } from './activity-feed.service';
+import { ActivityFeedResponseDto } from './dto/activity-feed.dto';
 
 import { TradeDealAccessRequest, TradeDealsGuard } from './trade-deals.guard';
 
@@ -55,6 +57,7 @@ export class TradeDealsController {
   constructor(
     private readonly tradeDealsService: TradeDealsService,
     private readonly dealCoFarmersService: DealCoFarmersService,
+    private readonly activityFeedService: ActivityFeedService,
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
   ) {}
 
@@ -266,5 +269,38 @@ export class TradeDealsController {
     // from the active-deals list immediately (#743).
     await this.cacheManager.stores[0].reset();
     return deal;
+  }
+
+  // ── Activity Feed (Issue #863) ────────────────────────────────────────────
+
+  /**
+   * GET /v1/trade-deals/:id/activity?cursor=...&limit=20
+   *
+   * Returns a cursor-paginated activity feed for the given deal.
+   * Events are sourced from shipment_milestones and system_audit_logs.
+   * Investor amounts are anonymised for non-admin viewers.
+   */
+  @Get(':id/activity')
+  @UseGuards(OptionalJwtGuard)
+  @ApiOperation({
+    summary: 'Get activity feed for a trade deal (cursor-paginated)',
+  })
+  @ApiParam({ name: 'id', description: 'Trade deal UUID' })
+  @ApiQuery({ name: 'cursor', required: false, description: 'Opaque pagination cursor' })
+  @ApiQuery({ name: 'limit', required: false, description: 'Page size (max 50, default 20)' })
+  @ApiResponse({ status: 200, description: 'Activity feed events' })
+  @ApiResponse({ status: 404, description: 'Trade deal not found' })
+  async getActivityFeed(
+    @Param('id') id: string,
+    @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string,
+    @Request() req?: any,
+  ): Promise<ActivityFeedResponseDto> {
+    const isAdmin = req?.user?.role === 'admin' || req?.user?.role === 'company_admin';
+    return this.activityFeedService.getFeed(id, {
+      cursor,
+      limit: limit ? parseInt(limit, 10) : undefined,
+      isAdmin,
+    });
   }
 }

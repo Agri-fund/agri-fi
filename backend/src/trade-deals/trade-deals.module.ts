@@ -22,8 +22,10 @@ import { DealFundingAlertService } from './deal-funding-alert.service';
 import { DealDigestService } from './deal-digest.service';
 import { RiskScoringService } from './risk-scoring.service';
 import { DealHealthMonitorService } from './deal-health-monitor.service';
+import { ActivityFeedService } from './activity-feed.service';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { AuditModule } from '../audit/audit.module';
+import { SystemAuditLog } from '../audit/entities/system-audit-log.entity';
 import { redisCacheStore } from '../config/redis-cache.store';
 
 /**
@@ -42,6 +44,7 @@ const DEALS_CACHE_TTL_MS = 30_000;
       User,
       DealCoFarmer,
       DealHealthAlert,
+      SystemAuditLog,
     ]),
     StellarModule,
     QueueModule,
@@ -89,12 +92,13 @@ const DEALS_CACHE_TTL_MS = 30_000;
     DealDigestService,
     RiskScoringService,
     DealHealthMonitorService,
+    ActivityFeedService,
     makeGaugeProvider({
       name: 'deal_health_alerts_active_total',
       help: 'Total number of active (unresolved) deal health alerts, labelled by alert type.',
       labelNames: ['alertType'],
     }),
   ],
-  exports: [TradeDealsService, DealCoFarmersService, DealDigestService, RiskScoringService],
+  exports: [TradeDealsService, DealCoFarmersService, DealDigestService, RiskScoringService, ActivityFeedService],
 })
 export class TradeDealsModule {}
