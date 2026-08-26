@@ -151,4 +151,7 @@ export class User {
   @Exclude()
   @Column({ name: 'physical_address', nullable: true, transformer: encryptionTransformer })
   physicalAddress: string | null;
+
+  @Column({ name: 'kyc_draft', type: 'jsonb', nullable: true })
+  kycDraft: Record<string, unknown> | null;
 }

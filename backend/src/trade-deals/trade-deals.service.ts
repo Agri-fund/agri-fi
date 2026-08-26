@@ -27,6 +27,34 @@ const VALID_DOC_TYPES: DocumentType[] = [
   'warehouse_receipt',
 ];
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
+const PUBLIC_STATUSES: TradeDealStatus[] = ['open', 'funded'];
+
+type DealSearchSortBy = 'newest' | 'highest_roi' | 'closing_soon' | 'most_funded';
+type DealDurationBucket = '<3 months' | '3-6 months' | '6-12 months' | '>12 months';
+
+export interface TradeDealSearchQuery {
+  commodity?: string;
+  country?: string;
+  minAmount?: number;
+  maxAmount?: number;
+  minRoi?: number;
+  maxRoi?: number;
+  duration?: DealDurationBucket;
+  riskRating?: 'Low' | 'Medium' | 'High';
+  status?: 'open' | 'almost funded' | 'fully funded';
+  sortBy?: DealSearchSortBy;
+  page?: number;
+  limit?: number;
+  q?: string;
+}
+
+function bucketToDayRange(bucket?: DealDurationBucket): [number, number] | null {
+  if (!bucket) return null;
+  if (bucket === '<3 months') return [0, 90];
+  if (bucket === '3-6 months') return [91, 180];
+  if (bucket === '6-12 months') return [181, 365];
+  return [366, Number.MAX_SAFE_INTEGER];
+}
 
 export interface AddDocumentDto {
   tradeDealId: string;
@@ -79,6 +107,18 @@ export class TradeDealsService {
     traderId: string,
     dto: CreateTradeDealDto,
   ): Promise<TradeDeal> {
+    const normalizedTitle = dto.title?.trim() || dto.commodity.trim();
+    const existingTitle = await this.tradeDealRepo
+      .createQueryBuilder('deal')
+      .where('LOWER(deal.title) = LOWER(:title)', { title: normalizedTitle })
+      .getOne();
+    if (existingTitle) {
+      throw new BadRequestException({
+        code: 'DUPLICATE_TITLE',
+        message: 'A deal with this title already exists.',
+      });
+    }
+
     const farmerId = dto.farmer_id ?? traderId;
     const effectiveTraderId = dto.trader_id ?? traderId;
 
@@ -102,10 +142,25 @@ export class TradeDealsService {
     }
 
     const tradeDeal = this.tradeDealRepo.create({
+      title: normalizedTitle,
       commodity: dto.commodity,
+      country: dto.country ?? 'Unknown',
+      region: dto.region ?? null,
+      shortDescription: dto.short_description ?? null,
+      longDescription: dto.long_description ?? null,
       quantity: dto.quantity,
       quantityUnit: dto.quantity_unit,
       totalValue: dto.total_value,
+      expectedRoi: dto.expected_roi ?? null,
+      durationDays: dto.duration_days ?? null,
+      minInvestmentLot: dto.min_investment_lot ?? null,
+      riskRating: dto.risk_rating ?? null,
+      farmLocation: dto.farm_location ?? null,
+      farmLatitude: dto.farm_latitude ?? null,
+      farmLongitude: dto.farm_longitude ?? null,
+      farmPhotos: dto.farm_photos ?? [],
+      supportingDocuments: dto.supporting_documents ?? [],
+      logisticsPlan: dto.logistics_plan ?? [],
       tokenCount,
       tokenSymbol: 'PENDING',
       status: 'draft',
@@ -132,6 +187,17 @@ export class TradeDealsService {
 
   async findOpen(query: {
     commodity?: string;
+    country?: string;
+    region?: string;
+    minAmount?: number;
+    maxAmount?: number;
+    minRoi?: number;
+    maxRoi?: number;
+    duration?: DealDurationBucket;
+    riskRating?: 'Low' | 'Medium' | 'High';
+    status?: 'open' | 'almost funded' | 'fully funded';
+    sortBy?: DealSearchSortBy;
+    q?: string;
     page?: number;
     limit?: number;
   }): Promise<{ data: any[]; total: number; page: number; limit: number }> {
@@ -139,16 +205,19 @@ export class TradeDealsService {
     const limit = query.limit ?? 12;
     const skip = (page - 1) * limit;
 
-    if (query.commodity && !/^[a-zA-Z0-9 _-]{1,100}$/.test(query.commodity)) {
+    if (query.commodity && !/^[a-zA-Z0-9 _,-]{1,100}$/.test(query.commodity)) {
       throw new BadRequestException('Invalid commodity search term.');
     }
 
     const qb = this.tradeDealRepo
       .createQueryBuilder('deal')
-      .where('deal.status = :status', { status: 'open' })
+      .where('deal.status IN (:...statuses)', { statuses: PUBLIC_STATUSES })
       .select([
         'deal.id',
+        'deal.title',
         'deal.commodity',
+        'deal.country',
+        'deal.region',
         'deal.quantity',
         'deal.quantityUnit',
         'deal.totalValue',
@@ -156,16 +225,117 @@ export class TradeDealsService {
         'deal.tokenCount',
         'deal.tokenSymbol',
         'deal.deliveryDate',
+        'deal.shortDescription',
+        'deal.longDescription',
+        'deal.expectedRoi',
+        'deal.durationDays',
+        'deal.minInvestmentLot',
+        'deal.riskRating',
+        'deal.farmLocation',
         'deal.farmerId',
         'deal.traderId',
       ])
       .skip(skip)
       .take(limit);
 
-    if (query.commodity) {
-      qb.andWhere('LOWER(deal.commodity) = LOWER(:commodity)', {
-        commodity: query.commodity,
+    const commodityValues = query.commodity
+      ?.split(',')
+      .map((value) => value.trim())
+      .filter(Boolean);
+    if (commodityValues && commodityValues.length > 0) {
+      qb.andWhere('LOWER(deal.commodity) IN (:...commodityValues)', {
+        commodityValues: commodityValues.map((value) => value.toLowerCase()),
       });
+    }
+
+    if (query.country) {
+      qb.andWhere('LOWER(COALESCE(deal.country, \'\')) LIKE LOWER(:country)', {
+        country: `%${query.country}%`,
+      });
+    }
+
+    if (query.region) {
+      qb.andWhere('LOWER(COALESCE(deal.region, \'\')) LIKE LOWER(:region)', {
+        region: `%${query.region}%`,
+      });
+    }
+
+    if (typeof query.minAmount === 'number' && Number.isFinite(query.minAmount)) {
+      qb.andWhere('COALESCE(deal.min_investment_lot, 0) >= :minAmount', {
+        minAmount: query.minAmount,
+      });
+    }
+
+    if (typeof query.maxAmount === 'number' && Number.isFinite(query.maxAmount)) {
+      qb.andWhere('COALESCE(deal.min_investment_lot, 0) <= :maxAmount', {
+        maxAmount: query.maxAmount,
+      });
+    }
+
+    if (typeof query.minRoi === 'number' && Number.isFinite(query.minRoi)) {
+      qb.andWhere('COALESCE(deal.expected_roi, 0) >= :minRoi', {
+        minRoi: query.minRoi,
+      });
+    }
+
+    if (typeof query.maxRoi === 'number' && Number.isFinite(query.maxRoi)) {
+      qb.andWhere('COALESCE(deal.expected_roi, 0) <= :maxRoi', {
+        maxRoi: query.maxRoi,
+      });
+    }
+
+    const durationRange = bucketToDayRange(query.duration);
+    if (durationRange) {
+      qb.andWhere(
+        'COALESCE(deal.duration_days, 0) BETWEEN :minDuration AND :maxDuration',
+        {
+          minDuration: durationRange[0],
+          maxDuration: durationRange[1],
+        },
+      );
+    }
+
+    if (query.riskRating) {
+      qb.andWhere('deal.risk_rating = :riskRating', {
+        riskRating: query.riskRating,
+      });
+    }
+
+    if (query.status) {
+      if (query.status === 'open') {
+        qb.andWhere('deal.total_invested < deal.total_value * 0.5');
+      } else if (query.status === 'almost funded') {
+        qb.andWhere(
+          'deal.total_invested >= deal.total_value * 0.5 AND deal.total_invested < deal.total_value',
+        );
+      } else if (query.status === 'fully funded') {
+        qb.andWhere('deal.total_invested >= deal.total_value');
+      }
+    }
+
+    if (query.q?.trim()) {
+      qb.andWhere(
+        `to_tsvector('english', coalesce(deal.title, '') || ' ' || coalesce(deal.short_description, '') || ' ' || coalesce(deal.long_description, '')) @@ plainto_tsquery('english', :search)`,
+        { search: query.q.trim() },
+      );
+    }
+
+    switch (query.sortBy) {
+      case 'highest_roi':
+        qb.orderBy('COALESCE(deal.expected_roi, 0)', 'DESC')
+          .addOrderBy('deal.created_at', 'DESC');
+        break;
+      case 'closing_soon':
+        qb.orderBy('deal.delivery_date', 'ASC');
+        break;
+      case 'most_funded':
+        qb.orderBy('deal.total_invested', 'DESC')
+          .addOrderBy('deal.created_at', 'DESC');
+        break;
+      case 'newest':
+      default:
+        qb.orderBy('deal.created_at', 'DESC');
+        break;
     }
 
     const [deals, total] = await qb.getManyAndCount();
@@ -173,7 +343,10 @@ export class TradeDealsService {
     return {
       data: deals.map((deal) => ({
         id: deal.id,
+        title: deal.title,
         commodity: deal.commodity,
+        country: deal.country,
+        region: deal.region,
         quantity: deal.quantity,
         quantity_unit: deal.quantityUnit,
         total_value: deal.totalValue,
@@ -182,9 +355,22 @@ export class TradeDealsService {
         token_count: deal.tokenCount,
         token_symbol: deal.tokenSymbol,
         delivery_date: deal.deliveryDate,
+        short_description: deal.shortDescription,
+        long_description: deal.longDescription,
+        expected_roi: deal.expectedRoi,
+        duration_days: deal.durationDays,
+        min_investment_lot: deal.minInvestmentLot,
+        risk_rating: deal.riskRating,
+        farm_location: deal.farmLocation,
         farmer_id: deal.farmerId,
         trader_id: deal.traderId,
         remaining_funding: Number(deal.totalValue) - Number(deal.totalInvested),
+        funding_status:
+          Number(deal.totalInvested) >= Number(deal.totalValue)
+            ? 'fully funded'
+            : Number(deal.totalInvested) >= Number(deal.totalValue) * 0.5
+              ? 'almost funded'
+              : 'open',
       })),
       total,
       page,
@@ -221,21 +407,35 @@ export class TradeDealsService {
     const canViewSensitive = !!access?.canViewSensitive;
     const publicDetail = {
       id: deal.id,
+      title: deal.title,
       commodity: deal.commodity,
+      country: deal.country,
+      region: deal.region,
       quantity: deal.quantity,
       quantity_unit: deal.quantityUnit,
       total_value: deal.totalValue,
       delivery_date: deal.deliveryDate,
       status: deal.status,
+      short_description: deal.shortDescription,
+      long_description: deal.longDescription,
       token_count: deal.tokenCount,
       token_symbol: deal.tokenSymbol,
       total_invested: deal.totalInvested,
       funded_amount: deal.totalInvested,
+      expected_roi: deal.expectedRoi,
+      duration_days: deal.durationDays,
+      min_investment_lot: deal.minInvestmentLot,
+      risk_rating: deal.riskRating,
+      farm_location: deal.farmLocation,
+      farm_photos: deal.farmPhotos,
+      logistics_plan: deal.logisticsPlan,
       tokens_remaining: tokensRemaining,
       trader_name: deal.trader?.email || 'Unknown Trader',
-      description: `${deal.quantity} ${deal.quantityUnit} of ${deal.commodity} for delivery by ${new Date(
-        deal.deliveryDate,
-      ).toLocaleDateString()}`,
+      description:
+        deal.shortDescription ||
+        `${deal.quantity} ${deal.quantityUnit} of ${deal.commodity} for delivery by ${new Date(
+          deal.deliveryDate,
+        ).toLocaleDateString()}`,
     };
 
     if (!canViewSensitive) {

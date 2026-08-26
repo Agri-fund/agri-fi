@@ -39,6 +39,49 @@ export class TradeDeal {
   })
   commodity: string;
 
+  @Column({ nullable: true })
+  @ApiProperty({
+    description: 'Human-friendly listing title',
+    example: 'Ogun State Cocoa Expansion',
+    required: false,
+    nullable: true,
+  })
+  title: string | null;
+
+  @Column({ name: 'short_description', type: 'text', nullable: true })
+  @ApiProperty({
+    description: 'Short summary of the deal',
+    required: false,
+    nullable: true,
+  })
+  shortDescription: string | null;
+
+  @Column({ name: 'long_description', type: 'text', nullable: true })
+  @ApiProperty({
+    description: 'Long-form story and impact description',
+    required: false,
+    nullable: true,
+  })
+  longDescription: string | null;
+
+  @Column({ nullable: true })
+  @ApiProperty({
+    description: 'Country where the farm is located',
+    required: false,
+    nullable: true,
+    example: 'Nigeria',
+  })
+  country: string | null;
+
+  @Column({ nullable: true })
+  @ApiProperty({
+    description: 'Region or state for the farm location',
+    required: false,
+    nullable: true,
+    example: 'Ogun',
+  })
+  region: string | null;
+
   @Column({ type: 'decimal', precision: 18, scale: 2 })
   @ApiProperty({
     description: 'Quantity of the commodity',
@@ -60,6 +103,33 @@ export class TradeDeal {
     example: '50000.00',
   })
   totalValue: number;
+
+  @Column({ name: 'expected_roi', type: 'decimal', precision: 6, scale: 2, nullable: true })
+  @ApiProperty({
+    description: 'Expected annual ROI percentage',
+    required: false,
+    nullable: true,
+    example: 24.5,
+  })
+  expectedRoi: number | null;
+
+  @Column({ name: 'duration_days', type: 'integer', nullable: true })
+  @ApiProperty({
+    description: 'Expected deal duration in days',
+    required: false,
+    nullable: true,
+    example: 180,
+  })
+  durationDays: number | null;
+
+  @Column({ name: 'min_investment_lot', type: 'decimal', precision: 18, scale: 2, nullable: true })
+  @ApiProperty({
+    description: 'Minimum investment amount',
+    required: false,
+    nullable: true,
+    example: '250.00',
+  })
+  minInvestmentLot: number | null;
 
   @Column({ name: 'token_count' })
   @ApiProperty({
@@ -160,6 +230,51 @@ export class TradeDeal {
     example: '2024-06-15',
   })
   deliveryDate: Date;
+
+  @Column({ name: 'risk_rating', nullable: true })
+  @ApiProperty({
+    description: 'Risk rating for the listing',
+    required: false,
+    nullable: true,
+    enum: ['Low', 'Medium', 'High'],
+  })
+  riskRating: 'Low' | 'Medium' | 'High' | null;
+
+  @Column({ name: 'farm_location', nullable: true })
+  @ApiProperty({
+    description: 'Textual farm location description',
+    required: false,
+    nullable: true,
+  })
+  farmLocation: string | null;
+
+  @Column({ name: 'farm_latitude', type: 'decimal', precision: 10, scale: 6, nullable: true })
+  farmLatitude: number | null;
+
+  @Column({ name: 'farm_longitude', type: 'decimal', precision: 10, scale: 6, nullable: true })
+  farmLongitude: number | null;
+
+  @Column({ name: 'farm_photos', type: 'jsonb', default: () => "'[]'" })
+  farmPhotos: Array<{
+    name: string;
+    size: number;
+    type: string;
+    previewUrl?: string | null;
+  }>;
+
+  @Column({ name: 'supporting_documents', type: 'jsonb', default: () => "'[]'" })
+  supportingDocuments: Array<{
+    name: string;
+    type: string;
+    category: string;
+  }>;
+
+  @Column({ name: 'logistics_plan', type: 'jsonb', default: () => "'[]'" })
+  logisticsPlan: Array<{
+    milestone: string;
+    timeline: string;
+    owner: string;
+  }>;
 
   @Column({ name: 'stellar_asset_tx_id', nullable: true })
   @ApiProperty({

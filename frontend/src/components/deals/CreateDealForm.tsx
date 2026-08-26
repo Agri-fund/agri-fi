@@ -1,9 +1,7 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
-import { useForm, useWatch, SubmitHandler } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { getOpenDeals, getStoredToken } from '@/lib/api';
 import { useToast } from '@/components/ui/ToastProvider';
 import { useTranslations } from 'next-intl';
 
@@ -12,340 +10,713 @@ interface CreateDealFormProps {
   onCancel?: () => void;
 }
 
-const DRAFT_STORAGE_KEY = 'createDealForm.draft';
-const DRAFT_SAVE_DEBOUNCE_MS = 1000;
+type Step = 0 | 1 | 2 | 3 | 4 | 5;
+type RiskRating = 'Low' | 'Medium' | 'High';
 
-export const CreateDealForm: React.FC<CreateDealFormProps> = ({ onSuccess, onCancel }) => {
+interface PhotoItem {
+  file: File;
+  previewUrl: string;
+  width: number;
+  height: number;
+}
+
+interface DocumentItem {
+  key: string;
+  label: string;
+  file: File | null;
+}
+
+interface LogisticsItem {
+  milestone: string;
+  timeline: string;
+  owner: string;
+}
+
+interface DealDraft {
+  title: string;
+  commodity: string;
+  country: string;
+  region: string;
+  short_description: string;
+  long_description: string;
+  quantity: number;
+  quantity_unit: 'kg' | 'tons';
+  total_value: number;
+  min_investment_lot: number;
+  expected_roi: number;
+  duration_days: number;
+  risk_rating: RiskRating;
+  farm_location: string;
+  farm_latitude: string;
+  farm_longitude: string;
+}
+
+const STORAGE_KEY = 'createDealWizard.draft.v1';
+const STEP_LABELS: Step[] = [0, 1, 2, 3, 4, 5];
+
+const COMMODITY_DOCS: Record<string, Array<{ key: string; label: string }>> = {
+  maize: [
+    { key: 'soil_report', label: 'Soil report' },
+    { key: 'contract', label: 'Offtake contract' },
+  ],
+  wheat: [
+    { key: 'soil_report', label: 'Soil report' },
+    { key: 'certification', label: 'Certification' },
+  ],
+  coffee: [
+    { key: 'soil_report', label: 'Soil report' },
+    { key: 'certification', label: 'Certification' },
+    { key: 'contract', label: 'Supply contract' },
+  ],
+  cocoa: [
+    { key: 'soil_report', label: 'Soil report' },
+    { key: 'certification', label: 'Certification' },
+    { key: 'contract', label: 'Supply contract' },
+  ],
+};
+
+const DEFAULT_DOCS: Array<{ key: string; label: string }> = [
+  { key: 'soil_report', label: 'Soil report' },
+  { key: 'certification', label: 'Certification' },
+  { key: 'contract', label: 'Contract' },
+];
+
+const LOGISTICS_PRESETS: Record<string, LogisticsItem[]> = {
+  maize: [
+    { milestone: 'Harvest completion', timeline: 'Week 1', owner: 'Farm lead' },
+    { milestone: 'Warehouse intake', timeline: 'Week 2', owner: 'Logistics partner' },
+    { milestone: 'Buyer handover', timeline: 'Week 4', owner: 'Trader' },
+  ],
+  coffee: [
+    { milestone: 'Cherry sorting', timeline: 'Week 1', owner: 'Farm lead' },
+    { milestone: 'Dry milling', timeline: 'Week 3', owner: 'Processor' },
+    { milestone: 'Export dispatch', timeline: 'Week 6', owner: 'Shipping agent' },
+  ],
+  cocoa: [
+    { milestone: 'Bean fermentation', timeline: 'Week 1', owner: 'Farm lead' },
+    { milestone: 'Quality grading', timeline: 'Week 2', owner: 'Quality team' },
+    { milestone: 'Container loading', timeline: 'Week 5', owner: 'Freight partner' },
+  ],
+};
+
+function defaultDocuments(commodity: string): DocumentItem[] {
+  const required = COMMODITY_DOCS[commodity.toLowerCase()] ?? DEFAULT_DOCS;
+  return required.map((doc) => ({ ...doc, file: null }));
+}
+
+function defaultLogistics(commodity: string): LogisticsItem[] {
+  return LOGISTICS_PRESETS[commodity.toLowerCase()] ?? [
+    { milestone: 'Harvest readiness', timeline: 'Week 1', owner: 'Farm lead' },
+    { milestone: 'Packing and QA', timeline: 'Week 2', owner: 'Operations' },
+    { milestone: 'Shipment handover', timeline: 'Week 4', owner: 'Logistics partner' },
+  ];
+}
+
+function loadImage(file: File): Promise<PhotoItem> {
+  const previewUrl = URL.createObjectURL(file);
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => {
+      resolve({
+        file,
+        previewUrl,
+        width: image.naturalWidth,
+        height: image.naturalHeight,
+      });
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(previewUrl);
+      reject(new Error('Unable to read image dimensions'));
+    };
+    image.src = previewUrl;
+  });
+}
+
+function money(value: number): string {
+  return new Intl.NumberFormat(undefined, {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0,
+  }).format(Number.isFinite(value) ? value : 0);
+}
+
+function asNumber(raw: string): number {
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+export function CreateDealForm({ onSuccess, onCancel }: CreateDealFormProps) {
   const t = useTranslations('deals');
   const tc = useTranslations('common');
+  const { toast } = useToast();
 
-  const dealSchema = z.object({
-    commodity: z.string().min(1, t('validation.commodityRequired')),
-    quantity: z.number({ invalid_type_error: t('validation.invalidId') }).min(1, t('validation.quantityMin')),
-    quantity_unit: z.enum(['kg', 'tons']),
-    total_value: z.number({ invalid_type_error: t('validation.invalidId') }).min(1001, t('validation.totalValueMin')),
-    token_price: z.number({ invalid_type_error: t('validation.invalidId') }).refine((val) => val === 100, {
-      message: t('validation.tokenPriceFixed'),
-    }),
-    delivery_date: z.string().min(1, t('validation.deliveryDateRequired')).refine((val) => {
-      const selectedDate = new Date(val);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      return selectedDate > today;
-    }, {
-      message: t('validation.deliveryDateFuture'),
-    }),
-    farmer_id: z.string().uuid(t('validation.invalidId')).optional().or(z.literal('')),
-    trader_id: z.string().uuid(t('validation.invalidId')).optional().or(z.literal('')),
+  const [step, setStep] = useState<Step>(0);
+  const [draft, setDraft] = useState<DealDraft>({
+    title: '',
+    commodity: '',
+    country: '',
+    region: '',
+    short_description: '',
+    long_description: '',
+    quantity: 0,
+    quantity_unit: 'kg',
+    total_value: 0,
+    min_investment_lot: 0,
+    expected_roi: 0,
+    duration_days: 0,
+    risk_rating: 'Medium',
+    farm_location: '',
+    farm_latitude: '',
+    farm_longitude: '',
   });
-
-  type DealFormData = z.infer<typeof dealSchema>;
-
-  const { toast, promise } = useToast();
-  const {
-    register,
-    handleSubmit,
-    formState: { errors, isSubmitting },
-    reset,
-    control,
-  } = useForm<DealFormData>({
-    resolver: zodResolver(dealSchema),
-    defaultValues: {
-      commodity: '',
-      quantity: 0,
-      quantity_unit: 'kg' as 'kg' | 'tons',
-      total_value: 0,
-      token_price: 100,
-      delivery_date: '',
-      farmer_id: '',
-      trader_id: '',
-    },
-  });
-
-  const totalValue = useWatch({ control, name: 'total_value' }) || 0;
-  const tokenPrice = useWatch({ control, name: 'token_price' }) || 0;
-  const watchedValues = useWatch({ control });
-
+  const [photos, setPhotos] = useState<PhotoItem[]>([]);
+  const [documents, setDocuments] = useState<DocumentItem[]>(defaultDocuments(''));
+  const [logisticsPlan, setLogisticsPlan] = useState<LogisticsItem[]>(defaultLogistics(''));
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [restoredAt, setRestoredAt] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const hasHydrated = useRef(false);
 
-  // Restore a saved draft (if any) on mount, before the debounced-save effect
-  // below starts running so we don't immediately clobber it with defaults.
+  const requiredDocs = useMemo(
+    () => COMMODITY_DOCS[draft.commodity.toLowerCase()] ?? DEFAULT_DOCS,
+    [draft.commodity],
+  );
+
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(DRAFT_STORAGE_KEY);
+      const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
-        const parsed = JSON.parse(raw) as { values: DealFormData; savedAt: string };
-        if (parsed?.values) {
-          reset(parsed.values);
-          setRestoredAt(parsed.savedAt);
+        const parsed = JSON.parse(raw) as {
+          draft: DealDraft;
+          step: Step;
+          photos?: Array<{ previewUrl: string; width: number; height: number; name: string }>;
+          documents?: Array<{ key: string; label: string; fileName?: string }>;
+          logisticsPlan?: LogisticsItem[];
+          savedAt?: string;
+        };
+        if (parsed?.draft) {
+          setDraft(parsed.draft);
+          setStep(parsed.step ?? 0);
+          setDocuments((parsed.documents?.length ? parsed.documents : defaultDocuments(parsed.draft.commodity)).map((doc) => ({
+            key: doc.key,
+            label: doc.label,
+            file: null,
+          })));
+          setLogisticsPlan(parsed.logisticsPlan?.length ? parsed.logisticsPlan : defaultLogistics(parsed.draft.commodity));
+          setRestoredAt(parsed.savedAt ?? new Date().toISOString());
         }
       }
     } catch {
-      // Corrupt or inaccessible localStorage — ignore and start fresh.
+      // Ignore corrupt local state.
     }
     hasHydrated.current = true;
-  }, [reset]);
+  }, []);
 
-  // Persist the draft to localStorage on field change, debounced by 1s.
+  useEffect(() => {
+    return () => {
+      photos.forEach((photo) => URL.revokeObjectURL(photo.previewUrl));
+    };
+  }, [photos]);
+
   useEffect(() => {
     if (!hasHydrated.current) return;
-    const timeout = setTimeout(() => {
+    setSaving(true);
+    const timer = setTimeout(() => {
       try {
         localStorage.setItem(
-          DRAFT_STORAGE_KEY,
-          JSON.stringify({ values: watchedValues, savedAt: new Date().toISOString() })
+          STORAGE_KEY,
+          JSON.stringify({
+            draft,
+            step,
+            documents: documents.map((doc) => ({ key: doc.key, label: doc.label })),
+            logisticsPlan,
+            savedAt: new Date().toISOString(),
+          }),
         );
       } catch {
-        // Storage full or unavailable — draft persistence is best-effort.
+        // Draft persistence is best-effort.
+      } finally {
+        setSaving(false);
       }
-    }, DRAFT_SAVE_DEBOUNCE_MS);
-    return () => clearTimeout(timeout);
-  }, [watchedValues]);
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [draft, documents, logisticsPlan, step]);
 
-  const onSubmit: SubmitHandler<DealFormData> = async (data) => {
-    // Clean up optional fields
-    const payload = {
-      ...data,
-      farmer_id: data.farmer_id || undefined,
-      trader_id: data.trader_id || undefined,
-    };
+  useEffect(() => {
+    setDocuments(defaultDocuments(draft.commodity));
+    setLogisticsPlan(defaultLogistics(draft.commodity));
+  }, [draft.commodity]);
 
-    const creationPromise = fetch('/api/trade-deals', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    }).then(async (response) => {
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to create deal');
+  const updateField = (key: keyof DealDraft, value: string | number) => {
+    setDraft((current) => ({ ...current, [key]: value } as DealDraft));
+    setErrors((current) => ({ ...current, [key]: '' }));
+  };
+
+  const setDocFile = (key: string, file: File | null) => {
+    setDocuments((current) => current.map((doc) => (doc.key === key ? { ...doc, file } : doc)));
+  };
+
+  const validateStep = async (currentStep: Step): Promise<boolean> => {
+    const nextErrors: Record<string, string> = {};
+
+    if (currentStep === 0) {
+      if (!draft.title.trim()) nextErrors.title = t('validation.titleRequired');
+      if (!draft.commodity.trim()) nextErrors.commodity = t('validation.commodityRequired');
+      if (!draft.country.trim()) nextErrors.country = t('validation.countryRequired');
+      if (!draft.short_description.trim()) nextErrors.short_description = t('validation.shortDescriptionRequired');
+
+      if (!nextErrors.title) {
+        try {
+          const matches = await getOpenDeals(1, 20, { q: draft.title.trim() });
+          const duplicate = matches.data.some((deal) => (deal.title ?? '').trim().toLowerCase() === draft.title.trim().toLowerCase());
+          if (duplicate) nextErrors.title = t('validation.duplicateTitle');
+        } catch {
+          // If the duplicate lookup fails, we let the user continue and rely on backend validation too.
+        }
       }
-      return response.json();
+    }
+
+    if (currentStep === 1) {
+      if (draft.quantity <= 0) nextErrors.quantity = t('validation.quantityMin');
+      if (draft.total_value <= 0) nextErrors.total_value = t('validation.totalValueMin');
+      if (draft.min_investment_lot <= 0) nextErrors.min_investment_lot = t('validation.minInvestmentLot');
+      if (draft.expected_roi <= 0) nextErrors.expected_roi = t('validation.expectedRoiMin');
+      if (draft.duration_days <= 0) nextErrors.duration_days = t('validation.durationRequired');
+      if (!draft.risk_rating) nextErrors.risk_rating = t('validation.riskRequired');
+    }
+
+    if (currentStep === 2) {
+      if (!draft.long_description.trim()) nextErrors.long_description = t('validation.longDescriptionRequired');
+      if (!draft.farm_location.trim()) nextErrors.farm_location = t('validation.farmLocationRequired');
+      if (photos.length < 1) nextErrors.photos = t('validation.photoMin');
+      if (photos.length > 10) nextErrors.photos = t('validation.photoMax');
+      if (photos.some((photo) => photo.width < 500)) nextErrors.photos = t('validation.photoWidth');
+      if (!draft.farm_latitude.trim() || !draft.farm_longitude.trim()) {
+        nextErrors.farm_location_map = t('validation.mapRequired');
+      }
+    }
+
+    if (currentStep === 3) {
+      const missingDoc = requiredDocs.find((doc) => !documents.find((entry) => entry.key === doc.key)?.file);
+      if (missingDoc) nextErrors.documents = t('validation.documentRequired', { name: missingDoc.label });
+    }
+
+    if (currentStep === 4) {
+      const invalidMilestone = logisticsPlan.find((entry) => !entry.milestone.trim() || !entry.timeline.trim() || !entry.owner.trim());
+      if (invalidMilestone) nextErrors.logistics = t('validation.logisticsRequired');
+    }
+
+    setErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
+
+  const goNext = async () => {
+    if (!(await validateStep(step))) return;
+    setStep((current) => (current < 5 ? ((current + 1) as Step) : current));
+  };
+
+  const goBack = () => setStep((current) => (current > 0 ? ((current - 1) as Step) : current));
+
+  const handlePhotoFiles = async (files: FileList | null) => {
+    if (!files) return;
+    const nextFiles = Array.from(files).slice(0, 10 - photos.length);
+    const loaded: PhotoItem[] = [];
+    for (const file of nextFiles) {
+      loaded.push(await loadImage(file));
+    }
+    setPhotos((current) => current.concat(loaded));
+  };
+
+  const removePhoto = (previewUrl: string) => {
+    setPhotos((current) => {
+      const next = current.filter((photo) => photo.previewUrl !== previewUrl);
+      const removed = current.find((photo) => photo.previewUrl === previewUrl);
+      if (removed) URL.revokeObjectURL(removed.previewUrl);
+      return next;
     });
+  };
 
+  const submit = async () => {
+    if (!(await validateStep(4)) || !(await validateStep(3)) || !(await validateStep(2)) || !(await validateStep(1)) || !(await validateStep(0))) {
+      setStep((current) => (current > 0 ? current : 0));
+      return;
+    }
+
+    setSubmitting(true);
     try {
-      await promise(creationPromise, {
-        loading: tc('processing'),
-        success: tc('success'),
-        error: tc('error'),
+      const payload = {
+        title: draft.title.trim(),
+        commodity: draft.commodity.trim(),
+        country: draft.country.trim(),
+        region: draft.region.trim() || undefined,
+        short_description: draft.short_description.trim(),
+        long_description: draft.long_description.trim(),
+        quantity: draft.quantity,
+        quantity_unit: draft.quantity_unit,
+        total_value: draft.total_value,
+        min_investment_lot: draft.min_investment_lot,
+        expected_roi: draft.expected_roi,
+        duration_days: draft.duration_days,
+        risk_rating: draft.risk_rating,
+        farm_location: draft.farm_location.trim(),
+        farm_latitude: draft.farm_latitude ? Number(draft.farm_latitude) : undefined,
+        farm_longitude: draft.farm_longitude ? Number(draft.farm_longitude) : undefined,
+        farm_photos: photos.map((photo) => ({
+          name: photo.file.name,
+          size: photo.file.size,
+          type: photo.file.type,
+          width: photo.width,
+          height: photo.height,
+        })),
+        supporting_documents: documents
+          .filter((doc) => doc.file)
+          .map((doc) => ({
+            name: doc.file?.name ?? doc.label,
+            type: doc.file?.type ?? 'application/octet-stream',
+            category: doc.key,
+          })),
+        logistics_plan: logisticsPlan,
+        delivery_date: new Date(Date.now() + Math.max(30, draft.duration_days) * 24 * 60 * 60 * 1000)
+          .toISOString()
+          .slice(0, 10),
+      };
+
+      const res = await fetch('/api/trade-deals', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(getStoredToken() ? { Authorization: `Bearer ${getStoredToken()}` } : {}),
+        },
+        body: JSON.stringify(payload),
       });
 
-      reset();
-      try {
-        localStorage.removeItem(DRAFT_STORAGE_KEY);
-      } catch {
-        // Best-effort cleanup — nothing to do if storage is unavailable.
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.message ?? t('validation.submitFailed'));
       }
+
+      toast(t('submitSuccess'), 'success');
+      localStorage.removeItem(STORAGE_KEY);
+      setDraft({
+        title: '',
+        commodity: '',
+        country: '',
+        region: '',
+        short_description: '',
+        long_description: '',
+        quantity: 0,
+        quantity_unit: 'kg',
+        total_value: 0,
+        min_investment_lot: 0,
+        expected_roi: 0,
+        duration_days: 0,
+        risk_rating: 'Medium',
+        farm_location: '',
+        farm_latitude: '',
+        farm_longitude: '',
+      });
+      setPhotos([]);
+      setDocuments(defaultDocuments(''));
+      setLogisticsPlan(defaultLogistics(''));
+      setStep(0);
       onSuccess?.();
     } catch (error: any) {
-      console.error('Deal creation error:', error);
+      setErrors({ submit: error?.message ?? t('validation.submitFailed') });
+    } finally {
+      setSubmitting(false);
     }
   };
 
+  const warningHighRoi = draft.expected_roi > 50;
+
   return (
-    <div className="bg-white rounded-lg">
-      <h2 className="text-2xl font-bold mb-6 text-gray-800">{t('createTitle')}</h2>
-
-      {restoredAt && (
-        <div className="alert-info mb-5">
-          <span>💾</span>
-          <p className="flex-1">
-            {t('draftRestored', {
-              time: new Date(restoredAt).toLocaleTimeString(undefined, {
-                hour: '2-digit',
-                minute: '2-digit',
-              }),
-            })}
-          </p>
-          <button
-            type="button"
-            onClick={() => setRestoredAt(null)}
-            className="text-blue-700 hover:text-blue-900 font-semibold text-xs flex-shrink-0"
-          >
-            {tc('dismiss')}
-          </button>
-        </div>
-      )}
-
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
-        <div className="flex flex-col">
-          <label htmlFor="commodity" className="mb-1 text-sm font-semibold text-gray-700">
-            {t('commodity')}
-          </label>
-          <input
-            {...register('commodity')}
-            id="commodity"
-            placeholder="e.g. Cocoa, Coffee"
-            className={`px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 ${
-              errors.commodity ? 'border-red-500' : 'border-gray-300'
-            }`}
-          />
-          {errors.commodity && (
-            <span className="text-red-500 text-xs mt-1 font-medium">{errors.commodity.message}</span>
-          )}
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div className="flex flex-col">
-            <label htmlFor="quantity" className="mb-1 text-sm font-semibold text-gray-700">
-              {t('quantity')}
-            </label>
-            <input
-              {...register('quantity', { valueAsNumber: true })}
-              id="quantity"
-              type="number"
-              className={`px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 ${
-                errors.quantity ? 'border-red-500' : 'border-gray-300'
-              }`}
-            />
-            {errors.quantity && (
-              <span className="text-red-500 text-xs mt-1 font-medium">{errors.quantity.message}</span>
-            )}
+    <div className="rounded-3xl bg-white shadow-2xl shadow-emerald-100/50 border border-emerald-100 overflow-hidden">
+      <div className="bg-gradient-to-r from-emerald-700 via-lime-600 to-amber-500 px-6 py-5 text-white">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-xs uppercase tracking-[0.35em] text-white/80">{t('wizardBadge')}</p>
+            <h2 className="text-2xl md:text-3xl font-black mt-1">{t('createTitle')}</h2>
+            <p className="text-white/80 mt-2 max-w-2xl">{t('createSubtitle')}</p>
           </div>
+          <div className="hidden md:flex items-center gap-2 text-xs bg-white/10 rounded-full px-4 py-2">
+            <span>{saving ? t('saving') : t('saved')}</span>
+            {restoredAt && <span className="opacity-80">| {t('draftRestored', { time: new Date(restoredAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) })}</span>}
+          </div>
+        </div>
 
-          <div className="flex flex-col">
-            <label htmlFor="quantity_unit" className="mb-1 text-sm font-semibold text-gray-700">
-              {t('unit')}
-            </label>
-            <select
-              {...register('quantity_unit')}
-              id="quantity_unit"
-              className={`px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 bg-white ${
-                errors.quantity_unit ? 'border-red-500' : 'border-gray-300'
+        <div className="mt-5 grid grid-cols-6 gap-2">
+          {STEP_LABELS.map((idx) => (
+            <button
+              key={idx}
+              type="button"
+              onClick={() => setStep(idx)}
+              className={`rounded-full px-2 py-2 text-[11px] font-semibold transition ${
+                idx === step ? 'bg-white text-emerald-800' : idx < step ? 'bg-white/25 text-white' : 'bg-white/10 text-white/70'
               }`}
             >
-              <option value="kg">kg</option>
-              <option value="tons">tons</option>
-            </select>
-            {errors.quantity_unit && (
-              <span className="text-red-500 text-xs mt-1 font-medium">{errors.quantity_unit.message}</span>
-            )}
-          </div>
+              {idx + 1}
+            </button>
+          ))}
         </div>
+      </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <div className="flex flex-col">
-            <label htmlFor="total_value" className="mb-1 text-sm font-semibold text-gray-700">
-              {t('totalValue')}
-            </label>
-            <div className="relative">
-              <span className="absolute left-3 top-2 text-gray-500">$</span>
-              <input
-                {...register('total_value', { valueAsNumber: true })}
-                id="total_value"
-                type="number"
-                className={`pl-7 pr-3 py-2 w-full border rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 ${
-                  errors.total_value ? 'border-red-500' : 'border-gray-300'
-                }`}
-              />
-            </div>
-            {errors.total_value && (
-              <span className="text-red-500 text-xs mt-1 font-medium">{errors.total_value.message}</span>
-            )}
-          </div>
-
-          <div className="flex flex-col">
-            <label htmlFor="token_price" className="mb-1 text-sm font-semibold text-gray-700">
-              {t('tokenPrice')}
-            </label>
-            <div className="relative">
-              <span className="absolute left-3 top-2 text-gray-500">$</span>
-              <input
-                {...register('token_price', { valueAsNumber: true })}
-                id="token_price"
-                type="number"
-                className={`pl-7 pr-3 py-2 w-full border rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 ${
-                  errors.token_price ? 'border-red-500' : 'border-gray-300'
-                }`}
-              />
-            </div>
-            {errors.token_price && (
-              <span className="text-red-500 text-xs mt-1 font-medium">{errors.token_price.message}</span>
-            )}
-          </div>
-        </div>
-
-        {totalValue > 1000 && tokenPrice === 100 && (
-          <div className="bg-green-50 border border-green-200 rounded-md p-3 flex items-center gap-2">
-            <span className="text-green-600 text-lg">🪙</span>
-            <span className="text-sm text-green-800">
-              {t('tokenInfo', { count: Math.floor(totalValue / 100), price: 100 })}
-            </span>
+      <div className="p-6 md:p-8">
+        {errors.submit && (
+          <div className="mb-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {errors.submit}
           </div>
         )}
 
-        <div className="flex flex-col">
-          <label htmlFor="delivery_date" className="mb-1 text-sm font-semibold text-gray-700">
-            {t('deliveryDate')}
-          </label>
-          <input
-            {...register('delivery_date')}
-            id="delivery_date"
-            type="date"
-            className={`px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 ${
-              errors.delivery_date ? 'border-red-500' : 'border-gray-300'
-            }`}
-          />
-          {errors.delivery_date && (
-            <span className="text-red-500 text-xs mt-1 font-medium">{errors.delivery_date.message}</span>
-          )}
-        </div>
-
-        <div className="space-y-4 pt-4 border-t border-gray-100">
-          <div className="flex flex-col">
-            <label htmlFor="farmer_id" className="mb-1 text-sm font-semibold text-gray-700">
-              {t('farmerId')}
-            </label>
-            <input
-              {...register('farmer_id')}
-              id="farmer_id"
-              placeholder="UUID"
-              className={`px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 ${
-                errors.farmer_id ? 'border-red-500' : 'border-gray-300'
-              }`}
-            />
-            {errors.farmer_id && (
-              <span className="text-red-500 text-xs mt-1 font-medium">{errors.farmer_id.message}</span>
-            )}
+        <div className="mb-6 flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm uppercase tracking-[0.3em] text-slate-400">{t(`steps.${step + 1}.eyebrow`)}</p>
+            <h3 className="text-xl md:text-2xl font-black text-slate-900">{t(`steps.${step + 1}.title`)}</h3>
           </div>
-
-          <div className="flex flex-col">
-            <label htmlFor="trader_id" className="mb-1 text-sm font-semibold text-gray-700">
-              {t('traderId')}
-            </label>
-            <input
-              {...register('trader_id')}
-              id="trader_id"
-              placeholder="UUID"
-              className={`px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 ${
-                errors.trader_id ? 'border-red-500' : 'border-gray-300'
-              }`}
-            />
-            {errors.trader_id && (
-              <span className="text-red-500 text-xs mt-1 font-medium">{errors.trader_id.message}</span>
-            )}
+          <div className="text-right text-sm text-slate-500">
+            <p>{t('stepLabel', { current: step + 1, total: 6 })}</p>
           </div>
         </div>
 
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="w-full bg-green-600 text-white font-bold py-3 px-4 rounded-md hover:bg-green-700 disabled:bg-green-300 transition-colors shadow-sm mt-6"
-        >
-          {isSubmitting ? t('creating') : t('createButton')}
-        </button>
-        {onCancel && (
-          <button
-            type="button"
-            onClick={onCancel}
-            className="w-full bg-gray-100 text-gray-700 font-bold py-3 px-4 rounded-md hover:bg-gray-200 transition-colors mt-2"
-          >
-            {t('cancel')}
-          </button>
+        {step === 0 && (
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field label={t('fields.title')} error={errors.title}>
+              <input className="input" value={draft.title} onChange={(e) => updateField('title', e.target.value)} />
+            </Field>
+            <Field label={t('fields.commodity')} error={errors.commodity}>
+              <input className="input" value={draft.commodity} onChange={(e) => updateField('commodity', e.target.value)} placeholder="Cocoa, maize, coffee" />
+            </Field>
+            <Field label={t('fields.country')} error={errors.country}>
+              <input className="input" value={draft.country} onChange={(e) => updateField('country', e.target.value)} />
+            </Field>
+            <Field label={t('fields.region')} optional>
+              <input className="input" value={draft.region} onChange={(e) => updateField('region', e.target.value)} />
+            </Field>
+            <Field label={t('fields.shortDescription')} error={errors.short_description} className="md:col-span-2">
+              <textarea className="input min-h-[120px]" value={draft.short_description} onChange={(e) => updateField('short_description', e.target.value)} />
+            </Field>
+          </div>
         )}
-      </form>
+
+        {step === 1 && (
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field label={t('fields.quantity')} error={errors.quantity}>
+              <input type="number" className="input" value={draft.quantity} onChange={(e) => updateField('quantity', asNumber(e.target.value))} />
+            </Field>
+            <Field label={t('fields.unit')}>
+              <select className="input bg-white" value={draft.quantity_unit} onChange={(e) => updateField('quantity_unit', e.target.value)}>
+                <option value="kg">kg</option>
+                <option value="tons">tons</option>
+              </select>
+            </Field>
+            <Field label={t('fields.totalValue')} error={errors.total_value}>
+              <input type="number" className="input" value={draft.total_value} onChange={(e) => updateField('total_value', asNumber(e.target.value))} />
+            </Field>
+            <Field label={t('fields.minInvestment')} error={errors.min_investment_lot}>
+              <input type="number" className="input" value={draft.min_investment_lot} onChange={(e) => updateField('min_investment_lot', asNumber(e.target.value))} />
+            </Field>
+            <Field label={t('fields.expectedRoi')} error={errors.expected_roi}>
+              <input type="number" className="input" value={draft.expected_roi} onChange={(e) => updateField('expected_roi', asNumber(e.target.value))} />
+            </Field>
+            <Field label={t('fields.duration')} error={errors.duration_days}>
+              <input type="number" className="input" value={draft.duration_days} onChange={(e) => updateField('duration_days', asNumber(e.target.value))} />
+            </Field>
+            <Field label={t('fields.risk')} error={errors.risk_rating}>
+              <select className="input bg-white" value={draft.risk_rating} onChange={(e) => updateField('risk_rating', e.target.value as RiskRating)}>
+                <option value="Low">Low</option>
+                <option value="Medium">Medium</option>
+                <option value="High">High</option>
+              </select>
+            </Field>
+            <Field label={t('fields.roiWarning')} className="md:col-span-2">
+              <div className={`rounded-2xl border px-4 py-3 text-sm ${warningHighRoi ? 'border-amber-200 bg-amber-50 text-amber-900' : 'border-emerald-200 bg-emerald-50 text-emerald-900'}`}>
+                {warningHighRoi ? t('roiWarningHigh') : t('roiWarningNormal')}
+              </div>
+            </Field>
+          </div>
+        )}
+
+        {step === 2 && (
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field label={t('fields.longDescription')} error={errors.long_description} className="md:col-span-2">
+              <textarea className="input min-h-[160px]" value={draft.long_description} onChange={(e) => updateField('long_description', e.target.value)} />
+            </Field>
+            <Field label={t('fields.farmLocation')} error={errors.farm_location}>
+              <input className="input" value={draft.farm_location} onChange={(e) => updateField('farm_location', e.target.value)} />
+            </Field>
+            <Field label={t('fields.mapPoint')} error={errors.farm_location_map}>
+              <div className="grid grid-cols-2 gap-3">
+                <input className="input" value={draft.farm_latitude} onChange={(e) => updateField('farm_latitude', e.target.value)} placeholder="Latitude" />
+                <input className="input" value={draft.farm_longitude} onChange={(e) => updateField('farm_longitude', e.target.value)} placeholder="Longitude" />
+              </div>
+            </Field>
+            <Field label={t('fields.farmPhotos')} error={errors.photos} className="md:col-span-2">
+              <div className="rounded-2xl border border-dashed border-slate-300 p-4">
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="block w-full text-sm text-slate-600"
+                  onChange={(e) => handlePhotoFiles(e.target.files)}
+                />
+                <p className="mt-2 text-xs text-slate-500">{t('photoHelper')}</p>
+                <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {photos.map((photo) => (
+                    <button key={photo.previewUrl} type="button" onClick={() => removePhoto(photo.previewUrl)} className="group rounded-2xl overflow-hidden border border-slate-200 text-left">
+                      <img src={photo.previewUrl} alt={photo.file.name} className="h-32 w-full object-cover" />
+                      <div className="p-2 text-xs text-slate-600">
+                        <p className="font-semibold truncate">{photo.file.name}</p>
+                        <p>{photo.width}px x {photo.height}px</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </Field>
+          </div>
+        )}
+
+        {step === 3 && (
+          <div className="grid gap-4 md:grid-cols-2">
+            {requiredDocs.map((doc) => {
+              const current = documents.find((item) => item.key === doc.key);
+              return (
+                <Field key={doc.key} label={doc.label}>
+                  <div className="rounded-2xl border border-slate-200 p-4">
+                    <input
+                      type="file"
+                      accept=".pdf,.png,.jpg,.jpeg"
+                      className="block w-full text-sm text-slate-600"
+                      onChange={(e) => setDocFile(doc.key, e.target.files?.[0] ?? null)}
+                    />
+                    {current?.file && <p className="mt-2 text-xs text-slate-500">{current.file.name}</p>}
+                  </div>
+                </Field>
+              );
+            })}
+            <Field label={t('fields.extraDocs')} className="md:col-span-2" error={errors.documents}>
+              <p className="text-sm text-slate-500">{t('docHelper')}</p>
+            </Field>
+          </div>
+        )}
+
+        {step === 4 && (
+          <div className="grid gap-4">
+            {logisticsPlan.map((item, index) => (
+              <div key={index} className="grid gap-3 rounded-2xl border border-slate-200 p-4 md:grid-cols-3">
+                <input className="input" value={item.milestone} onChange={(e) => setLogisticsPlan((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, milestone: e.target.value } : row))} placeholder={t('fields.milestone')} />
+                <input className="input" value={item.timeline} onChange={(e) => setLogisticsPlan((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, timeline: e.target.value } : row))} placeholder={t('fields.timeline')} />
+                <input className="input" value={item.owner} onChange={(e) => setLogisticsPlan((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, owner: e.target.value } : row))} placeholder={t('fields.owner')} />
+              </div>
+            ))}
+            {errors.logistics && <p className="text-sm text-red-600">{errors.logistics}</p>}
+          </div>
+        )}
+
+        {step === 5 && (
+          <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
+            <div className="rounded-3xl border border-slate-200 p-5 shadow-sm">
+              <p className="text-xs uppercase tracking-[0.3em] text-slate-400">{t('preview.card')}</p>
+              <div className="mt-4 rounded-3xl overflow-hidden border border-slate-200">
+                <div className="h-2 bg-gradient-to-r from-emerald-500 to-lime-500" />
+                <div className="p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h4 className="text-xl font-black text-slate-900">{draft.title || t('preview.placeholderTitle')}</h4>
+                      <p className="text-sm text-slate-500">{draft.commodity || t('preview.placeholderCommodity')}</p>
+                    </div>
+                    <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">{draft.risk_rating}</span>
+                  </div>
+                  <p className="mt-3 text-sm text-slate-600">{draft.short_description || t('preview.placeholderSummary')}</p>
+                  <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                    <Metric label={t('fields.totalValue')} value={money(draft.total_value)} />
+                    <Metric label={t('fields.minInvestment')} value={money(draft.min_investment_lot)} />
+                    <Metric label={t('fields.expectedRoi')} value={`${draft.expected_roi}%`} />
+                    <Metric label={t('fields.duration')} value={`${draft.duration_days} days`} />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-3xl border border-slate-200 p-5 shadow-sm space-y-4">
+              <p className="text-xs uppercase tracking-[0.3em] text-slate-400">{t('preview.detailPage')}</p>
+              <div className="space-y-4 rounded-3xl bg-slate-50 p-5">
+                <div>
+                  <p className="text-xs text-slate-400 uppercase tracking-[0.2em]">{t('fields.farmLocation')}</p>
+                  <p className="font-semibold text-slate-900">{draft.farm_location}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-400 uppercase tracking-[0.2em]">{t('fields.longDescription')}</p>
+                  <p className="text-sm text-slate-600 whitespace-pre-wrap">{draft.long_description}</p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-white p-3">
+                  <p className="text-xs text-slate-400 uppercase tracking-[0.2em]">{t('preview.map')}</p>
+                  <p className="mt-1 text-sm text-slate-600">
+                    {draft.farm_latitude}, {draft.farm_longitude}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-white p-3">
+                  <p className="text-xs text-slate-400 uppercase tracking-[0.2em]">{t('preview.documents')}</p>
+                  <ul className="mt-2 space-y-1 text-sm text-slate-600">
+                    {documents.filter((doc) => doc.file).map((doc) => (
+                      <li key={doc.key}>{doc.label}: {doc.file?.name}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="mt-8 flex flex-col gap-3 border-t border-slate-100 pt-6 md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-wrap gap-2">
+            {onCancel && (
+              <button type="button" onClick={onCancel} className="btn-secondary">
+                {tc('dismiss')}
+              </button>
+            )}
+            {step > 0 && (
+              <button type="button" onClick={goBack} className="btn-secondary">
+                {t('back')}
+              </button>
+            )}
+          </div>
+
+          <div className="flex gap-3">
+            {step < 5 ? (
+              <button type="button" onClick={goNext} className="btn-primary">
+                {t('next')}
+              </button>
+            ) : (
+              <button type="button" onClick={submit} disabled={submitting} className="btn-primary">
+                {submitting ? tc('processing') : t('submitForReview')}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
-};
+}
+
+function Field({ label, children, error, optional, className }: { label: string; children: ReactNode; error?: string; optional?: boolean; className?: string }) {
+  return (
+    <label className={`space-y-2 ${className ?? ''}`}>
+      <div className="flex items-center gap-2">
+        <span className="text-sm font-semibold text-slate-700">{label}</span>
+        {optional && <span className="text-xs text-slate-400">(optional)</span>}
+      </div>
+      {children}
+      {error && <p className="text-xs text-red-600">{error}</p>}
+    </label>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl bg-slate-50 p-3">
+      <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">{label}</p>
+      <p className="mt-1 font-bold text-slate-900">{value}</p>
+    </div>
+  );
+}

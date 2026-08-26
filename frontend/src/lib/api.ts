@@ -45,7 +45,10 @@ export interface Milestone {
 
 export interface Deal {
   id: string;
+  title?: string | null;
   commodity: string;
+  country?: string | null;
+  region?: string | null;
   quantity: number;
   quantity_unit: string;
   total_value: number;
@@ -59,6 +62,14 @@ export interface Deal {
   delivery_date: string;
   annual_roi?: number;
   term_days?: number;
+  expected_roi?: number | null;
+  duration_days?: number | null;
+  min_investment_lot?: number | null;
+  risk_rating?: "Low" | "Medium" | "High" | null;
+  short_description?: string | null;
+  long_description?: string | null;
+  farm_location?: string | null;
+  funding_status?: "open" | "almost funded" | "fully funded";
   created_at: string;
   documents?: Document[];
   milestones?: Milestone[];
@@ -160,7 +171,10 @@ function normalizeInvestment(investment: any): Investment {
 function normalizeDeal(raw: any): Deal {
   return {
     id: raw.id,
+    title: raw.title ?? null,
     commodity: raw.commodity,
+    country: raw.country ?? null,
+    region: raw.region ?? null,
     quantity: Number(raw.quantity ?? 0),
     quantity_unit: raw.quantity_unit ?? raw.quantityUnit ?? "units",
     total_value: Number(raw.total_value ?? raw.totalValue ?? 0),
@@ -176,6 +190,14 @@ function normalizeDeal(raw: any): Deal {
     delivery_date: raw.delivery_date ?? raw.deliveryDate ?? "",
     annual_roi: raw.annual_roi ?? raw.annualRoi ?? 0.15, // Default 15%
     term_days: raw.term_days ?? raw.termDays ?? 90,     // Default 90 days
+    expected_roi: raw.expected_roi ?? raw.expectedRoi ?? null,
+    duration_days: raw.duration_days ?? raw.durationDays ?? null,
+    min_investment_lot: raw.min_investment_lot ?? raw.minInvestmentLot ?? null,
+    risk_rating: raw.risk_rating ?? raw.riskRating ?? null,
+    short_description: raw.short_description ?? raw.shortDescription ?? null,
+    long_description: raw.long_description ?? raw.longDescription ?? null,
+    farm_location: raw.farm_location ?? raw.farmLocation ?? null,
+    funding_status: raw.funding_status ?? raw.fundingStatus ?? null,
     created_at: raw.created_at ?? raw.createdAt ?? "",
     documents: raw.documents,
     milestones: raw.milestones,
@@ -319,8 +341,14 @@ export const apiClient = {
 
   // POST /auth/kyc
   async submitKyc(data: {
+    fullName?: string;
+    dateOfBirth?: string;
+    nationality?: string;
+    address?: string;
     governmentIdUrl?: string;
+    identityDocumentBackUrl?: string;
     proofOfAddressUrl?: string;
+    selfieUrl?: string;
     isCorporate?: boolean;
     companyName?: string;
     registrationNumber?: string;
@@ -355,9 +383,19 @@ export interface PaginatedDeals {
   limit: number;
 }
 
-export async function getOpenDeals(page = 1, limit = 12): Promise<PaginatedDeals> {
+export async function getOpenDeals(
+  page = 1,
+  limit = 12,
+  params: Record<string, string | number | undefined> = {},
+): Promise<PaginatedDeals> {
+  const query = new URLSearchParams({ page: String(page), limit: String(limit) });
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && `${value}`.length > 0) {
+      query.set(key, String(value));
+    }
+  });
   const raw = await apiFetch<{ data: any[]; total: number; page: number; limit: number }>(
-    `/trade-deals?page=${page}&limit=${limit}`,
+    `/trade-deals?${query.toString()}`,
   );
   return {
     data: raw.data.map(normalizeDeal),
