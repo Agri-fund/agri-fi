@@ -17,7 +17,6 @@ import {
 import { User } from '../auth/entities/user.entity';
 import { StellarService } from '../stellar/stellar.service';
 import { QueueService } from '../queue/queue.service';
-import { ReferralService } from '../auth/referral.service';
 import {
   normalizePagination,
   PaginatedResult,
@@ -25,10 +24,10 @@ import {
   toPaginatedResult,
 } from '../common/pagination';
 import { FeeCalculatorService, FeeBreakdown } from './fee-calculator.service';
-import { CreateInvestmentResponseDto } from './dto/investment-response.dto';
 import { encodeFeeData, generateInvestmentMemo } from './fee-transaction.utils';
 import { EmailSequenceService } from '../email-sequence/email-sequence.service';
 import { InvestmentEventStore } from './investment-event-store.service';
+import { OfacSanctionsCheckService } from '../auth/utils/ofac-sanctions-check';
 
 export interface CreateInvestmentResult {
   investment: Investment;
@@ -58,6 +57,7 @@ export class InvestmentsService {
     private readonly dataSource: DataSource,
     private readonly queueService: QueueService,
     private readonly feeCalculatorService: FeeCalculatorService,
+    private readonly ofacCheckService: OfacSanctionsCheckService,
     @Optional() private readonly emailSequenceService: EmailSequenceService,
     @Optional() private readonly eventStore?: InvestmentEventStore,
   ) {}
@@ -90,6 +90,18 @@ export class InvestmentsService {
         code: 'NO_USDC_TRUSTLINE',
         message:
           'Investor wallet has not established a USDC trustline. Please add a USDC trustline to your Stellar wallet before investing.',
+      });
+    }
+
+    // OFAC sanctions screening on every investment (#845)
+    const isSanctioned = await this.ofacCheckService.isAddressSanctioned(
+      investor.walletAddress,
+    );
+    if (isSanctioned) {
+      throw new ForbiddenException({
+        code: 'SANCTIONED_ADDRESS',
+        message:
+          'Investment rejected: wallet address is on the OFAC sanctions list.',
       });
     }
 
@@ -215,7 +227,11 @@ export class InvestmentsService {
     await this.eventStore?.append(
       investment.id,
       'InvestmentCreated',
-      { amountUsd: dto.amountUsd, tokenAmount: dto.tokenAmount, tradeDealId: dto.tradeDealId },
+      {
+        amountUsd: dto.amountUsd,
+        tokenAmount: dto.tokenAmount,
+        tradeDealId: dto.tradeDealId,
+      },
       investorId,
     );
 
@@ -353,7 +369,10 @@ export class InvestmentsService {
     return updatedInvestment!;
   }
 
-  async markInvestmentFailed(investmentId: string, actorId?: string): Promise<void> {
+  async markInvestmentFailed(
+    investmentId: string,
+    actorId?: string,
+  ): Promise<void> {
     await this.investmentRepo.update(investmentId, {
       status: InvestmentStatus.FAILED,
     });
@@ -366,30 +385,75 @@ export class InvestmentsService {
   }
 
   async startRelease(investmentId: string, actorId?: string): Promise<void> {
-    await this.investmentRepo.update(investmentId, { status: InvestmentStatus.RELEASING });
-    await this.eventStore?.append(investmentId, 'InvestmentReleaseStarted', {}, actorId);
+    await this.investmentRepo.update(investmentId, {
+      status: InvestmentStatus.RELEASING,
+    });
+    await this.eventStore?.append(
+      investmentId,
+      'InvestmentReleaseStarted',
+      {},
+      actorId,
+    );
   }
 
-  async completeInvestment(investmentId: string, actorId?: string): Promise<void> {
-    await this.investmentRepo.update(investmentId, { status: InvestmentStatus.COMPLETED });
-    await this.eventStore?.append(investmentId, 'InvestmentCompleted', {}, actorId);
+  async completeInvestment(
+    investmentId: string,
+    actorId?: string,
+  ): Promise<void> {
+    await this.investmentRepo.update(investmentId, {
+      status: InvestmentStatus.COMPLETED,
+    });
+    await this.eventStore?.append(
+      investmentId,
+      'InvestmentCompleted',
+      {},
+      actorId,
+    );
   }
 
-  async cancelInvestment(investmentId: string, actorId?: string, reason?: string): Promise<void> {
-    await this.investmentRepo.update(investmentId, { status: InvestmentStatus.CANCELLED });
-    await this.eventStore?.append(investmentId, 'InvestmentCancelledByUser', { reason }, actorId);
+  async cancelInvestment(
+    investmentId: string,
+    actorId?: string,
+    reason?: string,
+  ): Promise<void> {
+    await this.investmentRepo.update(investmentId, {
+      status: InvestmentStatus.CANCELLED,
+    });
+    await this.eventStore?.append(
+      investmentId,
+      'InvestmentCancelledByUser',
+      { reason },
+      actorId,
+    );
   }
 
-  async refundInvestment(investmentId: string, actorId?: string, reason?: string): Promise<void> {
-    await this.investmentRepo.update(investmentId, { status: InvestmentStatus.REFUNDED });
-    await this.eventStore?.append(investmentId, 'InvestmentRefunded', { reason }, actorId);
+  async refundInvestment(
+    investmentId: string,
+    actorId?: string,
+    reason?: string,
+  ): Promise<void> {
+    await this.investmentRepo.update(investmentId, {
+      status: InvestmentStatus.REFUNDED,
+    });
+    await this.eventStore?.append(
+      investmentId,
+      'InvestmentRefunded',
+      { reason },
+      actorId,
+    );
   }
 
   async reconcileStateFromEvents(investmentId: string): Promise<Investment> {
-    if (!this.eventStore) throw new Error('InvestmentEventStore is not injected');
-    const projection = await this.eventStore.rebuildStateFromEvents(investmentId);
-    await this.investmentRepo.update(investmentId, { status: projection.status });
-    return (await this.investmentRepo.findOne({ where: { id: investmentId } }))!;
+    if (!this.eventStore)
+      throw new Error('InvestmentEventStore is not injected');
+    const projection =
+      await this.eventStore.rebuildStateFromEvents(investmentId);
+    await this.investmentRepo.update(investmentId, {
+      status: projection.status,
+    });
+    return (await this.investmentRepo.findOne({
+      where: { id: investmentId },
+    }))!;
   }
 
   async fundEscrow(
@@ -491,7 +555,10 @@ export class InvestmentsService {
   }
 
   async getInvestmentById(id: string): Promise<Investment | null> {
-    return this.investmentRepo.findOne({ where: { id }, relations: ['tradeDeal'] });
+    return this.investmentRepo.findOne({
+      where: { id },
+      relations: ['tradeDeal'],
+    });
   }
 
   async getInvestmentsByTradeDeal(

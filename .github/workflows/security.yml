@@ -111,7 +111,7 @@ jobs:
           retention-days: 30
 
       - name: Convert ZAP Report to SARIF (for GitHub Security tab)
-        uses: zaproxy/action-sarif@v0.3.0
+        uses: SvanBoxel/zaproxy-to-ghas@main
         if: always()
 
       - name: Upload SARIF to GitHub Security tab

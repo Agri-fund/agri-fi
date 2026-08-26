@@ -11,6 +11,7 @@ if (!(BigInt.prototype as any).toJSON) {
 }
 
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import {
   ValidationPipe,
@@ -24,6 +25,7 @@ import { applySecurityHeaders } from './common/middleware/security-headers.middl
 import { Logger } from 'nestjs-pino';
 import { JsonBigIntInterceptor } from './common/interceptors/json-bigint.interceptor';
 import { UserContextInterceptor } from './common/interceptors/user-context.interceptor';
+import { VersionInterceptor } from './common/interceptors/version.interceptor';
 import { ClsService } from 'nestjs-cls';
 import * as cookieParser from 'cookie-parser';
 import * as csrf from 'csurf';
@@ -34,10 +36,14 @@ async function bootstrap() {
   //
   // bufferLogs: true — buffer bootstrap log lines until the Pino logger is
   // wired up, ensuring early startup messages are also structured JSON.
-  const app = await NestFactory.create(AppModule, {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     rawBody: true,
     bufferLogs: true,
   });
+
+  // Set query parser to 'extended' for Express v5 compatibility
+  // This restores the nested object/array parsing behavior from Express v4
+  app.set('query parser', 'extended');
 
   // Replace the default NestJS ConsoleLogger with the Pino-backed Logger so
   // every log line (including NestJS framework messages) is structured JSON.

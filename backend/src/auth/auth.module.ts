@@ -77,6 +77,7 @@ import { EmailSequenceModule } from '../email-sequence/email-sequence.module';
     RedisConfig,
     TokenBlocklistService,
     SecurityThreatService,
+    OfacSanctionsCheckService,
   ],
 })
 export class AuthModule {}
