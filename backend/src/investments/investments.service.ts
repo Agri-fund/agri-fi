@@ -24,6 +24,7 @@ import {
   toPaginatedResult,
 } from '../common/pagination';
 import { FeeCalculatorService, FeeBreakdown } from './fee-calculator.service';
+import { validateLotSize } from './lot-size.utils';
 import { encodeFeeData, generateInvestmentMemo } from './fee-transaction.utils';
 import { EmailSequenceService } from '../email-sequence/email-sequence.service';
 import { InvestmentEventStore } from './investment-event-store.service';
@@ -174,6 +175,19 @@ export class InvestmentsService {
         throw new UnprocessableEntityException({
           code: 'INSUFFICIENT_TOKENS',
           message: `Only ${availableTokens} tokens available for investment.`,
+        });
+      }
+
+      // Enforce deal lot sizing (#835)
+      const lotResult = validateLotSize(
+        dto.amountUsd,
+        Number(tradeDeal.minLotSize ?? 1),
+        Number(tradeDeal.lotStep ?? 1),
+      );
+      if (!lotResult.valid) {
+        throw new UnprocessableEntityException({
+          code: lotResult.code,
+          message: lotResult.message,
         });
       }
 

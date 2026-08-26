@@ -83,6 +83,25 @@ export class SorobanService {
     args: xdr.ScVal[],
     signerKeypair?: Keypair,
   ): Promise<string> {
+    const { hash } = await this.invokeContractWithResult(
+      contractId,
+      method,
+      args,
+      signerKeypair,
+    );
+    return hash;
+  }
+
+  /**
+   * Same as invokeContract, but also returns the contract's return value
+   * (converted to a native JS value) when the transaction succeeded.
+   */
+  async invokeContractWithResult(
+    contractId: string,
+    method: string,
+    args: xdr.ScVal[],
+    signerKeypair?: Keypair,
+  ): Promise<{ hash: string; result: unknown }> {
     const signer = signerKeypair ?? this.platformKeypair;
     const account = await this.rpcServer.getAccount(signer.publicKey());
 
@@ -140,11 +159,16 @@ export class SorobanService {
       throw new Error(`Soroban tx failed or timed out: ${getResult.status}`);
     }
 
+    const result =
+      getResult.returnValue !== undefined
+        ? scValToNative(getResult.returnValue)
+        : null;
+
     this.logger.info(
       { contractId, method, hash },
       'Soroban contract call succeeded',
     );
-    return hash;
+    return { hash, result };
   }
 
   /**
@@ -258,6 +282,59 @@ export class SorobanService {
   }
 
   // ── ProjectFactory contract methods ─────────────────────────────────────────
+
+  /**
+   * Deploys a new FarmCampaign contract through the ProjectFactory (#830).
+   * Returns the deployed campaign contract address.
+   */
+  async deployFarmCampaign(
+    dealId: string,
+    params: {
+      farmerAddress: string;
+      targetAmount: bigint; // USDC stroops
+      durationLedgers: number;
+      commodityCode: string;
+    },
+  ): Promise<string> {
+    const factoryContractId = this.config.get<string>(
+      'SOROBAN_FACTORY_CONTRACT_ID',
+    );
+    if (!factoryContractId) {
+      throw new Error('SOROBAN_FACTORY_CONTRACT_ID is not configured');
+    }
+
+    const args = [
+      new Address(this.platformKeypair.publicKey()).toScVal(),
+      new Address(params.farmerAddress).toScVal(),
+      nativeToScVal(params.targetAmount, { type: 'i128' }),
+      nativeToScVal(params.durationLedgers, { type: 'u32' }),
+      nativeToScVal(params.commodityCode, { type: 'symbol' }),
+    ];
+
+    const { hash, result } = await this.invokeContractWithResult(
+      factoryContractId,
+      'deploy',
+      args,
+    );
+
+    const contractAddress = typeof result === 'string' ? result : null;
+    if (!contractAddress) {
+      throw new Error(
+        `Factory deploy did not return a contract address (tx ${hash})`,
+      );
+    }
+
+    this.logger.info(
+      { dealId, factoryContractId, campaignContractId: contractAddress, hash },
+      'FarmCampaign deployed via ProjectFactory',
+    );
+    return contractAddress;
+  }
+
+  /** Platform (deployer) wallet public key — used for audit logging (#830). */
+  platformPublicKey(): string {
+    return this.platformKeypair.publicKey();
+  }
 
   async registerCampaignOnChain(
     factoryContractId: string,

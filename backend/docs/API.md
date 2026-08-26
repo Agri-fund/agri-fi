@@ -100,3 +100,54 @@ curl http://localhost:3001/v1/health
 # Test version header
 curl -H "Accept: application/vnd.agri-fi.v1+json" http://localhost:3001/health
 ```
+
+## SEP-12 Customer Schema
+
+The KYC endpoints implement the Stellar SEP-12 customer schema. The platform's
+internal field names are mapped automatically (#837):
+
+| Platform field      | SEP-12 field            |
+|---------------------|-------------------------|
+| `firstName`         | `first_name`            |
+| `lastName`          | `last_name`             |
+| `dateOfBirth`       | `birth_date`            |
+| `nationalIdNumber`  | `id_number`             |
+| `nationalIdType`    | `id_type`               |
+| `addressLine1`      | `address.line1`         |
+| `countryCode`       | `address.country_code`  |
+
+Both formats are accepted by `PUT /v1/kyc/customer` and both are stored; the
+SEP-12 payload is persisted alongside the internal record.
+
+### Endpoints
+
+```
+PUT  /v1/kyc/customer        Submit or update customer fields (internal or SEP-12 names)
+GET  /v1/kyc/customer        Get the caller's SEP-12 compliant record
+GET  /v1/kyc/customer/:id    Get a customer by id (admins only)
+```
+
+### Validation
+
+- `birth_date` / `dateOfBirth` must be an ISO 8601 date (`YYYY-MM-DD`)
+- `address.country_code` / `countryCode` and `id_country_code` must be
+  ISO 3166-1 alpha-2 codes
+
+### Example response (`GET /v1/kyc/customer`)
+
+```json
+{
+  "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "status": "VERIFIED",
+  "first_name": "Ada",
+  "last_name": "Investor",
+  "email_address": "ada@example.com",
+  "birth_date": "1990-05-20",
+  "address": {
+    "line1": "1 Market Street",
+    "country_code": "NG"
+  },
+  "id_type": "national_id",
+  "id_number": "12345678"
+}
+```

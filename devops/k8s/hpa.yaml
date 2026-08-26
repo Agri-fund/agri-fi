@@ -1,3 +1,7 @@
+# Backend HPA (#836) — scales the ACTIVE blue-green slot only. The CD pipeline
+# deploys to the inactive slot at a fixed replica count and flips the Service
+# selector; autoscaling the idle slot would fight that process, so this HPA
+# must always point at whichever slot the Service currently selects.
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
@@ -8,7 +12,7 @@ spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: agri-fi-backend
+    name: agri-fi-backend-blue
   minReplicas: 2
   maxReplicas: 10
   metrics:
