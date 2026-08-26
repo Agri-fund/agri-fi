@@ -147,6 +147,14 @@ export class User {
   @Column({ name: 'mfa_locked_until', type: 'timestamptz', nullable: true })
   mfaLockedUntil: Date | null;
 
+  // #806 — admin MFA enforcement: flagged when admin/company_admin has no MFA set up
+  @Column({ name: 'mfa_enrollment_required', default: false })
+  @ApiProperty({
+    description: 'Whether this admin account must complete MFA enrollment before accessing the platform',
+    example: false,
+  })
+  mfaEnrollmentRequired: boolean;
+
   @CreateDateColumn({ name: 'created_at' })
   @ApiProperty({
     description: 'Account creation timestamp',
@@ -244,4 +252,26 @@ export class User {
     example: false,
   })
   emailSequenceUnsubscribed: boolean;
+
+  /**
+   * Persisted onboarding checklist state for farmers (#805).
+   * Tracks the four setup steps: profile, KYC, first deal, and wallet.
+   */
+  @Column({ name: 'onboarding_progress', type: 'simple-json', nullable: true })
+  @ApiProperty({
+    description: 'Onboarding checklist progress for farmers',
+    nullable: true,
+    example: {
+      profileComplete: true,
+      kycSubmitted: false,
+      firstDealCreated: false,
+      walletConnected: false,
+    },
+  })
+  onboardingProgress: {
+    profileComplete: boolean;
+    kycSubmitted: boolean;
+    firstDealCreated: boolean;
+    walletConnected: boolean;
+  } | null;
 }

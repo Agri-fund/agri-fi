@@ -1,9 +1,11 @@
 import {
   Controller,
   Get,
+  Patch,
   Delete,
   UseGuards,
   Request,
+  Body,
   Query,
   BadRequestException,
   ForbiddenException,
@@ -22,6 +24,9 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { UsersService } from './users.service';
 import { TradeDealsService } from '../trade-deals/trade-deals.service';
+import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { UpdateOnboardingProgressDto } from './dto/update-onboarding-progress.dto';
 import { User } from '../auth/entities/user.entity';
 
 interface AuthRequest extends Request {
@@ -149,5 +154,37 @@ export class UsersController {
     const { id } = req.user;
     const userData = await this.usersService.exportUserData(id);
     res.json(userData);
+  }
+
+  @Get('me/onboarding-progress')
+  @ApiOperation({ summary: "Get the authenticated farmer's onboarding checklist state" })
+  @ApiResponse({
+    status: 200,
+    description: 'Current onboarding progress',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Only farmers can access this endpoint' })
+  @UseGuards(RolesGuard)
+  @Roles('farmer')
+  async getOnboardingProgress(@Request() req: AuthRequest) {
+    return this.usersService.getOnboardingProgress(req.user.id);
+  }
+
+  @Patch('me/onboarding-progress')
+  @ApiOperation({ summary: "Update the authenticated farmer's onboarding checklist state" })
+  @ApiResponse({
+    status: 200,
+    description: 'Updated onboarding progress',
+  })
+  @ApiResponse({ status: 400, description: 'Validation error' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Only farmers can access this endpoint' })
+  @UseGuards(RolesGuard)
+  @Roles('farmer')
+  async updateOnboardingProgress(
+    @Request() req: AuthRequest,
+    @Body() dto: UpdateOnboardingProgressDto,
+  ) {
+    return this.usersService.updateOnboardingProgress(req.user.id, dto);
   }
 }

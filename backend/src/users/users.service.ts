@@ -8,6 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, DataSource } from 'typeorm';
 import { randomBytes } from 'crypto';
 import { User, UserRole } from '../auth/entities/user.entity';
+import { UpdateOnboardingProgressDto } from './dto/update-onboarding-progress.dto';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
 import { Investment } from '../investments/entities/investment.entity';
 import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.entity';
@@ -539,5 +540,96 @@ export class UsersService {
       })),
       exportedAt: new Date().toISOString(),
     };
+  }
+
+  /**
+   * Returns the current onboarding progress for a farmer.
+   * Always returns the four checklist fields (defaulting to false if null).
+   */
+  async getOnboardingProgress(userId: string): Promise<{
+    profileComplete: boolean;
+    kycSubmitted: boolean;
+    firstDealCreated: boolean;
+    walletConnected: boolean;
+    allComplete: boolean;
+  }> {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('User not found.');
+    }
+
+    const progress = user.onboardingProgress ?? {
+      profileComplete: false,
+      kycSubmitted: false,
+      firstDealCreated: false,
+      walletConnected: false,
+    };
+
+    const allComplete =
+      progress.profileComplete &&
+      progress.kycSubmitted &&
+      progress.firstDealCreated &&
+      progress.walletConnected;
+
+    return { ...progress, allComplete };
+  }
+
+  /**
+   * Merges a partial checklist update into the user's persisted
+   * onboarding_progress column, then returns the full updated state.
+   * Once all four steps are true, allComplete is set to true.
+   */
+  async updateOnboardingProgress(
+    userId: string,
+    dto: UpdateOnboardingProgressDto,
+  ): Promise<{
+    profileComplete: boolean;
+    kycSubmitted: boolean;
+    firstDealCreated: boolean;
+    walletConnected: boolean;
+    allComplete: boolean;
+  }> {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('User not found.');
+    }
+
+    // Start from the stored progress (or zeros) and apply the partial update
+    const existing = user.onboardingProgress ?? {
+      profileComplete: false,
+      kycSubmitted: false,
+      firstDealCreated: false,
+      walletConnected: false,
+    };
+
+    const updated = {
+      profileComplete:
+        dto.profileComplete !== undefined
+          ? dto.profileComplete
+          : existing.profileComplete,
+      kycSubmitted:
+        dto.kycSubmitted !== undefined
+          ? dto.kycSubmitted
+          : existing.kycSubmitted,
+      firstDealCreated:
+        dto.firstDealCreated !== undefined
+          ? dto.firstDealCreated
+          : existing.firstDealCreated,
+      walletConnected:
+        dto.walletConnected !== undefined
+          ? dto.walletConnected
+          : existing.walletConnected,
+    };
+
+    user.onboardingProgress = updated;
+    await this.userRepository.save(user);
+
+    const allComplete =
+      updated.profileComplete &&
+      updated.kycSubmitted &&
+      updated.firstDealCreated &&
+      updated.walletConnected;
+
+    return { ...updated, allComplete };
   }
 }
