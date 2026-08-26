@@ -241,12 +241,18 @@ fn test_unauthorized_account_cannot_submit_delivery_milestone() {
     let platform = Address::generate(&env);
     let usdc_token = Address::generate(&env);
 
+    let mut investors = Vec::new(&env);
+    investors.push_back(Address::generate(&env));
+
     let contract_id = env.register_contract(None, EscrowContract);
     EscrowContractClient::new(&env, &contract_id).initialize(
         &admin,
         &farmer,
         &platform,
         &usdc_token,
+        &1000,
+        &1,
+        &investors,
     );
 
     // Use a random unauthorized address
@@ -256,6 +262,23 @@ fn test_unauthorized_account_cannot_submit_delivery_milestone() {
         &unauthorized,
     );
     assert_eq!(result, Err(Ok(Error::Unauthorized)));
+}
+
+#[test]
+fn test_release_by_unauthorized_caller_fails() {
+    let setup = setup();
+    let unauthorized = Address::generate(&setup._env);
+    let total_funded: i128 = 10_000_000_000;
+    fund_contract(&setup, total_funded);
+
+    EscrowContractClient::new(&setup._env, &setup.contract_id).approve_delivery(&setup.admin);
+
+    let result = EscrowContractClient::new(&setup._env, &setup.contract_id)
+        .try_release(&unauthorized);
+    assert_eq!(result, Err(Ok(Error::Unauthorized)));
+
+    // Funds remain untouched and released flag stays false
+    assert!(!EscrowContractClient::new(&setup._env, &setup.contract_id).is_released());
 }
 
 #[test]
