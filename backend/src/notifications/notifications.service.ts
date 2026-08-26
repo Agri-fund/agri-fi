@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PinoLogger } from 'nestjs-pino';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository, In, IsNull } from 'typeorm';
 import * as nodemailer from 'nodemailer';
+import { NotificationEntity, NotificationType } from './entities/notification.entity';
 
 @Injectable()
 export class NotificationsService {
@@ -11,6 +14,8 @@ export class NotificationsService {
   constructor(
     private readonly configService: ConfigService,
     private readonly logger: PinoLogger,
+    @InjectRepository(NotificationEntity)
+    private readonly notificationRepo: Repository<NotificationEntity>,
   ) {
     this.logger.setContext(NotificationsService.name);
 
@@ -32,6 +37,62 @@ export class NotificationsService {
     } else {
       this.logger.info(
         'Notifications are disabled (NOTIFICATIONS_ENABLED=false). Emails will only be logged.',
+      );
+    }
+  }
+
+  async createNotification(params: {
+    userId: string;
+    type: NotificationType;
+    title: string;
+    message: string;
+    linkUrl?: string;
+    metadataJson?: Record<string, unknown>;
+  }): Promise<NotificationEntity> {
+    const notification = this.notificationRepo.create({
+      userId: params.userId,
+      type: params.type,
+      title: params.title,
+      message: params.message,
+      linkUrl: params.linkUrl ?? null,
+      metadataJson: params.metadataJson ?? null,
+    });
+    return this.notificationRepo.save(notification);
+  }
+
+  async getUserNotifications(
+    userId: string,
+    limit = 10,
+    unreadOnly = false,
+  ): Promise<NotificationEntity[]> {
+    const where: any = { userId };
+    if (unreadOnly) {
+      where.notificationReadAt = IsNull();
+    }
+    return this.notificationRepo.find({
+      where,
+      order: { createdAt: 'DESC' },
+      take: limit,
+    });
+  }
+
+  async getUnreadCount(userId: string): Promise<number> {
+    return this.notificationRepo.count({
+      where: { userId, notificationReadAt: IsNull() },
+    });
+  }
+
+  async markAsRead(userId: string, ids?: string[]): Promise<void> {
+    const now = new Date();
+    if (ids && ids.length > 0) {
+      await this.notificationRepo.update(
+        { userId, id: In(ids) },
+        { notificationReadAt: now },
+      );
+    } else {
+      await this.notificationRepo.update(
+        { userId, notificationReadAt: IsNull() },
+        { notificationReadAt: now },
       );
     }
   }
@@ -86,19 +147,15 @@ export class NotificationsService {
 
   private sanitiseErrorMessage(message: string): string {
     if (!message) return '';
-    // Redact SMTP authentication commands and potential tokens
-    return (
-      message
-        .replace(
-          /AUTH\s+(?:LOGIN|PLAIN|CRAM-MD5|DIGEST-MD5|XOAUTH2)\s+[a-zA-Z0-9+/=]+/gi,
-          'AUTH *** [REDACTED]',
-        )
-        .replace(
-          /AUTH\s+(?:LOGIN|PLAIN|CRAM-MD5|DIGEST-MD5|XOAUTH2)/gi,
-          'AUTH ***',
-        )
-        // Redact potential base64 credentials (long alphanumeric strings that look like tokens)
-        .replace(/[a-zA-Z0-9+/]{20,}=*/g, '***')
-    );
+    return message
+      .replace(
+        /AUTH\s+(?:LOGIN|PLAIN|CRAM-MD5|DIGEST-MD5|XOAUTH2)\s+[a-zA-Z0-9+/=]+/gi,
+        'AUTH *** [REDACTED]',
+      )
+      .replace(
+        /AUTH\s+(?:LOGIN|PLAIN|CRAM-MD5|DIGEST-MD5|XOAUTH2)/gi,
+        'AUTH ***',
+      )
+      .replace(/[a-zA-Z0-9+/]{20,}=*/g, '***');
   }
 }

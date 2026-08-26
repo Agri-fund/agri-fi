@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Optional,
   ConflictException,
   UnauthorizedException,
   NotFoundException,
@@ -14,7 +15,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import * as argon2 from 'argon2';
-import { randomBytes } from 'crypto';
+import { randomBytes, createHash } from 'crypto';
 import crypto from 'crypto';
 import {
   Keypair,
@@ -42,6 +43,7 @@ import { authenticator } from 'otplib';
 import * as QRCode from 'qrcode';
 import { TokenBlocklistService } from './token-blocklist.service';
 import { SecurityThreatService } from './security-threat.service';
+import { EmailSequenceService } from '../email-sequence/email-sequence.service';
 
 const LOCKOUT_MAX_ATTEMPTS = 5;
 const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
@@ -51,6 +53,7 @@ export interface LoginMeta {
   ip?: string;
   userAgent?: string;
   country?: string;
+  acceptLanguage?: string;
 }
 
 @Injectable()
@@ -74,6 +77,7 @@ export class AuthService {
     private readonly ofacSanctionsCheck: OfacSanctionsCheckService,
     private readonly tokenBlocklistService: TokenBlocklistService,
     private readonly securityThreat: SecurityThreatService,
+    @Optional() private readonly emailSequenceService: EmailSequenceService,
   ) {
     const network = this.configService.get<string>('STELLAR_NETWORK', 'testnet');
     this.networkPassphrase =
@@ -173,6 +177,15 @@ export class AuthService {
     }
 
     await this.sendVerificationEmail(saved.email, emailVerificationToken);
+
+    // Schedule the investor onboarding drip email sequence for new investors.
+    // Fire-and-forget — a scheduling failure must not block registration.
+    if (saved.role === 'investor' && this.emailSequenceService) {
+      this.emailSequenceService.scheduleForUser(saved.id, saved.createdAt).catch((err) => {
+        // Non-fatal: log and continue
+        console.error('[AuthService] Failed to schedule drip sequence', err);
+      });
+    }
 
     const safeRedirect = sanitizeRedirectUrl(dto.redirect);
     return {
@@ -394,12 +407,20 @@ export class AuthService {
   ): Promise<void> {
     if (!meta?.ip) return;
 
+    const deviceFingerprint = this.computeDeviceFingerprint(
+      meta.userAgent,
+      meta.acceptLanguage,
+    );
+    const countryCode = meta.country
+      ? meta.country.toUpperCase().slice(0, 2)
+      : null;
+
     const previousLogs =
       this.loginLogRepo && (this.loginLogRepo as any).find
         ? await this.loginLogRepo.find({
             where: { userId: user.id },
             order: { createdAt: 'DESC' },
-            take: 10,
+            take: 5,
           })
         : [];
 
@@ -409,26 +430,78 @@ export class AuthService {
         ipAddress: meta.ip ?? 'unknown',
         userAgent: meta.userAgent ?? 'unknown',
         country: meta.country ?? null,
+        countryCode,
+        deviceFingerprint,
       }),
     );
 
     const knownDevice = previousLogs.some(
-      (log) =>
-        log.ipAddress === meta.ip &&
-        log.userAgent === (meta.userAgent ?? 'unknown'),
+      (log) => log.deviceFingerprint === deviceFingerprint,
     );
 
     if (previousLogs.length > 0 && !knownDevice) {
-      this.queueService.emit('email.notification', {
+      const revokeToken = randomBytes(32).toString('hex');
+      const revokeUrl = `${this.appBaseUrl()}/auth/revoke-session/${revokeToken}`;
+
+      await this.queueService.emit('email.notification', {
         type: 'security_alert_new_device',
         userId: user.id,
         email: user.email,
         details: {
           ipAddress: meta.ip,
+          country: meta.country ?? 'Unknown',
           device: meta.userAgent ?? 'unknown device',
           time: new Date().toISOString(),
+          revokeUrl,
         },
       });
+    }
+  }
+
+  private computeDeviceFingerprint(
+    userAgent?: string,
+    acceptLanguage?: string,
+  ): string {
+    const raw = `${userAgent ?? ''}|${acceptLanguage ?? ''}`;
+    return createHash('sha256').update(raw).digest('hex').slice(0, 32);
+  }
+
+  async revokeSession(revokeToken: string): Promise<{ message: string }> {
+    const userId = await this.findUserByRevokeToken(revokeToken);
+    if (!userId) {
+      throw new BadRequestException('Invalid or expired revocation link.');
+    }
+
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('User not found.');
+    }
+
+    user.tokenVersion = (user.tokenVersion ?? 0) + 1;
+    await this.userRepo.save(user);
+
+    return { message: 'All sessions have been revoked. Please log in again.' };
+  }
+
+  private async findUserByRevokeToken(revokeToken: string): Promise<string | null> {
+    try {
+      const log = await this.loginLogRepo
+        .createQueryBuilder('log')
+        .innerJoin(
+          (qb) => {
+            qb.select('user_id')
+              .from('login_logs', 'll')
+              .orderBy('created_at', 'DESC')
+              .limit(1);
+          },
+          'latest',
+          'latest.user_id = log.user_id',
+        )
+        .where(`log.user_agent LIKE :token`, { token: `%revoke:${revokeToken}%` })
+        .getOne();
+      return log?.userId ?? null;
+    } catch {
+      return null;
     }
   }
 

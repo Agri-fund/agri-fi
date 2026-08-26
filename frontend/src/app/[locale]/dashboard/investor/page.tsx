@@ -205,7 +205,7 @@ export default function InvestorDashboard() {
         )}
 
         {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4">
+        <div data-tour="portfolio-stats" className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4">
           <DualCurrencyStatCard
             label="Total Investment Value"
             usdValue={totalInvested}

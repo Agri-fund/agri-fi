@@ -222,5 +222,38 @@
     "currency": "{value, number, currency}",
     "date": "{value, date, short}",
     "number": "{value, number}"
+  },
+  "tour": {
+    "welcome": {
+      "title": "Bienvenue sur Agri-Fi",
+      "text": "Cette visite rapide vous présentera les principales fonctionnalités de la plateforme. Vous pouvez redémarrer cette visite à tout moment depuis les paramètres."
+    },
+    "browseDeals": {
+      "title": "Parcourir les Offres",
+      "text": "Trouvez des opportunités d'investissement dans les transactions commerciales agricoles. Filtrez par produit, statut et plus encore."
+    },
+    "connectWallet": {
+      "title": "Connectez votre Portefeuille",
+      "text": "Connectez votre portefeuille Stellar pour investir dans les offres et suivre votre portefeuille sur la chaîne."
+    },
+    "portfolioStats": {
+      "title": "Statistiques du Portefeuille",
+      "text": "Suivez vos investissements, rendements et la performance des offres en un coup d'œil."
+    },
+    "notificationBell": {
+      "title": "Restez Informé",
+      "text": "Recevez des notifications en temps réel sur vos offres, investissements et mises à jour de la plateforme."
+    },
+    "complete": {
+      "title": "Vous êtes Prêt !",
+      "text": "Vous êtes prêt à explorer Agri-Fi. Bon investissement !"
+    },
+    "buttons": {
+      "next": "Suivant",
+      "back": "Retour",
+      "skip": "Passer la Visite",
+      "finish": "Commencer"
+    },
+    "restart": "Redémarrer la Visite"
   }
 }

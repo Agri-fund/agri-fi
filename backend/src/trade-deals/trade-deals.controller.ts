@@ -50,8 +50,7 @@ interface AuthRequest extends Request {
 }
 
 @ApiTags('trade-deals')
-@Version('1')
-@Controller('trade-deals')
+@Controller({ version: '1', path: 'trade-deals' })
 export class TradeDealsController {
   constructor(
     private readonly tradeDealsService: TradeDealsService,
@@ -112,7 +111,7 @@ export class TradeDealsController {
     await this.dealCoFarmersService.assertAllCoFarmersVerified(id);
 
     const deal = await this.tradeDealsService.publishDeal(id, req.user.id);
-    await this.cacheManager.reset();
+    await this.cacheManager.stores[0].reset();
     return deal;
   }
 
@@ -265,7 +264,7 @@ export class TradeDealsController {
     const deal = await this.tradeDealsService.cancelDeal(id, req.user.id);
     // Invalidate the marketplace listing cache so cancelled deals disappear
     // from the active-deals list immediately (#743).
-    await this.cacheManager.reset();
+    await this.cacheManager.stores[0].reset();
     return deal;
   }
 }

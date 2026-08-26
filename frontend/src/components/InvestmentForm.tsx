@@ -6,6 +6,8 @@ import { useTransactionProgress } from '../hooks/useTransactionProgress';
 import { getStoredToken } from '../lib/api';
 import { useToast } from './ui/ToastProvider';
 import { OnChainProgressIndicator } from './OnChainProgressIndicator';
+import { useCurrencyFormat } from '../hooks/useCurrencyFormat';
+import { useNumberFormat } from '../hooks/useNumberFormat';
 
 interface InvestmentFormProps {
   dealId: string;
@@ -251,6 +253,9 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
     );
   }
 
+  const { formatCurrency } = useCurrencyFormat();
+  const { formatNumber } = useNumberFormat();
+
   if (success) {
     return (
       <div className="space-y-4">
@@ -282,8 +287,8 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
           </div>
           
           <div className={`space-y-2 text-sm ${success.isQueued ? 'text-blue-700' : 'text-green-700'}`}>
-            <p><strong>Investment Amount:</strong> ${success.investmentAmount.toLocaleString()}</p>
-            <p><strong>Tokens Purchased:</strong> {success.tokenCount}</p>
+            <p><strong>Investment Amount:</strong> {formatCurrency(success.investmentAmount, 'USD')}</p>
+            <p><strong>Tokens Purchased:</strong> {formatNumber(success.tokenCount)}</p>
             {success.transactionId && success.transactionId !== 'Processing... (queued)' && (
               <p><strong>{success.isQueued ? 'Status:' : 'Transaction ID:'}</strong> 
                 <span className="font-mono text-xs break-all ml-1">
@@ -323,6 +328,7 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
           type="number"
           id="tokenQuantity"
           min="1"
+          step="0.0000001"
           max={maxTokens}
           value={tokenQuantity === '' ? '' : tokenQuantity}
           onChange={(e) => {
@@ -335,22 +341,22 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
           disabled={isSubmitting}
         />
         <p className="text-xs text-gray-500 mt-1">
-          Maximum available: {maxTokens} tokens
+          Maximum available: {formatNumber(maxTokens)} tokens
         </p>
       </div>
 
       <div className="bg-gray-50 p-3 rounded-md">
         <div className="flex justify-between text-sm">
           <span>Token Price:</span>
-          <span>${tokenPrice}</span>
+          <span>{formatCurrency(tokenPrice, 'USD')}</span>
         </div>
         <div className="flex justify-between text-sm">
           <span>Quantity:</span>
-          <span>{safeQuantity}</span>
+          <span>{formatNumber(safeQuantity)}</span>
         </div>
         <div className="flex justify-between font-semibold border-t pt-2 mt-2">
           <span>Total Investment:</span>
-          <span>${totalAmount.toLocaleString()}</span>
+          <span>{formatCurrency(totalAmount, 'USD')}</span>
         </div>
       </div>
 
@@ -365,7 +371,7 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
         disabled={isSubmitting || safeQuantity < 1 || safeQuantity > maxTokens}
         className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white py-2 px-4 rounded-md font-medium transition-colors"
       >
-        {isSubmitting ? 'Processing Investment...' : `Invest $${totalAmount.toLocaleString()}`}
+        {isSubmitting ? 'Processing Investment...' : `Invest ${formatCurrency(totalAmount, 'USD')}`}
       </button>
 
       <p className="text-xs text-gray-500 text-center">

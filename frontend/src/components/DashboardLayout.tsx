@@ -6,6 +6,7 @@ import { ReactNode, useState } from 'react';
 import { apiClient, User } from '@/lib/api';
 import { Header } from './navigation/Header';
 import KycStatusBanner from './dashboard/KycStatusBanner';
+import { DashboardTourWrapper } from './DashboardTourWrapper';
 
 /* ── Nav config ───────────────────────────────────────────────────────────── */
 interface NavItem { label: string; href: string; icon: ReactNode; exact?: boolean; }
@@ -156,6 +157,9 @@ export default function DashboardLayout({ user, children }: Props) {
           {children}
         </main>
       </div>
+
+      {/* Interactive onboarding tour for first-time visitors */}
+      <DashboardTourWrapper userRole={user.role} />
     </div>
   );
 }

@@ -34,6 +34,10 @@ import { APP_FILTER } from '@nestjs/core';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { AuditModule } from './audit/audit.module';
 
+import { AchievementModule } from './achievements/achievement.module';
+import { EmailSequenceModule } from './email-sequence/email-sequence.module';
+import { ArchivalModule } from './archival/archival.module';
+
 @Module({
   controllers: [AppController],
   imports: [
@@ -92,17 +96,15 @@ import { AuditModule } from './audit/audit.module';
     SorobanModule,
     MetricsModule,
     AuditModule,
+    AchievementModule,
+    EmailSequenceModule,
+    ArchivalModule,
   ],
   providers: [
     {
       provide: APP_FILTER,
       useClass: HttpExceptionFilter,
     },
-  ],
-  providers: [
-    // Apply ThrottlerGuard globally — all endpoints are rate-limited by default.
-    // Use @SkipThrottle() on controllers/routes that should be exempt
-    // (e.g. the health check endpoint used by Kubernetes probes).
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
@@ -115,6 +117,6 @@ export class AppModule implements NestModule {
     // ClsMiddleware MUST run before CorrelationIdMiddleware so it can safely call cls.set()
     consumer
       .apply(HttpLoggerMiddleware, ClsMiddleware, CorrelationIdMiddleware)
-      .forRoutes('*');
+      .forRoutes('{*splat}');
   }
 }

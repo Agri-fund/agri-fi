@@ -8,6 +8,7 @@ import { WalletModal } from '../wallet/WalletModal';
 import { useStellarWallet, DisconnectReason } from '@/hooks/useStellarWallet';
 import { useToast } from '@/components/ui/ToastProvider';
 import { LanguageSwitcher } from '../LanguageSwitcher';
+import { NotificationBell } from './NotificationBell';
 
 interface HeaderProps {
   user: User;
@@ -90,6 +91,7 @@ export const Header: React.FC<HeaderProps> = ({ user, onLogout }) => {
             <Link
               key={link.href}
               href={link.href}
+              data-tour={link.href.includes('marketplace') ? 'nav-marketplace' : undefined}
               className={`text-sm font-medium transition-colors hover:text-emerald-600 ${
                 pathname === link.href ? 'text-emerald-600' : 'text-slate-600'
               }`}
@@ -98,10 +100,13 @@ export const Header: React.FC<HeaderProps> = ({ user, onLogout }) => {
             </Link>
           ))}
           <div className="h-6 w-px bg-slate-200 mx-2" />
+          <div data-tour="notification-bell"><NotificationBell /></div>
+          <div className="h-6 w-px bg-slate-200 mx-2" />
           <LanguageSwitcher />
           <div className="h-6 w-px bg-slate-200 mx-2" />
           {/* Wallet status indicator */}
           <button
+            data-tour="wallet-button"
             onClick={() => setShowWalletModal(true)}
             className={`flex items-center gap-2 text-sm font-medium px-3 py-1.5 rounded-xl transition-colors ${
               status === 'connected'
