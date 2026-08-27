@@ -44,6 +44,7 @@ import { FailedPaymentsService } from '../escrow/failed-payments.service';
 import { SecurityThreatService } from './security-threat.service';
 import { SettlementService } from '../settlement/settlement.service';
 import { DocumentsService } from '../documents/documents.service';
+import { StorageService } from '../storage/storage.service';
 
 class UpdateUserRoleDto {
   @IsIn(['farmer', 'trader', 'investor', 'company_admin', 'admin'])
@@ -88,6 +89,7 @@ export class AdminController {
     private readonly securityThreat: SecurityThreatService,
     private readonly settlementService: SettlementService,
     private readonly documentsService: DocumentsService,
+    private readonly storageService: StorageService,
     @InjectRepository(TradeDeal)
     private readonly tradeDealRepo: Repository<TradeDeal>,
     @InjectRepository(Document)
@@ -135,6 +137,10 @@ export class AdminController {
   async verifyDocument(@Request() req: AuthRequest, @Param('id') id: string) {
     const document = await this.documentRepo.findOne({ where: { id } });
     if (!document) throw new NotFoundException('Document not found');
+
+    if (document.ipfsHash.startsWith('Qm') || document.ipfsHash.startsWith('bafy')) {
+      await this.storageService.fetchAndVerifyIpfsDocument(document.ipfsHash);
+    }
 
     document.verificationStatus = 'approved';
     document.rejectionReason = null;

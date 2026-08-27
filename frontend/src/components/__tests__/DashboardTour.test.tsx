@@ -2,26 +2,30 @@ import React from 'react';
 import { render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { DashboardTour, isTourCompletedStatic, resetTour } from '../DashboardTour';
+import Shepherd from 'shepherd.js';
 
 // Mock shepherd.js
-jest.mock('shepherd.js', () => {
+vi.mock('shepherd.js', () => {
   const mockTour = {
     steps: [],
-    start: jest.fn(),
-    complete: jest.fn(),
-    cancel: jest.fn(),
-    next: jest.fn(),
-    back: jest.fn(),
-    destroy: jest.fn(),
-    on: jest.fn(),
+    start: vi.fn(),
+    complete: vi.fn(),
+    cancel: vi.fn(),
+    next: vi.fn(),
+    back: vi.fn(),
+    destroy: vi.fn(),
+    on: vi.fn(),
   };
+  const Tour = vi.fn(function () {
+    return mockTour;
+  });
   return {
     __esModule: true,
-    default: jest.fn(() => mockTour),
+    default: { Tour },
   };
 });
 
-jest.mock('shepherd.js/dist/css/shepherd.css', () => ({}));
+vi.mock('shepherd.js/dist/css/shepherd.css', () => ({}));
 
 describe('DashboardTour', () => {
   beforeEach(() => {
@@ -48,12 +52,11 @@ describe('DashboardTour', () => {
     );
 
     // Tour should not have started
-    const Shepherd = require('shepherd.js').default;
-    expect(Shepherd).not.toHaveBeenCalled();
+    expect(Shepherd.Tour).not.toHaveBeenCalled();
   });
 
   it('calls onTourComplete when provided', () => {
-    const onTourComplete = jest.fn();
+    const onTourComplete = vi.fn();
 
     render(
       <DashboardTour
