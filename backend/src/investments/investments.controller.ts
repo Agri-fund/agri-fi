@@ -40,6 +40,7 @@ import { PaginatedResult } from '../common/pagination';
 import { TradeDealsGuard } from '../trade-deals/trade-deals.guard';
 import { IdempotencyService } from '../queue/idempotency.service';
 import { InvestmentEventStore } from './investment-event-store.service';
+import { ReceiptService } from './receipt.service';
 
 @ApiTags('investments')
 @ApiBearerAuth('jwt')
@@ -52,6 +53,7 @@ export class InvestmentsController {
     private readonly idempotency: IdempotencyService,
     private readonly eventStore: InvestmentEventStore,
     private readonly taxReportService: TaxReportService,
+    private readonly receiptService: ReceiptService,
   ) {}
 
   @Post()
@@ -438,6 +440,46 @@ export class InvestmentsController {
       tokenCode,
       tokenIssuer,
     );
+  }
+
+  /**
+   * Issue #808 — PDF payment receipt for investors.
+   * Generates (or returns a cached) pre-signed S3 URL to the PDF receipt.
+   */
+  @Get(':id/receipt')
+  @ApiOperation({
+    summary: 'Get a pre-signed S3 URL for the PDF payment receipt (investor only, #808)',
+  })
+  @ApiParam({ name: 'id', description: 'Investment UUID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Pre-signed receipt URL valid for 15 minutes',
+    schema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'Pre-signed S3 URL' },
+        expiresAt: {
+          type: 'string',
+          format: 'date-time',
+          description: 'URL expiry timestamp (ISO 8601)',
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({
+    status: 403,
+    description:
+      'Forbidden – investor role required and must own the investment',
+  })
+  @ApiResponse({ status: 404, description: 'Investment not found' })
+  @UseGuards(RolesGuard)
+  @Roles('investor')
+  async getReceipt(
+    @Request() req: { user: { id: string } },
+    @Param('id') id: string,
+  ): Promise<{ url: string; expiresAt: string }> {
+    return this.receiptService.generateReceipt(id, req.user.id);
   }
 
   @Get(':id/events')

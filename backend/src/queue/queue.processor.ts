@@ -646,6 +646,10 @@ export class QueueProcessor implements OnApplicationShutdown {
       portionPercent: details.portionPercent ?? data.portionPercent ?? '',
       reason: details.reason ?? data.reason ?? '',
       kycUrl: `${this.config.get<string>('APP_BASE_URL', 'http://localhost:3001')}/dashboard/kyc`,
+      // #808 — PDF receipt download link in payment confirmation emails.
+      // Populated when the receipt has already been generated and the S3
+      // pre-signed URL has been embedded in the notification payload.
+      receiptUrl: data.receiptUrl ?? details.receiptUrl ?? undefined,
       ...details,
     };
 

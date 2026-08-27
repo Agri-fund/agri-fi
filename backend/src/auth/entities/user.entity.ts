@@ -147,6 +147,14 @@ export class User {
   @Column({ name: 'mfa_locked_until', type: 'timestamptz', nullable: true })
   mfaLockedUntil: Date | null;
 
+  // #806 — admin MFA enforcement: flagged when admin/company_admin has no MFA set up
+  @Column({ name: 'mfa_enrollment_required', default: false })
+  @ApiProperty({
+    description: 'Whether this admin account must complete MFA enrollment before accessing the platform',
+    example: false,
+  })
+  mfaEnrollmentRequired: boolean;
+
   @CreateDateColumn({ name: 'created_at' })
   @ApiProperty({
     description: 'Account creation timestamp',

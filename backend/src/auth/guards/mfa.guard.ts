@@ -29,13 +29,31 @@ export class MfaGuard implements CanActivate {
     }
 
     const user = await this.userRepo.findOne({ where: { id: reqUser.id } });
-    if (!user || !user.isMfaEnabled || !user.mfaSecret) {
-      throw new ForbiddenException({
-        statusCode: 403,
-        error: 'Forbidden',
-        message: 'MFA is required for administrative actions.',
-        code: 'MFA_REQUIRED',
-      });
+    if (!user) {
+      throw new UnauthorizedException('Authentication required');
+    }
+
+    // ── #806: role-based MFA enforcement ────────────────────────────────────
+    // Admin and company_admin accounts MUST have MFA enabled and provide a
+    // valid token on every guarded request — there is no bypass.
+    // Non-admin roles (farmer, trader, investor) are permitted through if MFA
+    // is not set up; once enabled they are subject to the same TOTP/backup-code
+    // checks as admins.
+    const isAdminRole =
+      user.role === 'admin' || user.role === 'company_admin';
+
+    if (!user.isMfaEnabled || !user.mfaSecret) {
+      if (isAdminRole) {
+        // Admin without MFA must enroll first — block with an actionable error.
+        throw new ForbiddenException({
+          statusCode: 403,
+          error: 'Forbidden',
+          message: 'MFA setup required for admin accounts',
+          code: 'MFA_ENROLLMENT_REQUIRED',
+        });
+      }
+      // Non-admin users without MFA configured are allowed through.
+      return true;
     }
 
     // Check lockout

@@ -429,6 +429,26 @@ export class AuthService {
       user.passwordHash = await this.hashPassword(dto.password);
     }
 
+    // ── #806: enforce MFA enrollment for admin / company_admin roles ─────────
+    // Admin accounts must have MFA configured before they can receive tokens.
+    // Return a 403 with a machine-readable code so the frontend can redirect
+    // the user to the MFA setup flow rather than showing a generic error.
+    if (
+      (user.role === 'admin' || user.role === 'company_admin') &&
+      !user.isMfaEnabled
+    ) {
+      // Persist the enrollment-required flag so the migration/guard can read it
+      user.mfaEnrollmentRequired = true;
+      await this.userRepo.save(user);
+
+      throw new ForbiddenException({
+        code: 'MFA_ENROLLMENT_REQUIRED',
+        requiresMfaEnrollment: true,
+        userId: user.id,
+        message: 'MFA setup required for admin accounts',
+      });
+    }
+
     await this.userRepo.save(user);
 
     // ── #898/#897: audit log + localized new-device security alert ──────────

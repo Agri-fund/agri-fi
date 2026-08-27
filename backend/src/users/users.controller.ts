@@ -1,9 +1,11 @@
 import {
   Controller,
   Get,
+  Patch,
   Delete,
   UseGuards,
   Request,
+  Body,
   Query,
   BadRequestException,
   ForbiddenException,
@@ -22,6 +24,9 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { UsersService } from './users.service';
 import { TradeDealsService } from '../trade-deals/trade-deals.service';
+import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { UpdateOnboardingProgressDto } from './dto/update-onboarding-progress.dto';
 import { User } from '../auth/entities/user.entity';
 
 interface AuthRequest extends Request {
