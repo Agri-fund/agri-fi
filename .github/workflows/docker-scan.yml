@@ -54,7 +54,7 @@ jobs:
       # ------------------------------------------------------------------ #
       # Run Trivy — halt on CRITICAL findings                               #
       # ------------------------------------------------------------------ #
-      - name: Run Trivy vulnerability scan (${{ matrix.image }})
+      - name: Run Trivy vulnerability scan — CRITICAL (${{ matrix.image }})
         uses: aquasecurity/trivy-action@0.24.0
         with:
           image-ref: "${{ matrix.image }}:scan-${{ github.sha }}"
@@ -66,6 +66,19 @@ jobs:
           ignore-unfixed: false
           vuln-type: "os,library"
           severity: "CRITICAL"
+          trivyignores: .trivyignore
+
+      - name: Run Trivy vulnerability scan — HIGH warning (${{ matrix.image }})
+        uses: aquasecurity/trivy-action@0.24.0
+        continue-on-error: true
+        with:
+          image-ref: "${{ matrix.image }}:scan-${{ github.sha }}"
+          format: "table"
+          exit-code: "0"
+          ignore-unfixed: false
+          vuln-type: "os,library"
+          severity: "HIGH"
+          trivyignores: .trivyignore
 
       # ------------------------------------------------------------------ #
       # Upload SARIF to the GitHub Security tab (runs even on failure)      #

@@ -38,21 +38,30 @@ const nextConfig = {
     return config;
   },
   async headers() {
+    const cspDirectives = [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data: blob: https://ipfs.io https://*.cloudfront.net",
+      "connect-src 'self' wss://api.agri-fi.com https://horizon.stellar.org https://horizon-testnet.stellar.org",
+      "frame-ancestors 'none'",
+      "form-action 'self'",
+      "upgrade-insecure-requests",
+      "report-uri /api/csp-report",
+    ].join('; ');
+
+    const isEnforceMode = process.env.CSP_MODE === 'enforce';
+    const cspHeaderKey = isEnforceMode
+      ? 'Content-Security-Policy'
+      : 'Content-Security-Policy-Report-Only';
+
     return [
       {
         source: '/(.*)',
         headers: [
           {
-            key: 'Content-Security-Policy',
-            value: [
-              "default-src 'self'",
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-              "style-src 'self' 'unsafe-inline'",
-              "img-src 'self' data: blob:",
-              "font-src 'self'",
-              "connect-src 'self' https://horizon-testnet.stellar.org https://horizon.stellar.org",
-              "frame-ancestors 'none'",
-            ].join('; '),
+            key: cspHeaderKey,
+            value: cspDirectives,
           },
           {
             key: 'Strict-Transport-Security',

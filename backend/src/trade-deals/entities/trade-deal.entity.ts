@@ -25,6 +25,12 @@ export type TradeDealStatus =
   | 'canceled'
   | 'expired';
 
+export type SettlementStatus =
+  | 'pending'
+  | 'settling'
+  | 'settled'
+  | 'settlement_failed';
+
 @Entity('trade_deals')
 @Index(['farmerId', 'status'])
 @Index(['traderId', 'status'])
@@ -43,7 +49,22 @@ export class TradeDeal {
   })
   commodity: string;
 
-  @Column({ type: 'decimal', precision: 18, scale: 2 })
+  @Column({ nullable: true })
+  @ApiProperty({
+    description: 'Human-readable deal title',
+    nullable: true,
+    example: 'Premium Maize — Kenya 2026',
+  })
+  title: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  @ApiProperty({
+    description: 'Deal description for marketplace display',
+    nullable: true,
+  })
+  description: string | null;
+
+  @Column({ type: 'decimal', precision: 36, scale: 7 })
   @ApiProperty({
     description: 'Quantity of the commodity',
     example: '1000.00',
@@ -58,12 +79,39 @@ export class TradeDeal {
   })
   quantityUnit: string;
 
-  @Column({ name: 'total_value', type: 'decimal', precision: 18, scale: 2 })
+  @Column({ name: 'total_value', type: 'decimal', precision: 36, scale: 7 })
   @ApiProperty({
     description: 'Total deal value in USD',
     example: '50000.00',
   })
   totalValue: number;
+
+  @Column({ name: 'expected_roi', type: 'decimal', precision: 6, scale: 2, nullable: true })
+  @ApiProperty({
+    description: 'Expected annual ROI percentage',
+    required: false,
+    nullable: true,
+    example: 24.5,
+  })
+  expectedRoi: number | null;
+
+  @Column({ name: 'duration_days', type: 'integer', nullable: true })
+  @ApiProperty({
+    description: 'Expected deal duration in days',
+    required: false,
+    nullable: true,
+    example: 180,
+  })
+  durationDays: number | null;
+
+  @Column({ name: 'min_investment_lot', type: 'decimal', precision: 18, scale: 2, nullable: true })
+  @ApiProperty({
+    description: 'Minimum investment amount',
+    required: false,
+    nullable: true,
+    example: '250.00',
+  })
+  minInvestmentLot: number | null;
 
   @Column({ name: 'token_count' })
   @ApiProperty({
@@ -152,8 +200,8 @@ export class TradeDeal {
   @Column({
     name: 'total_invested',
     type: 'decimal',
-    precision: 18,
-    scale: 2,
+    precision: 36,
+    scale: 7,
     default: 0,
   })
   @ApiProperty({
@@ -168,6 +216,51 @@ export class TradeDeal {
     example: '2024-06-15',
   })
   deliveryDate: Date;
+
+  @Column({ name: 'risk_rating', nullable: true })
+  @ApiProperty({
+    description: 'Risk rating for the listing',
+    required: false,
+    nullable: true,
+    enum: ['Low', 'Medium', 'High'],
+  })
+  riskRating: 'Low' | 'Medium' | 'High' | null;
+
+  @Column({ name: 'farm_location', nullable: true })
+  @ApiProperty({
+    description: 'Textual farm location description',
+    required: false,
+    nullable: true,
+  })
+  farmLocation: string | null;
+
+  @Column({ name: 'farm_latitude', type: 'decimal', precision: 10, scale: 6, nullable: true })
+  farmLatitude: number | null;
+
+  @Column({ name: 'farm_longitude', type: 'decimal', precision: 10, scale: 6, nullable: true })
+  farmLongitude: number | null;
+
+  @Column({ name: 'farm_photos', type: 'jsonb', default: () => "'[]'" })
+  farmPhotos: Array<{
+    name: string;
+    size: number;
+    type: string;
+    previewUrl?: string | null;
+  }>;
+
+  @Column({ name: 'supporting_documents', type: 'jsonb', default: () => "'[]'" })
+  supportingDocuments: Array<{
+    name: string;
+    type: string;
+    category: string;
+  }>;
+
+  @Column({ name: 'logistics_plan', type: 'jsonb', default: () => "'[]'" })
+  logisticsPlan: Array<{
+    milestone: string;
+    timeline: string;
+    owner: string;
+  }>;
 
   @Column({ name: 'stellar_asset_tx_id', nullable: true })
   @ApiProperty({
@@ -226,4 +319,81 @@ export class TradeDeal {
     nullable: true,
   })
   appTraceId: string | null;
+
+  // #828 — Risk scoring
+  @Column({ name: 'risk_score', type: 'decimal', precision: 5, scale: 2, nullable: true })
+  @ApiProperty({
+    description: 'Composite risk score (0-100, higher = riskier)',
+    nullable: true,
+    example: 42.5,
+  })
+  riskScore: number | null;
+
+  @Column({ name: 'risk_rating', type: 'varchar', length: 16, nullable: true })
+  @ApiProperty({
+    description: 'Risk rating derived from risk_score',
+    enum: ['Low', 'Medium', 'High', 'Very High'],
+    nullable: true,
+    example: 'Medium',
+  })
+  riskRating: string | null;
+
+  @Column({ name: 'risk_breakdown', type: 'simple-json', nullable: true })
+  @ApiProperty({
+    description: 'Per-dimension risk score breakdown',
+    nullable: true,
+  })
+  riskBreakdown: Record<string, number> | null;
+
+  // #835 — Fractional investment lot sizing
+  @Column({
+    name: 'min_lot_size',
+    type: 'decimal',
+    precision: 36,
+    scale: 7,
+    default: 1,
+  })
+  @ApiProperty({
+    description: 'Minimum investment amount in USD for this deal',
+    example: 50,
+  })
+  minLotSize: number;
+
+  @Column({
+    name: 'lot_step',
+    type: 'decimal',
+    precision: 36,
+    scale: 7,
+    default: 1,
+  })
+  @ApiProperty({
+    description:
+      'Investment increment in USD above the minimum (amount - min_lot_size) must be a multiple of lot_step',
+    example: 10,
+  })
+  lotStep: number;
+
+  @Column({ name: 'settlement_status', type: 'varchar', length: 32, default: 'pending' })
+  @ApiProperty({
+    description: 'On-chain settlement status (#899)',
+    enum: ['pending', 'settling', 'settled', 'settlement_failed'],
+    example: 'pending',
+  })
+  settlementStatus: SettlementStatus;
+
+  @Column({ name: 'settlement_tx_hash', nullable: true })
+  @ApiProperty({
+    description: 'Stellar transaction hash for on-chain settlement',
+    nullable: true,
+  })
+  settlementTxHash: string | null;
+
+  @Column({ name: 'settlement_harvest_amount', type: 'decimal', precision: 18, scale: 7, nullable: true })
+  settlementHarvestAmount: number | null;
+
+  @Column({ name: 'settlement_quality_grade', type: 'int', nullable: true })
+  settlementQualityGrade: number | null;
+
+  @Column({ name: 'settled_at', type: 'timestamptz', nullable: true })
+  settledAt: Date | null;
 }

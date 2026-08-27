@@ -147,8 +147,25 @@
     }
   },
   "deals": {
+    "coFarmers": {
+      "title": "Co-agriculteurs",
+      "description": "Invitez d'autres agriculteurs sur cette offre : chaque co-agriculteur est responsable de sa part de la livraison et reçoit cette part du paiement.",
+      "emailLabel": "E-mail du co-agriculteur",
+      "portionLabel": "Part (%)",
+      "add": "Ajouter un co-agriculteur",
+      "remove": "Retirer",
+      "invalidEmail": "Saisissez une adresse e-mail valide.",
+      "invalidPortion": "La part doit être comprise entre 0 et 100.",
+      "totalTooHigh": "Le total des parts ne peut pas dépasser 100 %.",
+      "inviteFailed": "L'offre a été créée, mais certaines invitations n'ont pas pu être envoyées."
+    },
     "createTitle": "Créer un nouveau contrat commercial",
     "draftRestored": "Brouillon restauré depuis {time}",
+    "wizardBadge": "Assistant de création d'offre",
+    "createSubtitle": "Construisez une annonce complète et prête pour les investisseurs avec des étapes guidées, une validation intelligente et l'enregistrement automatique du brouillon.",
+    "saving": "Enregistrement du brouillon...",
+    "saved": "Brouillon enregistré",
+    "stepLabel": "Étape {current} sur {total}",
     "commodity": "Nom de la marchandise",
     "quantity": "Quantité",
     "unit": "Unité",
@@ -160,9 +177,57 @@
     "createButton": "Créer le contrat",
     "creating": "Création...",
     "cancel": "Annuler",
+    "back": "Retour",
+    "next": "Suivant",
+    "submitForReview": "Envoyer pour examen",
+    "submitSuccess": "Offre envoyée pour validation admin.",
+    "roiWarningHigh": "Ce ROI semble inhabituellement élevé. Vérifiez vos hypothèses avant de soumettre.",
+    "roiWarningNormal": "Le ROI semble dans une plage normale.",
+    "photoHelper": "Téléchargez 1 à 10 photos. Chaque image doit mesurer au moins 500px de large.",
+    "docHelper": "Téléchargez les documents requis pour votre catégorie de marchandise avant l'envoi.",
     "tokenInfo": "Cela créera {count} jetons à {price} $ chacun.",
     "raised": "{amount} levés",
     "remainingOf": "{remaining} restants sur {total}",
+    "fields": {
+      "title": "Titre de l'offre",
+      "commodity": "Marchandise",
+      "country": "Pays",
+      "region": "Région",
+      "shortDescription": "Description courte",
+      "quantity": "Quantité",
+      "unit": "Unité",
+      "totalValue": "Montant cible",
+      "minInvestment": "Lot d'investissement minimum",
+      "expectedRoi": "ROI attendu (%)",
+      "duration": "Durée (jours)",
+      "risk": "Niveau de risque",
+      "roiWarning": "Alerte ROI",
+      "longDescription": "Histoire et impact",
+      "farmLocation": "Localisation de la ferme",
+      "mapPoint": "Coordonnées",
+      "farmPhotos": "Photos de la ferme",
+      "extraDocs": "Documents complémentaires",
+      "milestone": "Étape",
+      "timeline": "Calendrier",
+      "owner": "Responsable"
+    },
+    "steps": {
+      "1": { "eyebrow": "Bases", "title": "Informations de base" },
+      "2": { "eyebrow": "Chiffres", "title": "Finances" },
+      "3": { "eyebrow": "Narratif", "title": "Histoire et impact" },
+      "4": { "eyebrow": "Preuves", "title": "Documents" },
+      "5": { "eyebrow": "Plan", "title": "Plan logistique" },
+      "6": { "eyebrow": "Examen", "title": "Vérifier et envoyer" }
+    },
+    "preview": {
+      "card": "Aperçu de la carte",
+      "detailPage": "Aperçu de la page de détail",
+      "map": "Position sur la carte",
+      "documents": "Documents téléversés",
+      "placeholderTitle": "Titre de votre offre",
+      "placeholderCommodity": "Marchandise",
+      "placeholderSummary": "Résumé court de la ferme et de l'opportunité."
+    },
     "validation": {
       "commodityRequired": "Le nom de la marchandise est requis",
       "quantityMin": "La quantité doit être d'au moins 1",
@@ -170,8 +235,71 @@
       "tokenPriceFixed": "Le prix du jeton doit être exactement de 100",
       "deliveryDateRequired": "La date de livraison est requise",
       "deliveryDateFuture": "La date de fin doit être dans le futur",
-      "invalidId": "ID invalide"
+      "invalidId": "ID invalide",
+      "titleRequired": "Le titre est requis",
+      "countryRequired": "Le pays est requis",
+      "shortDescriptionRequired": "La description courte est requise",
+      "duplicateTitle": "Une offre avec ce titre existe déjà.",
+      "minInvestmentLot": "Le lot d'investissement minimum doit être supérieur à 0",
+      "expectedRoiMin": "Le ROI attendu doit être supérieur à 0",
+      "durationRequired": "La durée est requise",
+      "riskRequired": "Le niveau de risque est requis",
+      "longDescriptionRequired": "L'histoire et l'impact sont requis",
+      "farmLocationRequired": "La localisation de la ferme est requise",
+      "photoMin": "Téléchargez au moins une photo de la ferme.",
+      "photoMax": "Vous pouvez télécharger au maximum 10 photos.",
+      "photoWidth": "Les photos doivent mesurer au moins 500px de large.",
+      "mapRequired": "Ajoutez la latitude et la longitude de la ferme.",
+      "documentRequired": "{name} est requis pour cette marchandise.",
+      "logisticsRequired": "Complétez toutes les étapes logistiques.",
+      "submitFailed": "Échec de l'envoi de l'offre."
     }
+  },
+  "kyc": {
+    "badge": "Assistant de vérification KYC",
+    "title": "Complétez votre vérification",
+    "subtitle": "Enregistrez votre progression et reprenez à tout moment depuis le brouillon.",
+    "restored": "Brouillon restauré depuis {time}",
+    "stepLabel": "Étape {current} sur {total}",
+    "fields": {
+      "fullName": "Nom légal complet",
+      "dateOfBirth": "Date de naissance",
+      "nationality": "Nationalité",
+      "address": "Adresse résidentielle",
+      "idFront": "Recto de la pièce d'identité",
+      "idBack": "Verso de la pièce d'identité",
+      "proofOfAddress": "Justificatif de domicile",
+      "selfie": "Selfie avec document"
+    },
+    "hints": {
+      "documents": "Accepte PDF, JPEG et PNG. Taille max 10 Mo.",
+      "proof": "Utilisez une facture récente ou un relevé bancaire.",
+      "selfie": "Assurez-vous que votre visage et le document soient clairement visibles."
+    },
+    "errors": {
+      "fullName": "Le nom complet est requis",
+      "dateOfBirth": "La date de naissance est requise",
+      "dateOfBirthPast": "La date de naissance doit être dans le passé",
+      "nationality": "La nationalité est requise",
+      "address": "L'adresse résidentielle est requise",
+      "frontRequired": "Le recto de la pièce d'identité est requis",
+      "backRequired": "Le verso de la pièce d'identité est requis",
+      "proofRequired": "Le justificatif de domicile est requis",
+      "selfieRequired": "Le selfie avec document est requis",
+      "photoWidth": "Les images doivent mesurer au moins 500px de large",
+      "submitFailed": "Échec de l'envoi du KYC"
+    },
+    "review": {
+      "personal": "Informations personnelles",
+      "files": "Fichiers téléversés",
+      "pending": "En attente de téléversement"
+    },
+    "exit": "Quitter l'assistant",
+    "back": "Retour",
+    "next": "Suivant",
+    "submit": "Envoyer pour examen",
+    "submitting": "Envoi...",
+    "submitted": "KYC envoyé pour examen."
   },
   "common": {
     "loading": "Chargement...",
@@ -186,9 +314,62 @@
       }
     }
   },
+  "referrals": {
+    "title": "Programme de parrainage",
+    "description": "Partagez votre lien de parrainage et gagnez des récompenses lorsque les utilisateurs parrainés effectuent leur premier investissement.",
+    "yourLink": "Votre lien de parrainage",
+    "copy": "Copier",
+    "copied": "Copié !",
+    "whatsapp": "WhatsApp",
+    "twitter": "Twitter",
+    "referredUsers": "Utilisateurs parrainés",
+    "noReferrals": "Pas encore de parrainages",
+    "shareToStart": "Partagez votre lien pour commencer à gagner des récompenses !",
+    "linkClicks": "Clics sur le lien",
+    "registered": "Inscrits",
+    "rewarded": "Récompensés",
+    "totalEarned": "Total gagné",
+    "user": "Utilisateur",
+    "status": "Statut",
+    "reward": "Récompense",
+    "date": "Date"
+  },
   "format": {
     "currency": "{value, number, currency}",
     "date": "{value, date, short}",
     "number": "{value, number}"
+  },
+  "tour": {
+    "welcome": {
+      "title": "Bienvenue sur Agri-Fi",
+      "text": "Cette visite rapide vous présentera les principales fonctionnalités de la plateforme. Vous pouvez redémarrer cette visite à tout moment depuis les paramètres."
+    },
+    "browseDeals": {
+      "title": "Parcourir les Offres",
+      "text": "Trouvez des opportunités d'investissement dans les transactions commerciales agricoles. Filtrez par produit, statut et plus encore."
+    },
+    "connectWallet": {
+      "title": "Connectez votre Portefeuille",
+      "text": "Connectez votre portefeuille Stellar pour investir dans les offres et suivre votre portefeuille sur la chaîne."
+    },
+    "portfolioStats": {
+      "title": "Statistiques du Portefeuille",
+      "text": "Suivez vos investissements, rendements et la performance des offres en un coup d'œil."
+    },
+    "notificationBell": {
+      "title": "Restez Informé",
+      "text": "Recevez des notifications en temps réel sur vos offres, investissements et mises à jour de la plateforme."
+    },
+    "complete": {
+      "title": "Vous êtes Prêt !",
+      "text": "Vous êtes prêt à explorer Agri-Fi. Bon investissement !"
+    },
+    "buttons": {
+      "next": "Suivant",
+      "back": "Retour",
+      "skip": "Passer la Visite",
+      "finish": "Commencer"
+    },
+    "restart": "Redémarrer la Visite"
   }
 }

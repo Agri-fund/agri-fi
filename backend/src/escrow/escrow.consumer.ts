@@ -1,6 +1,7 @@
 import { Controller, Logger, OnApplicationShutdown } from '@nestjs/common';
 import { Ctx, EventPattern, Payload, RmqContext } from '@nestjs/microservices';
 import { EscrowService } from './escrow.service';
+import { IdempotencyService } from '../queue/idempotency.service';
 import {
   getDeliveryAttempt,
   isTransientQueueError,
@@ -62,6 +63,73 @@ export class EscrowConsumer implements OnApplicationShutdown {
 
   // ── Event handler ────────────────────────────────────────────────────────────
 
+  private truncate(value: string, max = 500): string {
+    return value.length <= max ? value : `${value.slice(0, max)}…`;
+  }
+
+  private rawMessageContent(context: RmqContext): string {
+    const message = context.getMessage();
+    const content = message?.content;
+    if (Buffer.isBuffer(content)) {
+      return content.toString('utf8');
+    }
+    if (typeof content === 'string') {
+      return content;
+    }
+    return '';
+  }
+
+  private logMalformedMessage(
+    context: RmqContext,
+    reason: string,
+    raw: string,
+  ): void {
+    const correlationId = context.getMessage()?.properties?.correlationId;
+    this.logger.error(
+      {
+        correlationId,
+        reason,
+        rawMessage: this.truncate(raw),
+      },
+      'Malformed escrow message routed to DLQ',
+    );
+  }
+
+  private parsePayload(
+    payload: unknown,
+    context: RmqContext,
+  ): DealDeliveredPayload | null {
+    try {
+      if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
+        const maybe = payload as Partial<DealDeliveredPayload>;
+        if (typeof maybe.tradeDealId === 'string' && maybe.tradeDealId.trim()) {
+          return { tradeDealId: maybe.tradeDealId.trim() };
+        }
+      }
+
+      const raw = typeof payload === 'string' ? payload : this.rawMessageContent(context);
+      if (!raw) {
+        throw new Error('Empty payload');
+      }
+
+      const parsed = JSON.parse(raw) as Partial<DealDeliveredPayload>;
+      if (typeof parsed.tradeDealId !== 'string' || !parsed.tradeDealId.trim()) {
+        throw new Error('Missing tradeDealId');
+      }
+
+      return { tradeDealId: parsed.tradeDealId.trim() };
+    } catch (error: any) {
+      this.logMalformedMessage(
+        context,
+        error?.message ?? 'Unable to parse payload',
+        typeof payload === 'string' ? payload : this.rawMessageContent(context),
+      );
+      const channel = context.getChannelRef();
+      channel.nack(context.getMessage(), false, false);
+      return null;
+    }
+  }
+
   @EventPattern('deal.delivered')
   handleDealDelivered(
     @Payload() payload: DealDeliveredPayload,
@@ -93,9 +161,10 @@ export class EscrowConsumer implements OnApplicationShutdown {
     channel: any,
     originalMsg: any,
   ): Promise<void> {
-    const channel = context.getChannelRef();
-    const originalMsg = context.getMessage();
-    const { tradeDealId } = payload;
+    const parsed = this.parsePayload(payload, context);
+    if (!parsed) return;
+
+    const { tradeDealId } = parsed;
 
     // Derive the current attempt count from broker-tracked x-death headers.
     // On the very first delivery this returns 1; each nack+requeue increments it.
@@ -106,14 +175,30 @@ export class EscrowConsumer implements OnApplicationShutdown {
       `Received deal.delivered for deal ${tradeDealId} (attempt ${attempt}/${ESCROW_MAX_DELIVERY_ATTEMPTS})`,
     );
 
+    const idempotencyKey = IdempotencyService.buildKey(
+      'deal.delivered',
+      tradeDealId,
+    );
+    const lease = await this.idempotency.acquireLease(idempotencyKey, 900);
+
+    if (!lease.acquired) {
+      this.logger.warn(
+        `Skipping duplicate deal.delivered for deal ${tradeDealId} (status: ${lease.status ?? 'unknown'})`,
+      );
+      channel.ack(originalMsg);
+      return;
+    }
+
     try {
       await this.escrowService.processDealDelivered(payload);
+      await this.idempotency.markDone(idempotencyKey);
 
       this.logger.log(
         `Successfully processed deal.delivered for deal ${tradeDealId} on attempt ${attempt}`,
       );
       channel.ack(originalMsg);
     } catch (error) {
+      await this.idempotency.releaseLease(idempotencyKey);
       const err = error as Error;
 
       if (exhausted) {

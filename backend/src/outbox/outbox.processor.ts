@@ -1,7 +1,5 @@
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import { PinoLogger } from 'nestjs-pino';
 import { ConfigService } from '@nestjs/config';
 import { ClientProxy, ClientProxyFactory, Transport } from '@nestjs/microservices';
@@ -51,7 +49,7 @@ export class OutboxProcessor implements OnModuleInit, OnModuleDestroy {
     this.isProcessing = true;
 
     try {
-      const events = await this.outboxService.getUnprocessedEvents(BATCH_SIZE);
+      const events = await this.outboxService.publishPending(BATCH_SIZE);
 
       if (events.length === 0) {
         this.logger.trace('No unprocessed outbox events');
@@ -78,13 +76,10 @@ export class OutboxProcessor implements OnModuleInit, OnModuleDestroy {
 
   private async processEvent(event: OutboxEntity): Promise<void> {
     try {
-      // Encrypt the payload before sending to RabbitMQ
       const encryptedPayload = encryptPayload(event.payload);
 
-      // Emit to RabbitMQ
       await this.client.emit(event.eventType, encryptedPayload).toPromise();
 
-      // Mark as processed
       await this.outboxService.markProcessed(event.id);
 
       this.logger.debug(
@@ -94,15 +89,14 @@ export class OutboxProcessor implements OnModuleInit, OnModuleDestroy {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
 
-      // Increment retry count and store error
       await this.outboxService.markFailed(event.id, errorMessage);
+      this.outboxService.recordPublishError(event.eventType);
 
       this.logger.warn(
         { eventId: event.id, eventType: event.eventType, error: errorMessage, retryCount: event.retryCount + 1 },
         `Failed to process outbox event, will retry`,
       );
 
-      // If max retries exceeded, log as dead letter
       if (event.retryCount + 1 >= MAX_RETRIES) {
         this.logger.error(
           { eventId: event.id, eventType: event.eventType, error: errorMessage, retryCount: event.retryCount + 1 },

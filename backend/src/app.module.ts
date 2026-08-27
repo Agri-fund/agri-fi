@@ -8,6 +8,7 @@ import { ClsModule, ClsMiddleware } from 'nestjs-cls';
 import { DatabaseConfig } from './database/database.config';
 import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './auth/auth.module';
+import { ReferralModule } from './auth/referral.module';
 import { StellarModule } from './stellar/stellar.module';
 import { ShipmentsModule } from './shipments/shipments.module';
 import { TradeDealsModule } from './trade-deals/trade-deals.module';
@@ -34,6 +35,12 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { DatabaseTransactionInterceptor } from './common/filters/database-transaction.interceptor';
 import { SentryModule } from './common/logger/sentry.module';
 import { AuditModule } from './audit/audit.module';
+
+import { AchievementModule } from './achievements/achievement.module';
+import { EmailSequenceModule } from './email-sequence/email-sequence.module';
+import { SettlementModule } from './settlement/settlement.module';
+import { SearchModule } from './search/search.module';
+import { UpgradeModule } from './upgrade/upgrade.module';
 
 @Module({
   controllers: [AppController],
@@ -76,6 +83,7 @@ import { AuditModule } from './audit/audit.module';
     }),
     DatabaseModule,
     AuthModule,
+    ReferralModule,
     StellarModule,
     ShipmentsModule,
     TradeDealsModule,
@@ -93,6 +101,12 @@ import { AuditModule } from './audit/audit.module';
     MetricsModule,
     SentryModule,
     AuditModule,
+    AchievementModule,
+    EmailSequenceModule,
+    ArchivalModule,
+    SettlementModule,
+    SearchModule,
+    UpgradeModule,
   ],
   providers: [
     {
@@ -120,6 +134,6 @@ export class AppModule implements NestModule {
     // ClsMiddleware MUST run before CorrelationIdMiddleware so it can safely call cls.set()
     consumer
       .apply(HttpLoggerMiddleware, ClsMiddleware, CorrelationIdMiddleware)
-      .forRoutes('*');
+      .forRoutes('{*splat}');
   }
 }

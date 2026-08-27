@@ -3,10 +3,15 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { CacheModule } from '@nestjs/cache-manager';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { HttpModule } from '@nestjs/axios';
+import { makeGaugeProvider } from '@willsoto/nestjs-prometheus';
 import { TradeDealsController } from './trade-deals.controller';
 import { TradeDealsService } from './trade-deals.service';
+import { DealCoFarmersService } from './deal-co-farmers.service';
+import { DealDeploymentService } from './deal-deployment.service';
 import { TradeDeal } from './entities/trade-deal.entity';
+import { DealCoFarmer } from './entities/deal-co-farmer.entity';
 import { Document } from './entities/document.entity';
+import { DealHealthAlert } from './entities/deal-health-alert.entity';
 import { Investment } from '../investments/entities/investment.entity';
 import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.entity';
 import { User } from '../auth/entities/user.entity';
@@ -15,6 +20,13 @@ import { QueueModule } from '../queue/queue.module';
 import { TradeDealsGuard } from './trade-deals.guard';
 import { TradeDealsCronService } from './trade-deals-cron.service';
 import { DealFundingAlertService } from './deal-funding-alert.service';
+import { DealDigestService } from './deal-digest.service';
+import { RiskScoringService } from './risk-scoring.service';
+import { DealHealthMonitorService } from './deal-health-monitor.service';
+import { ActivityFeedService } from './activity-feed.service';
+import { NotificationsModule } from '../notifications/notifications.module';
+import { AuditModule } from '../audit/audit.module';
+import { SorobanModule } from '../soroban/soroban.module';
 import { redisCacheStore } from '../config/redis-cache.store';
 
 /**
@@ -31,9 +43,15 @@ const DEALS_CACHE_TTL_MS = 30_000;
       Investment,
       ShipmentMilestone,
       User,
+      DealCoFarmer,
+      DealHealthAlert,
+      SystemAuditLog,
     ]),
     StellarModule,
     QueueModule,
+    NotificationsModule,
+    AuditModule,
+    SorobanModule,
     HttpModule,
     /**
      * #743 — Cache active deals list in Redis.
@@ -67,7 +85,23 @@ const DEALS_CACHE_TTL_MS = 30_000;
     }),
   ],
   controllers: [TradeDealsController],
-  providers: [TradeDealsService, TradeDealsGuard, TradeDealsCronService, DealFundingAlertService],
-  exports: [TradeDealsService],
+  providers: [
+    TradeDealsService,
+    DealCoFarmersService,
+    DealDeploymentService,
+    TradeDealsGuard,
+    TradeDealsCronService,
+    DealFundingAlertService,
+    DealDigestService,
+    RiskScoringService,
+    DealHealthMonitorService,
+    ActivityFeedService,
+    makeGaugeProvider({
+      name: 'deal_health_alerts_active_total',
+      help: 'Total number of active (unresolved) deal health alerts, labelled by alert type.',
+      labelNames: ['alertType'],
+    }),
+  ],
+  exports: [TradeDealsService, DealCoFarmersService, DealDigestService, RiskScoringService, ActivityFeedService],
 })
 export class TradeDealsModule {}

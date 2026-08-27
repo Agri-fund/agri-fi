@@ -6,11 +6,17 @@ import { useTransactionProgress } from '../hooks/useTransactionProgress';
 import { getStoredToken } from '../lib/api';
 import { useToast } from './ui/ToastProvider';
 import { OnChainProgressIndicator } from './OnChainProgressIndicator';
+import { useCurrencyFormat } from '../hooks/useCurrencyFormat';
+import { useNumberFormat } from '../hooks/useNumberFormat';
 
 interface InvestmentFormProps {
   dealId: string;
   maxTokens: number;
   tokenPrice: number;
+  /** Minimum investment lot size in USD (#835) */
+  minLotSize?: number;
+  /** Lot increment above the minimum in USD (#835) */
+  lotStep?: number;
   onSuccess?: (investment: any) => void;
   onError?: (error: string) => void;
   onQuantityChange?: (quantity: number) => void;
@@ -37,6 +43,8 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
   dealId,
   maxTokens,
   tokenPrice = 100,
+  minLotSize,
+  lotStep,
   onSuccess,
   onError,
   onQuantityChange,
@@ -63,16 +71,40 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
   const safeQuantity = tokenQuantity === '' ? 0 : tokenQuantity;
   const totalAmount = safeQuantity * tokenPrice;
 
+  // #835 — lot sizing (defaults keep legacy single-token behaviour)
+  const lotSizeUsd = lotStep && lotStep > 0 ? lotStep : tokenPrice;
+  const tokensPerLot = Math.max(1, Math.round(lotSizeUsd / tokenPrice));
+  const minTokens =
+    minLotSize && minLotSize > 0
+      ? Math.max(1, Math.ceil(minLotSize / tokenPrice))
+      : 1;
+  const availableLots = Math.floor((maxTokens * tokenPrice) / lotSizeUsd);
+
+  const adjustLot = (direction: 1 | -1) => {
+    setTokenQuantity((prev) => {
+      const current = prev === '' ? 0 : prev;
+      const next = current + direction * tokensPerLot;
+      return Math.min(maxTokens, Math.max(0, next));
+    });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
+    if (isSubmitting) return;
+
     if (!isConnected || !publicKey) {
       toast('Please connect your wallet first', 'warning');
       return;
     }
 
-    if (safeQuantity < 1 || safeQuantity > maxTokens) {
-      toast(`Token quantity must be between 1 and ${maxTokens}`, 'warning');
+    if (safeQuantity < minTokens || safeQuantity > maxTokens) {
+      toast(
+        minLotSize && minLotSize > tokenPrice
+          ? `Minimum investment for this deal is ${minLotSize} USD (${minTokens} tokens)`
+          : `Token quantity must be between ${minTokens} and ${maxTokens}`,
+        'warning',
+      );
       return;
     }
 
@@ -89,11 +121,13 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
       }
 
       // Step 1: Create pending investment (simulating phase)
+      const idempotencyKey = crypto.randomUUID();
       const createResponse = await fetch('/api/investments', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
+          'X-Idempotency-Key': idempotencyKey,
         },
         body: JSON.stringify({
           tradeDealId: dealId,
@@ -247,6 +281,9 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
     );
   }
 
+  const { formatCurrency } = useCurrencyFormat();
+  const { formatNumber } = useNumberFormat();
+
   if (success) {
     return (
       <div className="space-y-4">
@@ -278,8 +315,8 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
           </div>
           
           <div className={`space-y-2 text-sm ${success.isQueued ? 'text-blue-700' : 'text-green-700'}`}>
-            <p><strong>Investment Amount:</strong> ${success.investmentAmount.toLocaleString()}</p>
-            <p><strong>Tokens Purchased:</strong> {success.tokenCount}</p>
+            <p><strong>Investment Amount:</strong> {formatCurrency(success.investmentAmount, 'USD')}</p>
+            <p><strong>Tokens Purchased:</strong> {formatNumber(success.tokenCount)}</p>
             {success.transactionId && success.transactionId !== 'Processing... (queued)' && (
               <p><strong>{success.isQueued ? 'Status:' : 'Transaction ID:'}</strong> 
                 <span className="font-mono text-xs break-all ml-1">
@@ -315,38 +352,63 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
         <label htmlFor="tokenQuantity" className="block text-sm font-medium text-gray-700 mb-2">
           Number of Tokens
         </label>
-        <input
-          type="number"
-          id="tokenQuantity"
-          min="1"
-          max={maxTokens}
-          value={tokenQuantity === '' ? '' : tokenQuantity}
-          onChange={(e) => {
-            const val = parseInt(e.target.value, 10);
-            const qty = isNaN(val) ? 0 : val;
-            setTokenQuantity(isNaN(val) ? '' : val);
-            onQuantityChange?.(qty);
-          }}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          disabled={isSubmitting}
-        />
+        <div className="flex items-center space-x-2">
+          <button
+            type="button"
+            aria-label="Decrease lot size"
+            onClick={() => adjustLot(-1)}
+            disabled={isSubmitting || safeQuantity <= minTokens}
+            className="w-10 h-10 flex items-center justify-center border border-gray-300 rounded-md text-lg font-semibold hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            &minus;
+          </button>
+          <input
+            type="number"
+            id="tokenQuantity"
+            min={minTokens}
+            step={tokensPerLot}
+            max={maxTokens}
+            value={tokenQuantity === '' ? '' : tokenQuantity}
+            onChange={(e) => {
+              const val = parseInt(e.target.value, 10);
+              const qty = isNaN(val) ? 0 : val;
+              setTokenQuantity(isNaN(val) ? '' : val);
+              onQuantityChange?.(qty);
+            }}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-center"
+            disabled={isSubmitting}
+          />
+          <button
+            type="button"
+            aria-label="Increase lot size"
+            onClick={() => adjustLot(1)}
+            disabled={isSubmitting || safeQuantity + tokensPerLot > maxTokens}
+            className="w-10 h-10 flex items-center justify-center border border-gray-300 rounded-md text-lg font-semibold hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            +
+          </button>
+        </div>
         <p className="text-xs text-gray-500 mt-1">
-          Maximum available: {maxTokens} tokens
+          Maximum available: {formatNumber(maxTokens)} tokens
         </p>
       </div>
 
       <div className="bg-gray-50 p-3 rounded-md">
         <div className="flex justify-between text-sm">
-          <span>Token Price:</span>
-          <span>${tokenPrice}</span>
+          <span>Price per lot:</span>
+          <span>{formatCurrency(lotSizeUsd, 'USD')}</span>
+        </div>
+        <div className="flex justify-between text-sm">
+          <span>Available lots remaining:</span>
+          <span>{formatNumber(availableLots)}</span>
         </div>
         <div className="flex justify-between text-sm">
           <span>Quantity:</span>
-          <span>{safeQuantity}</span>
+          <span>{formatNumber(safeQuantity)}</span>
         </div>
         <div className="flex justify-between font-semibold border-t pt-2 mt-2">
           <span>Total Investment:</span>
-          <span>${totalAmount.toLocaleString()}</span>
+          <span>{formatCurrency(totalAmount, 'USD')}</span>
         </div>
       </div>
 
@@ -358,10 +420,10 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
 
       <button
         type="submit"
-        disabled={isSubmitting || safeQuantity < 1 || safeQuantity > maxTokens}
+        disabled={isSubmitting || safeQuantity < minTokens || safeQuantity > maxTokens}
         className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white py-2 px-4 rounded-md font-medium transition-colors"
       >
-        {isSubmitting ? 'Processing Investment...' : `Invest $${totalAmount.toLocaleString()}`}
+        {isSubmitting ? 'Processing Investment...' : `Invest ${formatCurrency(totalAmount, 'USD')}`}
       </button>
 
       <p className="text-xs text-gray-500 text-center">

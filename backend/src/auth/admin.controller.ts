@@ -9,6 +9,7 @@ import {
   Query,
   NotFoundException,
   BadRequestException,
+  Version,
   ParseIntPipe,
   DefaultValuePipe,
 } from '@nestjs/common';
@@ -40,6 +41,9 @@ import { Document } from '../trade-deals/entities/document.entity';
 import { StellarService } from '../stellar/stellar.service';
 import { AdminAction } from '../database/entities/admin-action.entity';
 import { FailedPaymentsService } from '../escrow/failed-payments.service';
+import { SecurityThreatService } from './security-threat.service';
+import { SettlementService } from '../settlement/settlement.service';
+import { DocumentsService } from '../documents/documents.service';
 
 class UpdateUserRoleDto {
   @IsIn(['farmer', 'trader', 'investor', 'company_admin', 'admin'])
@@ -71,6 +75,7 @@ interface AuthRequest extends Request {
 }
 
 @ApiTags('admin')
+@Version('1')
 @Controller('admin')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 @Roles('admin')
@@ -80,6 +85,9 @@ export class AdminController {
     private readonly authService: AuthService,
     private readonly stellarService: StellarService,
     private readonly failedPaymentsService: FailedPaymentsService,
+    private readonly securityThreat: SecurityThreatService,
+    private readonly settlementService: SettlementService,
+    private readonly documentsService: DocumentsService,
     @InjectRepository(TradeDeal)
     private readonly tradeDealRepo: Repository<TradeDeal>,
     @InjectRepository(Document)
@@ -143,6 +151,13 @@ export class AdminController {
         reason: null,
       }),
     );
+
+    // Trigger automatic on-chain settlement for harvest documents (#899)
+    try {
+      await this.documentsService.onDocumentApproved(document);
+    } catch (err: any) {
+      // Settlement failure is tracked on the deal; don't block document approval response
+    }
 
     return document;
   }
@@ -322,5 +337,51 @@ export class AdminController {
   @ApiResponse({ status: 404, description: 'Transaction log not found' })
   async retryFailedPayment(@Param('id') id: string) {
     return this.failedPaymentsService.retryFailedPayment(id);
+  }
+
+  // ── Security blocks (#898) ────────────────────────────────────────────────
+
+  @Get('security/blocks')
+  @ApiOperation({
+    summary: 'List credential-stuffing enforcement blocks (CAPTCHA, rate limits, subnets)',
+  })
+  @ApiResponse({ status: 200, description: 'List of security blocks' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
+  async listSecurityBlocks() {
+    return this.securityThreat.listBlocks();
+  }
+
+  @Post('security/blocks/:id/approve')
+  @ApiOperation({
+    summary: 'Approve a pending /16 subnet block proposed by detection',
+  })
+  @ApiResponse({ status: 200, description: 'Subnet block approved and enforced' })
+  @ApiResponse({ status: 400, description: 'Block is not a pending subnet block' })
+  @ApiResponse({ status: 404, description: 'Block not found' })
+  async approveSecurityBlock(
+    @Request() req: AuthRequest,
+    @Param('id') id: string,
+  ) {
+    const block = await this.securityThreat.approveBlock(id, req.user.id);
+
+    await this.adminActionRepo.save(
+      this.adminActionRepo.create({
+        adminId: req.user.id,
+        targetUserId: null as any,
+        action: 'approve_security_block',
+        payload: { blockId: id, cidr: block.cidr },
+        reason: null,
+      }),
+    );
+
+    return block;
+  }
+
+  @Post('security/blocks/:id/lift')
+  @ApiOperation({ summary: 'Lift (deactivate) a security block' })
+  @ApiResponse({ status: 200, description: 'Block lifted' })
+  @ApiResponse({ status: 404, description: 'Block not found' })
+  async liftSecurityBlock(@Param('id') id: string) {
+    return this.securityThreat.liftBlock(id);
   }
 }

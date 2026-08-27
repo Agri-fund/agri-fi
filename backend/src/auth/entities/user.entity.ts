@@ -106,7 +106,10 @@ export class User {
 
   // #409 — email verification
   @Column({ name: 'is_email_verified', default: false })
-  @ApiProperty({ description: 'Whether the email address has been verified', example: false })
+  @ApiProperty({
+    description: 'Whether the email address has been verified',
+    example: false,
+  })
   isEmailVerified: boolean;
 
   @Exclude()
@@ -126,8 +129,23 @@ export class User {
   mfaSecret: string | null;
 
   @Column({ name: 'is_mfa_enabled', default: false })
-  @ApiProperty({ description: 'Whether MFA is enabled for this user', example: false })
+  @ApiProperty({
+    description: 'Whether MFA is enabled for this user',
+    example: false,
+  })
   isMfaEnabled: boolean;
+
+  // #827 — MFA backup codes (bcrypt-hashed, single-use)
+  @Exclude()
+  @Column({ name: 'mfa_backup_codes', type: 'simple-json', nullable: true })
+  mfaBackupCodes: string[] | null;
+
+  // #827 — MFA failed attempt tracking
+  @Column({ name: 'mfa_failed_attempts', default: 0 })
+  mfaFailedAttempts: number;
+
+  @Column({ name: 'mfa_locked_until', type: 'timestamptz', nullable: true })
+  mfaLockedUntil: Date | null;
 
   @CreateDateColumn({ name: 'created_at' })
   @ApiProperty({
@@ -138,17 +156,29 @@ export class User {
 
   /** Full legal name — stored AES-256-CBC encrypted */
   @Exclude()
-  @Column({ name: 'full_name', nullable: true, transformer: encryptionTransformer })
+  @Column({
+    name: 'full_name',
+    nullable: true,
+    transformer: encryptionTransformer,
+  })
   fullName: string | null;
 
   /** Date of birth — stored AES-256-CBC encrypted (ISO date string) */
   @Exclude()
-  @Column({ name: 'birthdate', nullable: true, transformer: encryptionTransformer })
+  @Column({
+    name: 'birthdate',
+    nullable: true,
+    transformer: encryptionTransformer,
+  })
   birthdate: string | null;
 
   /** Tax / national ID number — stored AES-256-CBC encrypted */
   @Exclude()
-  @Column({ name: 'tax_id', nullable: true, transformer: encryptionTransformer })
+  @Column({
+    name: 'tax_id',
+    nullable: true,
+    transformer: encryptionTransformer,
+  })
   taxId: string | null;
 
   /** Phone number — stored AES-256-GCM encrypted */
@@ -158,6 +188,60 @@ export class User {
 
   /** Physical / mailing address — stored AES-256-GCM encrypted */
   @Exclude()
-  @Column({ name: 'physical_address', nullable: true, transformer: encryptionTransformer })
+  @Column({
+    name: 'physical_address',
+    nullable: true,
+    transformer: encryptionTransformer,
+  })
   physicalAddress: string | null;
+
+  /** Farmer credit score (300-850) based on historical performance */
+  @Column({ name: 'credit_score', type: 'int', nullable: true })
+  @ApiProperty({
+    description:
+      'Farmer credit score calculated from historical performance (300-850)',
+    nullable: true,
+    example: 720,
+  })
+  creditScore: number | null;
+
+  /** Preferred language for transactional emails (#897). ISO 639-1 code. */
+  @Column({ name: 'preferred_language', type: 'varchar', length: 8, default: 'en' })
+  @ApiProperty({
+    description: 'Preferred language for emails and notifications',
+    enum: ['en', 'es', 'fr', 'pt', 'sw'],
+    example: 'en',
+  })
+  preferredLanguage: string;
+
+  /** IANA timezone used for timezone-aware scheduling, e.g. weekly digests (#892). */
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  @ApiProperty({
+    description: 'IANA timezone for scheduled notifications',
+    example: 'Africa/Nairobi',
+    required: false,
+  })
+  timezone: string | null;
+
+  /**
+   * Whether the user opted in to the weekly deal digest email (#892).
+   * Toggled from notification preferences or the unsubscribe link.
+   */
+  @Column({ name: 'email_digest_enabled', type: 'boolean', default: true })
+  @ApiProperty({
+    description: 'Whether the weekly digest email is enabled',
+    example: true,
+  })
+  emailDigestEnabled: boolean;
+
+  /**
+   * Set to true when the investor clicks the unsubscribe link in any drip
+   * email. Stops further sequence steps from being dispatched (GDPR / CAN-SPAM).
+   */
+  @Column({ name: 'email_sequence_unsubscribed', type: 'boolean', default: false })
+  @ApiProperty({
+    description: 'Whether the user has unsubscribed from the onboarding email sequence',
+    example: false,
+  })
+  emailSequenceUnsubscribed: boolean;
 }

@@ -7,6 +7,7 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  Version,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
@@ -21,7 +22,7 @@ import { ConfirmDeliveryDto } from './dto/confirm-delivery.dto';
 @ApiTags('soroban')
 @ApiBearerAuth()
 @UseGuards(AuthGuard('jwt'), RolesGuard)
-@Controller('soroban')
+@Controller({ version: '1', path: 'soroban' })
 export class SorobanController {
   constructor(private readonly sorobanService: SorobanService) {}
 

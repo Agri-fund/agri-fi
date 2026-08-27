@@ -5,6 +5,7 @@ import {
   ManyToOne,
   JoinColumn,
   CreateDateColumn,
+  DeleteDateColumn,
 } from 'typeorm';
 import { ApiProperty } from '@nestjs/swagger';
 import { User } from '../../auth/entities/user.entity';
@@ -13,6 +14,10 @@ import { TradeDeal } from '../../trade-deals/entities/trade-deal.entity';
 export enum InvestmentStatus {
   PENDING = 'pending',
   CONFIRMED = 'confirmed',
+  ACTIVE = 'active',
+  RELEASING = 'releasing',
+  COMPLETED = 'completed',
+  CANCELLED = 'cancelled',
   FAILED = 'failed',
   REFUNDED = 'refunded',
 }
@@ -55,7 +60,7 @@ export class Investment {
   })
   tokenAmount: number;
 
-  @Column({ name: 'amount_usd', type: 'decimal', precision: 18, scale: 2 })
+  @Column({ name: 'amount_usd', type: 'decimal', precision: 36, scale: 7 })
   @ApiProperty({
     description: 'Investment amount in USD',
     example: '10000.00',
@@ -95,4 +100,11 @@ export class Investment {
     example: '2024-01-15T10:30:00Z',
   })
   createdAt: Date;
+
+  @DeleteDateColumn({ name: 'deleted_at', nullable: true })
+  @ApiProperty({
+    description: 'Soft-delete timestamp',
+    nullable: true,
+  })
+  deletedAt: Date | null;
 }

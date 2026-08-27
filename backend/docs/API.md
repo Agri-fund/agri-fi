@@ -1,237 +1,153 @@
-# API Documentation — Agri-Fi
+# API Versioning Strategy
 
 ## Overview
 
-The Agri-Fi API provides REST endpoints for the agricultural trade finance platform. The API supports:
+The Agri-Fi API uses URI-based versioning with path prefixes (`/api/v1`, `/api/v2`).
 
-- **User Management**: Registration, authentication, KYC verification
-- **Trade Deals**: Create and browse agricultural commodity deals
-- **Investments**: Fund trade deals and manage investment portfolios
-- **Stellar Integration**: Blockchain-based escrow and token issuance
-- **Document Management**: Upload and anchor documents via IPFS
-- **Shipment Tracking**: Record and track delivery milestones
-- **Admin Functions**: KYC approvals, user role management
+## Current Versions
 
-## Accessing Swagger UI
+| Version | Status | Base Path | Notes |
+|---------|--------|-----------|-------|
+| v1 | **Active** | `/v1/*` | Current stable API |
+| v2 | Planned | `/v2/*` | Future breaking changes |
 
-### Development
-```bash
-http://localhost:3001/api/docs
+## Version Selection
+
+### URI Path Prefix (Primary)
+
+All endpoints are prefixed with the version number:
+
+```
+GET /v1/trade-deals
+GET /v1/users/me
+POST /v1/auth/login
 ```
 
-### Production
-```bash
-https://api.agri-fi.example.com/api/docs
+### Header Fallback
+
+Clients can also specify the version via the `Accept` header:
+
+```
+Accept: application/vnd.agri-fi.v1+json
 ```
 
-**Production requires HTTP Basic Authentication:**
-- Username: `admin` (or configured `SWAGGER_USER`)
-- Password: Set via `SWAGGER_PASS` environment variable
+## Deprecation Policy
 
-## OpenAPI Specification
+When a version is deprecated:
 
-The complete OpenAPI 3.0 specification is available in `openapi.json`:
+1. Response includes `Deprecation: true` header
+2. Response includes `Sunset: <date>` header (RFC 8594)
+3. Deprecated version maintained for **12 months** after next version GA
+4. Clients receive notification via email and API response headers
 
-```bash
-# View the specification
-cat openapi.json
+## Response Headers
 
-# Generate TypeScript client (using openapi-generator-cli)
-openapi-generator-cli generate -i openapi.json -g typescript-axios -o ./api-client
-```
+All responses include:
 
-## Authentication
+- `API-Version: v1` — Confirms which version served the request
 
-All endpoints except `/auth/register`, `/auth/login`, and `GET /trade-deals` require JWT authentication:
+## Migration Guide
 
-```bash
-curl -H "Authorization: Bearer YOUR_JWT_TOKEN" http://localhost:3001/api/endpoint
-```
+### v1 → v2 (Future)
 
-### Getting a JWT Token
+When v2 is released:
 
-1. **Register**:
-```bash
-POST /auth/register
-{
-  "name": "Amara Diallo",
-  "email": "amara@example.com",
-  "password": "securePass1",
-  "role": "trader",
-  "country": "KE"
-}
-```
+1. All existing endpoints remain at `/v1/*`
+2. New breaking-change endpoints available at `/v2/*`
+3. Frontend updated to use `/v2/*` prefix
+4. Deprecation headers added to v1 responses
 
-2. **Login**:
-```bash
-POST /auth/login
-{
-  "email": "amara@example.com",
-  "password": "securePass1"
-}
+## OpenAPI Documentation
 
-# Response:
-{
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-}
-```
+Each version has its own OpenAPI spec:
 
-## Key Endpoints
+- v1: `/v1/docs` (Swagger UI)
+- v2: `/v2/docs` (when available)
 
-### Authentication
-- `POST /auth/register` — Register a new user
-- `POST /auth/login` — Authenticate and receive JWT
-- `POST /auth/wallet` — Link Stellar wallet address
-- `POST /auth/kyc` — Submit KYC verification
+## Client Implementation
 
-### Trade Deals
-- `GET /trade-deals` — List open deals (marketplace)
-- `POST /trade-deals` — Create a draft deal
-- `POST /trade-deals/:id/publish` — Publish a deal (token issuance)
+### Frontend (Next.js)
 
-### Investments
-- `GET /investments/my-investments` — Get investor's investments
-- `POST /investments` — Create an investment
-- `POST /investments/:id/fund` — Fund investment via escrow
+The frontend automatically prefixes all API calls with `/v1`:
 
-### Stellar
-- `POST /stellar/submit` — Submit signed XDR transaction
-
-### Documents
-- `POST /documents` — Upload document to IPFS
-
-### Users
-- `GET /users/me` — Get current user profile
-- `GET /users/me/deals` — Get user's deals
-
-### Admin
-- `POST /admin/kyc/:userId/approve` — Approve KYC
-- `POST /admin/users/:userId/role` — Update user role
-
-## Generating API Client
-
-Using the `openapi.json` specification, you can auto-generate typed API clients:
-
-### TypeScript/JavaScript
-```bash
-npm install @openapi-generator-cli/core
-npx openapi-generator-cli generate \
-  -i openapi.json \
-  -g typescript-axios \
-  -o ./generated-api-client
-```
-
-### Frontend Integration
 ```typescript
-import { Configuration, DefaultApi } from './generated-api-client';
+// frontend/src/config/backend.ts
+const API_VERSION = '/v1';
 
-const config = new Configuration({
-  basePath: 'http://localhost:3001',
-  accessToken: jwtToken,
-});
-
-const api = new DefaultApi(config);
-const investments = await api.getMyInvestments();
+// All calls automatically versioned
+fetchBackend('/auth/login', { ... })  // → /v1/auth/login
+fetchBackend('/users/me', { ... })    // → /v1/users/me
 ```
 
-## Response Format
+### Backend (NestJS)
 
-All responses follow a consistent format:
+Controllers are decorated with `@Version('1')`:
 
-### Success (2xx)
+```typescript
+@Version('1')
+@Controller('auth')
+export class AuthController { ... }
+```
+
+## Testing
+
+Both versions should pass integration tests:
+
+```bash
+# Test v1
+curl http://localhost:3001/v1/health
+
+# Test version header
+curl -H "Accept: application/vnd.agri-fi.v1+json" http://localhost:3001/health
+```
+
+## SEP-12 Customer Schema
+
+The KYC endpoints implement the Stellar SEP-12 customer schema. The platform's
+internal field names are mapped automatically (#837):
+
+| Platform field      | SEP-12 field            |
+|---------------------|-------------------------|
+| `firstName`         | `first_name`            |
+| `lastName`          | `last_name`             |
+| `dateOfBirth`       | `birth_date`            |
+| `nationalIdNumber`  | `id_number`             |
+| `nationalIdType`    | `id_type`               |
+| `addressLine1`      | `address.line1`         |
+| `countryCode`       | `address.country_code`  |
+
+Both formats are accepted by `PUT /v1/kyc/customer` and both are stored; the
+SEP-12 payload is persisted alongside the internal record.
+
+### Endpoints
+
+```
+PUT  /v1/kyc/customer        Submit or update customer fields (internal or SEP-12 names)
+GET  /v1/kyc/customer        Get the caller's SEP-12 compliant record
+GET  /v1/kyc/customer/:id    Get a customer by id (admins only)
+```
+
+### Validation
+
+- `birth_date` / `dateOfBirth` must be an ISO 8601 date (`YYYY-MM-DD`)
+- `address.country_code` / `countryCode` and `id_country_code` must be
+  ISO 3166-1 alpha-2 codes
+
+### Example response (`GET /v1/kyc/customer`)
+
 ```json
 {
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-  "email": "amara@example.com",
-  "role": "trader",
-  "kycStatus": "verified",
-  "createdAt": "2024-01-15T10:30:00Z"
+  "status": "VERIFIED",
+  "first_name": "Ada",
+  "last_name": "Investor",
+  "email_address": "ada@example.com",
+  "birth_date": "1990-05-20",
+  "address": {
+    "line1": "1 Market Street",
+    "country_code": "NG"
+  },
+  "id_type": "national_id",
+  "id_number": "12345678"
 }
 ```
-
-### Error (4xx/5xx)
-```json
-{
-  "statusCode": 400,
-  "message": "quantity must be at least 1",
-  "error": "Bad Request"
-}
-```
-
-## Validation
-
-Request bodies are automatically validated. Common validation errors:
-
-- **delivery_date in the past** → 400 Bad Request
-- **quantity <= 0** → 400 Bad Request
-- **total_value < 100** → 400 Bad Request
-- **Invalid email** → 400 Bad Request
-- **Password < 8 characters** → 400 Bad Request
-- **Invalid JWT token** → 401 Unauthorized
-- **User role not allowed** → 403 Forbidden
-
-## Rate Limiting
-
-The Stellar submission endpoint is rate-limited:
-
-- Limit: 5 requests per 60 seconds
-- Header: `X-RateLimit-Remaining`
-
-## Environment Variables
-
-```bash
-# Server
-PORT=3001
-NODE_ENV=production
-
-# Database
-DATABASE_URL=postgresql://user:pass@host:5432/agri_fi
-
-# Authentication
-JWT_SECRET=your-secret-key-here
-
-# Swagger/Docs (Production only)
-SWAGGER_USER=admin
-SWAGGER_PASS=your-strong-password
-
-# Stellar
-STELLAR_NETWORK=testnet  # or mainnet
-STELLAR_HORIZON_URL=https://horizon-testnet.stellar.org
-STELLAR_PLATFORM_SECRET=S...
-
-# Queue
-RABBITMQ_URL=amqp://localhost:5672
-
-# Storage
-IPFS_API_URL=http://localhost:5001
-
-# Encryption
-ENCRYPTION_KEY=32-character-key-for-aes256!
-```
-
-## CI/CD Integration
-
-The OpenAPI specification is automatically generated during the build process:
-
-```bash
-# Generate spec and include in build artifact
-npm run build:docs
-
-# Spec is committed to the repository
-git add openapi.json
-git commit -m "docs: update OpenAPI specification"
-```
-
-## Support
-
-For API issues, bugs, or feature requests, please open an issue on GitHub with:
-- Endpoint and HTTP method
-- Request body (sanitized)
-- Error response
-- Environment (dev/staging/prod)
-
-## See Also
-
-- [Backend Setup Guide](./docs/README.md)
-- [Database Schema](./docs/database-performance.md)
-- [Logging Examples](./docs/logging-examples.md)

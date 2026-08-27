@@ -172,7 +172,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
+        <div data-tour="portfolio-stats" className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
           <StatCard label="Total Users"  value={users.length}    icon="👥" color="bg-blue-50" />
           <StatCard label="Farmers"      value={byRole('farmer')} icon="🌱" color="bg-emerald-50" />
           <StatCard label="Investors"    value={byRole('investor')} icon="💼" color="bg-violet-50" />

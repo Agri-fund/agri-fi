@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Optional,
   NotFoundException,
   UnprocessableEntityException,
   ForbiddenException,
@@ -22,10 +23,17 @@ import {
   PaginationQuery,
   toPaginatedResult,
 } from '../common/pagination';
+import { FeeCalculatorService, FeeBreakdown } from './fee-calculator.service';
+import { validateLotSize } from './lot-size.utils';
+import { encodeFeeData, generateInvestmentMemo } from './fee-transaction.utils';
+import { EmailSequenceService } from '../email-sequence/email-sequence.service';
+import { InvestmentEventStore } from './investment-event-store.service';
+import { OfacSanctionsCheckService } from '../auth/utils/ofac-sanctions-check';
 
 export interface CreateInvestmentResult {
   investment: Investment;
   unsignedXdr: string;
+  feeBreakdown: FeeBreakdown;
 }
 
 const STELLAR_TX_HASH_PATTERN = /^[a-f0-9]{64}$/i;
@@ -49,6 +57,10 @@ export class InvestmentsService {
     private readonly stellarService: StellarService,
     private readonly dataSource: DataSource,
     private readonly queueService: QueueService,
+    private readonly feeCalculatorService: FeeCalculatorService,
+    private readonly ofacCheckService: OfacSanctionsCheckService,
+    @Optional() private readonly emailSequenceService: EmailSequenceService,
+    @Optional() private readonly eventStore?: InvestmentEventStore,
   ) {}
 
   async createInvestment(
@@ -81,6 +93,35 @@ export class InvestmentsService {
           'Investor wallet has not established a USDC trustline. Please add a USDC trustline to your Stellar wallet before investing.',
       });
     }
+
+    // OFAC sanctions screening on every investment (#845)
+    const isSanctioned = await this.ofacCheckService.isAddressSanctioned(
+      investor.walletAddress,
+    );
+    if (isSanctioned) {
+      throw new ForbiddenException({
+        code: 'SANCTIONED_ADDRESS',
+        message:
+          'Investment rejected: wallet address is on the OFAC sanctions list.',
+      });
+    }
+
+    // Calculate fees upfront
+    const investorTier =
+      this.feeCalculatorService.getInvestorTierFromUser(investor);
+    const tradeDealTemp = await this.tradeDealRepo.findOne({
+      where: { id: dto.tradeDealId },
+    });
+
+    if (!tradeDealTemp) {
+      throw new NotFoundException('Trade deal not found.');
+    }
+
+    const feeBreakdown = await this.feeCalculatorService.calculateFeeBreakdown({
+      dealType: tradeDealTemp.commodity,
+      investorTier,
+      grossAmount: dto.amountUsd,
+    });
 
     const investment = await this.dataSource.transaction(async (manager) => {
       // Load and lock the trade deal
@@ -137,7 +178,20 @@ export class InvestmentsService {
         });
       }
 
-      // Check for over-funding
+      // Enforce deal lot sizing (#835)
+      const lotResult = validateLotSize(
+        dto.amountUsd,
+        Number(tradeDeal.minLotSize ?? 1),
+        Number(tradeDeal.lotStep ?? 1),
+      );
+      if (!lotResult.valid) {
+        throw new UnprocessableEntityException({
+          code: lotResult.code,
+          message: lotResult.message,
+        });
+      }
+
+      // Check for over-funding (use gross amount)
       const totalInvested = currentInvestments.reduce(
         (sum, inv) => sum + Number(inv.amountUsd),
         0,
@@ -177,9 +231,34 @@ export class InvestmentsService {
       dto.tokenAmount,
       tradeDeal!.issuerPublicKey!,
       dto.complianceData,
+      generateInvestmentMemo(
+        tradeDeal!.tokenSymbol,
+        dto.tokenAmount,
+        encodeFeeData(feeBreakdown),
+      ),
     );
 
-    return { investment, unsignedXdr };
+    await this.eventStore?.append(
+      investment.id,
+      'InvestmentCreated',
+      {
+        amountUsd: dto.amountUsd,
+        tokenAmount: dto.tokenAmount,
+        tradeDealId: dto.tradeDealId,
+      },
+      investorId,
+    );
+
+    return { investment, unsignedXdr, feeBreakdown };
+  }
+
+  // Halt the investor's drip email sequence now they have created their first
+  // investment. Fire-and-forget — failure must not affect the investment flow.
+  private haltDripSequence(investorId: string): void {
+    if (!this.emailSequenceService) return;
+    this.emailSequenceService.haltForUser(investorId).catch((err) => {
+      console.error('[InvestmentsService] Failed to halt drip sequence', err);
+    });
   }
 
   private assertTravelRuleCompliance(
@@ -287,6 +366,16 @@ export class InvestmentsService {
       this.sendFundedNotification(tradeDeal).catch(() => {});
     }
 
+    // Trigger referral reward for first investment
+    this.referralService?.triggerReward(investorId)?.catch(() => {});
+
+    await this.eventStore?.append(
+      investmentId,
+      'InvestmentActivated',
+      { stellarTxId },
+      investorId,
+    );
+
     // Return the updated investment by fetching it from the database
     const updatedInvestment = await this.investmentRepo.findOne({
       where: { id: investmentId },
@@ -294,10 +383,91 @@ export class InvestmentsService {
     return updatedInvestment!;
   }
 
-  async markInvestmentFailed(investmentId: string): Promise<void> {
+  async markInvestmentFailed(
+    investmentId: string,
+    actorId?: string,
+  ): Promise<void> {
     await this.investmentRepo.update(investmentId, {
       status: InvestmentStatus.FAILED,
     });
+    await this.eventStore?.append(
+      investmentId,
+      'InvestmentFailedEscrow',
+      {},
+      actorId,
+    );
+  }
+
+  async startRelease(investmentId: string, actorId?: string): Promise<void> {
+    await this.investmentRepo.update(investmentId, {
+      status: InvestmentStatus.RELEASING,
+    });
+    await this.eventStore?.append(
+      investmentId,
+      'InvestmentReleaseStarted',
+      {},
+      actorId,
+    );
+  }
+
+  async completeInvestment(
+    investmentId: string,
+    actorId?: string,
+  ): Promise<void> {
+    await this.investmentRepo.update(investmentId, {
+      status: InvestmentStatus.COMPLETED,
+    });
+    await this.eventStore?.append(
+      investmentId,
+      'InvestmentCompleted',
+      {},
+      actorId,
+    );
+  }
+
+  async cancelInvestment(
+    investmentId: string,
+    actorId?: string,
+    reason?: string,
+  ): Promise<void> {
+    await this.investmentRepo.update(investmentId, {
+      status: InvestmentStatus.CANCELLED,
+    });
+    await this.eventStore?.append(
+      investmentId,
+      'InvestmentCancelledByUser',
+      { reason },
+      actorId,
+    );
+  }
+
+  async refundInvestment(
+    investmentId: string,
+    actorId?: string,
+    reason?: string,
+  ): Promise<void> {
+    await this.investmentRepo.update(investmentId, {
+      status: InvestmentStatus.REFUNDED,
+    });
+    await this.eventStore?.append(
+      investmentId,
+      'InvestmentRefunded',
+      { reason },
+      actorId,
+    );
+  }
+
+  async reconcileStateFromEvents(investmentId: string): Promise<Investment> {
+    if (!this.eventStore)
+      throw new Error('InvestmentEventStore is not injected');
+    const projection =
+      await this.eventStore.rebuildStateFromEvents(investmentId);
+    await this.investmentRepo.update(investmentId, {
+      status: projection.status,
+    });
+    return (await this.investmentRepo.findOne({
+      where: { id: investmentId },
+    }))!;
   }
 
   async fundEscrow(
@@ -396,6 +566,13 @@ export class InvestmentsService {
     } catch (err) {
       // non-critical — log and swallow
     }
+  }
+
+  async getInvestmentById(id: string): Promise<Investment | null> {
+    return this.investmentRepo.findOne({
+      where: { id },
+      relations: ['tradeDeal'],
+    });
   }
 
   async getInvestmentsByTradeDeal(

@@ -192,8 +192,25 @@
     }
   },
   "deals": {
+    "coFarmers": {
+      "title": "Coagricultores",
+      "description": "Convide outros agricultores para esta negociação — cada coagricultor é responsável pela sua parcela da entrega e recebe essa fração do pagamento.",
+      "emailLabel": "E-mail do coagricultor",
+      "portionLabel": "Parcela (%)",
+      "add": "Adicionar coagricultor",
+      "remove": "Remover",
+      "invalidEmail": "Insira um endereço de e-mail válido.",
+      "invalidPortion": "A parcela deve estar entre 0 e 100.",
+      "totalTooHigh": "O total das parcelas não pode exceder 100 %.",
+      "inviteFailed": "A negociação foi criada, mas não foi possível enviar alguns convites."
+    },
     "createTitle": "Criar Novo Negócio Comercial",
     "draftRestored": "Rascunho restaurado de {time}",
+    "wizardBadge": "Assistente de anúncio",
+    "createSubtitle": "Crie um anúncio completo e pronto para investidores com etapas guiadas, validação inteligente e auto-salvamento do rascunho.",
+    "saving": "Salvando rascunho...",
+    "saved": "Rascunho salvo",
+    "stepLabel": "Etapa {current} de {total}",
     "commodity": "Nome da Mercadoria",
     "quantity": "Quantidade",
     "unit": "Unidade",
@@ -205,9 +222,57 @@
     "createButton": "Criar Negócio",
     "creating": "Criando...",
     "cancel": "Cancelar",
+    "back": "Voltar",
+    "next": "Próximo",
+    "submitForReview": "Enviar para revisão",
+    "submitSuccess": "Negócio enviado para revisão administrativa.",
+    "roiWarningHigh": "Este ROI está invulgarmente alto. Verifique as suposições antes de enviar.",
+    "roiWarningNormal": "O ROI parece dentro de uma faixa normal.",
+    "photoHelper": "Envie de 1 a 10 fotos. Cada imagem deve ter pelo menos 500px de largura.",
+    "docHelper": "Envie os documentos exigidos para sua categoria de mercadoria antes de enviar.",
     "tokenInfo": "Isso criará {count} tokens a ${price} cada.",
     "raised": "{amount} arrecadados",
     "remainingOf": "{remaining} restantes de {total}",
+    "fields": {
+      "title": "Título do negócio",
+      "commodity": "Mercadoria",
+      "country": "País",
+      "region": "Região",
+      "shortDescription": "Descrição curta",
+      "quantity": "Quantidade",
+      "unit": "Unidade",
+      "totalValue": "Meta financeira",
+      "minInvestment": "Lote mínimo de investimento",
+      "expectedRoi": "ROI esperado (%)",
+      "duration": "Duração (dias)",
+      "risk": "Classificação de risco",
+      "roiWarning": "Aviso de ROI",
+      "longDescription": "História e impacto",
+      "farmLocation": "Localização da fazenda",
+      "mapPoint": "Coordenadas",
+      "farmPhotos": "Fotos da fazenda",
+      "extraDocs": "Documentos de apoio",
+      "milestone": "Marco",
+      "timeline": "Cronograma",
+      "owner": "Responsável"
+    },
+    "steps": {
+      "1": { "eyebrow": "Básicos", "title": "Detalhes do negócio" },
+      "2": { "eyebrow": "Números", "title": "Financeiro" },
+      "3": { "eyebrow": "Narrativa", "title": "História e impacto" },
+      "4": { "eyebrow": "Provas", "title": "Documentos" },
+      "5": { "eyebrow": "Plano", "title": "Plano logístico" },
+      "6": { "eyebrow": "Revisão", "title": "Revisar e enviar" }
+    },
+    "preview": {
+      "card": "Prévia do cartão",
+      "detailPage": "Prévia da página de detalhe",
+      "map": "Local no mapa",
+      "documents": "Documentos enviados",
+      "placeholderTitle": "Seu título",
+      "placeholderCommodity": "Mercadoria",
+      "placeholderSummary": "Resumo curto da fazenda e da oportunidade."
+    },
     "validation": {
       "commodityRequired": "Nome da mercadoria é obrigatório",
       "quantityMin": "A quantidade deve ser pelo menos 1",
@@ -215,8 +280,71 @@
       "tokenPriceFixed": "O preço do token deve ser exatamente 100",
       "deliveryDateRequired": "Data de entrega é obrigatória",
       "deliveryDateFuture": "A data de término deve ser no futuro",
-      "invalidId": "ID inválido"
+      "invalidId": "ID inválido",
+      "titleRequired": "O título é obrigatório",
+      "countryRequired": "O país é obrigatório",
+      "shortDescriptionRequired": "A descrição curta é obrigatória",
+      "duplicateTitle": "Já existe um negócio com este título.",
+      "minInvestmentLot": "O lote mínimo de investimento deve ser maior que 0",
+      "expectedRoiMin": "O ROI esperado deve ser maior que 0",
+      "durationRequired": "A duração é obrigatória",
+      "riskRequired": "A classificação de risco é obrigatória",
+      "longDescriptionRequired": "A história e o impacto são obrigatórios",
+      "farmLocationRequired": "A localização da fazenda é obrigatória",
+      "photoMin": "Envie pelo menos uma foto da fazenda.",
+      "photoMax": "Você pode enviar no máximo 10 fotos.",
+      "photoWidth": "As fotos devem ter pelo menos 500px de largura.",
+      "mapRequired": "Adicione latitude e longitude da fazenda.",
+      "documentRequired": "{name} é obrigatório para esta mercadoria.",
+      "logisticsRequired": "Complete todos os marcos logísticos.",
+      "submitFailed": "Falha ao enviar o negócio."
     }
+  },
+  "kyc": {
+    "badge": "Assistente de verificação KYC",
+    "title": "Complete sua verificação",
+    "subtitle": "Salve o progresso conforme avança e retome depois do rascunho.",
+    "restored": "Rascunho restaurado de {time}",
+    "stepLabel": "Etapa {current} de {total}",
+    "fields": {
+      "fullName": "Nome legal completo",
+      "dateOfBirth": "Data de nascimento",
+      "nationality": "Nacionalidade",
+      "address": "Endereço residencial",
+      "idFront": "Frente do documento",
+      "idBack": "Verso do documento",
+      "proofOfAddress": "Comprovante de residência",
+      "selfie": "Selfie com o documento"
+    },
+    "hints": {
+      "documents": "Aceita PDF, JPEG e PNG. Máx. 10MB.",
+      "proof": "Use uma conta recente de serviços ou extrato bancário.",
+      "selfie": "Certifique-se de que seu rosto e documento estejam visíveis."
+    },
+    "errors": {
+      "fullName": "O nome completo é obrigatório",
+      "dateOfBirth": "A data de nascimento é obrigatória",
+      "dateOfBirthPast": "A data de nascimento deve estar no passado",
+      "nationality": "A nacionalidade é obrigatória",
+      "address": "O endereço residencial é obrigatório",
+      "frontRequired": "A frente do documento é obrigatória",
+      "backRequired": "O verso do documento é obrigatório",
+      "proofRequired": "O comprovante de residência é obrigatório",
+      "selfieRequired": "A selfie com o documento é obrigatória",
+      "photoWidth": "As imagens devem ter pelo menos 500px de largura",
+      "submitFailed": "Falha ao enviar o KYC"
+    },
+    "review": {
+      "personal": "Informações pessoais",
+      "files": "Arquivos enviados",
+      "pending": "Aguardando envio"
+    },
+    "exit": "Sair do assistente",
+    "back": "Voltar",
+    "next": "Próximo",
+    "submit": "Enviar para revisão",
+    "submitting": "Enviando...",
+    "submitted": "KYC enviado para revisão."
   },
   "common": {
     "loading": "Carregando...",
@@ -231,9 +359,62 @@
       }
     }
   },
+  "referrals": {
+    "title": "Programa de Indicação",
+    "description": "Compartilhe seu link de indicação e ganhe recompensas quando os usuários indicados fizerem seu primeiro investimento.",
+    "yourLink": "Seu Link de Indicação",
+    "copy": "Copiar",
+    "copied": "Copiado!",
+    "whatsapp": "WhatsApp",
+    "twitter": "Twitter",
+    "referredUsers": "Usuários Indicados",
+    "noReferrals": "Nenhuma indicação ainda",
+    "shareToStart": "Compartilhe seu link para começar a ganhar recompensas!",
+    "linkClicks": "Cliques no Link",
+    "registered": "Registrados",
+    "rewarded": "Recompensados",
+    "totalEarned": "Total Ganho",
+    "user": "Usuário",
+    "status": "Status",
+    "reward": "Recompensa",
+    "date": "Data"
+  },
   "format": {
     "currency": "{value, number, currency}",
     "date": "{value, date, short}",
     "number": "{value, number}"
+  },
+  "tour": {
+    "welcome": {
+      "title": "Bem-vindo ao Agri-Fi",
+      "text": "Este tour rápido apresentará os principais recursos da plataforma. Você pode reiniciar este tour a qualquer momento nas Configurações."
+    },
+    "browseDeals": {
+      "title": "Explorar Negócios",
+      "text": "Encontre oportunidades de investimento em negociações agrícolas. Filtre por produto, status e mais."
+    },
+    "connectWallet": {
+      "title": "Conecte sua Carteira",
+      "text": "Conecte sua carteira Stellar para investir em negócios e acompanhar seu portfólio na blockchain."
+    },
+    "portfolioStats": {
+      "title": "Estatísticas do Portfólio",
+      "text": "Acompanhe seus investimentos, retornos e o desempenho dos negócios de relance."
+    },
+    "notificationBell": {
+      "title": "Mantenha-se Atualizado",
+      "text": "Receba notificações em tempo real sobre seus negócios, investimentos e atualizações da plataforma."
+    },
+    "complete": {
+      "title": "Tudo Pronto!",
+      "text": "Você está pronto para explorar o Agri-Fi. Boas investimentos!"
+    },
+    "buttons": {
+      "next": "Próximo",
+      "back": "Voltar",
+      "skip": "Pular Tour",
+      "finish": "Começar"
+    },
+    "restart": "Reiniciar Tour"
   }
 }

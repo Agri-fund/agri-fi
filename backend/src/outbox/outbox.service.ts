@@ -1,7 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, QueryRunner } from 'typeorm';
+import { Repository, DataSource, EntityManager } from 'typeorm';
 import { PinoLogger } from 'nestjs-pino';
+import { InjectMetric } from '@willsoto/nestjs-prometheus';
+import { Counter, Gauge } from 'prom-client';
 import { OutboxEntity, OutboxEvent } from './outbox.entity';
 
 @Injectable()
@@ -11,16 +13,20 @@ export class OutboxService {
     private readonly outboxRepo: Repository<OutboxEntity>,
     private readonly dataSource: DataSource,
     private readonly logger: PinoLogger,
+    @InjectMetric('outbox_pending_events_total')
+    private readonly pendingEventsGauge: Gauge<string>,
+    @InjectMetric('outbox_publish_errors_total')
+    private readonly publishErrorsCounter: Counter<string>,
   ) {
     this.logger.setContext(OutboxService.name);
   }
 
   /**
    * Write an event to the outbox table within the current transaction.
-   * This should be called from within a transactional context (e.g., using @Transactional or QueryRunner).
+   * This should be called from within a transactional context (e.g., using @Transactional or EntityManager).
    */
   async writeEvent(
-    queryRunner: QueryRunner,
+    entityManager: EntityManager,
     eventType: string,
     payload: Record<string, unknown>,
   ): Promise<void> {
@@ -31,7 +37,7 @@ export class OutboxService {
       retryCount: 0,
     });
 
-    await queryRunner.manager.save(outboxEvent);
+    await entityManager.save(outboxEvent);
     this.logger.debug(
       { eventType, payloadKeys: Object.keys(payload) },
       `Event written to outbox: ${eventType}`,
@@ -64,7 +70,7 @@ export class OutboxService {
    * Write multiple events to the outbox within a transaction.
    */
   async writeEvents(
-    queryRunner: QueryRunner,
+    entityManager: EntityManager,
     events: OutboxEvent[],
   ): Promise<void> {
     const outboxEvents = events.map((event) =>
@@ -76,7 +82,7 @@ export class OutboxService {
       }),
     );
 
-    await queryRunner.manager.save(outboxEvents);
+    await entityManager.save(outboxEvents);
     this.logger.debug(
       { eventCount: events.length, eventTypes: events.map((e) => e.eventType) },
       `Batch wrote ${events.length} events to outbox`,
@@ -93,6 +99,61 @@ export class OutboxService {
       order: { createdAt: 'ASC' },
       take: limit,
     });
+  }
+
+  /**
+   * Atomically claim a batch of unprocessed outbox events using
+   * SELECT FOR UPDATE SKIP LOCKED so concurrent processors do not
+   * block each other. Returns the claimed events (already locked
+   * to this transaction) or an empty array if nothing is available.
+   */
+  async publishPending(limit: number = 50): Promise<OutboxEntity[]> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    try {
+      await queryRunner.query('BEGIN');
+
+      const rows = await queryRunner.query(
+        `SELECT id, event_type, payload, processed, retry_count, last_error,
+                created_at, updated_at, processed_at
+         FROM outbox
+         WHERE processed = FALSE AND retry_count < 10
+         ORDER BY created_at ASC
+         LIMIT $1
+         FOR UPDATE SKIP LOCKED`,
+        [limit],
+      );
+
+      await queryRunner.query('COMMIT');
+
+      this.pendingEventsGauge.set(rows.length);
+
+      return rows.map((row: any) => {
+        const entity = new OutboxEntity();
+        entity.id = row.id;
+        entity.eventType = row.event_type;
+        entity.payload = row.payload;
+        entity.processed = row.processed;
+        entity.retryCount = row.retry_count;
+        entity.lastError = row.last_error;
+        entity.createdAt = row.created_at;
+        entity.updatedAt = row.updated_at;
+        entity.processedAt = row.processed_at;
+        return entity;
+      });
+    } catch (error) {
+      await queryRunner.query('ROLLBACK');
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  /**
+   * Record a publish error for Prometheus tracking.
+   */
+  recordPublishError(eventType: string): void {
+    this.publishErrorsCounter.inc({ event_type: eventType });
   }
 
   /**
@@ -132,5 +193,43 @@ export class OutboxService {
       processedAt: olderThan,
     });
     return result.affected ?? 0;
+  }
+
+  /**
+   * Move events that have exceeded max retries to the dead-letter table
+   * and delete them from the outbox.
+   */
+  async moveToDeadLetter(maxRetries: number = 10): Promise<number> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    try {
+      await queryRunner.query('BEGIN');
+
+      const moved = await queryRunner.query(
+        `INSERT INTO outbox_dead_letter
+           (original_event_id, event_type, payload, retry_count, last_error)
+         SELECT id, event_type, payload, retry_count, last_error
+         FROM outbox
+         WHERE processed = FALSE AND retry_count >= $1
+         RETURNING original_event_id`,
+        [maxRetries],
+      );
+
+      if (moved.length > 0) {
+        const ids = moved.map((r: any) => r.original_event_id);
+        await queryRunner.query(
+          `DELETE FROM outbox WHERE id = ANY($1::uuid[])`,
+          [ids],
+        );
+      }
+
+      await queryRunner.query('COMMIT');
+      return moved.length;
+    } catch (error) {
+      await queryRunner.query('ROLLBACK');
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
   }
 }
