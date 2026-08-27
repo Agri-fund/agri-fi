@@ -162,6 +162,10 @@
       "name": "Albedo",
       "type": "Web-based signer — no install needed"
     },
+    "walletConnect": {
+      "name": "WalletConnect",
+      "type": "Connect via QR code or deep link"
+    },
     "detected": "Detected",
     "install": "Install",
     "alwaysAvailable": "Always available",
@@ -170,7 +174,21 @@
     "error": "Error connecting wallet",
     "errorConnect": "Failed to connect wallet",
     "errorLink": "Failed to link wallet",
-    "pleaseTryAgain": "Please try again"
+    "pleaseTryAgain": "Please try again",
+    "onboarding": {
+      "title": "Connect your wallet",
+      "subtitle": "Choose a Stellar wallet to get started",
+      "comingSoon": "Coming soon",
+      "termsNote": "By connecting, you agree to our Terms of Service. Your keys stay in your wallet.",
+      "networkMismatch": "Network mismatch: your wallet is on {detected} but this app requires {expected}. Please switch networks in your wallet.",
+      "freighterGuide": {
+        "title": "How to install Freighter",
+        "step1": "Visit freighter.app and click Install",
+        "step2": "Add the extension to your browser",
+        "step3": "Create or import a Stellar account",
+        "cta": "Install Freighter →"
+      }
+    }
   },
   "investment": {
     "title": "Invest",
@@ -315,6 +333,71 @@
     "status": "Status",
     "reward": "Reward",
     "date": "Date"
+  },
+  "farmerProfile": {
+    "nav": {
+      "marketplace": "Marketplace"
+    },
+    "hero": {
+      "title": "Farmer from {country}",
+      "avatarAlt": "Farmer avatar from {country}",
+      "memberSince": "Member since {date}"
+    },
+    "verification": {
+      "heading": "Verification & Badges",
+      "kycLabel": "KYC status: {status}",
+      "walletConnected": "Wallet connected",
+      "dealsCount": "{count, plural, one {# deal completed} other {# deals completed}}",
+      "kyc": {
+        "verified": "KYC Verified",
+        "pending": "KYC Pending",
+        "rejected": "KYC Rejected",
+        "expired": "KYC Expired"
+      }
+    },
+    "reputation": {
+      "heading": "Reputation Score",
+      "gaugeAriaLabel": "Reputation score: {score} out of 100",
+      "tooltip": "Based on deal history & repayment",
+      "excellent": "Excellent",
+      "good": "Good",
+      "fair": "Fair",
+      "poor": "Needs improvement",
+      "creditScore": "Credit Score",
+      "onTimeRate": "On-time repayment",
+      "creditTier": {}
+    },
+    "creditTier": {
+      "excellent": "Excellent",
+      "good": "Good",
+      "fair": "Fair"
+    },
+    "activeDeals": {
+      "heading": "Active Deals",
+      "none": "No active deals at the moment.",
+      "activeDeal": "Active Deal",
+      "statusActive": "Active",
+      "viewOnMarketplace": "View on marketplace",
+      "browseLink": "Browse marketplace",
+      "cardAriaLabel": "Active deal #{number}"
+    },
+    "completedDeals": {
+      "heading": "Completed Deals",
+      "tableCaption": "List of completed trade deals",
+      "colDeal": "Deal",
+      "colStatus": "Status",
+      "colRepayment": "Repayment rate",
+      "none": "No completed deals yet.",
+      "dealLabel": "Deal #{number}",
+      "statusCompleted": "Completed"
+    },
+    "stats": {
+      "heading": "Summary",
+      "dealsCompleted": "Deals completed",
+      "activeDeals": "Active deals",
+      "memberSince": "Member since",
+      "country": "Country"
+    }
   },
   "format": {
     "currency": "{value, number, currency}",

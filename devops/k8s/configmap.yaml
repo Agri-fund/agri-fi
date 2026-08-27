@@ -8,6 +8,14 @@
 #         name: agri-fi-config
 #     - secretRef:
 #         name: agri-fi-secrets
+#
+# PgBouncer (#839):
+#   DATABASE_HOST / DATABASE_PORT now point to the PgBouncer sidecar running
+#   on localhost:6432 inside each backend pod.  The upstream Postgres service
+#   is still reachable at agri-fi-postgres:5432 — the PgBouncer sidecar uses
+#   that address to open real server connections.
+#   DATABASE_URL is provided as a convenience for any code paths that prefer a
+#   connection-string format; it also routes through PgBouncer.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -21,10 +29,22 @@ data:
   PORT: "3001"
   LOG_LEVEL: "info"
 
-  # Database connection (non-secret parts; credentials are in the Secret)
-  DATABASE_HOST: "agri-fi-postgres"
-  DATABASE_PORT: "5432"
+  # Database connection — routes through the PgBouncer sidecar (port 6432).
+  # Credentials (DATABASE_USER, DATABASE_PASSWORD) are in the Secret.
+  # NOTE: localhost resolves to 127.0.0.1 inside the pod; PgBouncer binds
+  #       to 127.0.0.1:6432.
+  DATABASE_HOST: "localhost"
+  DATABASE_PORT: "6432"
   DATABASE_NAME: "agrifi"
+  # Convenience full connection URL used by TypeORM / Prisma code paths.
+  # Credentials are interpolated at runtime from the secret — this is
+  # intentionally incomplete (no user:password) to avoid storing secrets here.
+  # If your app reads DATABASE_URL directly, append credentials via the secret.
+  DATABASE_URL: "postgresql://localhost:6432/agrifi"
+
+  # Upstream Postgres (used by PgBouncer sidecar — not consumed by the app).
+  DATABASE_UPSTREAM_HOST: "agri-fi-postgres"
+  DATABASE_UPSTREAM_PORT: "5432"
 
   # Message broker (non-secret parts; credentials are in the Secret)
   RABBITMQ_HOST: "agri-fi-rabbitmq"

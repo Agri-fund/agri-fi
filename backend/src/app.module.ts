@@ -33,6 +33,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { APP_FILTER } from '@nestjs/core';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { AuditModule } from './audit/audit.module';
+import { GraphQLApiModule } from './graphql/graphql.module';
 
 import { AchievementModule } from './achievements/achievement.module';
 import { EmailSequenceModule } from './email-sequence/email-sequence.module';
@@ -99,6 +100,7 @@ import { UpgradeModule } from './upgrade/upgrade.module';
     MetricsModule,
     AuditModule,
     AchievementModule,
+    GraphQLApiModule,
     EmailSequenceModule,
     ArchivalModule,
     SettlementModule,
