@@ -15,7 +15,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import * as argon2 from 'argon2';
-import { randomBytes, createHash } from 'crypto';
+import { randomBytes, createHash, randomUUID } from 'crypto';
 import crypto from 'crypto';
 import {
   Keypair,
@@ -248,10 +248,30 @@ export class AuthService {
     return this.configService.get<string>('JWT_REFRESH_EXPIRES_IN', '7d');
   }
 
-  private issueTokenPair(user: User): {
-    accessToken: string;
-    refreshToken: string;
-  } {
+  /** Parses a JWT-style duration ('15m', '7d', '3600s', or a bare number of seconds). */
+  private durationToSeconds(value: string): number {
+    const match = /^(\d+)\s*(s|m|h|d)?$/i.exec(value.trim());
+    if (!match) return 0;
+    const amount = parseInt(match[1], 10);
+    const unit = (match[2] ?? 's').toLowerCase();
+    const multipliers: Record<string, number> = {
+      s: 1,
+      m: 60,
+      h: 3600,
+      d: 86400,
+    };
+    return amount * multipliers[unit];
+  }
+
+  /**
+   * Issues a fresh access/refresh token pair. Every refresh token gets a new
+   * unique jti; `familyId` is preserved across a rotation chain (or started
+   * fresh on login) so replay of a rotated-out token can be detected (#786).
+   */
+  private issueTokenPair(
+    user: User,
+    familyId: string = randomUUID(),
+  ): { accessToken: string; refreshToken: string } {
     const base: JwtPayload = {
       sub: user.id,
       email: user.email,
@@ -265,7 +285,8 @@ export class AuthService {
         { expiresIn: this.accessTokenExpiresIn() },
       ),
       refreshToken: this.jwtService.sign(
-        { ...base, typ: 'refresh' },
+        { ...base, typ: 'refresh', jti: randomUUID(), familyId },
+        // Sliding expiry: every rotation is granted a full fresh TTL.
         { expiresIn: this.refreshTokenExpiresIn() },
       ),
     };
@@ -566,7 +587,45 @@ export class AuthService {
       throw new UnauthorizedException('Token no longer valid.');
     }
 
-    return this.issueTokenPair(user);
+    const { jti, familyId } = payload;
+
+    if (
+      familyId &&
+      (await this.tokenBlocklistService.isTokenFamilyRevoked(familyId))
+    ) {
+      throw new UnauthorizedException('Token no longer valid.');
+    }
+
+    if (jti) {
+      const alreadyRotated =
+        await this.tokenBlocklistService.isRefreshTokenRotated(jti);
+
+      if (alreadyRotated) {
+        // A refresh token that was already rotated out is being replayed —
+        // the token family may be compromised. Shut it down and force the
+        // user to re-authenticate on every device (#786).
+        if (familyId) {
+          await this.tokenBlocklistService.revokeTokenFamily(
+            familyId,
+            this.durationToSeconds(this.refreshTokenExpiresIn()),
+          );
+        }
+        user.tokenVersion = (user.tokenVersion ?? 0) + 1;
+        await this.userRepo.save(user);
+        throw new UnauthorizedException(
+          'Refresh token reuse detected. All sessions have been revoked.',
+        );
+      }
+
+      const remainingSeconds =
+        (payload.exp ?? 0) - Math.floor(Date.now() / 1000);
+      await this.tokenBlocklistService.markRefreshTokenRotated(
+        jti,
+        Math.max(remainingSeconds, 1),
+      );
+    }
+
+    return this.issueTokenPair(user, familyId);
   }
 
   // ── logout & token revocation ──────────────────────────────────────────────

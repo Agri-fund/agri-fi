@@ -365,4 +365,90 @@ describe('AuthService', () => {
       });
     });
   });
+
+  describe('refresh', () => {
+    let tokenBlocklistService: {
+      isTokenFamilyRevoked: jest.Mock;
+      isRefreshTokenRotated: jest.Mock;
+      markRefreshTokenRotated: jest.Mock;
+      revokeTokenFamily: jest.Mock;
+    };
+
+    const basePayload = {
+      sub: 'uuid-1',
+      email: 'farmer@example.com',
+      role: 'farmer',
+      tokenVersion: 0,
+      typ: 'refresh' as const,
+      jti: 'jti-1',
+      familyId: 'family-1',
+      exp: Math.floor(Date.now() / 1000) + 3600,
+    };
+
+    beforeEach(() => {
+      tokenBlocklistService = {
+        isTokenFamilyRevoked: jest.fn().mockResolvedValue(false),
+        isRefreshTokenRotated: jest.fn().mockResolvedValue(false),
+        markRefreshTokenRotated: jest.fn().mockResolvedValue(undefined),
+        revokeTokenFamily: jest.fn().mockResolvedValue(undefined),
+      };
+      (service as any).tokenBlocklistService = tokenBlocklistService;
+      jwtService.verify = jest.fn().mockReturnValue(basePayload);
+      // Mimic ConfigService's real fallback-to-default behavior.
+      configService.get.mockImplementation((_key: string, def?: unknown) => def);
+    });
+
+    it('rotates the refresh token: marks the old jti used and keeps the family id', async () => {
+      userRepo.findOne.mockResolvedValue(mockUser());
+
+      await service.refresh('old-refresh-token');
+
+      expect(tokenBlocklistService.isRefreshTokenRotated).toHaveBeenCalledWith(
+        'jti-1',
+      );
+      expect(tokenBlocklistService.markRefreshTokenRotated).toHaveBeenCalledWith(
+        'jti-1',
+        expect.any(Number),
+      );
+      expect(jwtService.sign).toHaveBeenCalledWith(
+        expect.objectContaining({ typ: 'refresh', familyId: 'family-1' }),
+        expect.objectContaining({ expiresIn: '7d' }),
+      );
+    });
+
+    it('detects replay of an already-rotated token, revokes the family, and bumps tokenVersion', async () => {
+      const user = mockUser();
+      userRepo.findOne.mockResolvedValue(user);
+      tokenBlocklistService.isRefreshTokenRotated.mockResolvedValue(true);
+
+      await expect(service.refresh('replayed-refresh-token')).rejects.toThrow(
+        'Refresh token reuse detected',
+      );
+
+      expect(tokenBlocklistService.revokeTokenFamily).toHaveBeenCalledWith(
+        'family-1',
+        expect.any(Number),
+      );
+      expect(userRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ tokenVersion: 1 }),
+      );
+    });
+
+    it('rejects refresh when the token family has been revoked', async () => {
+      userRepo.findOne.mockResolvedValue(mockUser());
+      tokenBlocklistService.isTokenFamilyRevoked.mockResolvedValue(true);
+
+      await expect(service.refresh('revoked-family-token')).rejects.toThrow(
+        'Token no longer valid',
+      );
+    });
+
+    it('rejects refresh when tokenVersion no longer matches (e.g. after logout)', async () => {
+      userRepo.findOne.mockResolvedValue({ ...mockUser(), tokenVersion: 1 });
+
+      await expect(service.refresh('stale-refresh-token')).rejects.toThrow(
+        'Token no longer valid',
+      );
+    });
+  });
 });
