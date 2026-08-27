@@ -7,6 +7,7 @@ import { makeGaugeProvider } from '@willsoto/nestjs-prometheus';
 import { TradeDealsController } from './trade-deals.controller';
 import { TradeDealsService } from './trade-deals.service';
 import { DealCoFarmersService } from './deal-co-farmers.service';
+import { DealDeploymentService } from './deal-deployment.service';
 import { TradeDeal } from './entities/trade-deal.entity';
 import { DealCoFarmer } from './entities/deal-co-farmer.entity';
 import { Document } from './entities/document.entity';
@@ -25,7 +26,7 @@ import { DealHealthMonitorService } from './deal-health-monitor.service';
 import { ActivityFeedService } from './activity-feed.service';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { AuditModule } from '../audit/audit.module';
-import { SystemAuditLog } from '../audit/entities/system-audit-log.entity';
+import { SorobanModule } from '../soroban/soroban.module';
 import { redisCacheStore } from '../config/redis-cache.store';
 
 /**
@@ -50,6 +51,7 @@ const DEALS_CACHE_TTL_MS = 30_000;
     QueueModule,
     NotificationsModule,
     AuditModule,
+    SorobanModule,
     HttpModule,
     /**
      * #743 — Cache active deals list in Redis.
@@ -86,6 +88,7 @@ const DEALS_CACHE_TTL_MS = 30_000;
   providers: [
     TradeDealsService,
     DealCoFarmersService,
+    DealDeploymentService,
     TradeDealsGuard,
     TradeDealsCronService,
     DealFundingAlertService,

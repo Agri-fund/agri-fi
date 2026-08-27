@@ -153,15 +153,15 @@ export default function FundingProgressBar({
   const animationDuration = prefersReduced ? 0 : 0.8;
 
   return (
-    <div className="w-full space-y-1.5 relative" dir="auto">
+    <div className="relative w-full min-w-0 space-y-1.5" dir="auto">
       {showConfetti && <ConfettiBurst />}
-      <div className="flex justify-between text-xs font-medium">
-        <span className="text-slate-500">
+      <div className="flex flex-wrap justify-between gap-2 text-xs font-medium">
+        <span className="min-w-0 text-slate-500">
           {t('raised', {
             amount: formatCurrency(liveTotal, currency),
           })}
         </span>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           {pct >= 100 && (
             <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200/60">
               Fully Funded
@@ -206,7 +206,7 @@ export default function FundingProgressBar({
               >
                 {m}%
               </span>
-              <div className="absolute top-4 left-1/2 -translate-x-1/2 hidden group-hover:block z-10">
+              <div className="absolute top-4 left-1/2 z-10 hidden max-w-[calc(100vw-2rem)] -translate-x-1/2 group-hover:block">
                 <div className="bg-slate-800 text-white text-[10px] rounded px-2 py-1 whitespace-nowrap shadow-lg">
                   {formatCurrency((totalValue * m) / 100, currency)}
                 </div>

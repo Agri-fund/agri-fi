@@ -8,6 +8,7 @@ import { StorageService } from '../storage/storage.service';
 import { StorageModule } from '../storage/storage.module';
 import { StellarService } from '../stellar/stellar.service';
 import { TradeDealsService } from '../trade-deals/trade-deals.service';
+import { SettlementService } from '../settlement/settlement.service';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'crypto';
 import { buildDocumentMemo } from '../stellar/anchor-memo';
@@ -29,6 +30,7 @@ export class DocumentsService {
     private readonly lazyModuleLoader: LazyModuleLoader,
     private readonly stellarService: StellarService,
     private readonly tradeDealsService: TradeDealsService,
+    private readonly settlementService: SettlementService,
     private readonly config: ConfigService,
   ) {}
 
@@ -115,6 +117,20 @@ export class DocumentsService {
       ...doc,
       verificationUrl: this.stellarService.getVerificationUrl(stellarTxId),
     };
+  }
+
+  /**
+   * Hook invoked when an admin approves a document (#899).
+   * Triggers on-chain campaign settlement for verified harvest documents.
+   */
+  async onDocumentApproved(document: {
+    id: string;
+    tradeDealId: string;
+    docType: string;
+    signatureVerified: boolean;
+    metadata?: Record<string, unknown>;
+  }) {
+    return this.settlementService.onDocumentApproved(document as any);
   }
 
   /** Inspects the file buffer's magic number and rejects it if the actual

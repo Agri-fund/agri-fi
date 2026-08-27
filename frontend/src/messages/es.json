@@ -355,38 +355,5 @@
     "currency": "{value, number, currency}",
     "date": "{value, date, short}",
     "number": "{value, number}"
-  },
-  "tour": {
-    "welcome": {
-      "title": "Bienvenido a Agri-Fi",
-      "text": "Este recorrido rápido te presentará las características principales de la plataforma. Puedes reiniciar este recorrido en cualquier momento desde Configuración."
-    },
-    "browseDeals": {
-      "title": "Explorar Acuerdos",
-      "text": "Encuentra oportunidades de inversión en acuerdos comerciales agrícolas. Filtra por mercancía, estado y más."
-    },
-    "connectWallet": {
-      "title": "Conecta tu Billetera",
-      "text": "Conecta tu billetera Stellar para invertir en acuerdos y rastrear tu portafolio en la blockchain."
-    },
-    "portfolioStats": {
-      "title": "Estadísticas del Portafolio",
-      "text": "Rastrea tus inversiones, rendimientos y el rendimiento de los acuerdos de un vistazo."
-    },
-    "notificationBell": {
-      "title": "Mantente Informado",
-      "text": "Recibe notificaciones en tiempo real sobre tus acuerdos, inversiones y actualizaciones de la plataforma."
-    },
-    "complete": {
-      "title": "¡Estás Listo!",
-      "text": "Estás listo para explorar Agri-Fi. ¡Feliz inversión!"
-    },
-    "buttons": {
-      "next": "Siguiente",
-      "back": "Atrás",
-      "skip": "Saltar Recorrido",
-      "finish": "Comenzar"
-    },
-    "restart": "Reiniciar Recorrido"
   }
 }

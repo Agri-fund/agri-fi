@@ -37,6 +37,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { OptionalJwtGuard } from '../auth/optional-jwt.guard';
 import { CreateTradeDealDto } from './dto/create-trade-deal.dto';
 import { DealCoFarmersService } from './deal-co-farmers.service';
+import { DealDeploymentService } from './deal-deployment.service';
 import {
   AcceptCoFarmerInvitationDto,
   InviteCoFarmerDto,
@@ -57,7 +58,7 @@ export class TradeDealsController {
   constructor(
     private readonly tradeDealsService: TradeDealsService,
     private readonly dealCoFarmersService: DealCoFarmersService,
-    private readonly activityFeedService: ActivityFeedService,
+    private readonly dealDeploymentService: DealDeploymentService,
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
   ) {}
 
@@ -114,6 +115,34 @@ export class TradeDealsController {
     await this.dealCoFarmersService.assertAllCoFarmersVerified(id);
 
     const deal = await this.tradeDealsService.publishDeal(id, req.user.id);
+    await this.cacheManager.stores[0].reset();
+    return deal;
+  }
+
+  // ── Admin approval + on-chain deployment (#830) ────────────────────────────
+
+  @Post(':id/approve')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('admin')
+  @HttpCode(200)
+  @ApiBearerAuth('jwt')
+  @ApiOperation({
+    summary:
+      'Approve a draft deal and deploy its FarmCampaign contract via ProjectFactory (admin only)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Deal approved; campaign contract deployed and deal is open',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Admin role required' })
+  @ApiResponse({ status: 404, description: 'Trade deal not found' })
+  @ApiResponse({ status: 422, description: 'Deal not in draft or deployment failed' })
+  async approveDeal(
+    @Param('id') id: string,
+    @Request() req: AuthRequest,
+  ): Promise<TradeDeal> {
+    const deal = await this.dealDeploymentService.approveDeal(id, req.user.id);
     await this.cacheManager.stores[0].reset();
     return deal;
   }
@@ -216,18 +245,38 @@ export class TradeDealsController {
   @CacheTTL(30000)
   @ApiOperation({ summary: 'List open trade deals (marketplace)' })
   @ApiQuery({ name: 'commodity', required: false, example: 'Cocoa' })
+  @ApiQuery({ name: 'country', required: false, example: 'Nigeria' })
+  @ApiQuery({ name: 'region', required: false, example: 'Ashanti' })
+  @ApiQuery({ name: 'minAmount', required: false, example: 250 })
+  @ApiQuery({ name: 'maxAmount', required: false, example: 5000 })
+  @ApiQuery({ name: 'minRoi', required: false, example: 10 })
+  @ApiQuery({ name: 'maxRoi', required: false, example: 50 })
+  @ApiQuery({ name: 'duration', required: false, example: '3-6 months' })
+  @ApiQuery({ name: 'riskRating', required: false, example: 'Medium' })
+  @ApiQuery({ name: 'status', required: false, example: 'almost funded' })
+  @ApiQuery({ name: 'sortBy', required: false, example: 'newest' })
+  @ApiQuery({ name: 'q', required: false, example: 'cocoa cooperative' })
   @ApiQuery({ name: 'page', required: false, example: 1 })
   @ApiQuery({ name: 'limit', required: false, example: 12 })
   @ApiResponse({ status: 200, description: 'Paginated list of open deals' })
   async findOpen(
-    @Query('commodity') commodity?: string,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
+    @Query() query: Record<string, string | undefined> = {},
   ): Promise<{ data: any[]; total: number; page: number; limit: number }> {
     return this.tradeDealsService.findOpen({
-      commodity,
-      page: page ? parseInt(page, 10) : undefined,
-      limit: limit ? parseInt(limit, 10) : undefined,
+      commodity: query.commodity,
+      country: query.country,
+      region: query.region,
+      minAmount: query.minAmount ? Number(query.minAmount) : undefined,
+      maxAmount: query.maxAmount ? Number(query.maxAmount) : undefined,
+      minRoi: query.minRoi ? Number(query.minRoi) : undefined,
+      maxRoi: query.maxRoi ? Number(query.maxRoi) : undefined,
+      duration: query.duration as any,
+      riskRating: query.riskRating as any,
+      status: query.status as any,
+      sortBy: query.sortBy as any,
+      q: query.q,
+      page: query.page ? parseInt(query.page, 10) : undefined,
+      limit: query.limit ? parseInt(query.limit, 10) : undefined,
     });
   }
 

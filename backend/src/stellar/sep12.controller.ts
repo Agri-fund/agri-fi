@@ -7,11 +7,13 @@ import {
   HttpCode,
   HttpStatus,
   Req,
+  Param,
 } from '@nestjs/common';
 import {
   ApiTags,
   ApiOperation,
   ApiBody,
+  ApiParam,
   ApiResponse,
   ApiBearerAuth,
 } from '@nestjs/swagger';
@@ -47,6 +49,7 @@ export class Sep12Controller {
         id_type: { type: 'string' },
         id_number: { type: 'string' },
         id_country_code: { type: 'string' },
+        birth_date: { type: 'string', example: '1990-05-20' },
       },
     },
   })
@@ -69,5 +72,24 @@ export class Sep12Controller {
   async getCustomer(@Req() req: Request): Promise<Sep12CustomerResponse> {
     const caller = req.user as User;
     return this.sep12Service.getCustomer(caller.id);
+  }
+
+  @Get('customer/:id')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Get a SEP-12 customer by id (admins only; other roles may view themselves)',
+  })
+  @ApiParam({ name: 'id', description: 'Customer (user) UUID' })
+  @ApiResponse({ status: 200, description: 'SEP-12 compliant customer record' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Not allowed to view this customer' })
+  @ApiResponse({ status: 404, description: 'Customer not found' })
+  async getCustomerById(
+    @Param('id') id: string,
+    @Req() req: Request,
+  ): Promise<Sep12CustomerResponse> {
+    const caller = req.user as User;
+    return this.sep12Service.getCustomerById(caller, id);
   }
 }

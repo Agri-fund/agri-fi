@@ -65,7 +65,10 @@ export interface Milestone {
 
 export interface Deal {
   id: string;
+  title?: string | null;
   commodity: string;
+  country?: string | null;
+  region?: string | null;
   quantity: number;
   quantity_unit: string;
   total_value: number;
@@ -79,6 +82,14 @@ export interface Deal {
   delivery_date: string;
   annual_roi?: number;
   term_days?: number;
+  expected_roi?: number | null;
+  duration_days?: number | null;
+  min_investment_lot?: number | null;
+  risk_rating?: "Low" | "Medium" | "High" | null;
+  short_description?: string | null;
+  long_description?: string | null;
+  farm_location?: string | null;
+  funding_status?: "open" | "almost funded" | "fully funded";
   created_at: string;
   documents?: Document[];
   milestones?: Milestone[];
@@ -181,7 +192,10 @@ function normalizeInvestment(investment: any): Investment {
 function normalizeDeal(raw: any): Deal {
   return {
     id: raw.id,
+    title: raw.title ?? null,
     commodity: raw.commodity,
+    country: raw.country ?? null,
+    region: raw.region ?? null,
     quantity: Number(raw.quantity ?? 0),
     quantity_unit: raw.quantity_unit ?? raw.quantityUnit ?? "units",
     total_value: Number(raw.total_value ?? raw.totalValue ?? 0),
@@ -344,8 +358,14 @@ export const apiClient = {
 
   // POST /auth/kyc
   async submitKyc(data: {
+    fullName?: string;
+    dateOfBirth?: string;
+    nationality?: string;
+    address?: string;
     governmentIdUrl?: string;
+    identityDocumentBackUrl?: string;
     proofOfAddressUrl?: string;
+    selfieUrl?: string;
     isCorporate?: boolean;
     companyName?: string;
     registrationNumber?: string;
