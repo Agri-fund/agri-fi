@@ -3,7 +3,7 @@ import { CreateDealForm } from '../deals/CreateDealForm';
 import '@testing-library/jest-dom';
 
 // Mock fetch
-global.fetch = jest.fn();
+global.fetch = vi.fn();
 
 describe('CreateDealForm Validation', () => {
   beforeEach(() => {

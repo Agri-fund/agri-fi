@@ -7,6 +7,7 @@ import { getOpenDeals, Deal } from '@/lib/api';
 import MarketplaceSkeleton from '@/components/marketplace/MarketplaceSkeleton';
 import Pagination from '@/components/ui/Pagination';
 import DealCard from '@/components/marketplace/DealCard';
+import DealComparison from '@/components/marketplace/DealComparison';
 
 const LIMIT = 12;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -38,6 +39,7 @@ function MarketplaceContent() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [comparisonDeals, setComparisonDeals] = useState<Deal[]>([]);
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
@@ -89,12 +91,10 @@ function MarketplaceContent() {
       })
       .catch(() => setDeals([]))
       .finally(() => setLoading(false));
-  }, [urlPage, urlSortBy, urlSortOrder]);
-
     return () => {
       active = false;
     };
-  }, [filters, page]);
+  }, [urlPage, urlSortBy, urlSortOrder]);
 
   const totalPages = Math.max(1, Math.ceil(total / LIMIT));
 
@@ -136,6 +136,15 @@ function MarketplaceContent() {
         : [...current.commodity, commodity],
     }));
     setPage(1);
+  };
+
+  const toggleComparison = (deal: Deal) => {
+    setComparisonDeals((current) => {
+      if (current.some((item) => item.id === deal.id)) {
+        return current.filter((item) => item.id !== deal.id);
+      }
+      return current.length < 3 ? [...current, deal] : current;
+    });
   };
 
   const handleSortChange = (sortBy: string) => {
@@ -351,7 +360,12 @@ function MarketplaceContent() {
             ) : (
               <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-5">
                 {deals.map((deal) => (
-                  <DealCard key={deal.id} deal={deal} query={filters.q} />
+                  <DealCard
+                    key={deal.id}
+                    deal={deal}
+                    selected={comparisonDeals.some((item) => item.id === deal.id)}
+                    onToggleCompare={() => toggleComparison(deal)}
+                  />
                 ))}
               </div>
             )}
@@ -359,6 +373,11 @@ function MarketplaceContent() {
             <Pagination page={page} totalPages={totalPages} onChange={setPage} />
           </main>
         </div>
+        <DealComparison
+          deals={comparisonDeals}
+          onRemove={(dealId) => setComparisonDeals((current) => current.filter((deal) => deal.id !== dealId))}
+          onClear={() => setComparisonDeals([])}
+        />
       </div>
     </div>
   );

@@ -23,7 +23,7 @@ const mockMilestones = [
 
 // Mock localStorage
 const mockLocalStorage = {
-  getItem: jest.fn(() => 'mock-auth-token'),
+  getItem: vi.fn(() => 'mock-auth-token'),
 };
 Object.defineProperty(window, 'localStorage', {
   value: mockLocalStorage,
