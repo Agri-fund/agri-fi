@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { apiClient, User } from "@/lib/api";
 import DashboardLayout from "@/components/DashboardLayout";
 import { resetTour, isTourCompletedStatic } from "@/components/DashboardTour";
+import BrowserPushNotificationsCard from "@/components/BrowserPushNotificationsCard";
 
 type Tab = "account" | "verification" | "wallets" | "currency" | "notifications";
 
@@ -564,6 +565,8 @@ export default function SettingsPage() {
               Choose how you receive notifications for each category. Toggle
               individual channels on or off.
             </p>
+
+            <BrowserPushNotificationsCard />
 
             {notifPrefs.length === 0 && (
               <p className="text-sm text-slate-400">Loading preferences…</p>

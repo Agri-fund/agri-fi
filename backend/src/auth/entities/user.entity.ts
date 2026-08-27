@@ -39,6 +39,9 @@ export class User {
   })
   email: string;
 
+  @Column({ name: 'google_subject', unique: true, nullable: true })
+  googleSubject: string | null;
+
   @Exclude()
   @Column({ name: 'password_hash' })
   passwordHash: string;

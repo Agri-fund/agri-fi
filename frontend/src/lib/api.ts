@@ -204,6 +204,7 @@ async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
     : `${API_VERSION}${path}`;
   const res = await fetch(`${API_BASE}${versionedPath}`, {
     ...init,
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       ...authHeaders(),

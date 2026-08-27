@@ -40,8 +40,6 @@ export default function FarmerDashboard() {
   const { toast } = useToast();
   const [user, setUser] = useState<User | null>(null);
 
-  // Request push notification permission once the user is authenticated
-  usePushNotifications(!!user);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);

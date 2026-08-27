@@ -169,6 +169,18 @@ export class TradeDeal {
   })
   deliveryDate: Date;
 
+  @Column({ name: 'funding_deadline', type: 'timestamptz', nullable: true })
+  fundingDeadline?: Date | null;
+
+  @Column({
+    name: 'minimum_funding_target',
+    type: 'decimal',
+    precision: 36,
+    scale: 7,
+    nullable: true,
+  })
+  minimumFundingTarget?: number | null;
+
   @Column({ name: 'stellar_asset_tx_id', nullable: true })
   @ApiProperty({
     description: 'Stellar transaction ID for token issuance',

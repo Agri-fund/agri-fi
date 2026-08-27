@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Optional,
   NotFoundException,
   BadRequestException,
   UnprocessableEntityException,
@@ -20,6 +21,7 @@ import {
 import { StellarService } from '../stellar/stellar.service';
 import { QueueService } from '../queue/queue.service';
 import { RiskScoringService } from './risk-scoring.service';
+import { SorobanService } from '../soroban/soroban.service';
 
 const VALID_DOC_TYPES: DocumentType[] = [
   'purchase_agreement',
@@ -57,6 +59,7 @@ export class TradeDealsService {
     private readonly stellarService: StellarService,
     private readonly queueService: QueueService,
     private readonly riskScoringService: RiskScoringService,
+    @Optional() private readonly sorobanService?: SorobanService,
     private readonly logger: PinoLogger,
     private readonly dataSource: DataSource,
   ) {
@@ -115,6 +118,8 @@ export class TradeDealsService {
       traderId: effectiveTraderId,
       totalInvested: 0,
       deliveryDate: new Date(dto.delivery_date),
+      fundingDeadline: new Date(dto.funding_deadline ?? dto.delivery_date),
+      minimumFundingTarget: dto.minimum_funding_target ?? dto.total_value,
       minLotSize: dto.min_lot_size ?? 1,
       lotStep: dto.lot_step ?? 1,
       escrowPublicKey: null,
@@ -535,6 +540,13 @@ export class TradeDealsService {
       });
     }
 
+    if (Number(deal.totalInvested) >= Number(deal.totalValue)) {
+      throw new UnprocessableEntityException({
+        code: 'DEAL_FUNDED',
+        message: 'Cannot expire a deal that has already reached its funding target.',
+      });
+    }
+
     const confirmedInvestments =
       deal.investments?.filter(
         (inv) => inv.status === InvestmentStatus.CONFIRMED,
@@ -617,6 +629,85 @@ export class TradeDealsService {
     });
 
     return saved;
+  }
+
+  async closeUnderfundedDeal(dealId: string): Promise<TradeDeal> {
+    const deal = await this.tradeDealRepo.findOne({
+      where: { id: dealId },
+      relations: ['investments', 'investments.investor'],
+    });
+
+    if (!deal) throw new NotFoundException('Trade deal not found.');
+    if (deal.status !== 'open') {
+      throw new UnprocessableEntityException({
+        code: 'DEAL_NOT_OPEN',
+        message: `Cannot close a deal in "${deal.status}" status.`,
+      });
+    }
+
+    const minimumTarget = Number(deal.minimumFundingTarget ?? deal.totalValue);
+    if (Number(deal.totalInvested) >= minimumTarget) {
+      throw new UnprocessableEntityException({
+        code: 'FUNDING_TARGET_REACHED',
+        message: 'Cannot close a deal that reached its minimum funding target.',
+      });
+    }
+
+    const confirmedInvestments = (deal.investments ?? []).filter(
+      (investment) => investment.status === InvestmentStatus.CONFIRMED,
+    );
+
+    if (deal.sorobanCampaignContractId && this.sorobanService) {
+      await this.sorobanService.markCampaignFailed(
+        deal.sorobanCampaignContractId,
+      );
+      for (const investment of confirmedInvestments) {
+        const walletAddress = investment.investor?.walletAddress;
+        if (!walletAddress) {
+          throw new UnprocessableEntityException({
+            code: 'INVESTOR_WALLET_REQUIRED',
+            message: `Investment ${investment.id} has no wallet address for refund.`,
+          });
+        }
+        await this.sorobanService.refundCampaignInvestor(
+          deal.sorobanCampaignContractId,
+          walletAddress,
+        );
+      }
+    } else {
+      await this.refundConfirmedInvestmentsWithClawback(deal, confirmedInvestments);
+    }
+
+    if (confirmedInvestments.length > 0) {
+      await this.investmentRepo.update(
+        confirmedInvestments.map((investment) => investment.id),
+        { status: InvestmentStatus.REFUNDED },
+      );
+    }
+    deal.status = 'expired';
+    deal.appTraceId = `app-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 10)}`;
+    return this.tradeDealRepo.save(deal);
+  }
+
+  private async refundConfirmedInvestmentsWithClawback(
+    deal: TradeDeal,
+    confirmedInvestments: Investment[],
+  ): Promise<void> {
+    if (!deal.issuerPublicKey || !deal.issuerSecretKey || !deal.stellarAssetTxId) return;
+    const shares = confirmedInvestments
+      .filter((investment) => investment.investor?.walletAddress)
+      .map((investment) => ({
+        walletAddress: investment.investor!.walletAddress as string,
+        tokenAmount: Number(investment.tokenAmount),
+      }));
+    if (shares.length === 0) return;
+    const issuerSecret = await this.stellarService.decryptSecret(deal.issuerSecretKey);
+    await this.stellarService.clawbackTokens(
+      deal.tokenSymbol,
+      deal.issuerPublicKey,
+      issuerSecret,
+      shares,
+    );
   }
 
   async findByUser(userId: string, role: string): Promise<any[]> {

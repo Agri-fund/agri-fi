@@ -23,6 +23,14 @@ export default function LoginPage() {
 
   // Redirect already-logged-in users, clear stale data if role is missing
   useEffect(() => {
+    const oauthSuccess = new URLSearchParams(window.location.search).get('oauth') === 'success';
+    if (oauthSuccess) {
+      apiClient.getMe()
+        .then(profile => router.replace(`/dashboard/${profile.role}`))
+        .catch(() => setError('Google sign-in could not be completed. Please try again.'));
+      return;
+    }
+
     const user = apiClient.getCurrentUser();
     if (!user) return;
     if (user.role) {
@@ -162,6 +170,19 @@ export default function LoginPage() {
                 ) : 'Sign in →'}
               </button>
             </form>
+
+            <div className="relative my-6">
+              <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-200" /></div>
+              <div className="relative flex justify-center"><span className="bg-white px-3 text-xs text-slate-400">or</span></div>
+            </div>
+
+            <a
+              href="http://localhost:3001/v1/auth/google"
+              className="w-full py-3 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
+            >
+              <span className="font-bold text-base">G</span>
+              Continue with Google
+            </a>
 
             {/* Demo accounts */}
             <div className="mt-7 pt-6 border-t border-slate-100">

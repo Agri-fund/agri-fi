@@ -28,6 +28,7 @@ import { SecurityThreatService } from './security-threat.service';
 import { MfaGuard } from './guards/mfa.guard';
 import { EscrowModule } from '../escrow/escrow.module';
 import { EmailSequenceModule } from '../email-sequence/email-sequence.module';
+import { GoogleStrategy } from './google.strategy';
 
 @Module({
   imports: [
@@ -58,6 +59,7 @@ import { EmailSequenceModule } from '../email-sequence/email-sequence.module';
   providers: [
     AuthService,
     JwtStrategy,
+    GoogleStrategy,
     KycGuard,
     RolesGuard,
     MfaGuard,

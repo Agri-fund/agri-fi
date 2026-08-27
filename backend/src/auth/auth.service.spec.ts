@@ -13,6 +13,7 @@ const mockUser = (): User => ({
   id: 'uuid-1',
   email: 'farmer@example.com',
   passwordHash: '',
+  googleSubject: null,
   role: 'farmer',
   country: 'NG',
   kycStatus: 'pending',
@@ -84,6 +85,57 @@ describe('AuthService', () => {
       expect(result.kycStatus).toBe('pending');
       expect(result.email).toBe('farmer@example.com');
       expect(result).not.toHaveProperty('passwordHash');
+    });
+  });
+
+  describe('loginWithGoogle', () => {
+    it('links Google to an existing investor account', async () => {
+      const user = { ...mockUser(), role: 'investor' as const, googleSubject: null };
+      userRepo.findOne.mockResolvedValueOnce(null).mockResolvedValueOnce(user);
+      userRepo.save.mockResolvedValue(user);
+
+      await service.loginWithGoogle({
+        subject: 'google-subject',
+        email: user.email,
+        emailVerified: true,
+      });
+
+      expect(user.googleSubject).toBe('google-subject');
+      expect(userRepo.save).toHaveBeenCalledWith(user);
+    });
+
+    it('creates a verified investor account when no email exists', async () => {
+      const user = { ...mockUser(), role: 'investor' as const };
+      userRepo.findOne.mockResolvedValue(null);
+      userRepo.create.mockReturnValue(user);
+      userRepo.save.mockResolvedValue(user);
+
+      await service.loginWithGoogle({
+        subject: 'new-google-subject',
+        email: 'investor@example.com',
+        emailVerified: true,
+      });
+
+      expect(userRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          email: 'investor@example.com',
+          googleSubject: 'new-google-subject',
+          role: 'investor',
+          isEmailVerified: true,
+        }),
+      );
+    });
+
+    it('rejects an existing non-investor account', async () => {
+      userRepo.findOne.mockResolvedValue({ ...mockUser(), role: 'farmer' });
+
+      await expect(
+        service.loginWithGoogle({
+          subject: 'google-subject',
+          email: 'farmer@example.com',
+          emailVerified: true,
+        }),
+      ).rejects.toThrow('investor accounts only');
     });
   });
 
