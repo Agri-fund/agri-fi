@@ -156,35 +156,15 @@ export class UsersController {
     res.json(userData);
   }
 
-  @Get('me/onboarding-progress')
-  @ApiOperation({ summary: "Get the authenticated farmer's onboarding checklist state" })
-  @ApiResponse({
-    status: 200,
-    description: 'Current onboarding progress',
-  })
+  @Get('admin/gdpr-erasure-queue')
+  @ApiOperation({ summary: 'View pending GDPR erasure queue (Admin only)' })
+  @ApiResponse({ status: 200, description: 'List of users pending GDPR erasure' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({ status: 403, description: 'Only farmers can access this endpoint' })
-  @UseGuards(RolesGuard)
-  @Roles('farmer')
-  async getOnboardingProgress(@Request() req: AuthRequest) {
-    return this.usersService.getOnboardingProgress(req.user.id);
-  }
-
-  @Patch('me/onboarding-progress')
-  @ApiOperation({ summary: "Update the authenticated farmer's onboarding checklist state" })
-  @ApiResponse({
-    status: 200,
-    description: 'Updated onboarding progress',
-  })
-  @ApiResponse({ status: 400, description: 'Validation error' })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({ status: 403, description: 'Only farmers can access this endpoint' })
-  @UseGuards(RolesGuard)
-  @Roles('farmer')
-  async updateOnboardingProgress(
-    @Request() req: AuthRequest,
-    @Body() dto: UpdateOnboardingProgressDto,
-  ) {
-    return this.usersService.updateOnboardingProgress(req.user.id, dto);
+  @ApiResponse({ status: 403, description: 'Forbidden - Admin access required' })
+  async getPendingErasureQueue(@Request() req: AuthRequest) {
+    if (req.user.role !== 'admin') {
+      throw new ForbiddenException('Admin access required');
+    }
+    return this.usersService.getPendingErasureQueue();
   }
 }

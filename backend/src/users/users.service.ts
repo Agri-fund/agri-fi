@@ -99,12 +99,15 @@ export class UsersService {
 
   async deleteAccount(userId: string): Promise<void> {
     await this.dataSource.transaction(async (manager) => {
-      const user = await manager.findOne(User, { where: { id: userId } });
+      const user = await manager.findOne(User, { where: { id: userId }, withDeleted: true });
       if (!user) {
         throw new NotFoundException('User not found.');
       }
 
-      // Anonymize user PII
+      const now = new Date();
+      const dueAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // 30-day grace period
+
+      // Anonymize user PII immediately while preserving financial records with anonymized user ref
       const anonymizedUser = manager.create(User, {
         id: user.id,
         email: `deleted-${generateRandomString(16)}@example.com`,
@@ -114,8 +117,13 @@ export class UsersService {
         fullName: null,
         birthdate: null,
         taxId: null,
+        phone: null,
+        physicalAddress: null,
         isEmailVerified: false,
         emailVerificationToken: null,
+        gdprErasureRequestedAt: now,
+        gdprErasureDueAt: dueAt,
+        gdprStatus: 'pending_erasure',
         companyDetails: user.isCompany
           ? {
               companyName: `Deleted Company ${generateRandomString(8)}`,
@@ -143,8 +151,28 @@ export class UsersService {
         });
       }
 
+      // Record audit log for GDPR erasure request
+      const audit = manager.create(AuditLog, {
+        entityName: 'User',
+        entityId: userId,
+        action: 'DELETE',
+        userId: userId,
+        changes: `GDPR erasure requested. Account soft-deleted with 30-day grace period ending ${dueAt.toISOString()}`,
+        oldValues: { email: user.email, gdprStatus: user.gdprStatus },
+        newValues: { gdprStatus: 'pending_erasure', gdprErasureDueAt: dueAt.toISOString() },
+      });
+      await manager.save(AuditLog, audit);
+
       // Soft delete the user
       await manager.softDelete(User, userId);
+    });
+  }
+
+  async getPendingErasureQueue(): Promise<User[]> {
+    return this.userRepository.find({
+      where: { gdprStatus: 'pending_erasure' },
+      withDeleted: true,
+      order: { gdprErasureDueAt: 'ASC' },
     });
   }
 

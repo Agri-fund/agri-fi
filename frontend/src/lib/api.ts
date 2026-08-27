@@ -1,6 +1,24 @@
 const API_BASE = "http://localhost:3001";
 const API_VERSION = "/v1";
 
+// ── Public (no-auth) fetch helper — used by ActivityFeed and other public endpoints ──
+export async function apiFetchPublic<T>(path: string): Promise<T> {
+  const versionedPath = path.startsWith('/v1') || path.startsWith('/v2')
+    ? path
+    : `${API_VERSION}${path}`;
+  const res = await fetch(`${API_BASE}${versionedPath}`, {
+    headers: { "Content-Type": "application/json" },
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    const err: any = new Error(body?.message ?? res.statusText);
+    err.response = { status: res.status, data: body };
+    throw err;
+  }
+  return res.json();
+}
+
 // ── Types ────────────────────────────────────────────────────────────────────
 
 export interface User {
@@ -47,7 +65,10 @@ export interface Milestone {
 
 export interface Deal {
   id: string;
+  title?: string | null;
   commodity: string;
+  country?: string | null;
+  region?: string | null;
   quantity: number;
   quantity_unit: string;
   total_value: number;
@@ -61,6 +82,14 @@ export interface Deal {
   delivery_date: string;
   annual_roi?: number;
   term_days?: number;
+  expected_roi?: number | null;
+  duration_days?: number | null;
+  min_investment_lot?: number | null;
+  risk_rating?: "Low" | "Medium" | "High" | null;
+  short_description?: string | null;
+  long_description?: string | null;
+  farm_location?: string | null;
+  funding_status?: "open" | "almost funded" | "fully funded";
   created_at: string;
   documents?: Document[];
   milestones?: Milestone[];
@@ -163,7 +192,10 @@ function normalizeInvestment(investment: any): Investment {
 function normalizeDeal(raw: any): Deal {
   return {
     id: raw.id,
+    title: raw.title ?? null,
     commodity: raw.commodity,
+    country: raw.country ?? null,
+    region: raw.region ?? null,
     quantity: Number(raw.quantity ?? 0),
     quantity_unit: raw.quantity_unit ?? raw.quantityUnit ?? "units",
     total_value: Number(raw.total_value ?? raw.totalValue ?? 0),
@@ -179,6 +211,9 @@ function normalizeDeal(raw: any): Deal {
     delivery_date: raw.delivery_date ?? raw.deliveryDate ?? "",
     annual_roi: raw.annual_roi ?? raw.annualRoi ?? 0.15, // Default 15%
     term_days: raw.term_days ?? raw.termDays ?? 90, // Default 90 days
+    expected_roi: raw.expected_roi ?? raw.expectedRoi ?? null,
+    duration_days: raw.duration_days ?? raw.durationDays ?? null,
+    risk_rating: raw.risk_rating ?? raw.riskRating ?? null,
     created_at: raw.created_at ?? raw.createdAt ?? "",
     documents: raw.documents,
     milestones: raw.milestones,
@@ -326,8 +361,14 @@ export const apiClient = {
 
   // POST /auth/kyc
   async submitKyc(data: {
+    fullName?: string;
+    dateOfBirth?: string;
+    nationality?: string;
+    address?: string;
     governmentIdUrl?: string;
+    identityDocumentBackUrl?: string;
     proofOfAddressUrl?: string;
+    selfieUrl?: string;
     isCorporate?: boolean;
     companyName?: string;
     registrationNumber?: string;

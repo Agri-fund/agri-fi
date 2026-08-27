@@ -99,6 +99,10 @@ jobs:
         run: npm test -- --forceExit --passWithNoTests --coverage --detectOpenHandles
         working-directory: backend
 
+      - name: E2E — SEP-24 withdrawal flow
+        run: npm run test:e2e -- --forceExit --detectOpenHandles --testPathPattern "sep24-withdrawal.e2e-spec"
+        working-directory: backend
+
       - name: Check coverage thresholds
         if: always()
         run: |

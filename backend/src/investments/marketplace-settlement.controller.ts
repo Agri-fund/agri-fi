@@ -108,4 +108,46 @@ export class MarketplaceSettlementController {
   async getSecondaryTradeByOrderId(@Param('orderId') orderId: string) {
     return this.settlementService.getSecondaryTradeByOrderId(orderId);
   }
+
+  @Post('orders/sell')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Create secondary market sell order' })
+  @ApiResponse({ status: 201, description: 'Sell order created successfully' })
+  async createSellOrder(
+    @Request() req: any,
+    @Body() dto: { investmentId: string; dealId: string; askPrice: number; quantity: number; expiry?: string },
+  ) {
+    return this.settlementService.createSellOrder({
+      sellerId: req.user.id,
+      investmentId: dto.investmentId,
+      dealId: dto.dealId,
+      askPrice: dto.askPrice,
+      quantity: dto.quantity,
+      expiry: dto.expiry ? new Date(dto.expiry) : undefined,
+    });
+  }
+
+  @Post('orders/buy')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Create secondary market buy order' })
+  @ApiResponse({ status: 201, description: 'Buy order created successfully' })
+  async createBuyOrder(
+    @Request() req: any,
+    @Body() dto: { dealId: string; bidPrice: number; quantity: number; expiry?: string },
+  ) {
+    return this.settlementService.createBuyOrder({
+      buyerId: req.user.id,
+      dealId: dto.dealId,
+      bidPrice: dto.bidPrice,
+      quantity: dto.quantity,
+      expiry: dto.expiry ? new Date(dto.expiry) : undefined,
+    });
+  }
+
+  @Get('orders/orderbook/:dealId')
+  @ApiOperation({ summary: 'Get secondary market order book for a deal' })
+  @ApiResponse({ status: 200, description: 'Live bids and asks' })
+  async getOrderBook(@Param('dealId') dealId: string) {
+    return this.settlementService.getOrderBook(dealId);
+  }
 }

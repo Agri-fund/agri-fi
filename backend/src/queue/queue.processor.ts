@@ -114,6 +114,14 @@ export class QueueProcessor implements OnApplicationShutdown {
     }
   }
 
+  private truncate(value: string, max = 500): string {
+    return value.length <= max ? value : `${value.slice(0, max)}…`;
+  }
+
+  private correlationIdFromMessage(msg: any): string | undefined {
+    return msg?.properties?.correlationId;
+  }
+
   private unwrap<T>(
     encrypted: string,
     pattern: string,
@@ -124,7 +132,12 @@ export class QueueProcessor implements OnApplicationShutdown {
       return decryptPayload<T>(encrypted);
     } catch (err: any) {
       this.logger.error(
-        { event: pattern, error: err.message },
+        {
+          event: pattern,
+          error: err.message,
+          correlationId: this.correlationIdFromMessage(msg),
+          rawMessage: this.truncate(String(encrypted ?? '')),
+        },
         `${pattern} decryption failed — routing to DLQ`,
       );
       // Undecryptable payloads can never succeed on retry — send straight to DLQ.

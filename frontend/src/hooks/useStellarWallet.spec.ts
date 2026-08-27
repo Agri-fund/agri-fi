@@ -3,12 +3,12 @@ import { useStellarWallet } from "./useStellarWallet";
 import * as useWalletModule from "./useWallet";
 
 // Mock the useWallet hook
-jest.mock("./useWallet");
+vi.mock("./useWallet");
 
 const mockUseWallet = useWalletModule.useWallet as jest.Mock;
 
 // Mock window.open for Freighter installation redirect
-global.window.open = jest.fn();
+global.window.open = vi.fn();
 
 describe("useStellarWallet", () => {
   const mockPublicKey =
@@ -32,9 +32,9 @@ describe("useStellarWallet", () => {
         publicKey: null,
         availableWallets: [],
         error: null,
-        connect: jest.fn(),
-        disconnect: jest.fn(),
-        signTransaction: jest.fn(),
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+        signTransaction: vi.fn(),
       });
 
       const { result } = renderHook(() => useStellarWallet());
@@ -53,9 +53,9 @@ describe("useStellarWallet", () => {
         publicKey: null,
         availableWallets: [],
         error: null,
-        connect: jest.fn(),
-        disconnect: jest.fn(),
-        signTransaction: jest.fn(),
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+        signTransaction: vi.fn(),
       });
 
       const { result } = renderHook(() => useStellarWallet());
@@ -70,9 +70,9 @@ describe("useStellarWallet", () => {
         publicKey: mockPublicKey,
         availableWallets: ["freighter"],
         error: null,
-        connect: jest.fn(),
-        disconnect: jest.fn(),
-        signTransaction: jest.fn(),
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+        signTransaction: vi.fn(),
       });
 
       const { result } = renderHook(() => useStellarWallet());
@@ -91,9 +91,9 @@ describe("useStellarWallet", () => {
         publicKey: mockPublicKey,
         availableWallets: ["freighter"],
         error: null,
-        connect: jest.fn(),
-        disconnect: jest.fn(),
-        signTransaction: jest.fn(),
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+        signTransaction: vi.fn(),
       });
 
       const { result } = renderHook(() => useStellarWallet());
@@ -108,9 +108,9 @@ describe("useStellarWallet", () => {
         publicKey: null,
         availableWallets: [],
         error: null,
-        connect: jest.fn(),
-        disconnect: jest.fn(),
-        signTransaction: jest.fn(),
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+        signTransaction: vi.fn(),
       });
 
       const { result } = renderHook(() => useStellarWallet());
@@ -141,9 +141,9 @@ describe("useStellarWallet", () => {
           publicKey: key,
           availableWallets: ["freighter"],
           error: null,
-          connect: jest.fn(),
-          disconnect: jest.fn(),
-          signTransaction: jest.fn(),
+          connect: vi.fn(),
+          disconnect: vi.fn(),
+          signTransaction: vi.fn(),
         });
 
         const { result } = renderHook(() => useStellarWallet());
@@ -160,9 +160,9 @@ describe("useStellarWallet", () => {
         publicKey: null,
         availableWallets: [],
         error: null,
-        connect: jest.fn(),
-        disconnect: jest.fn(),
-        signTransaction: jest.fn(),
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+        signTransaction: vi.fn(),
       });
 
       const { result } = renderHook(() => useStellarWallet());
@@ -179,9 +179,9 @@ describe("useStellarWallet", () => {
         publicKey: null,
         availableWallets: [],
         error: null,
-        connect: jest.fn(),
-        disconnect: jest.fn(),
-        signTransaction: jest.fn(),
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+        signTransaction: vi.fn(),
       });
 
       const { result } = renderHook(() => useStellarWallet());
@@ -198,9 +198,9 @@ describe("useStellarWallet", () => {
         publicKey: null,
         availableWallets: [],
         error: null,
-        connect: jest.fn(),
-        disconnect: jest.fn(),
-        signTransaction: jest.fn(),
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+        signTransaction: vi.fn(),
       });
 
       const { result } = renderHook(() => useStellarWallet());
@@ -217,9 +217,9 @@ describe("useStellarWallet", () => {
         publicKey: null,
         availableWallets: ["freighter"],
         error: null,
-        connect: jest.fn(),
-        disconnect: jest.fn(),
-        signTransaction: jest.fn(),
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+        signTransaction: vi.fn(),
       });
 
       const { result } = renderHook(() => useStellarWallet());
@@ -234,9 +234,9 @@ describe("useStellarWallet", () => {
         publicKey: null,
         availableWallets: [],
         error: null,
-        connect: jest.fn(),
-        disconnect: jest.fn(),
-        signTransaction: jest.fn(),
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+        signTransaction: vi.fn(),
       });
 
       const { result } = renderHook(() => useStellarWallet());
@@ -251,9 +251,9 @@ describe("useStellarWallet", () => {
         publicKey: null,
         availableWallets: ["albedo", "freighter", "ledger"],
         error: null,
-        connect: jest.fn(),
-        disconnect: jest.fn(),
-        signTransaction: jest.fn(),
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+        signTransaction: vi.fn(),
       });
 
       const { result } = renderHook(() => useStellarWallet());
@@ -271,9 +271,9 @@ describe("useStellarWallet", () => {
         publicKey: null,
         availableWallets: ["freighter"],
         error: errorMessage,
-        connect: jest.fn(),
-        disconnect: jest.fn(),
-        signTransaction: jest.fn(),
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+        signTransaction: vi.fn(),
       });
 
       const { result } = renderHook(() => useStellarWallet());
@@ -289,9 +289,9 @@ describe("useStellarWallet", () => {
         publicKey: mockPublicKey,
         availableWallets: ["freighter"],
         error: null,
-        connect: jest.fn(),
-        disconnect: jest.fn(),
-        signTransaction: jest.fn(),
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+        signTransaction: vi.fn(),
       });
 
       const { result } = renderHook(() => useStellarWallet());
@@ -302,7 +302,7 @@ describe("useStellarWallet", () => {
 
   describe("Connection Handling", () => {
     it("calls connect with freighter when Freighter is installed", async () => {
-      const mockConnect = jest.fn().mockResolvedValue(mockPublicKey);
+      const mockConnect = vi.fn().mockResolvedValue(mockPublicKey);
 
       mockUseWallet.mockReturnValue({
         isConnected: false,
@@ -311,8 +311,8 @@ describe("useStellarWallet", () => {
         availableWallets: ["freighter"],
         error: null,
         connect: mockConnect,
-        disconnect: jest.fn(),
-        signTransaction: jest.fn(),
+        disconnect: vi.fn(),
+        signTransaction: vi.fn(),
       });
 
       const { result } = renderHook(() => useStellarWallet());
@@ -323,7 +323,7 @@ describe("useStellarWallet", () => {
     });
 
     it("opens Freighter download page when Freighter is not installed", async () => {
-      const mockConnect = jest.fn();
+      const mockConnect = vi.fn();
 
       mockUseWallet.mockReturnValue({
         isConnected: false,
@@ -332,8 +332,8 @@ describe("useStellarWallet", () => {
         availableWallets: [],
         error: null,
         connect: mockConnect,
-        disconnect: jest.fn(),
-        signTransaction: jest.fn(),
+        disconnect: vi.fn(),
+        signTransaction: vi.fn(),
       });
 
       const { result } = renderHook(() => useStellarWallet());
@@ -349,7 +349,7 @@ describe("useStellarWallet", () => {
     });
 
     it("does not throw when window.open is called", async () => {
-      const mockConnect = jest.fn();
+      const mockConnect = vi.fn();
 
       mockUseWallet.mockReturnValue({
         isConnected: false,
@@ -358,8 +358,8 @@ describe("useStellarWallet", () => {
         availableWallets: [],
         error: null,
         connect: mockConnect,
-        disconnect: jest.fn(),
-        signTransaction: jest.fn(),
+        disconnect: vi.fn(),
+        signTransaction: vi.fn(),
       });
 
       const { result } = renderHook(() => useStellarWallet());
@@ -371,7 +371,7 @@ describe("useStellarWallet", () => {
 
   describe("Disconnection Handling", () => {
     it("calls disconnect when disconnect is invoked", () => {
-      const mockDisconnect = jest.fn();
+      const mockDisconnect = vi.fn();
 
       mockUseWallet.mockReturnValue({
         isConnected: true,
@@ -379,9 +379,9 @@ describe("useStellarWallet", () => {
         publicKey: mockPublicKey,
         availableWallets: ["freighter"],
         error: null,
-        connect: jest.fn(),
+        connect: vi.fn(),
         disconnect: mockDisconnect,
-        signTransaction: jest.fn(),
+        signTransaction: vi.fn(),
       });
 
       const { result } = renderHook(() => useStellarWallet());
@@ -392,8 +392,8 @@ describe("useStellarWallet", () => {
     });
 
     it("properly disconnects when connected", () => {
-      const mockDisconnect = jest.fn();
-      const mockConnect = jest.fn();
+      const mockDisconnect = vi.fn();
+      const mockConnect = vi.fn();
 
       mockUseWallet.mockReturnValue({
         isConnected: true,
@@ -403,7 +403,7 @@ describe("useStellarWallet", () => {
         error: null,
         connect: mockConnect,
         disconnect: mockDisconnect,
-        signTransaction: jest.fn(),
+        signTransaction: vi.fn(),
       });
 
       const { result } = renderHook(() => useStellarWallet());
@@ -424,9 +424,9 @@ describe("useStellarWallet", () => {
         publicKey: null,
         availableWallets: ["freighter"],
         error: null,
-        connect: jest.fn(),
-        disconnect: jest.fn(),
-        signTransaction: jest.fn(),
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+        signTransaction: vi.fn(),
       });
 
       const { result, rerender } = renderHook(() => useStellarWallet());
@@ -440,9 +440,9 @@ describe("useStellarWallet", () => {
         publicKey: null,
         availableWallets: ["freighter"],
         error: null,
-        connect: jest.fn(),
-        disconnect: jest.fn(),
-        signTransaction: jest.fn(),
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+        signTransaction: vi.fn(),
       });
 
       rerender();
@@ -456,9 +456,9 @@ describe("useStellarWallet", () => {
         publicKey: mockPublicKey,
         availableWallets: ["freighter"],
         error: null,
-        connect: jest.fn(),
-        disconnect: jest.fn(),
-        signTransaction: jest.fn(),
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+        signTransaction: vi.fn(),
       });
 
       rerender();
@@ -474,9 +474,9 @@ describe("useStellarWallet", () => {
         publicKey: mockPublicKey,
         availableWallets: ["freighter"],
         error: null,
-        connect: jest.fn(),
-        disconnect: jest.fn(),
-        signTransaction: jest.fn(),
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+        signTransaction: vi.fn(),
       });
 
       const { result, rerender } = renderHook(() => useStellarWallet());
@@ -491,9 +491,9 @@ describe("useStellarWallet", () => {
         publicKey: null,
         availableWallets: ["freighter"],
         error: null,
-        connect: jest.fn(),
-        disconnect: jest.fn(),
-        signTransaction: jest.fn(),
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+        signTransaction: vi.fn(),
       });
 
       rerender();
@@ -512,9 +512,9 @@ describe("useStellarWallet", () => {
         publicKey: null,
         availableWallets: ["freighter"],
         error: errorMessage,
-        connect: jest.fn(),
-        disconnect: jest.fn(),
-        signTransaction: jest.fn(),
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+        signTransaction: vi.fn(),
       });
 
       const { result, rerender } = renderHook(() => useStellarWallet());
@@ -529,9 +529,9 @@ describe("useStellarWallet", () => {
         publicKey: null,
         availableWallets: ["freighter"],
         error: null,
-        connect: jest.fn(),
-        disconnect: jest.fn(),
-        signTransaction: jest.fn(),
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+        signTransaction: vi.fn(),
       });
 
       rerender();
@@ -543,8 +543,8 @@ describe("useStellarWallet", () => {
 
   describe("Freighter API Response Mocking", () => {
     it("exposes wallet functions properly", () => {
-      const mockConnect = jest.fn().mockResolvedValue(mockPublicKey);
-      const mockDisconnect = jest.fn();
+      const mockConnect = vi.fn().mockResolvedValue(mockPublicKey);
+      const mockDisconnect = vi.fn();
 
       mockUseWallet.mockReturnValue({
         isConnected: false,
@@ -554,7 +554,7 @@ describe("useStellarWallet", () => {
         error: null,
         connect: mockConnect,
         disconnect: mockDisconnect,
-        signTransaction: jest.fn(),
+        signTransaction: vi.fn(),
       });
 
       const { result } = renderHook(() => useStellarWallet());
@@ -564,7 +564,7 @@ describe("useStellarWallet", () => {
     });
 
     it("handles async connect operation", async () => {
-      const mockConnect = jest.fn().mockResolvedValue(mockPublicKey);
+      const mockConnect = vi.fn().mockResolvedValue(mockPublicKey);
 
       mockUseWallet.mockReturnValue({
         isConnected: false,
@@ -573,8 +573,8 @@ describe("useStellarWallet", () => {
         availableWallets: ["freighter"],
         error: null,
         connect: mockConnect,
-        disconnect: jest.fn(),
-        signTransaction: jest.fn(),
+        disconnect: vi.fn(),
+        signTransaction: vi.fn(),
       });
 
       const { result } = renderHook(() => useStellarWallet());
@@ -595,8 +595,8 @@ describe("useStellarWallet", () => {
         availableWallets: ["freighter"],
         error: null,
         connect: mockConnect,
-        disconnect: jest.fn(),
-        signTransaction: jest.fn(),
+        disconnect: vi.fn(),
+        signTransaction: vi.fn(),
       });
 
       const { result } = renderHook(() => useStellarWallet());
@@ -607,8 +607,8 @@ describe("useStellarWallet", () => {
 
   describe("Complete Integration Scenarios", () => {
     it("simulates complete wallet connection flow", async () => {
-      const mockConnect = jest.fn().mockResolvedValue(mockPublicKey);
-      const mockDisconnect = jest.fn();
+      const mockConnect = vi.fn().mockResolvedValue(mockPublicKey);
+      const mockDisconnect = vi.fn();
 
       // Step 1: Initial disconnected state
       mockUseWallet.mockReturnValue({
@@ -619,7 +619,7 @@ describe("useStellarWallet", () => {
         error: null,
         connect: mockConnect,
         disconnect: mockDisconnect,
-        signTransaction: jest.fn(),
+        signTransaction: vi.fn(),
       });
 
       const { result, rerender } = renderHook(() => useStellarWallet());
@@ -634,7 +634,7 @@ describe("useStellarWallet", () => {
         error: null,
         connect: mockConnect,
         disconnect: mockDisconnect,
-        signTransaction: jest.fn(),
+        signTransaction: vi.fn(),
       });
 
       rerender();
@@ -649,7 +649,7 @@ describe("useStellarWallet", () => {
         error: null,
         connect: mockConnect,
         disconnect: mockDisconnect,
-        signTransaction: jest.fn(),
+        signTransaction: vi.fn(),
       });
 
       rerender();
@@ -664,7 +664,7 @@ describe("useStellarWallet", () => {
     });
 
     it("simulates wallet disconnection event handling", () => {
-      const mockDisconnect = jest.fn();
+      const mockDisconnect = vi.fn();
 
       // Start connected
       mockUseWallet.mockReturnValue({
@@ -673,9 +673,9 @@ describe("useStellarWallet", () => {
         publicKey: mockPublicKey,
         availableWallets: ["freighter"],
         error: null,
-        connect: jest.fn(),
+        connect: vi.fn(),
         disconnect: mockDisconnect,
-        signTransaction: jest.fn(),
+        signTransaction: vi.fn(),
       });
 
       const { result, rerender } = renderHook(() => useStellarWallet());
@@ -688,9 +688,9 @@ describe("useStellarWallet", () => {
         publicKey: null,
         availableWallets: ["freighter"],
         error: "Wallet disconnected by user",
-        connect: jest.fn(),
+        connect: vi.fn(),
         disconnect: mockDisconnect,
-        signTransaction: jest.fn(),
+        signTransaction: vi.fn(),
       });
 
       rerender();
@@ -700,8 +700,8 @@ describe("useStellarWallet", () => {
     });
 
     it("handles multiple connection attempts with different outcomes", async () => {
-      const mockConnect = jest.fn();
-      const mockDisconnect = jest.fn();
+      const mockConnect = vi.fn();
+      const mockDisconnect = vi.fn();
 
       // First attempt fails
       mockConnect.mockRejectedValueOnce(new Error("Connection failed"));
@@ -714,7 +714,7 @@ describe("useStellarWallet", () => {
         error: "Connection failed",
         connect: mockConnect,
         disconnect: mockDisconnect,
-        signTransaction: jest.fn(),
+        signTransaction: vi.fn(),
       });
 
       const { result, rerender } = renderHook(() => useStellarWallet());
@@ -731,7 +731,7 @@ describe("useStellarWallet", () => {
         error: null,
         connect: mockConnect,
         disconnect: mockDisconnect,
-        signTransaction: jest.fn(),
+        signTransaction: vi.fn(),
       });
 
       rerender();
@@ -749,9 +749,9 @@ describe("useStellarWallet", () => {
       availableWallets: ["freighter"],
       error: null,
       disconnectReason: null as null | "user" | "external" | "account_changed",
-      connect: jest.fn(),
-      disconnect: jest.fn(),
-      signTransaction: jest.fn(),
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+      signTransaction: vi.fn(),
     };
 
     const baseDisconnected = {
@@ -761,9 +761,9 @@ describe("useStellarWallet", () => {
       availableWallets: ["freighter"],
       error: null,
       disconnectReason: null as null | "user" | "external" | "account_changed",
-      connect: jest.fn(),
-      disconnect: jest.fn(),
-      signTransaction: jest.fn(),
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+      signTransaction: vi.fn(),
     };
 
     it("exposes disconnectReason from the underlying useWallet hook", () => {
@@ -787,7 +787,7 @@ describe("useStellarWallet", () => {
     });
 
     it("fires onDisconnect callback when reason transitions to 'external'", () => {
-      const onDisconnect = jest.fn();
+      const onDisconnect = vi.fn();
 
       // Start connected (no reason)
       mockUseWallet.mockReturnValue({ ...baseConnected, disconnectReason: null });
@@ -809,7 +809,7 @@ describe("useStellarWallet", () => {
     });
 
     it("fires onDisconnect callback when reason transitions to 'account_changed'", () => {
-      const onDisconnect = jest.fn();
+      const onDisconnect = vi.fn();
 
       mockUseWallet.mockReturnValue({ ...baseConnected, disconnectReason: null });
       const { rerender } = renderHook(() =>
@@ -827,7 +827,7 @@ describe("useStellarWallet", () => {
     });
 
     it("does NOT fire onDisconnect for a user-initiated disconnect (reason='user')", () => {
-      const onDisconnect = jest.fn();
+      const onDisconnect = vi.fn();
 
       mockUseWallet.mockReturnValue({ ...baseConnected, disconnectReason: null });
       const { rerender } = renderHook(() =>
@@ -845,7 +845,7 @@ describe("useStellarWallet", () => {
     });
 
     it("does NOT fire onDisconnect twice for the same reason value", () => {
-      const onDisconnect = jest.fn();
+      const onDisconnect = vi.fn();
 
       mockUseWallet.mockReturnValue({ ...baseConnected, disconnectReason: null });
       const { rerender } = renderHook(() =>
@@ -881,7 +881,7 @@ describe("useStellarWallet", () => {
     });
 
     it("resets disconnectReason to null after a fresh connect", () => {
-      const onDisconnect = jest.fn();
+      const onDisconnect = vi.fn();
 
       // External disconnect
       mockUseWallet.mockReturnValue({
@@ -906,7 +906,7 @@ describe("useStellarWallet", () => {
     });
 
     it("fires onDisconnect again if a second external disconnect follows a reconnect", () => {
-      const onDisconnect = jest.fn();
+      const onDisconnect = vi.fn();
 
       mockUseWallet.mockReturnValue({ ...baseConnected, disconnectReason: null });
       const { rerender } = renderHook(() =>
