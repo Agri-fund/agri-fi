@@ -2,8 +2,12 @@ import {
   BadGatewayException,
   BadRequestException,
   Injectable,
+  ServiceUnavailableException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { LazyModuleLoader } from '@nestjs/core';
+import { AuditService } from '../audit/audit.service';
+import { ClamScanService } from './clam-scan.service';
 import { StorageService } from '../storage/storage.service';
 import { StorageModule } from '../storage/storage.module';
 import { StellarService } from '../stellar/stellar.service';
@@ -25,6 +29,7 @@ const ALLOWED_MIME_TYPES = ['application/pdf', 'image/png', 'image/jpeg'];
 @Injectable()
 export class DocumentsService {
   private storageServicePromise: Promise<StorageService> | null = null;
+  private readonly scannedFiles = new WeakSet<object>();
 
   constructor(
     private readonly lazyModuleLoader: LazyModuleLoader,
@@ -32,7 +37,44 @@ export class DocumentsService {
     private readonly tradeDealsService: TradeDealsService,
     private readonly settlementService: SettlementService,
     private readonly config: ConfigService,
+    private readonly clamScanService: ClamScanService,
+    private readonly auditService: AuditService,
   ) {}
+
+  async scanBeforeUpload(
+    file: Express.Multer.File,
+    userId: string,
+  ): Promise<void> {
+    if (this.scannedFiles.has(file)) return;
+
+    try {
+      const result = await this.clamScanService.scan(file.buffer);
+      if (!result.isClean) {
+        await this.auditService
+          .logEvent({
+            actorId: userId,
+            actorRole: 'user',
+            route: 'POST /api/v1/documents',
+            statusCode: 422,
+            requestDetails: {
+              filename: file.originalname,
+              virusName: result.virusName ?? 'Unknown',
+            },
+          })
+          .catch(() => null);
+        throw new UnprocessableEntityException(
+          `File rejected: virus detected (${result.virusName ?? 'Unknown'})`,
+        );
+      }
+      this.scannedFiles.add(file);
+    } catch (error) {
+      if (error instanceof UnprocessableEntityException) throw error;
+
+      throw new ServiceUnavailableException(
+        'Document security scanning is unavailable; upload rejected.',
+      );
+    }
+  }
 
   /**
    * StorageModule constructs an S3Client on init, so it's excluded from
@@ -61,6 +103,8 @@ export class DocumentsService {
     userId: string;
     signatureAsc?: string;
   }) {
+    await this.scanBeforeUpload(file, userId);
+
     // 0. Verify the file's actual signature (magic number) matches the
     //    declared MIME type. Extension/header checks alone can be spoofed.
     await this.verifyFileSignature(file.buffer, file.mimetype);
