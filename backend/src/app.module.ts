@@ -30,8 +30,10 @@ import { SorobanModule } from './soroban/soroban.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { validateEnvironment } from './config/env.validation';
 import { ScheduleModule } from '@nestjs/schedule';
-import { APP_FILTER } from '@nestjs/core';
+import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { DatabaseTransactionInterceptor } from './common/filters/database-transaction.interceptor';
+import { SentryModule } from './common/logger/sentry.module';
 import { AuditModule } from './audit/audit.module';
 
 import { AchievementModule } from './achievements/achievement.module';
@@ -98,6 +100,7 @@ import { WebhooksModule } from './webhooks/webhooks.module';
     TerminusModule,
     SorobanModule,
     MetricsModule,
+    SentryModule,
     AuditModule,
     AchievementModule,
     EmailSequenceModule,
@@ -111,6 +114,15 @@ import { WebhooksModule } from './webhooks/webhooks.module';
       provide: APP_FILTER,
       useClass: HttpExceptionFilter,
     },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: DatabaseTransactionInterceptor,
+    },
+  ],
+  providers: [
+    // Apply ThrottlerGuard globally — all endpoints are rate-limited by default.
+    // Use @SkipThrottle() on controllers/routes that should be exempt
+    // (e.g. the health check endpoint used by Kubernetes probes).
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
