@@ -24,14 +24,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { User } from './entities/user.entity';
 import { ApiBody } from '@nestjs/swagger';
-import {
-  IsIn,
-  IsString,
-  IsBoolean,
-  IsUUID,
-  IsOptional,
-  MinLength,
-} from 'class-validator';
+import { IsIn, IsString, IsBoolean, IsUUID, MinLength } from 'class-validator';
 import { Roles } from './decorators/roles.decorator';
 import { RolesGuard } from './roles.guard';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -45,6 +38,7 @@ import { SecurityThreatService } from './security-threat.service';
 import { SettlementService } from '../settlement/settlement.service';
 import { DocumentsService } from '../documents/documents.service';
 import { StorageService } from '../storage/storage.service';
+import { EscrowDlqService } from '../escrow/escrow-dlq.service';
 
 class UpdateUserRoleDto {
   @IsIn(['farmer', 'trader', 'investor', 'company_admin', 'admin'])
@@ -90,6 +84,7 @@ export class AdminController {
     private readonly settlementService: SettlementService,
     private readonly documentsService: DocumentsService,
     private readonly storageService: StorageService,
+    private readonly escrowDlqService: EscrowDlqService,
     @InjectRepository(TradeDeal)
     private readonly tradeDealRepo: Repository<TradeDeal>,
     @InjectRepository(Document)
@@ -97,6 +92,30 @@ export class AdminController {
     @InjectRepository(AdminAction)
     private readonly adminActionRepo: Repository<AdminAction>,
   ) {}
+
+  @Get('dlq')
+  @ApiOperation({ summary: 'List escrow dead-letter queue messages' })
+  @ApiResponse({ status: 200, description: 'DLQ messages' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
+  async listDlqMessages() {
+    return this.escrowDlqService.listMessages();
+  }
+
+  @Post('dlq/:id/replay')
+  @ApiOperation({ summary: 'Replay one escrow dead-letter queue message' })
+  @ApiResponse({ status: 200, description: 'Message replay result' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
+  async replayDlqMessage(@Param('id') id: string) {
+    return this.escrowDlqService.replayMessage(id);
+  }
+
+  @Post('dlq/replay-all')
+  @ApiOperation({ summary: 'Replay all escrow dead-letter queue messages' })
+  @ApiResponse({ status: 200, description: 'Bulk replay result' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
+  async replayAllDlqMessages() {
+    return this.escrowDlqService.replayAll();
+  }
 
   @Get('documents')
   @ApiOperation({ summary: 'List uploaded documents for admin verification' })
@@ -138,7 +157,10 @@ export class AdminController {
     const document = await this.documentRepo.findOne({ where: { id } });
     if (!document) throw new NotFoundException('Document not found');
 
-    if (document.ipfsHash.startsWith('Qm') || document.ipfsHash.startsWith('bafy')) {
+    if (
+      document.ipfsHash.startsWith('Qm') ||
+      document.ipfsHash.startsWith('bafy')
+    ) {
       await this.storageService.fetchAndVerifyIpfsDocument(document.ipfsHash);
     }
 
@@ -310,9 +332,22 @@ export class AdminController {
   @ApiOperation({
     summary: 'List failed escrow payment transactions for admin review',
   })
-  @ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number (default 1)' })
-  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Items per page (default 20, max 100)' })
-  @ApiResponse({ status: 200, description: 'Paginated list of failed payments' })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    type: Number,
+    description: 'Page number (default 1)',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Items per page (default 20, max 100)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Paginated list of failed payments',
+  })
   @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
   async getFailedPayments(
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
@@ -336,9 +371,14 @@ export class AdminController {
   @ApiResponse({
     status: 201,
     description: 'Retry event enqueued',
-    schema: { properties: { queued: { type: 'boolean' }, dealId: { type: 'string' } } },
+    schema: {
+      properties: { queued: { type: 'boolean' }, dealId: { type: 'string' } },
+    },
   })
-  @ApiResponse({ status: 400, description: 'Transaction not in failed state or has no deal' })
+  @ApiResponse({
+    status: 400,
+    description: 'Transaction not in failed state or has no deal',
+  })
   @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
   @ApiResponse({ status: 404, description: 'Transaction log not found' })
   async retryFailedPayment(@Param('id') id: string) {
@@ -349,7 +389,8 @@ export class AdminController {
 
   @Get('security/blocks')
   @ApiOperation({
-    summary: 'List credential-stuffing enforcement blocks (CAPTCHA, rate limits, subnets)',
+    summary:
+      'List credential-stuffing enforcement blocks (CAPTCHA, rate limits, subnets)',
   })
   @ApiResponse({ status: 200, description: 'List of security blocks' })
   @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
@@ -361,8 +402,14 @@ export class AdminController {
   @ApiOperation({
     summary: 'Approve a pending /16 subnet block proposed by detection',
   })
-  @ApiResponse({ status: 200, description: 'Subnet block approved and enforced' })
-  @ApiResponse({ status: 400, description: 'Block is not a pending subnet block' })
+  @ApiResponse({
+    status: 200,
+    description: 'Subnet block approved and enforced',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Block is not a pending subnet block',
+  })
   @ApiResponse({ status: 404, description: 'Block not found' })
   async approveSecurityBlock(
     @Request() req: AuthRequest,
