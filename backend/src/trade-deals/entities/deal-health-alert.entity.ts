@@ -40,7 +40,11 @@ export class DealHealthAlert {
   @Column({ name: 'fired_at', type: 'timestamp with time zone' })
   firedAt: Date;
 
-  @Column({ name: 'resolved_at', type: 'timestamp with time zone', nullable: true })
+  @Column({
+    name: 'resolved_at',
+    type: 'timestamp with time zone',
+    nullable: true,
+  })
   resolvedAt: Date | null;
 
   @Column({ name: 'metadata_json', type: 'jsonb', nullable: true })

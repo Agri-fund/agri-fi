@@ -55,7 +55,9 @@ export class NotificationsGateway
     this.logger.debug(`Client connected: ${client.id}`);
     const user = (client as any).user;
     if (user?.id) {
-      const unreadCount = await this.notificationsService.getUnreadCount(user.id);
+      const unreadCount = await this.notificationsService.getUnreadCount(
+        user.id,
+      );
       client.emit('handshake_response', { unreadCount });
       client.emit('unread_count', { count: unreadCount });
     }

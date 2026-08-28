@@ -43,7 +43,11 @@ export class NotificationEntity {
   @Column({ name: 'metadata_json', type: 'jsonb', nullable: true })
   metadataJson: Record<string, unknown> | null;
 
-  @Column({ name: 'notification_read_at', type: 'timestamp with time zone', nullable: true })
+  @Column({
+    name: 'notification_read_at',
+    type: 'timestamp with time zone',
+    nullable: true,
+  })
   notificationReadAt: Date | null;
 
   @CreateDateColumn({ name: 'created_at' })

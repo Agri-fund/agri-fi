@@ -31,7 +31,10 @@ export class TaxReportService {
     private readonly investmentRepo: Repository<Investment>,
   ) {}
 
-  async buildReportData(investorId: string, year: number): Promise<TaxReportData> {
+  async buildReportData(
+    investorId: string,
+    year: number,
+  ): Promise<TaxReportData> {
     const start = new Date(`${year}-01-01T00:00:00Z`);
     const end = new Date(`${year + 1}-01-01T00:00:00Z`);
 
@@ -47,8 +50,12 @@ export class TaxReportService {
 
     const rows: TaxReportRow[] = investments.map((inv) => {
       const invested = parseFloat(inv.amountUsd ?? '0');
-      const returned = parseFloat((inv as Record<string, unknown>)['returnAmountUsd'] as string ?? '0');
-      const fees = parseFloat((inv as Record<string, unknown>)['feesUsd'] as string ?? '0');
+      const returned = parseFloat(
+        ((inv as Record<string, unknown>)['returnAmountUsd'] as string) ?? '0',
+      );
+      const fees = parseFloat(
+        ((inv as Record<string, unknown>)['feesUsd'] as string) ?? '0',
+      );
       const net = returned - invested - fees;
       return {
         dealName: inv.tradeDeal?.title ?? inv.tradeDealId,
@@ -64,7 +71,10 @@ export class TaxReportService {
     const totals = [
       {
         currency: 'USD',
-        netGainLoss: rows.reduce((sum, r) => sum + parseFloat(r.netGainLoss), 0),
+        netGainLoss: rows.reduce(
+          (sum, r) => sum + parseFloat(r.netGainLoss),
+          0,
+        ),
       },
     ];
 
@@ -106,7 +116,9 @@ export class TaxReportService {
     }
 
     for (const total of report.totals) {
-      lines.push(`"TOTAL (${total.currency})",,,${total.netGainLoss.toFixed(2)},,${total.currency},`);
+      lines.push(
+        `"TOTAL (${total.currency})",,,${total.netGainLoss.toFixed(2)},,${total.currency},`,
+      );
     }
 
     lines.push('');

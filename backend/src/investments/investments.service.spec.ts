@@ -105,7 +105,9 @@ describe('InvestmentsService', () => {
     };
     queueService = {
       enqueueInvestmentFund: jest.fn().mockResolvedValue(undefined),
-      enqueueInvestmentFundTransactional: jest.fn().mockResolvedValue(undefined),
+      enqueueInvestmentFundTransactional: jest
+        .fn()
+        .mockResolvedValue(undefined),
       enqueueDealFundedTransactional: jest.fn().mockResolvedValue(undefined),
     };
 
@@ -197,10 +199,7 @@ describe('InvestmentsService', () => {
               return payoutCents;
             });
 
-            const sumPayouts = payouts.reduce(
-              (sum, payout) => sum + payout,
-              0,
-            );
+            const sumPayouts = payouts.reduce((sum, payout) => sum + payout, 0);
 
             return sumPayouts === investorPoolCents;
           },
@@ -265,8 +264,16 @@ describe('InvestmentsService', () => {
         tokenAmount: 1100,
         amountUsd: 11000,
         complianceData: {
-          originator: { name: 'Alice', address: '123 St', accountNumber: 'ACC1' },
-          beneficiary: { name: 'Bob', address: '456 St', accountNumber: 'ACC2' },
+          originator: {
+            name: 'Alice',
+            address: '123 St',
+            accountNumber: 'ACC1',
+          },
+          beneficiary: {
+            name: 'Bob',
+            address: '456 St',
+            accountNumber: 'ACC2',
+          },
         },
       };
 
@@ -285,8 +292,16 @@ describe('InvestmentsService', () => {
         tokenAmount: 100,
         amountUsd: 11000,
         complianceData: {
-          originator: { name: 'Alice', address: '123 St', accountNumber: 'ACC1' },
-          beneficiary: { name: 'Bob', address: '456 St', accountNumber: 'ACC2' },
+          originator: {
+            name: 'Alice',
+            address: '123 St',
+            accountNumber: 'ACC1',
+          },
+          beneficiary: {
+            name: 'Bob',
+            address: '456 St',
+            accountNumber: 'ACC2',
+          },
         },
       };
 
@@ -366,11 +381,7 @@ describe('InvestmentsService', () => {
       investmentRepo.findOne.mockResolvedValue(investment);
 
       await expect(
-        service.confirmInvestment(
-          'investor-1',
-          'inv-1',
-          VALID_STELLAR_TX_ID,
-        ),
+        service.confirmInvestment('investor-1', 'inv-1', VALID_STELLAR_TX_ID),
       ).rejects.toThrow(UnprocessableEntityException);
     });
 
@@ -447,7 +458,9 @@ describe('InvestmentsService', () => {
         'signed-xdr-payload',
       );
 
-      expect(queueService.enqueueInvestmentFundTransactional).toHaveBeenCalledWith(
+      expect(
+        queueService.enqueueInvestmentFundTransactional,
+      ).toHaveBeenCalledWith(
         expect.anything(),
         expect.objectContaining({
           investmentId: 'inv-1',

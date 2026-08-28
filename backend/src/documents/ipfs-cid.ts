@@ -1,6 +1,7 @@
 import { createHash } from 'crypto';
 
-const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+const BASE58_ALPHABET =
+  '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
 
 function decodeBase58(value: string): Uint8Array | null {
   const bytes = [0];
@@ -120,15 +121,25 @@ export function verifyIpfsContent(cid: string, content: Buffer): boolean {
     const codec = version && readVarintValue(encoded, version.nextOffset);
     const hash = codec && readVarintValue(encoded, codec.nextOffset);
     const length = hash && readVarintValue(encoded, hash.nextOffset);
-    if (!version || !codec || !hash || !length || length.value !== encoded.length - length.nextOffset) {
+    if (
+      !version ||
+      !codec ||
+      !hash ||
+      !length ||
+      length.value !== encoded.length - length.nextOffset
+    ) {
       return false;
     }
     hashCode = hash.value;
     digest = encoded.slice(length.nextOffset);
   }
 
-  const algorithm = hashCode === 0x12 ? 'sha256' : hashCode === 0x13 ? 'sha512' : null;
+  const algorithm =
+    hashCode === 0x12 ? 'sha256' : hashCode === 0x13 ? 'sha512' : null;
   if (!algorithm) return false;
   const calculated = createHash(algorithm).update(content).digest();
-  return calculated.length === digest.length && calculated.equals(Buffer.from(digest));
+  return (
+    calculated.length === digest.length &&
+    calculated.equals(Buffer.from(digest))
+  );
 }

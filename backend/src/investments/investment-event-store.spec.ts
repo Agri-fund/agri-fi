@@ -10,7 +10,11 @@ describe('InvestmentEventStore', () => {
 
   beforeEach(async () => {
     eventRepo = {
-      create: jest.fn((dto) => ({ id: 'evt-1', ...dto, occurredAt: new Date() })),
+      create: jest.fn((dto) => ({
+        id: 'evt-1',
+        ...dto,
+        occurredAt: new Date(),
+      })),
       save: jest.fn((evt) => Promise.resolve(evt)),
       find: jest.fn(),
     };
@@ -52,7 +56,12 @@ describe('InvestmentEventStore', () => {
   describe('getEvents', () => {
     it('should return chronological events for an investment', async () => {
       const mockEvents = [
-        { id: 'evt-1', investmentId: 'inv-123', eventType: 'InvestmentCreated', occurredAt: new Date() },
+        {
+          id: 'evt-1',
+          investmentId: 'inv-123',
+          eventType: 'InvestmentCreated',
+          occurredAt: new Date(),
+        },
       ];
       eventRepo.find.mockResolvedValue(mockEvents);
 
@@ -70,10 +79,30 @@ describe('InvestmentEventStore', () => {
     it('should replay historical events to derive state projection', async () => {
       const now = new Date();
       const mockEvents = [
-        { id: 'evt-1', investmentId: 'inv-123', eventType: 'InvestmentCreated', occurredAt: now },
-        { id: 'evt-2', investmentId: 'inv-123', eventType: 'InvestmentActivated', occurredAt: now },
-        { id: 'evt-3', investmentId: 'inv-123', eventType: 'InvestmentReleaseStarted', occurredAt: now },
-        { id: 'evt-4', investmentId: 'inv-123', eventType: 'InvestmentCompleted', occurredAt: now },
+        {
+          id: 'evt-1',
+          investmentId: 'inv-123',
+          eventType: 'InvestmentCreated',
+          occurredAt: now,
+        },
+        {
+          id: 'evt-2',
+          investmentId: 'inv-123',
+          eventType: 'InvestmentActivated',
+          occurredAt: now,
+        },
+        {
+          id: 'evt-3',
+          investmentId: 'inv-123',
+          eventType: 'InvestmentReleaseStarted',
+          occurredAt: now,
+        },
+        {
+          id: 'evt-4',
+          investmentId: 'inv-123',
+          eventType: 'InvestmentCompleted',
+          occurredAt: now,
+        },
       ];
       eventRepo.find.mockResolvedValue(mockEvents);
 
@@ -86,8 +115,18 @@ describe('InvestmentEventStore', () => {
 
     it('should project CANCELLED state when cancelled by user', async () => {
       const mockEvents = [
-        { id: 'evt-1', investmentId: 'inv-123', eventType: 'InvestmentCreated', occurredAt: new Date() },
-        { id: 'evt-2', investmentId: 'inv-123', eventType: 'InvestmentCancelledByUser', occurredAt: new Date() },
+        {
+          id: 'evt-1',
+          investmentId: 'inv-123',
+          eventType: 'InvestmentCreated',
+          occurredAt: new Date(),
+        },
+        {
+          id: 'evt-2',
+          investmentId: 'inv-123',
+          eventType: 'InvestmentCancelledByUser',
+          occurredAt: new Date(),
+        },
       ];
       eventRepo.find.mockResolvedValue(mockEvents);
 

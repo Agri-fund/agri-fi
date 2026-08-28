@@ -26,7 +26,9 @@ describe('JsonBigIntInterceptor - 36-digit decimal precision', () => {
 
     interceptor.intercept(context, next).subscribe((result: any) => {
       expect(result.amountUsd).toBe('12345678901234567890123456789.1234567');
-      expect(result.onChainStroops).toBe('123456789012345678901234567891234567');
+      expect(result.onChainStroops).toBe(
+        '123456789012345678901234567891234567',
+      );
       expect(result.nested.valueUsdc).toBe('123.4567890');
       done();
     });

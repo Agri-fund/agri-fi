@@ -20,7 +20,11 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { Request } from 'express';
 import { User } from '../auth/entities/user.entity';
-import { Sep12Service, Sep12PutCustomerRequest, Sep12CustomerResponse } from './sep12.service';
+import {
+  Sep12Service,
+  Sep12PutCustomerRequest,
+  Sep12CustomerResponse,
+} from './sep12.service';
 
 @ApiTags('sep12')
 @ApiBearerAuth('jwt')
@@ -83,7 +87,10 @@ export class Sep12Controller {
   @ApiParam({ name: 'id', description: 'Customer (user) UUID' })
   @ApiResponse({ status: 200, description: 'SEP-12 compliant customer record' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({ status: 403, description: 'Not allowed to view this customer' })
+  @ApiResponse({
+    status: 403,
+    description: 'Not allowed to view this customer',
+  })
   @ApiResponse({ status: 404, description: 'Customer not found' })
   async getCustomerById(
     @Param('id') id: string,

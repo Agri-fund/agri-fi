@@ -60,7 +60,9 @@ export class HttpExceptionFilter implements ExceptionFilter {
     } else {
       message = IS_PROD
         ? 'Internal Server Error'
-        : (exception instanceof Error ? exception.message : String(exception));
+        : exception instanceof Error
+          ? exception.message
+          : String(exception);
     }
 
     response.status(status).json({
@@ -95,9 +97,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
   private isValidationError(error: unknown): error is ValidationError {
     return (
-      typeof error === 'object' &&
-      error !== null &&
-      'constraints' in error
+      typeof error === 'object' && error !== null && 'constraints' in error
     );
   }
 }

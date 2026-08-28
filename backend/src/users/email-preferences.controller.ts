@@ -25,7 +25,8 @@ import { DealDigestService } from '../trade-deals/deal-digest.service';
 
 class UpdatePreferencesDto {
   @ApiProperty({
-    description: 'IANA timezone used to schedule the weekly digest (e.g. Africa/Nairobi)',
+    description:
+      'IANA timezone used to schedule the weekly digest (e.g. Africa/Nairobi)',
     required: false,
     example: 'Africa/Nairobi',
   })
@@ -70,14 +71,20 @@ export class EmailPreferencesController {
    * The token is an HMAC of the user id — no authentication required.
    */
   @Get('unsubscribe')
-  @ApiOperation({ summary: 'Unsubscribe from the weekly deal digest (public, tokenized)' })
+  @ApiOperation({
+    summary: 'Unsubscribe from the weekly deal digest (public, tokenized)',
+  })
   @ApiResponse({ status: 200, description: 'Unsubscribed successfully' })
   @ApiResponse({ status: 400, description: 'Invalid unsubscribe link' })
   async unsubscribe(
     @Query('userId') userId: string,
     @Query('token') token: string,
   ): Promise<{ message: string }> {
-    if (!userId || !token || !this.digestService.verifyUnsubscribeToken(userId, token)) {
+    if (
+      !userId ||
+      !token ||
+      !this.digestService.verifyUnsubscribeToken(userId, token)
+    ) {
       throw new UnauthorizedException('Invalid or expired unsubscribe link.');
     }
 
@@ -87,14 +94,17 @@ export class EmailPreferencesController {
     user.emailDigestEnabled = false;
     await this.userRepo.save(user);
 
-    return { message: 'You have been unsubscribed from the weekly deal digest.' };
+    return {
+      message: 'You have been unsubscribed from the weekly deal digest.',
+    };
   }
 
   @Patch('me/preferences')
   @UseGuards(AuthGuard('jwt'))
   @ApiBearerAuth('jwt')
   @ApiOperation({
-    summary: 'Update email preferences: timezone, preferred language, digest opt-out',
+    summary:
+      'Update email preferences: timezone, preferred language, digest opt-out',
   })
   @ApiResponse({ status: 200, description: 'Updated preferences' })
   @ApiResponse({ status: 400, description: 'Validation error' })

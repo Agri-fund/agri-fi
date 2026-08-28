@@ -138,7 +138,10 @@ export class AdminController {
     const document = await this.documentRepo.findOne({ where: { id } });
     if (!document) throw new NotFoundException('Document not found');
 
-    if (document.ipfsHash.startsWith('Qm') || document.ipfsHash.startsWith('bafy')) {
+    if (
+      document.ipfsHash.startsWith('Qm') ||
+      document.ipfsHash.startsWith('bafy')
+    ) {
       await this.storageService.fetchAndVerifyIpfsDocument(document.ipfsHash);
     }
 
@@ -310,9 +313,22 @@ export class AdminController {
   @ApiOperation({
     summary: 'List failed escrow payment transactions for admin review',
   })
-  @ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number (default 1)' })
-  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Items per page (default 20, max 100)' })
-  @ApiResponse({ status: 200, description: 'Paginated list of failed payments' })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    type: Number,
+    description: 'Page number (default 1)',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Items per page (default 20, max 100)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Paginated list of failed payments',
+  })
   @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
   async getFailedPayments(
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
@@ -336,9 +352,14 @@ export class AdminController {
   @ApiResponse({
     status: 201,
     description: 'Retry event enqueued',
-    schema: { properties: { queued: { type: 'boolean' }, dealId: { type: 'string' } } },
+    schema: {
+      properties: { queued: { type: 'boolean' }, dealId: { type: 'string' } },
+    },
   })
-  @ApiResponse({ status: 400, description: 'Transaction not in failed state or has no deal' })
+  @ApiResponse({
+    status: 400,
+    description: 'Transaction not in failed state or has no deal',
+  })
   @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
   @ApiResponse({ status: 404, description: 'Transaction log not found' })
   async retryFailedPayment(@Param('id') id: string) {
@@ -349,7 +370,8 @@ export class AdminController {
 
   @Get('security/blocks')
   @ApiOperation({
-    summary: 'List credential-stuffing enforcement blocks (CAPTCHA, rate limits, subnets)',
+    summary:
+      'List credential-stuffing enforcement blocks (CAPTCHA, rate limits, subnets)',
   })
   @ApiResponse({ status: 200, description: 'List of security blocks' })
   @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
@@ -361,8 +383,14 @@ export class AdminController {
   @ApiOperation({
     summary: 'Approve a pending /16 subnet block proposed by detection',
   })
-  @ApiResponse({ status: 200, description: 'Subnet block approved and enforced' })
-  @ApiResponse({ status: 400, description: 'Block is not a pending subnet block' })
+  @ApiResponse({
+    status: 200,
+    description: 'Subnet block approved and enforced',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Block is not a pending subnet block',
+  })
   @ApiResponse({ status: 404, description: 'Block not found' })
   async approveSecurityBlock(
     @Request() req: AuthRequest,

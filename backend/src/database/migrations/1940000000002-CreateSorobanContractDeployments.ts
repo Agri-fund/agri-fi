@@ -68,6 +68,8 @@ export class CreateSorobanContractDeployments1940000000002 implements MigrationI
   public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`DROP TABLE IF EXISTS "soroban_upgrade_approvals"`);
     await queryRunner.query(`DROP TABLE IF EXISTS "soroban_upgrade_plans"`);
-    await queryRunner.query(`DROP TABLE IF EXISTS "soroban_contract_deployments"`);
+    await queryRunner.query(
+      `DROP TABLE IF EXISTS "soroban_contract_deployments"`,
+    );
   }
 }

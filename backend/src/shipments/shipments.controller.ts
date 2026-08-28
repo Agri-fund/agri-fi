@@ -83,9 +83,14 @@ export class ShipmentsController {
 
   @Post(':id/sensor-readings')
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Ingest a batch of IoT sensor readings for a shipment (#849)' })
+  @ApiOperation({
+    summary: 'Ingest a batch of IoT sensor readings for a shipment (#849)',
+  })
   @ApiParam({ name: 'id', description: 'Trade deal / shipment UUID' })
-  @ApiResponse({ status: 201, description: 'Readings saved; returns count and alert count' })
+  @ApiResponse({
+    status: 201,
+    description: 'Readings saved; returns count and alert count',
+  })
   @ApiResponse({ status: 400, description: 'Validation error or empty batch' })
   @ApiResponse({ status: 404, description: 'Shipment not found' })
   async ingestSensorReadings(

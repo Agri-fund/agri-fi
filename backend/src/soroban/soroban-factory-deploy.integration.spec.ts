@@ -48,7 +48,15 @@ describe('Soroban ProjectFactory deploy integration (testnet)', () => {
       providers: [
         SorobanService,
         { provide: ConfigService, useValue: mockConfig },
-        { provide: PinoLogger, useValue: { setContext: jest.fn(), info: jest.fn(), error: jest.fn(), debug: jest.fn() } },
+        {
+          provide: PinoLogger,
+          useValue: {
+            setContext: jest.fn(),
+            info: jest.fn(),
+            error: jest.fn(),
+            debug: jest.fn(),
+          },
+        },
       ],
     }).compile();
 

@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddKycDraftAndDocumentSides1820000000001
-  implements MigrationInterface
-{
+export class AddKycDraftAndDocumentSides1820000000001 implements MigrationInterface {
   name = 'AddKycDraftAndDocumentSides1820000000001';
 
   public async up(queryRunner: QueryRunner): Promise<void> {

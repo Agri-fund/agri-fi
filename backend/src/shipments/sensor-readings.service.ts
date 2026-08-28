@@ -1,8 +1,15 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { PinoLogger } from 'nestjs-pino';
-import { ShipmentSensorReading, SensorType } from './entities/shipment-sensor-reading.entity';
+import {
+  ShipmentSensorReading,
+  SensorType,
+} from './entities/shipment-sensor-reading.entity';
 import { CreateSensorReadingsDto } from './dto/create-sensor-readings.dto';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
 

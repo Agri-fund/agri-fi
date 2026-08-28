@@ -147,8 +147,11 @@ export class StellarMonitorService {
         .limit(100)
         .call();
 
-      return (transactions.records || []).map(record => ({
-        fee_charged: typeof record.fee_charged === 'string' ? record.fee_charged : String(record.fee_charged),
+      return (transactions.records || []).map((record) => ({
+        fee_charged:
+          typeof record.fee_charged === 'string'
+            ? record.fee_charged
+            : String(record.fee_charged),
         created_at: record.created_at,
       }));
     } catch (error: any) {

@@ -9,7 +9,12 @@ import {
   Request,
   Version,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiParam,
+} from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { AchievementService } from './achievement.service';
 import { BadgeType } from './entities/achievement.entity';

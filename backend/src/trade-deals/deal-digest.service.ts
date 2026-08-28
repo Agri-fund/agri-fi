@@ -1,9 +1,6 @@
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import {
-  In,
-  Repository,
-} from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
@@ -126,9 +123,7 @@ export class DealDigestService implements OnModuleInit, OnModuleDestroy {
       user.preferredLanguage,
     );
 
-    const dealsHtml = deals
-      .map((deal) => this.renderDealRow(deal))
-      .join('');
+    const dealsHtml = deals.map((deal) => this.renderDealRow(deal)).join('');
     const chartSvg = this.renderFundingChart(deals);
 
     const milestonesHtml =
@@ -185,7 +180,11 @@ export class DealDigestService implements OnModuleInit, OnModuleDestroy {
       actionsHtml,
     };
 
-    return this.emailTemplates.render('deal-digest', vars, user.preferredLanguage);
+    return this.emailTemplates.render(
+      'deal-digest',
+      vars,
+      user.preferredLanguage,
+    );
   }
 
   /**
@@ -223,10 +222,7 @@ export class DealDigestService implements OnModuleInit, OnModuleDestroy {
           rendered.text,
           rendered.html,
         );
-        this.logger.info(
-          { userId: user.id },
-          'Weekly deal digest sent',
-        );
+        this.logger.info({ userId: user.id }, 'Weekly deal digest sent');
       } catch (err: any) {
         // Release the claim so a transient failure retries next hour.
         await this.releaseWeeklySlot(key);
@@ -408,6 +404,8 @@ function isoWeek(date: Date): string {
   const dayNum = d.getUTCDay() || 7;
   d.setUTCDate(d.getUTCDate() + 4 - dayNum);
   const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  const week = Math.ceil(((d.getTime() - yearStart.getTime()) / MS_PER_DAY + 1) / 7);
+  const week = Math.ceil(
+    ((d.getTime() - yearStart.getTime()) / MS_PER_DAY + 1) / 7,
+  );
   return `${d.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
 }
