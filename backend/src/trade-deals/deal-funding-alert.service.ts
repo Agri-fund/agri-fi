@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -6,19 +6,20 @@ import { Repository } from 'typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { firstValueFrom } from 'rxjs';
 import { TradeDeal } from './entities/trade-deal.entity';
+import { WebhooksService } from '../webhooks/webhooks.service';
 
 /**
  * Milestones tracked as percentages of total deal value funded.
  * A notification is posted once when each threshold is first crossed.
  */
-const FUNDING_MILESTONES = [50, 100] as const;
+const FUNDING_MILESTONES = [25, 50, 75, 100] as const;
 type FundingMilestone = (typeof FUNDING_MILESTONES)[number];
 
 /**
- * DealFundingAlertService (#737)
+ * DealFundingAlertService (#737, #804)
  *
  * Periodically checks all open trade deals and posts a Slack/Discord webhook
- * notification whenever a deal crosses a funding milestone (50 % or 100 %).
+ * notification whenever a deal crosses a funding milestone (25%, 50%, 75%, or 100%).
  * Each milestone is reported only once per deal to avoid duplicate alerts.
  */
 @Injectable()
@@ -39,6 +40,8 @@ export class DealFundingAlertService {
     private readonly tradeDealRepo: Repository<TradeDeal>,
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
+    @Optional()
+    private readonly webhooksService?: WebhooksService,
   ) {
     this.webhookUrl =
       this.configService.get<string>('SLACK_WEBHOOK_URL') ||
@@ -119,6 +122,17 @@ export class DealFundingAlertService {
       message,
     );
 
+    if (this.webhooksService) {
+      try {
+        await this.webhooksService.dispatchFundingProgress(deal, milestone, actualPct);
+      } catch (webhookErr) {
+        this.logger.error(
+          { err: webhookErr, dealId: deal.id, milestone },
+          'Failed to dispatch signed external webhook',
+        );
+      }
+    }
+
     if (!this.webhookUrl) return;
 
     try {
@@ -138,3 +152,4 @@ export class DealFundingAlertService {
     }
   }
 }
+

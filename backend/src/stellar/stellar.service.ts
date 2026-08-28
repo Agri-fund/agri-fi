@@ -2090,8 +2090,38 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     return holders.map((h) => ({
       walletAddress: h.walletAddress,
       tokenAmount: h.tokenAmount,
-      totalTokens,
-    }));
+      totalTo  /**
+   * Emits structured transaction log entries for all Stellar transaction attempts (#803).
+   */
+  public logStructuredTx(params: {
+    correlationId?: string;
+    txHash?: string;
+    operation: string;
+    durationMs: number;
+    status: 'success' | 'failed' | 'timeout' | 'error';
+    error?: string;
+  }): void {
+    const correlationId =
+      params.correlationId ||
+      createHash('sha256')
+        .update(`${Date.now()}-${Math.random()}`)
+        .digest('hex')
+        .substring(0, 16);
+
+    const logData = {
+      correlationId,
+      txHash: params.txHash || 'N/A',
+      operation: params.operation,
+      durationMs: params.durationMs,
+      status: params.status,
+      error: params.error,
+    };
+
+    if (params.status === 'success') {
+      this.logger.info(logData, `Stellar transaction [${params.operation}] succeeded`);
+    } else {
+      this.logger.error(logData, `Stellar transaction [${params.operation}] failed`);
+    }
   }
 
   /**
@@ -2099,13 +2129,24 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
    * Formula: base_delay * 2^attempt + random_jitter.
    * Retries on HTTP 429, 503, 504, and network timeout errors.
    */
-  private async submitWithRetry(tx: any): Promise<any> {
+  private async submitWithRetry(tx: any, operationName = 'submitTransaction', correlationId?: string): Promise<any> {
     const RETRYABLE = new Set([429, 503, 504]);
     const MAX_RETRIES = 3;
+    const startTime = Date.now();
+    const txHash = typeof tx?.hash === 'function' ? tx.hash().toString('hex') : tx?.hash;
 
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
-        return await this.server.submitTransaction(tx);
+        const result = await this.server.submitTransaction(tx);
+        const durationMs = Date.now() - startTime;
+        this.logStructuredTx({
+          correlationId,
+          txHash: result?.hash || txHash,
+          operation: operationName,
+          durationMs,
+          status: 'success',
+        });
+        return result;
       } catch (err: any) {
         const status: number | undefined = err?.response?.status;
         const isTimeout =
@@ -2114,6 +2155,15 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
           (status !== undefined && RETRYABLE.has(status)) || isTimeout;
 
         if (!isRetryable || attempt === MAX_RETRIES) {
+          const durationMs = Date.now() - startTime;
+          this.logStructuredTx({
+            correlationId,
+            txHash,
+            operation: operationName,
+            durationMs,
+            status: isTimeout ? 'timeout' : 'failed',
+            error: err?.message,
+          });
           throw err;
         }
 
@@ -2121,7 +2171,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         const randomJitter = Math.floor(Math.random() * 500);
         const delayMs = baseDelayMs * Math.pow(2, attempt) + randomJitter;
         this.logger.warn(
-          { attempt, status, delayMs, jitter: randomJitter },
+          { attempt, status, delayMs, jitter: randomJitter, correlationId, txHash },
           `Transient Horizon error (${status ?? 'timeout'}); retrying with exponential backoff and jitter in ${delayMs}ms`,
         );
         await new Promise((resolve) => setTimeout(resolve, delayMs));
@@ -2147,29 +2197,53 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
   private async submitWithFeeBumpRetry(
     buildTx: (fee: string) => Promise<any>,
     signer: Keypair,
+    operationName = 'submitWithFeeBumpRetry',
+    correlationId?: string,
   ): Promise<any> {
     const maxFee = this.config.get<string>('STELLAR_MAX_FEE', '10000');
     const maxFeeNum = parseInt(maxFee, 10);
     let currentFee = parseInt(BASE_FEE, 10);
     const MAX_ATTEMPTS = 4;
+    const startTime = Date.now();
 
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
       const tx = await buildTx(currentFee.toString());
       tx.sign(signer);
+      const txHash = typeof tx?.hash === 'function' ? tx.hash().toString('hex') : tx?.hash;
 
       try {
         const result = await this.server.submitTransaction(tx);
+        const durationMs = Date.now() - startTime;
+        this.logStructuredTx({
+          correlationId,
+          txHash: result?.hash || txHash,
+          operation: operationName,
+          durationMs,
+          status: 'success',
+        });
         return result;
       } catch (err: any) {
         if (this.isInsufficientFeeError(err) && currentFee < maxFeeNum) {
           currentFee = Math.min(currentFee * 2, maxFeeNum);
           this.logger.warn(
-            { attempt, newFee: currentFee, maxFee: maxFeeNum },
+            { attempt, newFee: currentFee, maxFee: maxFeeNum, correlationId, txHash },
             `tx_insufficient_fee detected — retrying with higher fee (${currentFee} stroops)`,
           );
           continue;
         }
+        const durationMs = Date.now() - startTime;
+        this.logStructuredTx({
+          correlationId,
+          txHash,
+          operation: operationName,
+          durationMs,
+          status: 'failed',
+          error: err?.message,
+        });
         throw err;
+      }
+    }
+  }ow err;
       }
     }
 
