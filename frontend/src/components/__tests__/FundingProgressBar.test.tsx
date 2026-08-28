@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import FundingProgressBar from '../FundingProgressBar';
 
-jest.mock('next-intl', () => ({
+vi.mock('next-intl', () => ({
   useTranslations: () => (key: string, params?: Record<string, unknown>) => {
     const translations: Record<string, string> = {
       raised: `$${(params?.amount as string) ?? '0'} raised`,
@@ -11,7 +11,7 @@ jest.mock('next-intl', () => ({
   },
 }));
 
-jest.mock('framer-motion', () => ({
+vi.mock('framer-motion', () => ({
   motion: {
     div: ({ children, ...props }: any) => {
       const { initial, animate, transition, ...domProps } = props;
@@ -21,13 +21,13 @@ jest.mock('framer-motion', () => ({
   useReducedMotion: () => false,
 }));
 
-jest.mock('../../hooks/useCurrencyFormat', () => ({
+vi.mock('../../hooks/useCurrencyFormat', () => ({
   useCurrencyFormat: () => ({
     formatCurrency: (val: number, _currency?: string) => `$${val.toLocaleString()}`,
   }),
 }));
 
-jest.mock('../../hooks/useNumberFormat', () => ({
+vi.mock('../../hooks/useNumberFormat', () => ({
   useNumberFormat: () => ({
     formatNumber: (val: number, opts?: { decimalPlaces?: number }) =>
       val.toFixed(opts?.decimalPlaces ?? 0),

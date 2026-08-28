@@ -15,6 +15,7 @@ import { KycGuard } from './kyc.guard';
 import { RolesGuard } from './roles.guard';
 import { QueueModule } from '../queue/queue.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { AuditModule } from '../audit/audit.module';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
 import { Document } from '../trade-deals/entities/document.entity';
 import { OfacSanctionsCheckService } from './utils/ofac-sanctions-check';
@@ -27,8 +28,65 @@ import { TokenBlocklistService } from './token-blocklist.service';
 import { SecurityThreatService } from './security-threat.service';
 import { MfaGuard } from './guards/mfa.guard';
 import { EscrowModule } from '../escrow/escrow.module';
-import { EmailSequenceModule } from '../email-sequence/email-sequence.module';
-import { GoogleStrategy } from './google.strategy';
+import { SettlementModule } from '../settlement/settlement.module';
+import { DocumentsModule } from '../documents/documents.module';
+
+@Module({
+  imports: [
+    TypeOrmModule.forFeature([
+      User,
+      KycSubmission,
+      TradeDeal,
+      Document,
+      LoginLog,
+      AdminAction,
+      SecurityIpBlock,
+    ]),
+    ConfigModule,
+    QueueModule,
+    NotificationsModule,
+    AuditModule,
+    PassportModule,
+    EscrowModule,
+    EmailSequenceModule,
+    SettlementModule,
+    DocumentsModule,
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        secret: config.getOrThrow<string>('JWT_SECRET'),
+        signOptions: { expiresIn: config.get<string>('JWT_EXPIRES_IN', '7d') },
+      }),
+    }),
+  ],
+  controllers: [AuthController, AdminController],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    KycGuard,
+    RolesGuard,
+    MfaGuard,
+    RedisConfig,
+    TokenBlocklistService,
+    SecurityThreatService,
+    OfacSanctionsCheckService,
+    KycCronService,
+  ],
+  exports: [
+    AuthService,
+    JwtModule,
+    TypeOrmModule,
+    KycGuard,
+    RolesGuard,
+    MfaGuard,
+    RedisConfig,
+    TokenBlocklistService,
+    SecurityThreatService,
+    OfacSanctionsCheckService,
+  ],
+})
+export class AuthModule {}
 
 @Module({
   imports: [
@@ -46,6 +104,8 @@ import { GoogleStrategy } from './google.strategy';
     PassportModule,
     EscrowModule,
     EmailSequenceModule,
+    SettlementModule,
+    DocumentsModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

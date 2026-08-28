@@ -1,0 +1,65 @@
+name: Weekly Production Image Scan
+
+on:
+  schedule:
+    # Every Monday at 06:00 UTC
+    - cron: '0 6 * * 1'
+  workflow_dispatch: {}
+
+jobs:
+  trivy-registry-scan:
+    name: Scan GHCR Production Images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      packages: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - ghcr.io/${{ github.repository_owner }}/agri-fi-backend:latest
+          - ghcr.io/${{ github.repository_owner }}/agri-fi-frontend:latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run Trivy scan (${{ matrix.image }})
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: ${{ matrix.image }}
+          format: sarif
+          output: trivy-weekly-${{ hashFiles(matrix.image) }}.sarif
+          exit-code: '1'
+          ignore-unfixed: false
+          vuln-type: os,library
+          severity: CRITICAL
+          trivyignores: .trivyignore
+
+      - name: Warn on HIGH severity (non-blocking)
+        uses: aquasecurity/trivy-action@0.24.0
+        continue-on-error: true
+        with:
+          image-ref: ${{ matrix.image }}
+          format: table
+          exit-code: '0'
+          ignore-unfixed: false
+          vuln-type: os,library
+          severity: HIGH
+          trivyignores: .trivyignore
+
+      - name: Upload SARIF to GitHub Security tab
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-weekly-${{ hashFiles(matrix.image) }}.sarif
+          category: trivy-weekly-${{ hashFiles(matrix.image) }}

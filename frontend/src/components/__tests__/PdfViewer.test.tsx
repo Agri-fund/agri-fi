@@ -17,7 +17,7 @@ import userEvent from '@testing-library/user-event';
 // ── react-pdf mock ────────────────────────────────────────────────────────────
 // Prevents loading the full PDF.js WASM engine inside Jest.
 
-jest.mock('react-pdf', () => ({
+vi.mock('react-pdf', () => ({
   Document: ({ onLoadSuccess, onLoadError, children }: any) => {
     // eslint-disable-next-line react-hooks/rules-of-hooks
     React.useEffect(() => {
@@ -33,15 +33,17 @@ jest.mock('react-pdf', () => ({
   pdfjs: { GlobalWorkerOptions: {} },
 }));
 
-jest.mock('react-pdf/dist/Page/AnnotationLayer.css', () => ({}));
-jest.mock('react-pdf/dist/Page/TextLayer.css', () => ({}));
+vi.mock('react-pdf/dist/Page/AnnotationLayer.css', () => ({}));
+vi.mock('react-pdf/dist/Page/TextLayer.css', () => ({}));
 
 // ── useWasmSupport mock factory ───────────────────────────────────────────────
 // Default: WASM is supported. Override per-test with mockReturnValue.
 
-const mockUseWasmSupport = jest.fn<boolean | null, []>(() => true);
-jest.mock('@/hooks/useWasmSupport', () => ({
-  ...jest.requireActual('@/hooks/useWasmSupport'),
+const { mockUseWasmSupport } = vi.hoisted(() => ({
+  mockUseWasmSupport: vi.fn<boolean | null, []>(() => true),
+}));
+vi.mock('@/hooks/useWasmSupport', async (importOriginal) => ({
+  ...(await importOriginal()),
   useWasmSupport: () => mockUseWasmSupport(),
 }));
 
@@ -393,7 +395,7 @@ describe('PdfViewerErrorBoundary', () => {
 
   it('invokes the optional onError callback when an error is caught', () => {
     const spy = suppressConsoleError();
-    const onError = jest.fn();
+    const onError = vi.fn();
 
     render(
       <PdfViewerErrorBoundary url={TEST_URL} fileName={TEST_NAME} onError={onError}>

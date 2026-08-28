@@ -45,11 +45,43 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true); setError(null);
     try {
-      await apiClient.login(email, password);
+      const result = await apiClient.login(email, password);
+
+      // #806 — Admin accounts without MFA configured receive a 403 with
+      // code MFA_ENROLLMENT_REQUIRED.  Redirect them to the MFA setup flow
+      // instead of showing a generic error so they can complete enrollment.
+      const body = result as any;
+      if (
+        body?.code === 'MFA_ENROLLMENT_REQUIRED' ||
+        body?.requiresMfaEnrollment === true
+      ) {
+        toast('MFA setup required. Please configure your authenticator app.', 'info');
+        router.push('/settings?tab=security&mfa=enroll');
+        return;
+      }
+
       const profile = await apiClient.getMe();
       toast('Welcome back! 👋', 'success');
       router.push(`/dashboard/${profile.role}`);
     } catch (err: any) {
+      // #806 — The backend throws 403 ForbiddenException for MFA enrollment.
+      // Catch it here so admin users are redirected instead of seeing an error.
+      const code =
+        err?.response?.data?.code ??
+        err?.data?.code ??
+        err?.code ??
+        '';
+      const requiresMfa =
+        err?.response?.data?.requiresMfaEnrollment ??
+        err?.data?.requiresMfaEnrollment ??
+        false;
+
+      if (code === 'MFA_ENROLLMENT_REQUIRED' || requiresMfa) {
+        toast('MFA setup required for your account. Redirecting to security settings…', 'info');
+        router.push('/settings?tab=security&mfa=enroll');
+        return;
+      }
+
       const msg = err?.response?.data?.message ?? err?.message ?? '';
       if (msg.toLowerCase().includes('unavailable') || msg.toLowerCase().includes('unreachable')) {
         setError('Backend is not running. Start the backend server and try again.');

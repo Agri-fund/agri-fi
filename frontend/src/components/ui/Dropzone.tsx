@@ -5,7 +5,6 @@ import { useDropzone, FileRejection } from 'react-dropzone';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const MAX_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
 const ACCEPTED_MIME: Record<string, string[]> = {
   'application/pdf': ['.pdf'],
   'image/png': ['.png'],
@@ -21,6 +20,10 @@ export interface DropzoneFile {
   previewUrl: string | null;
   /** Number of pages detected for PDFs (always 1 for images) */
   pageCount: number | null;
+  /** Image width in pixels when applicable */
+  width?: number;
+  /** Image height in pixels when applicable */
+  height?: number;
 }
 
 interface DropzoneProps {
@@ -36,6 +39,10 @@ interface DropzoneProps {
   value?: DropzoneFile | null;
   /** Called when the user removes the current file */
   onRemove?: () => void;
+  /** Override the maximum file size */
+  maxSizeBytes?: number;
+  /** Mobile capture hint for camera inputs */
+  capture?: 'user' | 'environment';
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -67,6 +74,8 @@ export function Dropzone({
   disabled = false,
   value,
   onRemove,
+  maxSizeBytes = 10 * 1024 * 1024,
+  capture,
 }: DropzoneProps) {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -80,8 +89,23 @@ export function Dropzone({
         const isPdf = file.type === 'application/pdf';
         const previewUrl = isPdf ? null : URL.createObjectURL(file);
         const pageCount = isPdf ? await getPdfPageCount(file) : null;
+        let width: number | undefined;
+        let height: number | undefined;
 
-        onFileAccepted({ file, previewUrl, pageCount });
+        if (!isPdf) {
+          await new Promise<void>((resolve) => {
+            const image = new Image();
+            image.onload = () => {
+              width = image.naturalWidth;
+              height = image.naturalHeight;
+              resolve();
+            };
+            image.onerror = () => resolve();
+            image.src = previewUrl ?? '';
+          });
+        }
+
+        onFileAccepted({ file, previewUrl, pageCount, width, height });
       } finally {
         setLoading(false);
       }
@@ -116,7 +140,7 @@ export function Dropzone({
   const { getRootProps, getInputProps, isDragActive, isDragReject } = useDropzone({
     onDrop,
     accept: ACCEPTED_MIME,
-    maxSize: MAX_SIZE_BYTES,
+    maxSize: maxSizeBytes,
     multiple: false,
     disabled: disabled || loading,
   });
@@ -194,7 +218,7 @@ export function Dropzone({
         className={`relative flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-6 py-8 text-center cursor-pointer transition-all duration-200 outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${borderColor} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
         aria-label={typeof label === 'string' ? label : 'File upload dropzone'}
       >
-        <input {...getInputProps()} aria-label={typeof label === 'string' ? label : 'Upload file'} />
+        <input {...getInputProps({ capture })} aria-label={typeof label === 'string' ? label : 'Upload file'} />
 
         {loading ? (
           /* Upload spinner */
@@ -220,7 +244,7 @@ export function Dropzone({
                 <span className="text-primary underline underline-offset-2">browse</span>
               </p>
               <p className="text-xs text-muted-foreground mt-1">
-                {ACCEPTED_LABELS} · max 5 MB
+                {ACCEPTED_LABELS} · max {Math.round(maxSizeBytes / (1024 * 1024))} MB
               </p>
             </div>
           </div>

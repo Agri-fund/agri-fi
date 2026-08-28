@@ -7,6 +7,7 @@ import { apiClient, User } from '@/lib/api';
 import { Header } from './navigation/Header';
 import KycStatusBanner from './dashboard/KycStatusBanner';
 import { DashboardTourWrapper } from './DashboardTourWrapper';
+import SearchBar from './SearchBar';
 
 /* ── Nav config ───────────────────────────────────────────────────────────── */
 interface NavItem { label: string; href: string; icon: ReactNode; exact?: boolean; }
@@ -29,6 +30,7 @@ const investorNav: NavItem[] = [
 const adminNav: NavItem[] = [
   { label: 'Dashboard',   href: '/dashboard/admin',   icon: <HomeIcon />,   exact: true },
   { label: 'Verify Documents', href: '/dashboard/admin/documents', icon: <DocsIcon /> },
+  { label: 'Contract Deployments', href: '/dashboard/admin/deployments', icon: <SettingsIcon /> },
   { label: 'Marketplace', href: '/marketplace',        icon: <ShopIcon /> },
   { label: 'Referrals',   href: '/dashboard/referrals', icon: <ReferralIcon /> },
 ];
@@ -70,23 +72,23 @@ export default function DashboardLayout({ user, children }: Props) {
 
   /* ── Sidebar ── */
   const Sidebar = ({ onClose }: { onClose?: () => void }) => (
-    <aside className="flex flex-col h-full w-[15rem] bg-white border-r border-slate-100">
+    <aside className="flex flex-col h-full w-[15rem] bg-white border-r border-slate-100 dark:bg-slate-900 dark:border-slate-800">
       {/* Logo */}
-      <div className="px-5 h-16 flex items-center border-b border-slate-100 flex-shrink-0">
+      <div className="px-5 h-16 flex items-center border-b border-slate-100 dark:border-slate-800 flex-shrink-0">
         <Link href="/" onClick={onClose} className="flex items-center gap-2.5 group">
           <span className="text-2xl group-hover:animate-bounce-sm">🌾</span>
-          <span className="font-black text-slate-900 text-base tracking-tight">AgriFi</span>
+          <span className="font-black text-slate-900 dark:text-slate-100 text-base tracking-tight">AgriFi</span>
         </Link>
       </div>
 
       {/* User card */}
-      <div className="px-4 py-4 border-b border-slate-100 flex-shrink-0">
-        <div className="flex items-center gap-3 p-3 rounded-2xl bg-slate-50">
+      <div className="px-4 py-4 border-b border-slate-100 dark:border-slate-800 flex-shrink-0">
+        <div className="flex items-center gap-3 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800">
           <div className={`w-9 h-9 rounded-xl ${theme.accent} flex items-center justify-center text-white font-bold text-sm flex-shrink-0 shadow-sm`}>
             {theme.emoji}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-semibold text-slate-900 truncate">{user.email}</p>
+            <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">{user.email}</p>
             <span className={`inline-flex items-center gap-1 text-xs font-semibold mt-0.5 ${theme.text}`}>
               <span className={`w-1.5 h-1.5 rounded-full ${theme.accent}`} />
               {theme.label}
@@ -97,7 +99,7 @@ export default function DashboardLayout({ user, children }: Props) {
 
       {/* Nav items */}
       <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-        <p className="px-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Menu</p>
+        <p className="px-3 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">Menu</p>
         {nav.map(item => {
           const active = isActive(item);
           return (
@@ -112,7 +114,7 @@ export default function DashboardLayout({ user, children }: Props) {
       </nav>
 
       {/* Bottom section */}
-      <div className="px-3 py-4 border-t border-slate-100 flex-shrink-0 space-y-1">
+      <div className="px-3 py-4 border-t border-slate-100 dark:border-slate-800 flex-shrink-0 space-y-1">
         <Link href="/dashboard/documents" onClick={onClose} className={isActive({ href: '/dashboard/documents', label: 'Documents', icon: null }) ? 'nav-link-active' : 'nav-link'}>
           <DocsIcon /> Documents
         </Link>
@@ -127,7 +129,7 @@ export default function DashboardLayout({ user, children }: Props) {
           }
         </Link>
         <button onClick={handleLogout}
-          className="nav-link w-full text-left hover:bg-red-50 hover:text-red-600">
+          className="nav-link w-full text-left hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400">
           <LogoutIcon />
           Sign out
         </button>
@@ -136,7 +138,7 @@ export default function DashboardLayout({ user, children }: Props) {
   );
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50">
+    <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-950">
       {/* Desktop sidebar */}
       <div className="hidden md:flex flex-shrink-0">
         <Sidebar />
@@ -147,6 +149,11 @@ export default function DashboardLayout({ user, children }: Props) {
         {/* Mobile responsive header */}
         <div className="md:hidden">
           <Header user={user} onLogout={handleLogout} />
+        </div>
+
+        {/* Global search bar */}
+        <div className="hidden md:flex items-center px-6 py-3 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900">
+          <SearchBar />
         </div>
 
         {/* Page content */}

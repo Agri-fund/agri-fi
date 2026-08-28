@@ -399,3 +399,11 @@ For questions about accessibility or these tests, refer to:
 - WCAG 2.1 Guidelines: https://www.w3.org/WAI/WCAG21/quickref/
 - axe Documentation: https://www.deque.com/axe/devtools/
 - Team accessibility guidelines (if available)
+
+## Audit & Remediation Summary (#810)
+
+Key remediation fixes completed:
+- Modal Dialogs (`SellSharesModal.tsx`, `InvestmentForm.tsx`): Added `role="dialog"`, `aria-modal="true"`, `aria-labelledby`, and focus management.
+- Form Label Associations: Connected all inputs to visible `<label htmlFor="...">` elements with `id` attributes and `aria-describedby` helper texts.
+- Color Contrast: Upgraded text and border contrast across modal and form elements to meet the 4.5:1 ratio for normal text.
+- Automated Testing: Configured `@axe-core/playwright` rules for WCAG 2.1 AA in `frontend/tests/accessibility.spec.ts`.

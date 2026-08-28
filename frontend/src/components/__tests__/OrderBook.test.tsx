@@ -31,7 +31,7 @@ beforeEach(() => {
   jest.resetAllMocks();
   localStorage.clear();
   // Reset global fetch mock
-  global.fetch = jest.fn();
+  global.fetch = vi.fn();
 });
 
 // ── tests ──────────────────────────────────────────────────────────────────

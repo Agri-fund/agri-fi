@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1
 
 # ---- Builder: install all dependencies and compile the NestJS app ----
-FROM node:20-alpine AS builder
+# Pin base image to a specific digest for reproducible builds (#890)
+FROM node:20-alpine@sha256:1b247886434392a35a4a847306af035a2c96a9730f88335c15e344b5b19f4e6e AS builder
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
@@ -9,13 +10,13 @@ COPY . .
 RUN npm run build
 
 # ---- Deps: resolve production-only dependencies for the final image ----
-FROM node:20-alpine AS deps
+FROM node:20-alpine@sha256:1b247886434392a35a4a847306af035a2c96a9730f88335c15e344b5b19f4e6e AS deps
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci --omit=dev
 
 # ---- Runner: minimal image carrying only prod deps + build artifacts ----
-FROM node:20-alpine AS runner
+FROM node:20-alpine@sha256:1b247886434392a35a4a847306af035a2c96a9730f88335c15e344b5b19f4e6e AS runner
 ENV NODE_ENV=production
 WORKDIR /app
 USER node
