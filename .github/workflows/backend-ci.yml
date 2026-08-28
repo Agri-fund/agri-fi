@@ -45,6 +45,8 @@ jobs:
       STELLAR_HORIZON_URL: https://horizon-testnet.stellar.org
       STELLAR_PLATFORM_SECRET: ${{ secrets.STELLAR_PLATFORM_SECRET_TESTNET }}
       STELLAR_INTEGRATION_TESTS: ${{ secrets.STELLAR_PLATFORM_SECRET_TESTNET != '' && 'true' || 'false' }}
+      SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       ENCRYPTION_KEY: ci-test-encryption-key-32chars!!
       RABBITMQ_URL: amqp://localhost:5672
       NOTIFICATIONS_ENABLED: "false"
@@ -115,10 +117,10 @@ jobs:
 
       - name: SonarQube scan
         uses: SonarSource/sonarqube-scan-action@v6
-        if: ${{ always() && secrets.SONAR_HOST_URL != '' }}
+        if: ${{ always() && env.SONAR_HOST_URL != '' }}
         env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+          SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ env.SONAR_HOST_URL }}
         with:
           args: >
             -Dsonar.projectKey=agri-fi-backend
