@@ -34,6 +34,7 @@ import { SubmitKycDto } from './dto/submit-kyc.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { QueueService } from '../queue/queue.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { AuditService } from '../audit/audit.service';
 import { JwtPayload } from './jwt.strategy';
 import { sanitizeRedirectUrl } from './utils/redirect-sanitizer';
 import { OfacSanctionsCheckService } from './utils/ofac-sanctions-check';
@@ -81,6 +82,7 @@ export class AuthService {
     private readonly tokenBlocklistService: TokenBlocklistService,
     private readonly securityThreat: SecurityThreatService,
     @Optional() private readonly emailSequenceService: EmailSequenceService,
+    @Optional() private readonly auditService: AuditService,
   ) {
     const network = this.configService.get<string>(
       'STELLAR_NETWORK',
@@ -1347,6 +1349,160 @@ export class AuthService {
         ? 'Account has been unlocked successfully. You can now log in.'
         : 'Account unlock token validated.',
     };
+  }
+
+  // ── bulk KYC (#800) ────────────────────────────────────────────────────────
+
+  /**
+   * Approve or reject multiple KYC submissions in a single request.
+   *
+   * For each userId:
+   *  - Updates the most recent `pending_review` submission to the new status.
+   *  - Updates the user's `kycStatus` on the user record.
+   *  - Writes an individual entry to `system_audit_logs`.
+   *  - Enqueues an email notification for the affected user.
+   *
+   * Entries that cannot be found (or have no pending submission) are recorded
+   * in the `failures` array in the response and do NOT abort the whole batch.
+   */
+  async bulkApproveOrRejectKyc(params: {
+    userIds: string[];
+    action: 'approve' | 'reject';
+    reason?: string;
+    adminId: string;
+    adminRole?: string;
+  }): Promise<{
+    processed: Array<{ userId: string; kycStatus: string }>;
+    failures: Array<{ userId: string; reason: string }>;
+  }> {
+    const { userIds, action, reason, adminId, adminRole } = params;
+
+    if (action === 'reject' && !reason?.trim()) {
+      throw new BadRequestException(
+        'A reason is required when rejecting KYC submissions.',
+      );
+    }
+
+    const processed: Array<{ userId: string; kycStatus: string }> = [];
+    const failures: Array<{ userId: string; reason: string }> = [];
+
+    for (const userId of userIds) {
+      try {
+        const user = await this.userRepo.findOne({ where: { id: userId } });
+        if (!user) {
+          failures.push({ userId, reason: 'User not found.' });
+          continue;
+        }
+
+        const submission = await this.kycRepo.findOne({
+          where: { userId, status: 'pending_review' },
+          order: { createdAt: 'DESC' },
+        });
+        if (!submission) {
+          failures.push({
+            userId,
+            reason: 'No pending KYC submission found for this user.',
+          });
+          continue;
+        }
+
+        if (action === 'approve') {
+          submission.status = 'approved';
+          await this.kycRepo.save(submission);
+
+          if (submission.isCorporate) {
+            user.isCompany = true;
+            user.companyDetails = {
+              companyName: submission.companyName ?? undefined,
+              registrationNumber: submission.registrationNumber ?? undefined,
+              articlesOfIncorporationUrl:
+                submission.articlesOfIncorporationUrl ?? undefined,
+            };
+          }
+
+          user.kycStatus = 'verified';
+          await this.userRepo.save(user);
+
+          await this.adminActionRepo.save(
+            this.adminActionRepo.create({
+              adminId,
+              targetUserId: user.id,
+              action: 'approve_kyc',
+              payload: { submissionId: submission.id, bulk: true },
+              reason: reason ?? null,
+            }),
+          );
+
+          // Write individual audit log entry
+          await this.auditService?.logEvent({
+            actorId: adminId,
+            actorRole: adminRole ?? 'admin',
+            route: 'PATCH /admin/kyc/bulk',
+            statusCode: 200,
+            requestDetails: {
+              action: 'approve',
+              userId,
+              submissionId: submission.id,
+              reason: reason ?? null,
+            },
+          });
+
+          this.queueService.emit('email.notification', {
+            type: 'kyc_verified',
+            email: user.email,
+            userId: user.id,
+          });
+
+          processed.push({ userId, kycStatus: user.kycStatus });
+        } else {
+          submission.status = 'rejected';
+          await this.kycRepo.save(submission);
+
+          user.kycStatus = 'rejected';
+          await this.userRepo.save(user);
+
+          await this.adminActionRepo.save(
+            this.adminActionRepo.create({
+              adminId,
+              targetUserId: user.id,
+              action: 'reject_kyc',
+              payload: { submissionId: submission.id, bulk: true },
+              reason: reason ?? null,
+            }),
+          );
+
+          // Write individual audit log entry
+          await this.auditService?.logEvent({
+            actorId: adminId,
+            actorRole: adminRole ?? 'admin',
+            route: 'PATCH /admin/kyc/bulk',
+            statusCode: 200,
+            requestDetails: {
+              action: 'reject',
+              userId,
+              submissionId: submission.id,
+              reason,
+            },
+          });
+
+          this.queueService.emit('email.notification', {
+            type: 'kyc_rejected',
+            email: user.email,
+            userId: user.id,
+            reason,
+          });
+
+          processed.push({ userId, kycStatus: user.kycStatus });
+        }
+      } catch (err: any) {
+        failures.push({
+          userId,
+          reason: err?.message ?? 'Unknown error.',
+        });
+      }
+    }
+
+    return { processed, failures };
   }
 
   // ── list users ─────────────────────────────────────────────────────────────
