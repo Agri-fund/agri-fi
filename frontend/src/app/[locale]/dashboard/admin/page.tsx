@@ -53,6 +53,12 @@ export default function AdminDashboard() {
   const [failedPaymentsPage, setFailedPaymentsPage] = useState(1);
   const [retryingId, setRetryingId] = useState<string | null>(null);
 
+  // ── Bulk KYC State (#800) ─────────────────────────────────────────────────
+  const [selectedKycIds, setSelectedKycIds] = useState<Set<string>>(new Set());
+  const [bulkActionLoading, setBulkActionLoading] = useState(false);
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [bulkRejectionReason, setBulkRejectionReason] = useState('');
+
   useEffect(() => {
     (async () => {
       const cached = apiClient.getCurrentUser();
@@ -136,6 +142,60 @@ export default function AdminDashboard() {
       else { const d = await res.json(); toast(d.message ?? 'Failed', 'error'); }
     } catch { toast('Request failed', 'error'); }
     setActionId(null);
+  };
+
+  const toggleKycSelection = (userId: string) => {
+    setSelectedKycIds(prev => {
+      const next = new Set(prev);
+      if (next.has(userId)) next.delete(userId);
+      else next.add(userId);
+      return next;
+    });
+  };
+
+  const selectAllKyc = (ids: string[]) => {
+    setSelectedKycIds(new Set(ids));
+  };
+
+  const clearKycSelection = () => {
+    setSelectedKycIds(new Set());
+  };
+
+  const bulkKycAction = async (action: 'approve' | 'reject', reason?: string) => {
+    if (selectedKycIds.size === 0) return;
+    if (action === 'reject' && !reason?.trim()) {
+      toast('A reason is required for rejection', 'error');
+      return;
+    }
+    setBulkActionLoading(true);
+    try {
+      const token = getStoredToken();
+      const res = await fetch('/api/admin/kyc/bulk', {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userIds: Array.from(selectedKycIds),
+          action,
+          ...(reason ? { reason } : {}),
+        }),
+      });
+      const d = await res.json();
+      if (res.ok) {
+        const { processed = [], failures = [] } = d;
+        if (failures.length === 0) {
+          toast(`${processed.length} KYC submission${processed.length !== 1 ? 's' : ''} ${action}d ✅`, 'success');
+        } else {
+          toast(`${processed.length} succeeded, ${failures.length} failed`, 'error');
+        }
+        clearKycSelection();
+        setBulkRejectionReason('');
+        setShowRejectModal(false);
+        loadUsers();
+      } else {
+        toast(d.message ?? 'Bulk action failed', 'error');
+      }
+    } catch { toast('Request failed', 'error'); }
+    setBulkActionLoading(false);
   };
 
   const updateRole = async (userId: string, role: string) => {
@@ -317,10 +377,88 @@ export default function AdminDashboard() {
         {/* KYC review */}
         {tab === 'kyc' && (
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-3">
               <h2 className="section-title">Pending KYC Reviews</h2>
-              <span className="muted">{pendingKyc.length} pending</span>
+              <div className="flex items-center gap-2">
+                {selectedKycIds.size > 0 && (
+                  <span className="text-sm text-slate-500">{selectedKycIds.size} selected</span>
+                )}
+                <span className="muted">{pendingKyc.length} pending</span>
+              </div>
             </div>
+
+            {pendingKyc.length > 0 && (
+              <div className="flex flex-wrap gap-2 items-center bg-slate-50 border border-slate-200 rounded-xl p-3">
+                {/* Select all / clear */}
+                <button
+                  onClick={() =>
+                    selectedKycIds.size === pendingKyc.length
+                      ? clearKycSelection()
+                      : selectAllKyc(pendingKyc.map(u => u.id))
+                  }
+                  className="text-xs px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 font-medium text-slate-700">
+                  {selectedKycIds.size === pendingKyc.length ? 'Deselect all' : 'Select all'}
+                </button>
+
+                {/* Bulk approve */}
+                <button
+                  disabled={selectedKycIds.size === 0 || bulkActionLoading}
+                  onClick={() => bulkKycAction('approve')}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-emerald-600 text-white font-semibold disabled:opacity-40 hover:bg-emerald-700 transition-colors">
+                  {bulkActionLoading ? (
+                    <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                    </svg>
+                  ) : '✓'}
+                  Approve selected ({selectedKycIds.size})
+                </button>
+
+                {/* Bulk reject */}
+                <button
+                  disabled={selectedKycIds.size === 0 || bulkActionLoading}
+                  onClick={() => setShowRejectModal(true)}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-red-600 text-white font-semibold disabled:opacity-40 hover:bg-red-700 transition-colors">
+                  ✕ Reject selected ({selectedKycIds.size})
+                </button>
+              </div>
+            )}
+
+            {/* Reject reason modal */}
+            {showRejectModal && (
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
+                  <h3 className="text-lg font-bold text-slate-900">Reject {selectedKycIds.size} KYC submission{selectedKycIds.size !== 1 ? 's' : ''}</h3>
+                  <p className="text-sm text-slate-500">Please provide a mandatory reason for rejection. This will be recorded in the audit log and sent to affected users.</p>
+                  <textarea
+                    className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 resize-none"
+                    rows={3}
+                    placeholder="e.g. Documents expired, name mismatch, address verification failed…"
+                    value={bulkRejectionReason}
+                    onChange={e => setBulkRejectionReason(e.target.value)}
+                  />
+                  <div className="flex gap-2 justify-end">
+                    <button
+                      onClick={() => { setShowRejectModal(false); setBulkRejectionReason(''); }}
+                      className="px-4 py-2 rounded-lg border border-slate-200 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                      Cancel
+                    </button>
+                    <button
+                      disabled={!bulkRejectionReason.trim() || bulkRejectionReason.trim().length < 3 || bulkActionLoading}
+                      onClick={() => bulkKycAction('reject', bulkRejectionReason)}
+                      className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-semibold disabled:opacity-40 hover:bg-red-700 flex items-center gap-2">
+                      {bulkActionLoading && (
+                        <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                        </svg>
+                      )}
+                      Confirm Rejection
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {pendingKyc.length === 0 ? (
               <div className="card p-14 text-center">
@@ -330,42 +468,56 @@ export default function AdminDashboard() {
               </div>
             ) : (
               <div className="grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                {pendingKyc.map(u => (
-                  <div key={u.id} className="card p-5 space-y-4">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-2xl bg-slate-100 flex items-center justify-center font-bold text-slate-600">
-                          {u.email[0].toUpperCase()}
+                {pendingKyc.map(u => {
+                  const isSelected = selectedKycIds.has(u.id);
+                  return (
+                    <div key={u.id}
+                      className={`card p-5 space-y-4 cursor-pointer transition-all ${isSelected ? 'ring-2 ring-brand-500 bg-brand-50/30' : 'hover:ring-1 hover:ring-slate-200'}`}
+                      onClick={() => toggleKycSelection(u.id)}>
+                      <div className="flex items-start justify-between gap-2">
+                        {/* Checkbox */}
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleKycSelection(u.id)}
+                            onClick={e => e.stopPropagation()}
+                            className="w-4 h-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500 cursor-pointer"
+                            aria-label={`Select ${u.email} for bulk action`}
+                          />
+                          <div className="w-10 h-10 rounded-2xl bg-slate-100 flex items-center justify-center font-bold text-slate-600">
+                            {u.email[0].toUpperCase()}
+                          </div>
+                          <div>
+                            <p className="font-semibold text-slate-900 text-sm truncate max-w-[140px] md:max-w-[160px]">{u.email}</p>
+                            <p className="text-xs text-slate-400">{u.country}</p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="font-semibold text-slate-900 text-sm truncate max-w-[160px] md:max-w-[180px] lg:max-w-[200px]">{u.email}</p>
-                          <p className="text-xs text-slate-400">{u.country}</p>
-                        </div>
+                        <span className={ROLE_BADGE[u.role] ?? 'badge-gray'}>{u.role}</span>
                       </div>
-                      <span className={ROLE_BADGE[u.role] ?? 'badge-gray'}>{u.role}</span>
-                    </div>
 
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-slate-400">Submitted {new Date(u.createdAt).toLocaleDateString()}</span>
-                      <span className="badge-yellow">pending</span>
-                    </div>
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-slate-400">Submitted {new Date(u.createdAt).toLocaleDateString()}</span>
+                        <span className="badge-yellow">pending</span>
+                      </div>
 
-                    <button
-                      disabled={actionId === u.id}
-                      onClick={() => approveKyc(u.id)}
-                      className="btn-primary w-full text-sm py-2.5">
-                      {actionId === u.id ? (
-                        <span className="flex items-center gap-2">
-                          <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                          </svg>
-                          Approving…
-                        </span>
-                      ) : '✓ Approve KYC'}
-                    </button>
-                  </div>
-                ))}
+                      <button
+                        disabled={actionId === u.id}
+                        onClick={e => { e.stopPropagation(); approveKyc(u.id); }}
+                        className="btn-primary w-full text-sm py-2.5">
+                        {actionId === u.id ? (
+                          <span className="flex items-center gap-2">
+                            <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                            </svg>
+                            Approving…
+                          </span>
+                        ) : '✓ Approve KYC'}
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
