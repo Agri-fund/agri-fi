@@ -11,6 +11,7 @@ import { useCurrencyConversion } from "../../../../hooks/useCurrencyConversion";
 import DashboardLayout from "../../../../components/DashboardLayout";
 import StatCard from "../../../../components/StatCard";
 import DualCurrencyStatCard from "../../../../components/DualCurrencyStatCard";
+import CancelInvestmentButton from "../../../../components/CancelInvestmentButton";
 
 // Heavy chart / certificate components — loaded only when the user navigates
 // to their respective tabs, keeping the initial dashboard bundle small.
@@ -493,6 +494,14 @@ export default function InvestorDashboard() {
                               </button>
                             )}
                           </div>
+                          {inv.status === "pending" && (
+                            <CancelInvestmentButton
+                              investmentId={inv.id}
+                              status={inv.status}
+                              createdAt={inv.created_at}
+                              onCancelled={() => window.location.reload()}
+                            />
+                          )}
                         </div>
                       </div>
                     );
