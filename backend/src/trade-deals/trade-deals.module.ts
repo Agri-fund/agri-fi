@@ -27,6 +27,8 @@ import { ActivityFeedService } from './activity-feed.service';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { AuditModule } from '../audit/audit.module';
 import { SorobanModule } from '../soroban/soroban.module';
+import { WebhooksModule } from '../webhooks/webhooks.module';
+import { SystemAuditLog } from '../audit/entities/system-audit-log.entity';
 import { redisCacheStore } from '../config/redis-cache.store';
 
 /**
@@ -52,6 +54,7 @@ const DEALS_CACHE_TTL_MS = 30_000;
     NotificationsModule,
     AuditModule,
     SorobanModule,
+    WebhooksModule,
     HttpModule,
     /**
      * #743 — Cache active deals list in Redis.
