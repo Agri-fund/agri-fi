@@ -11,6 +11,7 @@ import { useCurrencyConversion } from "../../../../hooks/useCurrencyConversion";
 import DashboardLayout from "../../../../components/DashboardLayout";
 import StatCard from "../../../../components/StatCard";
 import DualCurrencyStatCard from "../../../../components/DualCurrencyStatCard";
+import PortfolioSummaryWidget from "../../../../components/dashboard/PortfolioSummaryWidget";
 
 // Heavy chart / certificate components — loaded only when the user navigates
 // to their respective tabs, keeping the initial dashboard bundle small.
@@ -203,6 +204,12 @@ export default function InvestorDashboard() {
             and not yet delivered. Review the flagged positions below.
           </div>
         )}
+
+        {/* Portfolio summary widget (#789) — server-computed totals + allocation by deal */}
+        <div>
+          <h2 className="section-title mb-3">Portfolio Summary</h2>
+          <PortfolioSummaryWidget />
+        </div>
 
         {/* Stats */}
         <div data-tour="portfolio-stats" className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4">
