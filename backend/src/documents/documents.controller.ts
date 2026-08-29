@@ -24,6 +24,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { AuthGuard } from '@nestjs/passport';
 import { DocumentsService } from './documents.service';
 import { ClamScanService } from './clam-scan.service';
+import { UploadChunkDto, UploadCompleteDto } from './dto/upload-chunk.dto';
 import { User } from '../auth/entities/user.entity';
 
 interface AuthRequest extends Request {
@@ -112,6 +113,11 @@ function sanitizeFilename(raw: string): string {
 export class DocumentsController {
   /** In-memory cache: SHA-256(fileBuffer) → upload result, to avoid redundant IPFS calls */
   private readonly ipfsCache = new Map<string, object>();
+  /** Temporary in-memory chunked upload sessions: fileId → session */
+  private readonly chunkStore = new Map<
+    string,
+    { chunks: Buffer[]; totalChunks: number; receivedCount: number }
+  >();
 
   constructor(
     private readonly documentsService: DocumentsService,
