@@ -37,6 +37,7 @@ import { Sep10ChallengeDto } from './dto/sep10-challenge.dto';
 import { Sep10ResponseDto } from './dto/sep10-response.dto';
 import { EnableMfaDto, VerifyMfaDto, DisableMfaDto } from './dto/mfa.dto';
 import { WebhookSignatureGuard } from './webhook-signature.guard';
+import { PerUserThrottlerGuard } from './guards/per-user-throttler.guard';
 import { User } from './entities/user.entity';
 
 interface AuthRequest extends ExpressRequest {
@@ -117,6 +118,7 @@ export class AuthController {
   }
 
   @Post('refresh')
+  @UseGuards(PerUserThrottlerGuard)
   @Throttle({ login: { limit: 5, ttl: 60000 } })
   @ApiOperation({ summary: 'Exchange a refresh token for a new access token' })
   @ApiResponse({
@@ -155,7 +157,7 @@ export class AuthController {
 
   @Post('kyc')
   @Throttle({ kyc: { limit: 3, ttl: 60000 } })
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(AuthGuard('jwt'), PerUserThrottlerGuard)
   @ApiBearerAuth('jwt')
   @ApiOperation({ summary: 'Submit a KYC document' })
   @ApiResponse({ status: 201, description: 'KYC document recorded' })
@@ -185,7 +187,8 @@ export class AuthController {
   }
 
   @Post('change-password')
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(AuthGuard('jwt'), PerUserThrottlerGuard)
+  @Throttle({ sensitive: { limit: 10, ttl: 60000 } })
   @ApiBearerAuth('jwt')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -203,6 +206,7 @@ export class AuthController {
     description: 'Current password incorrect or new password reused',
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 429, description: 'Too many requests' })
   changePassword(@Request() req: AuthRequest, @Body() dto: ChangePasswordDto) {
     return this.authService.changePassword(req.user.id, dto);
   }
