@@ -757,8 +757,8 @@ export class AuthService {
 
     // Verify password
     const passwordValid = await this.verifyPassword(
-      password,
       user.passwordHash,
+      password,
     );
     if (!passwordValid) {
       throw new BadRequestException('Invalid password.');
@@ -839,16 +839,6 @@ export class AuthService {
     } catch {
       return false;
     }
-  }
-
-  private async verifyPassword(
-    password: string,
-    hash: string,
-  ): Promise<boolean> {
-    if (this.isBcryptHash(hash)) {
-      return bcrypt.compare(password, hash);
-    }
-    return argon2.verify(hash, password);
   }
 
   // ── wallet ─────────────────────────────────────────────────────────────────
