@@ -79,7 +79,7 @@ export class SorobanEventIndexer implements OnModuleInit, OnModuleDestroy {
     private readonly dealRepo: Repository<TradeDeal>,
     private readonly queueService: QueueService,
   ) {
-    this.logger.setContext(SorobanEventIndexer.name);
+    (this.logger as any).setContext(SorobanEventIndexer.name);
 
     const rpcUrl = config.get<string>(
       'SOROBAN_RPC_URL',

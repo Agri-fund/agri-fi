@@ -40,7 +40,7 @@ export class EmailTemplateService {
     private readonly config: ConfigService,
     private readonly logger: PinoLogger,
   ) {
-    this.logger.setContext(EmailTemplateService.name);
+    (this.logger as any).setContext(EmailTemplateService.name);
     this.templatesDir =
       this.config.get<string>('EMAIL_TEMPLATES_DIR') ??
       path.resolve(process.cwd(), 'templates');

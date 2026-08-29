@@ -57,7 +57,7 @@ export class QueueProcessor implements OnApplicationShutdown {
     private readonly logger: PinoLogger,
     private readonly idempotency: IdempotencyService,
   ) {
-    this.logger.setContext(QueueProcessor.name);
+    (this.logger as any).setContext(QueueProcessor.name);
   }
 
   // ── Shutdown hook (#696) ────────────────────────────────────────────────────

@@ -20,7 +20,7 @@ export class NotificationsService {
     @InjectRepository(NotificationEntity)
     private readonly notificationRepo: Repository<NotificationEntity>,
   ) {
-    this.logger.setContext(NotificationsService.name);
+    (this.logger as any).setContext(NotificationsService.name);
 
     this.isEnabled =
       this.configService.get<string>('NOTIFICATIONS_ENABLED') !== 'false';

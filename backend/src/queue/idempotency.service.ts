@@ -49,7 +49,7 @@ export class IdempotencyService implements OnModuleInit, OnModuleDestroy {
     private readonly config: ConfigService,
     private readonly logger: PinoLogger,
   ) {
-    this.logger.setContext(IdempotencyService.name);
+    (this.logger as any).setContext(IdempotencyService.name);
   }
 
   async onModuleInit(): Promise<void> {

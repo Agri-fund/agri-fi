@@ -32,7 +32,7 @@ export class KycCronService {
     private readonly configService: ConfigService,
     private readonly logger: PinoLogger,
   ) {
-    this.logger.setContext(KycCronService.name);
+    (this.logger as any).setContext(KycCronService.name);
   }
 
   /**

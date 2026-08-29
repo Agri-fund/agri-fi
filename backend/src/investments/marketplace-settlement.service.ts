@@ -45,7 +45,7 @@ export class MarketplaceSettlementService {
     private readonly dataSource: DataSource,
     private readonly logger: PinoLogger,
   ) {
-    this.logger.setContext(MarketplaceSettlementService.name);
+    (this.logger as any).setContext(MarketplaceSettlementService.name);
     this.settlementContractId = config.get<string>(
       'MARKETPLACE_SETTLEMENT_CONTRACT',
       '',
