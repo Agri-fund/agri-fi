@@ -1,8 +1,4 @@
-import {
-  Injectable,
-  OnModuleInit,
-  OnModuleDestroy,
-} from '@nestjs/common';
+import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
@@ -81,7 +77,7 @@ export class SecurityThreatService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleInit(): Promise<void> {
-    this.redisClient = this.redisConfig.createClient();
+    this.redisClient = await this.redisConfig.createClient();
     if (this.redisClient && !this.redisClient.isOpen) {
       try {
         await this.redisClient.connect();
@@ -215,10 +211,7 @@ export class SecurityThreatService implements OnModuleInit, OnModuleDestroy {
     if (ip) {
       const subnet = this.ipv4Subnet16(ip);
       if (subnet) {
-        const count = await this.incrWithTtl(
-          `sec:fail:subnet:${subnet}`,
-          600,
-        );
+        const count = await this.incrWithTtl(`sec:fail:subnet:${subnet}`, 600);
         if (count === this.subnetFailThreshold) {
           await this.proposeSubnetBlock(subnet, count, normalized);
         }
@@ -340,7 +333,10 @@ export class SecurityThreatService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Approves a pending subnet block, activating enforcement immediately. */
-  async approveBlock(blockId: string, adminId: string): Promise<SecurityIpBlock> {
+  async approveBlock(
+    blockId: string,
+    adminId: string,
+  ): Promise<SecurityIpBlock> {
     const block = await this.blockRepo.findOne({ where: { id: blockId } });
     if (!block) throw new Error('Security block not found.');
     if (block.type !== 'subnet_pending') {
@@ -420,7 +416,7 @@ export class SecurityThreatService implements OnModuleInit, OnModuleDestroy {
 
   private mask(value: number, prefix: number): number {
     if (prefix === 0) return 0;
-    return value & (0xffffffff << (32 - prefix)) >>> 0;
+    return value & ((0xffffffff << (32 - prefix)) >>> 0);
   }
 
   private ipv4ToLong(ip: string): number | null {
@@ -502,10 +498,7 @@ export class SecurityThreatService implements OnModuleInit, OnModuleDestroy {
     return client.sCard(key);
   }
 
-  private async incrWithTtl(
-    key: string,
-    ttlSeconds: number,
-  ): Promise<number> {
+  private async incrWithTtl(key: string, ttlSeconds: number): Promise<number> {
     const client = this.client();
     if (!client?.isOpen) return 0;
     const value = await client.incr(key);

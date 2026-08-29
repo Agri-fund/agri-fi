@@ -4,7 +4,10 @@ import { PinoLogger } from 'nestjs-pino';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, IsNull } from 'typeorm';
 import * as nodemailer from 'nodemailer';
-import { NotificationEntity, NotificationType } from './entities/notification.entity';
+import {
+  NotificationEntity,
+  NotificationType,
+} from './entities/notification.entity';
 
 @Injectable()
 export class NotificationsService {

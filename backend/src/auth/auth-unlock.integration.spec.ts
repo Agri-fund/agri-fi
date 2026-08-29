@@ -130,7 +130,8 @@ describe('Auth - Account Lockout & Unlock (Integration)', () => {
 
     authService = module.get<AuthService>(AuthService);
     jwtService = module.get<JwtService>(JwtService);
-    notificationsService = module.get<NotificationsService>(NotificationsService);
+    notificationsService =
+      module.get<NotificationsService>(NotificationsService);
   });
 
   afterAll(async () => {
@@ -344,7 +345,7 @@ describe('Auth - Account Lockout & Unlock (Integration)', () => {
       );
 
       const decoded = jwtService.verify(token);
-      const expiryMs = (decoded.exp * 1000) - Date.now();
+      const expiryMs = decoded.exp * 1000 - Date.now();
 
       // Should be close to 15 minutes (900,000 ms)
       expect(expiryMs).toBeGreaterThan(14 * 60 * 1000);

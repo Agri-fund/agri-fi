@@ -54,7 +54,9 @@ describe('DealDigestService (#892)', () => {
     tradeDealRepo = { find: jest.fn().mockResolvedValue([]) };
     investmentRepo = { find: jest.fn().mockResolvedValue([]) };
     documentRepo = { find: jest.fn().mockResolvedValue([]) };
-    notificationsService = { sendEmail: jest.fn().mockResolvedValue(undefined) };
+    notificationsService = {
+      sendEmail: jest.fn().mockResolvedValue(undefined),
+    };
     emailTemplates = {
       render: jest.fn().mockReturnValue({
         subject: 'Your weekly deal digest',
@@ -114,7 +116,9 @@ describe('DealDigestService (#892)', () => {
     });
 
     it('returns null when the farmer opted out of digests', async () => {
-      userRepo.findOne.mockResolvedValue(buildUser({ emailDigestEnabled: false }));
+      userRepo.findOne.mockResolvedValue(
+        buildUser({ emailDigestEnabled: false }),
+      );
       await expect(service.generateForFarmer('farmer-1')).resolves.toBeNull();
     });
 
@@ -132,7 +136,11 @@ describe('DealDigestService (#892)', () => {
         buildDeal({ id: 'deal-2', commodity: 'Coffee' }), // no docs yet
       ]);
       investmentRepo.find.mockResolvedValue([
-        { amountUsd: 500, createdAt: new Date(now - 2 * 86_400_000), investor: {} },
+        {
+          amountUsd: 500,
+          createdAt: new Date(now - 2 * 86_400_000),
+          investor: {},
+        },
       ] as any[]);
       documentRepo.find.mockResolvedValue([{ tradeDealId: 'deal-1' }]); // deal-2 missing docs
 
@@ -257,9 +265,7 @@ describe('DealDigestService (#892)', () => {
       expect(
         service.verifyUnsubscribeToken('farmer-1', `0${token.slice(1)}`),
       ).toBe(false);
-      expect(
-        service.verifyUnsubscribeToken('other-user', token),
-      ).toBe(false);
+      expect(service.verifyUnsubscribeToken('other-user', token)).toBe(false);
     });
   });
 });

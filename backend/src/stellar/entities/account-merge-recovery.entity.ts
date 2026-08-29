@@ -1,4 +1,10 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, Index } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  Index,
+} from 'typeorm';
 import { ApiProperty } from '@nestjs/swagger';
 
 /**
@@ -31,7 +37,8 @@ export class AccountMergeRecovery {
 
   @Column({ type: 'varchar', length: 56, nullable: true })
   @ApiProperty({
-    description: 'Stellar public key of the replacement account created for recovery (null if merge target is being tracked)',
+    description:
+      'Stellar public key of the replacement account created for recovery (null if merge target is being tracked)',
     nullable: true,
   })
   replacementPublicKey: string | null;
@@ -53,9 +60,20 @@ export class AccountMergeRecovery {
   @Column({ type: 'varchar', length: 20 })
   @ApiProperty({
     description: 'Recovery status',
-    enum: ['detected', 'replacement_created', 'trustline_established', 'payment_retried', 'failed'],
+    enum: [
+      'detected',
+      'replacement_created',
+      'trustline_established',
+      'payment_retried',
+      'failed',
+    ],
   })
-  status: 'detected' | 'replacement_created' | 'trustline_established' | 'payment_retried' | 'failed';
+  status:
+    | 'detected'
+    | 'replacement_created'
+    | 'trustline_established'
+    | 'payment_retried'
+    | 'failed';
 
   @Column({ type: 'varchar', length: 100, nullable: true })
   @ApiProperty({

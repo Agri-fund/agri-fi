@@ -10,11 +10,7 @@ import { Exclude } from 'class-transformer';
 import { encryptionTransformer } from '../../common/encryption.transformer';
 
 export type UserRole =
-  | 'farmer'
-  | 'trader'
-  | 'investor'
-  | 'company_admin'
-  | 'admin';
+  'farmer' | 'trader' | 'investor' | 'company_admin' | 'admin';
 export type KycStatus = 'pending' | 'verified' | 'rejected' | 'expired';
 
 export interface CompanyDetails {
@@ -150,7 +146,8 @@ export class User {
   // #806 — admin MFA enforcement: flagged when admin/company_admin has no MFA set up
   @Column({ name: 'mfa_enrollment_required', default: false })
   @ApiProperty({
-    description: 'Whether this admin account must complete MFA enrollment before accessing the platform',
+    description:
+      'Whether this admin account must complete MFA enrollment before accessing the platform',
     example: false,
   })
   mfaEnrollmentRequired: boolean;
@@ -214,7 +211,12 @@ export class User {
   creditScore: number | null;
 
   /** Preferred language for transactional emails (#897). ISO 639-1 code. */
-  @Column({ name: 'preferred_language', type: 'varchar', length: 8, default: 'en' })
+  @Column({
+    name: 'preferred_language',
+    type: 'varchar',
+    length: 8,
+    default: 'en',
+  })
   @ApiProperty({
     description: 'Preferred language for emails and notifications',
     enum: ['en', 'es', 'fr', 'pt', 'sw'],
@@ -246,9 +248,14 @@ export class User {
    * Set to true when the investor clicks the unsubscribe link in any drip
    * email. Stops further sequence steps from being dispatched (GDPR / CAN-SPAM).
    */
-  @Column({ name: 'email_sequence_unsubscribed', type: 'boolean', default: false })
+  @Column({
+    name: 'email_sequence_unsubscribed',
+    type: 'boolean',
+    default: false,
+  })
   @ApiProperty({
-    description: 'Whether the user has unsubscribed from the onboarding email sequence',
+    description:
+      'Whether the user has unsubscribed from the onboarding email sequence',
     example: false,
   })
   emailSequenceUnsubscribed: boolean;
@@ -256,7 +263,11 @@ export class User {
   @DeleteDateColumn({ name: 'deleted_at', nullable: true })
   deletedAt: Date | null;
 
-  @Column({ name: 'gdpr_erasure_requested_at', type: 'timestamptz', nullable: true })
+  @Column({
+    name: 'gdpr_erasure_requested_at',
+    type: 'timestamptz',
+    nullable: true,
+  })
   gdprErasureRequestedAt: Date | null;
 
   @Column({ name: 'gdpr_erasure_due_at', type: 'timestamptz', nullable: true })

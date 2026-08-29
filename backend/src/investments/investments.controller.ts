@@ -108,7 +108,10 @@ export class InvestmentsController {
     @Headers('x-idempotency-key') idempotencyKey?: string,
   ) {
     if (idempotencyKey) {
-      const key = IdempotencyService.buildKey('investment.create', idempotencyKey);
+      const key = IdempotencyService.buildKey(
+        'investment.create',
+        idempotencyKey,
+      );
       const lease = await this.idempotency.acquireLease(key, 300);
       if (!lease.acquired) {
         throw new ConflictException('Duplicate investment request detected.');
@@ -390,9 +393,16 @@ export class InvestmentsController {
    * Issue #850 — Investor tax report export (CSV and PDF).
    */
   @Get('tax-report')
-  @ApiOperation({ summary: 'Export investor tax report for a financial year (#850)' })
+  @ApiOperation({
+    summary: 'Export investor tax report for a financial year (#850)',
+  })
   @ApiQuery({ name: 'year', required: true, example: 2025 })
-  @ApiQuery({ name: 'format', required: false, enum: ['csv', 'pdf'], example: 'csv' })
+  @ApiQuery({
+    name: 'format',
+    required: false,
+    enum: ['csv', 'pdf'],
+    example: 'csv',
+  })
   @ApiResponse({ status: 200, description: 'Tax report file download' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(KycGuard, RolesGuard)
@@ -402,19 +412,28 @@ export class InvestmentsController {
     @Query() query: TaxReportQueryDto,
     @Res() res: Response,
   ) {
-    const report = await this.taxReportService.buildReportData(req.user.id, query.year);
+    const report = await this.taxReportService.buildReportData(
+      req.user.id,
+      query.year,
+    );
     const format = query.format ?? TaxReportFormat.CSV;
 
     if (format === TaxReportFormat.CSV) {
       const csv = this.taxReportService.toCsv(report);
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-      res.setHeader('Content-Disposition', `attachment; filename="tax-report-${query.year}.csv"`);
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="tax-report-${query.year}.csv"`,
+      );
       return res.send('﻿' + csv); // BOM for Excel compatibility
     }
 
     // PDF: placeholder — integrate pdfkit in production
     res.setHeader('Content-Type', 'application/json');
-    return res.json({ message: 'PDF generation queued — you will receive an email when ready.', year: query.year });
+    return res.json({
+      message: 'PDF generation queued — you will receive an email when ready.',
+      year: query.year,
+    });
   }
 
   @Get('buy-orders/:tokenCode/:tokenIssuer')
@@ -448,7 +467,8 @@ export class InvestmentsController {
    */
   @Get(':id/receipt')
   @ApiOperation({
-    summary: 'Get a pre-signed S3 URL for the PDF payment receipt (investor only, #808)',
+    summary:
+      'Get a pre-signed S3 URL for the PDF payment receipt (investor only, #808)',
   })
   @ApiParam({ name: 'id', description: 'Investment UUID' })
   @ApiResponse({
@@ -484,7 +504,8 @@ export class InvestmentsController {
 
   @Get(':id/events')
   @ApiOperation({
-    summary: 'Get event log history for an investment (admin or investment owner)',
+    summary:
+      'Get event log history for an investment (admin or investment owner)',
   })
   @ApiParam({ name: 'id', description: 'Investment UUID' })
   @ApiResponse({ status: 200, description: 'List of investment events' })

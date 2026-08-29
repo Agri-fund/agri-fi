@@ -9,7 +9,12 @@ import {
   Request,
   Version,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiParam,
+} from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { AchievementService } from './achievement.service';
 import { BadgeType } from './entities/achievement.entity';
@@ -19,8 +24,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 @ApiTags('achievements')
 @ApiBearerAuth('jwt')
 @UseGuards(AuthGuard('jwt'))
-@Version('1')
-@Controller()
+@Controller({ version: '1' })
 export class AchievementController {
   constructor(private readonly achievementService: AchievementService) {}
 

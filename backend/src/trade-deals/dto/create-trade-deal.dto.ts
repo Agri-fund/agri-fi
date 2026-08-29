@@ -16,7 +16,10 @@ import { Type } from 'class-transformer';
 export class CreateTradeDealDto {
   @IsString()
   @IsNotEmpty()
-  @ApiProperty({ example: 'Cocoa for Coastal Cooperatives', description: 'Listing title' })
+  @ApiProperty({
+    example: 'Cocoa for Coastal Cooperatives',
+    description: 'Listing title',
+  })
   title: string;
 
   @IsString()
@@ -36,12 +39,18 @@ export class CreateTradeDealDto {
 
   @IsOptional()
   @IsString()
-  @ApiPropertyOptional({ example: 'High quality fermented beans from smallholder farms.', description: 'Short listing summary' })
+  @ApiPropertyOptional({
+    example: 'High quality fermented beans from smallholder farms.',
+    description: 'Short listing summary',
+  })
   short_description?: string;
 
   @IsOptional()
   @IsString()
-  @ApiPropertyOptional({ example: 'A farmer-led cooperative...', description: 'Long-form story and impact description' })
+  @ApiPropertyOptional({
+    example: 'A farmer-led cooperative...',
+    description: 'Long-form story and impact description',
+  })
   long_description?: string;
 
   @Type(() => Number)
@@ -102,12 +111,18 @@ export class CreateTradeDealDto {
 
   @IsOptional()
   @IsIn(['Low', 'Medium', 'High'])
-  @ApiPropertyOptional({ enum: ['Low', 'Medium', 'High'], description: 'Risk rating' })
+  @ApiPropertyOptional({
+    enum: ['Low', 'Medium', 'High'],
+    description: 'Risk rating',
+  })
   risk_rating?: 'Low' | 'Medium' | 'High';
 
   @IsOptional()
   @IsString()
-  @ApiPropertyOptional({ example: 'Opposite Kuto market, Abeokuta', description: 'Farm location text' })
+  @ApiPropertyOptional({
+    example: 'Opposite Kuto market, Abeokuta',
+    description: 'Farm location text',
+  })
   farm_location?: string;
 
   @IsOptional()
@@ -180,7 +195,8 @@ export class CreateTradeDealDto {
   @ApiPropertyOptional({
     example: 10,
     minimum: 0,
-    description: 'Investment increment above the minimum in USD (#835, default 1)',
+    description:
+      'Investment increment above the minimum in USD (#835, default 1)',
   })
   lot_step?: number;
 }

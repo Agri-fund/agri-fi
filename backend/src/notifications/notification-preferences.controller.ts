@@ -39,15 +39,16 @@ class UpdateNotificationPreferenceDto {
 @ApiTags('users')
 @ApiBearerAuth('jwt')
 @UseGuards(AuthGuard('jwt'))
-@Version('1')
-@Controller('users')
+@Controller({ path: 'users', version: '1' })
 export class NotificationPreferencesController {
   constructor(
     private readonly preferencesService: NotificationPreferencesService,
   ) {}
 
   @Get('me/notification-preferences')
-  @ApiOperation({ summary: 'Get notification preferences for all notification types' })
+  @ApiOperation({
+    summary: 'Get notification preferences for all notification types',
+  })
   @ApiResponse({ status: 200, description: 'List of notification preferences' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async getPreferences(@Request() req: { user: User }) {
@@ -55,7 +56,9 @@ export class NotificationPreferencesController {
   }
 
   @Patch('me/notification-preferences')
-  @ApiOperation({ summary: 'Update notification preferences for a notification type' })
+  @ApiOperation({
+    summary: 'Update notification preferences for a notification type',
+  })
   @ApiResponse({ status: 200, description: 'Updated notification preference' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async updatePreference(

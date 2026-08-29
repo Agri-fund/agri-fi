@@ -9,10 +9,7 @@ import {
 import { ApiProperty } from '@nestjs/swagger';
 
 export type DeploymentStatus =
-  | 'active'
-  | 'superseded'
-  | 'rolled_back'
-  | 'failed';
+  'active' | 'superseded' | 'rolled_back' | 'failed';
 
 @Entity('soroban_contract_deployments')
 export class SorobanContractDeployment {

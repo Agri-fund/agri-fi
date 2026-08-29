@@ -17,8 +17,7 @@ import {
 } from './stellar.health-indicator';
 
 @ApiTags('health')
-@Version('1')
-@Controller('health')
+@Controller({ path: 'health', version: '1' })
 @SkipThrottle() // Health check is called by Kubernetes liveness/readiness probes — exempt from rate limiting
 export class HealthController {
   constructor(

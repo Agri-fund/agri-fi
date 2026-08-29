@@ -23,8 +23,14 @@ export class AddUserLocaleAndDigestPrefs1840000000000 implements MigrationInterf
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`ALTER TABLE "users" DROP COLUMN IF EXISTS "email_digest_enabled"`);
-    await queryRunner.query(`ALTER TABLE "users" DROP COLUMN IF EXISTS "timezone"`);
-    await queryRunner.query(`ALTER TABLE "users" DROP COLUMN IF EXISTS "preferred_language"`);
+    await queryRunner.query(
+      `ALTER TABLE "users" DROP COLUMN IF EXISTS "email_digest_enabled"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "users" DROP COLUMN IF EXISTS "timezone"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "users" DROP COLUMN IF EXISTS "preferred_language"`,
+    );
   }
 }

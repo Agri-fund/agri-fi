@@ -46,7 +46,10 @@ export class StellarPrometheusService implements OnModuleInit {
     // Initialize all nodes as healthy (1.0) in metrics
     const nodeStatuses = this.horizonClient.getNodeHealth();
     for (const status of nodeStatuses) {
-      this.nodeStatusGauge.set({ node: status.url, url: status.url }, status.healthy ? 1 : 0);
+      this.nodeStatusGauge.set(
+        { node: status.url, url: status.url },
+        status.healthy ? 1 : 0,
+      );
     }
   }
 

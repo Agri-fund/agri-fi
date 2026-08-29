@@ -299,8 +299,10 @@ export class MarketplaceSettlementService {
     for (const ask of asks) {
       for (const bid of bids) {
         if (Number(ask.askPrice) <= Number(bid.bidPrice)) {
-          const askRemaining = Number(ask.quantity) - Number(ask.filledQuantity);
-          const bidRemaining = Number(bid.quantity) - Number(bid.filledQuantity);
+          const askRemaining =
+            Number(ask.quantity) - Number(ask.filledQuantity);
+          const bidRemaining =
+            Number(bid.quantity) - Number(bid.filledQuantity);
           if (askRemaining <= 0 || bidRemaining <= 0) continue;
 
           const matchQty = Math.min(askRemaining, bidRemaining);

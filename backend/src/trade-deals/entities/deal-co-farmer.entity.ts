@@ -14,7 +14,8 @@ import { Exclude } from 'class-transformer';
 import { User } from '../../auth/entities/user.entity';
 import { TradeDeal } from './trade-deal.entity';
 
-export type DealCoFarmerStatus = 'invited' | 'accepted' | 'declined' | 'removed';
+export type DealCoFarmerStatus =
+  'invited' | 'accepted' | 'declined' | 'removed';
 
 /**
  * Join table linking a trade deal to co-farmer users (#891).
@@ -64,7 +65,10 @@ export class DealCoFarmer {
 
   /** Email address the invitation was sent to (before user account link). */
   @Column({ nullable: true })
-  @ApiProperty({ description: 'Email the invitation was sent to', required: false })
+  @ApiProperty({
+    description: 'Email the invitation was sent to',
+    required: false,
+  })
   invitedEmail: string | null;
 
   @Exclude()
@@ -72,7 +76,11 @@ export class DealCoFarmer {
   invitationToken: string | null;
 
   @Exclude()
-  @Column({ name: 'invitation_expires_at', type: 'timestamptz', nullable: true })
+  @Column({
+    name: 'invitation_expires_at',
+    type: 'timestamptz',
+    nullable: true,
+  })
   invitationExpiresAt: Date | null;
 
   @Column({ name: 'accepted_at', type: 'timestamptz', nullable: true })
@@ -82,7 +90,9 @@ export class DealCoFarmer {
   declinedAt: Date | null;
 
   @Column({ name: 'invited_by' })
-  @ApiProperty({ description: 'User who sent the invitation (lead farmer or trader)' })
+  @ApiProperty({
+    description: 'User who sent the invitation (lead farmer or trader)',
+  })
   invitedBy: string;
 
   @CreateDateColumn({ name: 'created_at' })

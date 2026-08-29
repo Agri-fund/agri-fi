@@ -21,9 +21,11 @@ const makeUser = (overrides: Partial<User> = {}): User =>
     role: 'investor',
     kycStatus: 'verified',
     ...overrides,
-  } as User);
+  }) as User;
 
-const makeSubmission = (overrides: Partial<KycSubmission> = {}): KycSubmission =>
+const makeSubmission = (
+  overrides: Partial<KycSubmission> = {},
+): KycSubmission =>
   ({
     id: 'sub-1',
     userId: 'user-1',
@@ -34,7 +36,7 @@ const makeSubmission = (overrides: Partial<KycSubmission> = {}): KycSubmission =
     alert3SentAt: null,
     user: makeUser(),
     ...overrides,
-  } as KycSubmission);
+  }) as KycSubmission;
 
 describe('KycCronService', () => {
   let service: KycCronService;
@@ -60,7 +62,7 @@ describe('KycCronService', () => {
     auditService = { logEvent: jest.fn().mockResolvedValue({}) };
     configService = {
       get: jest.fn((key: string, def?: string) =>
-        key === 'FRONTEND_URL' ? 'https://app.agri-fi.com' : def ?? '',
+        key === 'FRONTEND_URL' ? 'https://app.agri-fi.com' : (def ?? ''),
       ),
     };
 
@@ -173,8 +175,12 @@ describe('KycCronService', () => {
 
       await service.checkKycExpirations();
 
-      expect(kycRepo.update).toHaveBeenCalledWith(sub.id, { status: 'expired' });
-      expect(userRepo.update).toHaveBeenCalledWith(sub.userId, { kycStatus: 'expired' });
+      expect(kycRepo.update).toHaveBeenCalledWith(sub.id, {
+        status: 'expired',
+      });
+      expect(userRepo.update).toHaveBeenCalledWith(sub.userId, {
+        kycStatus: 'expired',
+      });
       expect(notificationsService.sendEmail).toHaveBeenCalledTimes(1);
       const [, subject] = notificationsService.sendEmail.mock.calls[0];
       expect(subject).toContain('expired');

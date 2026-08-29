@@ -85,7 +85,9 @@ export class NotificationPreferencesService {
     }
   }
 
-  private async seedDefaults(userId: string): Promise<NotificationPreference[]> {
+  private async seedDefaults(
+    userId: string,
+  ): Promise<NotificationPreference[]> {
     const prefs = DEFAULT_NOTIFICATION_TYPES.map((type) =>
       this.preferenceRepo.create({
         userId,

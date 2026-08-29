@@ -132,23 +132,41 @@ export class AddFullTextSearch1940000000000 implements MigrationInterface {
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`DROP TRIGGER IF EXISTS documents_search_vector_trigger ON "documents"`);
-    await queryRunner.query(`DROP FUNCTION IF EXISTS documents_search_vector_update()`);
-    await queryRunner.query(`DROP INDEX IF EXISTS "idx_documents_search_vector"`);
+    await queryRunner.query(
+      `DROP TRIGGER IF EXISTS documents_search_vector_trigger ON "documents"`,
+    );
+    await queryRunner.query(
+      `DROP FUNCTION IF EXISTS documents_search_vector_update()`,
+    );
+    await queryRunner.query(
+      `DROP INDEX IF EXISTS "idx_documents_search_vector"`,
+    );
     await queryRunner.query(`
       ALTER TABLE "documents"
       DROP COLUMN IF EXISTS "search_vector",
       DROP COLUMN IF EXISTS "title"
     `);
 
-    await queryRunner.query(`DROP TRIGGER IF EXISTS users_search_vector_trigger ON "users"`);
-    await queryRunner.query(`DROP FUNCTION IF EXISTS users_search_vector_update()`);
+    await queryRunner.query(
+      `DROP TRIGGER IF EXISTS users_search_vector_trigger ON "users"`,
+    );
+    await queryRunner.query(
+      `DROP FUNCTION IF EXISTS users_search_vector_update()`,
+    );
     await queryRunner.query(`DROP INDEX IF EXISTS "idx_users_search_vector"`);
-    await queryRunner.query(`ALTER TABLE "users" DROP COLUMN IF EXISTS "search_vector"`);
+    await queryRunner.query(
+      `ALTER TABLE "users" DROP COLUMN IF EXISTS "search_vector"`,
+    );
 
-    await queryRunner.query(`DROP TRIGGER IF EXISTS trade_deals_search_vector_trigger ON "trade_deals"`);
-    await queryRunner.query(`DROP FUNCTION IF EXISTS trade_deals_search_vector_update()`);
-    await queryRunner.query(`DROP INDEX IF EXISTS "idx_trade_deals_search_vector"`);
+    await queryRunner.query(
+      `DROP TRIGGER IF EXISTS trade_deals_search_vector_trigger ON "trade_deals"`,
+    );
+    await queryRunner.query(
+      `DROP FUNCTION IF EXISTS trade_deals_search_vector_update()`,
+    );
+    await queryRunner.query(
+      `DROP INDEX IF EXISTS "idx_trade_deals_search_vector"`,
+    );
     await queryRunner.query(`
       ALTER TABLE "trade_deals"
       DROP COLUMN IF EXISTS "search_vector",

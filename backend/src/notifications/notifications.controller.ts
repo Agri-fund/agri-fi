@@ -8,15 +8,20 @@ import {
   Request,
   Version,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiQuery,
+} from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { NotificationsService } from './notifications.service';
 
 @ApiTags('notifications')
 @ApiBearerAuth('jwt')
 @UseGuards(AuthGuard('jwt'))
-@Version('1')
-@Controller('notifications')
+@Controller({ path: 'notifications', version: '1' })
 export class NotificationsController {
   constructor(private readonly notificationsService: NotificationsService) {}
 
@@ -39,13 +44,17 @@ export class NotificationsController {
   }
 
   @Patch('mark-read')
-  @ApiOperation({ summary: 'Mark notifications as read (all or specific array of IDs)' })
+  @ApiOperation({
+    summary: 'Mark notifications as read (all or specific array of IDs)',
+  })
   async markRead(
     @Request() req: { user: { id: string } },
     @Body() body: { ids?: string[] },
   ) {
     await this.notificationsService.markAsRead(req.user.id, body?.ids);
-    const unreadCount = await this.notificationsService.getUnreadCount(req.user.id);
+    const unreadCount = await this.notificationsService.getUnreadCount(
+      req.user.id,
+    );
     return { success: true, unreadCount };
   }
 }

@@ -8,11 +8,22 @@
  */
 
 import {
-  Controller, Get, Post, Param, Query, Request,
-  UseGuards, UseInterceptors, Body,
+  Controller,
+  Get,
+  Post,
+  Param,
+  Query,
+  Request,
+  UseGuards,
+  UseInterceptors,
+  Body,
 } from '@nestjs/common';
 import {
-  ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery,
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiQuery,
 } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../auth/roles.guard';
@@ -35,8 +46,15 @@ export class ComplianceController {
    * Returns all reports (optionally filtered by type) with 15-min signed URLs.
    */
   @Get()
-  @ApiOperation({ summary: 'List compliance reports with signed download URLs (admin/compliance_officer)' })
-  @ApiQuery({ name: 'type', required: false, enum: ['monthly_aml_kyc', 'quarterly_transaction', 'incident'] })
+  @ApiOperation({
+    summary:
+      'List compliance reports with signed download URLs (admin/compliance_officer)',
+  })
+  @ApiQuery({
+    name: 'type',
+    required: false,
+    enum: ['monthly_aml_kyc', 'quarterly_transaction', 'incident'],
+  })
   @ApiResponse({ status: 200, description: 'List of compliance reports' })
   async listReports(@Query('type') type?: string) {
     return this.complianceService.listReports(type as any);

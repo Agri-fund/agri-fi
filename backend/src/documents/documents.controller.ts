@@ -24,6 +24,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { AuthGuard } from '@nestjs/passport';
 import { DocumentsService } from './documents.service';
 import { ClamScanService } from './clam-scan.service';
+import { UploadChunkDto, UploadCompleteDto } from './dto/upload-chunk.dto';
 import { User } from '../auth/entities/user.entity';
 
 interface AuthRequest extends Request {
@@ -46,12 +47,42 @@ const ALLOWED_MIME_TYPES: ReadonlySet<string> = new Set([
  * Covers common script, executable, and web-exploit extensions.
  */
 const BLOCKED_EXTENSIONS: ReadonlySet<string> = new Set([
-  '.exe', '.bat', '.cmd', '.sh', '.ps1', '.psm1', '.vbs', '.vbe',
-  '.js',  '.jsx', '.ts',  '.tsx', '.mjs', '.cjs',
-  '.php', '.asp', '.aspx', '.jsp', '.py', '.rb', '.pl', '.lua',
-  '.dll', '.so',  '.dylib', '.elf',
-  '.svg', '.xml', '.html', '.htm', '.xhtml',
-  '.zip', '.tar', '.gz',  '.7z',  '.rar',
+  '.exe',
+  '.bat',
+  '.cmd',
+  '.sh',
+  '.ps1',
+  '.psm1',
+  '.vbs',
+  '.vbe',
+  '.js',
+  '.jsx',
+  '.ts',
+  '.tsx',
+  '.mjs',
+  '.cjs',
+  '.php',
+  '.asp',
+  '.aspx',
+  '.jsp',
+  '.py',
+  '.rb',
+  '.pl',
+  '.lua',
+  '.dll',
+  '.so',
+  '.dylib',
+  '.elf',
+  '.svg',
+  '.xml',
+  '.html',
+  '.htm',
+  '.xhtml',
+  '.zip',
+  '.tar',
+  '.gz',
+  '.7z',
+  '.rar',
 ]);
 
 /**
@@ -69,20 +100,24 @@ const MAX_FILENAME_LENGTH = 255;
  */
 function sanitizeFilename(raw: string): string {
   return raw
-    .replace(/\.\.[/\\]/g, '')   // strip directory traversal
-    .replace(/\0/g, '')           // strip null bytes
-    .replace(/\s+/g, ' ')         // collapse whitespace
+    .replace(/\.\.[/\\]/g, '') // strip directory traversal
+    .replace(/\0/g, '') // strip null bytes
+    .replace(/\s+/g, ' ') // collapse whitespace
     .trim()
     .slice(0, MAX_FILENAME_LENGTH);
 }
 
 @ApiTags('documents')
 @ApiBearerAuth('jwt')
-@Version('1')
-@Controller('documents')
+@Controller({ path: 'documents', version: '1' })
 export class DocumentsController {
   /** In-memory cache: SHA-256(fileBuffer) → upload result, to avoid redundant IPFS calls */
   private readonly ipfsCache = new Map<string, object>();
+  /** Temporary in-memory chunked upload sessions: fileId → session */
+  private readonly chunkStore = new Map<
+    string,
+    { chunks: Buffer[]; totalChunks: number; receivedCount: number }
+  >();
 
   constructor(
     private readonly documentsService: DocumentsService,
@@ -224,7 +259,14 @@ export class DocumentsController {
   @ApiBody({
     schema: {
       type: 'object',
-      required: ['chunk', 'fileId', 'chunkIndex', 'totalChunks', 'docType', 'tradeDealId'],
+      required: [
+        'chunk',
+        'fileId',
+        'chunkIndex',
+        'totalChunks',
+        'docType',
+        'tradeDealId',
+      ],
       properties: {
         chunk: { type: 'string', format: 'binary' },
         fileId: { type: 'string' },
@@ -253,7 +295,11 @@ export class DocumentsController {
 
     let session = this.chunkStore.get(fileId);
     if (!session) {
-      session = { chunks: new Array(totalChunks).fill(null), totalChunks, receivedCount: 0 };
+      session = {
+        chunks: new Array(totalChunks).fill(null),
+        totalChunks,
+        receivedCount: 0,
+      };
       this.chunkStore.set(fileId, session);
     }
 
@@ -280,7 +326,10 @@ export class DocumentsController {
     summary: 'Assemble uploaded chunks and finalize document upload',
   })
   @ApiResponse({ status: 201, description: 'Document assembled and uploaded' })
-  @ApiResponse({ status: 400, description: 'Missing chunks or invalid request' })
+  @ApiResponse({
+    status: 400,
+    description: 'Missing chunks or invalid request',
+  })
   async uploadComplete(
     @Body() dto: UploadCompleteDto,
     @Request() req: AuthRequest,
