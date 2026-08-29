@@ -39,8 +39,7 @@ class UpdateNotificationPreferenceDto {
 @ApiTags('users')
 @ApiBearerAuth('jwt')
 @UseGuards(AuthGuard('jwt'))
-@Version('1')
-@Controller('users')
+@Controller({ path: 'users', version: '1' })
 export class NotificationPreferencesController {
   constructor(
     private readonly preferencesService: NotificationPreferencesService,

@@ -24,8 +24,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 @ApiTags('achievements')
 @ApiBearerAuth('jwt')
 @UseGuards(AuthGuard('jwt'))
-@Version('1')
-@Controller()
+@Controller({ version: '1' })
 export class AchievementController {
   constructor(private readonly achievementService: AchievementService) {}
 

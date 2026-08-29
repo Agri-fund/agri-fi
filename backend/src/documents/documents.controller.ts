@@ -108,8 +108,7 @@ function sanitizeFilename(raw: string): string {
 
 @ApiTags('documents')
 @ApiBearerAuth('jwt')
-@Version('1')
-@Controller('documents')
+@Controller({ path: 'documents', version: '1' })
 export class DocumentsController {
   /** In-memory cache: SHA-256(fileBuffer) → upload result, to avoid redundant IPFS calls */
   private readonly ipfsCache = new Map<string, object>();

@@ -76,8 +76,7 @@ interface AuthRequest extends Request {
 }
 
 @ApiTags('admin')
-@Version('1')
-@Controller('admin')
+@Controller({ path: 'admin', version: '1' })
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 @Roles('admin')
 @ApiBearerAuth('jwt')
