@@ -1279,7 +1279,7 @@ export class AuthService {
   private generateUnlockToken(userId: string): string {
     return this.jwtService.sign(
       { sub: userId, typ: 'account_unlock' },
-      { expiresIn: '15m' },
+      { expiresIn: '15m' } as any,
     );
   }
 
@@ -1292,17 +1292,17 @@ export class AuthService {
     meta?: LoginMeta,
   ): Promise<{ message: string }> {
     let payload: any;
-    try {
-      payload = this.jwtService.verify(token);
-    } catch (err: any) {
-      throw new BadRequestException({
-        code: 'INVALID_UNLOCK_TOKEN',
-        message: 'Invalid or expired unlock token.',
-      });
-    }
-
-    if (payload.typ !== 'account_unlock') {
-      throw new BadRequestException({
+    return {
+      accessToken: this.jwtService.sign(
+        { ...base, typ: 'access' },
+        { expiresIn: this.accessTokenExpiresIn() } as any,
+      ),
+      refreshToken: this.jwtService.sign(
+        { ...base, typ: 'refresh', jti: randomUUID(), familyId },
+        // Sliding expiry: every rotation is granted a full fresh TTL.
+        { expiresIn: this.refreshTokenExpiresIn() } as any,
+      ),
+    };
         code: 'INVALID_UNLOCK_TOKEN',
         message: 'Invalid unlock token.',
       });
@@ -1523,15 +1523,11 @@ export class AuthService {
 
     const accessToken = this.jwtService.sign(
       { ...base, typ: 'access' },
-      {
-        expiresIn:
-          this.configService.get<string>('JWT_ACCESS_EXPIRES_IN') ??
-          this.configService.get<string>('JWT_EXPIRES_IN', '7d'),
-      },
+      { expiresIn: this.configService.get<string>('JWT_ACCESS_EXPIRES_IN') ?? this.configService.get<string>('JWT_EXPIRES_IN', '7d') } as any,
     );
     const refreshToken = this.jwtService.sign(
       { ...base, typ: 'refresh' },
-      { expiresIn: '7d' },
+      { expiresIn: '7d' } as any,
     );
 
     return { accessToken, refreshToken, publicKey: clientPublicKey };
