@@ -1,12 +1,8 @@
 import { useLocale } from 'next-intl';
 
 export function useDateFormat() {
-  let locale = 'en';
-  try {
-    locale = useLocale();
-  } catch {
-    locale = 'en';
-  }
+  const localeFromHook = useLocale();
+  const locale = localeFromHook ?? 'en';
 
   const formatDate = (
     date: Date | string | number,
