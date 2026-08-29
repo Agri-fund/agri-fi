@@ -59,6 +59,7 @@ export class TradeDealsController {
     private readonly tradeDealsService: TradeDealsService,
     private readonly dealCoFarmersService: DealCoFarmersService,
     private readonly dealDeploymentService: DealDeploymentService,
+    private readonly activityFeedService: ActivityFeedService,
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
   ) {}
 
