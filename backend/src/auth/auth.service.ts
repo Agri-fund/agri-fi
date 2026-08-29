@@ -650,24 +650,33 @@ export class AuthService {
 
   // ── logout & token revocation ──────────────────────────────────────────────
 
+  /**
+   * Logout a user. If a raw token string is provided it will be blocklisted
+   * until its natural expiry. In all cases the user's `tokenVersion` is
+   * incremented to immediately invalidate existing sessions.
+   */
   async logout(userId: string, token?: string): Promise<{ message: string }> {
+    // If a token string is provided, try to blocklist it until expiry.
     if (token) {
       try {
         const decoded: any = this.jwtService.decode(token);
         if (decoded && typeof decoded.exp === 'number') {
           const remainingSeconds = decoded.exp - Math.floor(Date.now() / 1000);
           if (remainingSeconds > 0) {
-            await this.tokenBlocklistService.blocklistToken(
-              token,
-              remainingSeconds,
-            );
+            await this.tokenBlocklistService.blocklistToken(token, remainingSeconds);
           }
         }
       } catch {
-        // decode error ignored
+        // ignore decode errors — still proceed to invalidate sessions
       }
     }
-    return { message: 'Logged out successfully' };
+
+    // Bump tokenVersion so all issued JWTs become invalid immediately.
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found.');
+    user.tokenVersion = (user.tokenVersion ?? 0) + 1;
+    await this.userRepo.save(user);
+    return { message: 'Logged out successfully.' };
   }
 
   // ── MFA ───────────────────────────────────────────────────────────────────
@@ -1251,14 +1260,7 @@ export class AuthService {
     };
   }
 
-  async logout(userId: string): Promise<{ message: string }> {
-    const user = await this.userRepo.findOne({ where: { id: userId } });
-    if (!user) throw new NotFoundException('User not found.');
 
-    user.tokenVersion = (user.tokenVersion ?? 0) + 1;
-    await this.userRepo.save(user);
-    return { message: 'Logged out successfully.' };
-  }
 
   // ── account unlock ────────────────────────────────────────────────────────
 
@@ -1282,44 +1284,29 @@ export class AuthService {
     meta?: LoginMeta,
   ): Promise<{ message: string }> {
     let payload: any;
-    return {
-      accessToken: this.jwtService.sign(
-        { ...base, typ: 'access' },
-        { expiresIn: this.accessTokenExpiresIn() } as any,
-      ),
-      refreshToken: this.jwtService.sign(
-        { ...base, typ: 'refresh', jti: randomUUID(), familyId },
-        // Sliding expiry: every rotation is granted a full fresh TTL.
-        { expiresIn: this.refreshTokenExpiresIn() } as any,
-      ),
-    };
-        code: 'INVALID_UNLOCK_TOKEN',
-        message: 'Invalid unlock token.',
-      });
+    try {
+      payload = this.jwtService.verify(token) as any;
+    } catch (err) {
+      throw new BadRequestException({ code: 'INVALID_UNLOCK_TOKEN', message: 'Invalid unlock token.' });
     }
 
-    const userId = payload.sub;
+    if (!payload || payload.typ !== 'account_unlock' || !payload.sub) {
+      throw new BadRequestException({ code: 'INVALID_UNLOCK_TOKEN', message: 'Invalid unlock token.' });
+    }
+
+    const userId = payload.sub as string;
     const user = await this.userRepo.findOne({ where: { id: userId } });
-    if (!user) {
-      throw new NotFoundException('User not found.');
-    }
+    if (!user) throw new NotFoundException('User not found.');
 
-    // Reset lockout state
-    const wasLocked = user.lockoutUntil && user.lockoutUntil > new Date();
+    const wasLocked = !!(user.lockoutUntil && user.lockoutUntil > new Date());
     user.lockoutUntil = null;
     user.failedLoginAttempts = 0;
     await this.userRepo.save(user);
 
     // Log unlock attempt to login_logs with metadata
     if (meta?.ip) {
-      const deviceFingerprint = this.computeDeviceFingerprint(
-        meta.userAgent,
-        meta.acceptLanguage,
-      );
-      const countryCode = meta.country
-        ? meta.country.toUpperCase().slice(0, 2)
-        : null;
-
+      const deviceFingerprint = this.computeDeviceFingerprint(meta.userAgent, meta.acceptLanguage);
+      const countryCode = meta.country ? meta.country.toUpperCase().slice(0, 2) : null;
       await this.loginLogRepo.save(
         this.loginLogRepo.create({
           userId: user.id,
@@ -1333,9 +1320,7 @@ export class AuthService {
     }
 
     return {
-      message: wasLocked
-        ? 'Account has been unlocked successfully. You can now log in.'
-        : 'Account unlock token validated.',
+      message: wasLocked ? 'Account has been unlocked successfully. You can now log in.' : 'Account unlock token validated.',
     };
   }
 
