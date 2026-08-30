@@ -56,18 +56,25 @@ import { WebhooksModule } from './webhooks/webhooks.module';
       },
       {
         name: 'login',
-        ttl: 60000,
-        limit: 5,
+        ttl: parseInt(process.env.RATE_LIMIT_LOGIN_TTL || '60000'),
+        limit: parseInt(process.env.RATE_LIMIT_LOGIN_LIMIT || '5'),
       },
       {
         name: 'kyc',
-        ttl: 60000,
-        limit: 3,
+        ttl: parseInt(process.env.RATE_LIMIT_KYC_TTL || '60000'),
+        limit: parseInt(process.env.RATE_LIMIT_KYC_LIMIT || '3'),
       },
       {
         name: 'marketplace',
         ttl: 60000,
         limit: 60,
+      },
+      // #790 — per-user-tracked limit for sensitive, already-authenticated
+      // endpoints (refresh, change-password). See PerUserThrottlerGuard.
+      {
+        name: 'sensitive',
+        ttl: parseInt(process.env.RATE_LIMIT_SENSITIVE_TTL || '60000'),
+        limit: parseInt(process.env.RATE_LIMIT_SENSITIVE_LIMIT || '10'),
       },
     ]),
     LoggerModule.forRoot(loggingConfig),

@@ -27,7 +27,9 @@ import { RedisConfig } from '../config/redis.config';
 import { TokenBlocklistService } from './token-blocklist.service';
 import { SecurityThreatService } from './security-threat.service';
 import { MfaGuard } from './guards/mfa.guard';
+import { PerUserThrottlerGuard } from './guards/per-user-throttler.guard';
 import { EscrowModule } from '../escrow/escrow.module';
+import { EmailSequenceModule } from '../email-sequence/email-sequence.module';
 import { SettlementModule } from '../settlement/settlement.module';
 import { DocumentsModule } from '../documents/documents.module';
 
@@ -72,6 +74,7 @@ import { DocumentsModule } from '../documents/documents.module';
     SecurityThreatService,
     OfacSanctionsCheckService,
     KycCronService,
+    PerUserThrottlerGuard,
   ],
   exports: [
     AuthService,
@@ -84,61 +87,7 @@ import { DocumentsModule } from '../documents/documents.module';
     TokenBlocklistService,
     SecurityThreatService,
     OfacSanctionsCheckService,
-  ],
-})
-export class AuthModule {}
-
-@Module({
-  imports: [
-    TypeOrmModule.forFeature([
-      User,
-      KycSubmission,
-      TradeDeal,
-      Document,
-      LoginLog,
-      AdminAction,
-      SecurityIpBlock,
-    ]),
-    QueueModule,
-    NotificationsModule,
-    PassportModule,
-    EscrowModule,
-    EmailSequenceModule,
-    SettlementModule,
-    DocumentsModule,
-    JwtModule.registerAsync({
-      imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        secret: config.getOrThrow<string>('JWT_SECRET'),
-        signOptions: { expiresIn: config.get<string>('JWT_EXPIRES_IN', '7d') },
-      }),
-    }),
-  ],
-  controllers: [AuthController, AdminController],
-  providers: [
-    AuthService,
-    JwtStrategy,
-    KycGuard,
-    RolesGuard,
-    MfaGuard,
-    RedisConfig,
-    TokenBlocklistService,
-    SecurityThreatService,
-    OfacSanctionsCheckService,
-    KycCronService,
-  ],
-  exports: [
-    AuthService,
-    JwtModule,
-    TypeOrmModule,
-    KycGuard,
-    RolesGuard,
-    MfaGuard,
-    RedisConfig,
-    TokenBlocklistService,
-    SecurityThreatService,
-    OfacSanctionsCheckService,
+    PerUserThrottlerGuard,
   ],
 })
 export class AuthModule {}

@@ -30,7 +30,7 @@ async function bootstrap() {
       },
       noAck: false,
     },
-  });
+  );
 
   await app.startAllMicroservices();
   console.log(
