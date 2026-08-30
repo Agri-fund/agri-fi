@@ -41,6 +41,7 @@ import { TradeDealsGuard } from '../trade-deals/trade-deals.guard';
 import { IdempotencyService } from '../queue/idempotency.service';
 import { InvestmentEventStore } from './investment-event-store.service';
 import { ReceiptService } from './receipt.service';
+import { InvestmentSummaryDto } from './dto/investment-summary.dto';
 
 @ApiTags('investments')
 @ApiBearerAuth('jwt')
@@ -245,6 +246,29 @@ export class InvestmentsController {
       page: page ? parseInt(page, 10) : undefined,
       limit: limit ? parseInt(limit, 10) : undefined,
     });
+  }
+
+  @Get('summary')
+  @ApiOperation({
+    summary:
+      "Portfolio summary for the authenticated investor's dashboard widget (#789)",
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Aggregated portfolio totals and allocation by deal',
+    type: InvestmentSummaryDto,
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({
+    status: 403,
+    description: 'Only investors can access this endpoint',
+  })
+  @UseGuards(KycGuard, RolesGuard)
+  @Roles('investor')
+  async getPortfolioSummary(
+    @Request() req: { user: { id: string } },
+  ): Promise<InvestmentSummaryDto> {
+    return this.investmentsService.getPortfolioSummary(req.user.id);
   }
 
   /**

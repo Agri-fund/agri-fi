@@ -116,6 +116,24 @@ export interface Investment {
   soroban_contract_id?: string | null;
 }
 
+export interface DealAllocation {
+  dealId: string;
+  commodity: string;
+  tokenSymbol: string;
+  amountUsd: number;
+  percentage: number;
+}
+
+// GET /investments/summary response shape — see backend
+// investments/dto/investment-summary.dto.ts for field semantics.
+export interface PortfolioSummary {
+  totalInvested: number;
+  currentValue: number;
+  expectedReturns: number;
+  activeDealCount: number;
+  allocationByDeal: DealAllocation[];
+}
+
 interface PaginatedResponse<T> {
   data: T[];
   meta: {
@@ -343,6 +361,11 @@ export const apiClient = {
       "/investments/my-investments",
     );
     return unwrapPaginated(response).map(normalizeInvestment);
+  },
+
+  // GET /investments/summary
+  async getPortfolioSummary(): Promise<PortfolioSummary> {
+    return apiFetch<PortfolioSummary>("/investments/summary");
   },
 
   // POST /shipments/milestones  — trade_deal_id + milestone + notes in body

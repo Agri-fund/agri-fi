@@ -29,6 +29,7 @@ import { encodeFeeData, generateInvestmentMemo } from './fee-transaction.utils';
 import { EmailSequenceService } from '../email-sequence/email-sequence.service';
 import { InvestmentEventStore } from './investment-event-store.service';
 import { OfacSanctionsCheckService } from '../auth/utils/ofac-sanctions-check';
+import { InvestmentSummaryDto } from './dto/investment-summary.dto';
 
 export interface CreateInvestmentResult {
   investment: Investment;
@@ -605,5 +606,88 @@ export class InvestmentsService {
     });
 
     return toPaginatedResult(data, total, page, limit);
+  }
+
+  /**
+   * Portfolio summary for the investor dashboard widget (#789).
+   *
+   * "Committed" capital counts CONFIRMED / ACTIVE / RELEASING / COMPLETED
+   * investments — a PENDING investment has not yet had funds move on-chain
+   * (see `fundEscrow`), and CANCELLED/FAILED/REFUNDED never will. "Active"
+   * (for `activeDealCount` and the allocation breakdown) is narrower: it
+   * excludes COMPLETED, since a completed deal is no longer a live position.
+   *
+   * `currentValue`/`expectedReturns` use the deal's `expectedRoi` as the
+   * only available return signal (there is no secondary-market
+   * mark-to-market price lookup in scope here) — see the DTO's field docs
+   * for the exact per-status formula.
+   */
+  async getPortfolioSummary(investorId: string): Promise<InvestmentSummaryDto> {
+    const committedStatuses = [
+      InvestmentStatus.CONFIRMED,
+      InvestmentStatus.ACTIVE,
+      InvestmentStatus.RELEASING,
+      InvestmentStatus.COMPLETED,
+    ];
+    const investments = await this.investmentRepo.find({
+      where: { investorId },
+      relations: ['tradeDeal'],
+    });
+    const committed = investments.filter((inv) =>
+      committedStatuses.includes(inv.status),
+    );
+
+    let totalInvested = 0;
+    let currentValue = 0;
+    let expectedReturns = 0;
+    const dealTotals = new Map<
+      string,
+      { commodity: string; tokenSymbol: string; amountUsd: number }
+    >();
+    const activeDealIds = new Set<string>();
+
+    for (const inv of committed) {
+      const amount = Number(inv.amountUsd);
+      const roiMultiplier =
+        1 + Number(inv.tradeDeal?.expectedRoi ?? 0) / 100;
+      const projectedValue = amount * roiMultiplier;
+
+      totalInvested += amount;
+      expectedReturns += projectedValue;
+      currentValue += inv.status === InvestmentStatus.COMPLETED ? projectedValue : amount;
+
+      if (inv.status !== InvestmentStatus.COMPLETED) {
+        activeDealIds.add(inv.tradeDealId);
+      }
+
+      const existing = dealTotals.get(inv.tradeDealId);
+      if (existing) {
+        existing.amountUsd += amount;
+      } else {
+        dealTotals.set(inv.tradeDealId, {
+          commodity: inv.tradeDeal?.commodity ?? 'Unknown',
+          tokenSymbol: inv.tradeDeal?.tokenSymbol ?? '',
+          amountUsd: amount,
+        });
+      }
+    }
+
+    const allocationByDeal = Array.from(dealTotals.entries())
+      .map(([dealId, v]) => ({
+        dealId,
+        commodity: v.commodity,
+        tokenSymbol: v.tokenSymbol,
+        amountUsd: v.amountUsd,
+        percentage: totalInvested > 0 ? (v.amountUsd / totalInvested) * 100 : 0,
+      }))
+      .sort((a, b) => b.amountUsd - a.amountUsd);
+
+    return {
+      totalInvested,
+      currentValue,
+      expectedReturns,
+      activeDealCount: activeDealIds.size,
+      allocationByDeal,
+    };
   }
 }
