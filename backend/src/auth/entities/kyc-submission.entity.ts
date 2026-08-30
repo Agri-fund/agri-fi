@@ -31,8 +31,14 @@ export class KycSubmission {
   @Column({ name: 'government_id_url', nullable: true })
   governmentIdUrl: string;
 
+  @Column({ name: 'identity_document_back_url', nullable: true })
+  identityDocumentBackUrl: string;
+
   @Column({ name: 'proof_of_address_url', nullable: true })
   proofOfAddressUrl: string;
+
+  @Column({ name: 'selfie_url', nullable: true })
+  selfieUrl: string;
 
   @Column({ name: 'is_corporate', default: false })
   isCorporate: boolean;
@@ -75,6 +81,10 @@ export class KycSubmission {
 
   @Column({ default: 'pending_review' })
   status: KycSubmissionStatus;
+
+  /** SEP-12 customer payload stored alongside the internal format (#837) */
+  @Column({ name: 'sep12_data', type: 'jsonb', nullable: true })
+  sep12Data: Record<string, unknown> | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

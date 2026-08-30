@@ -14,6 +14,7 @@ import {
   ApiOperation,
   ApiResponse,
   ApiBearerAuth,
+  ApiProperty,
 } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';

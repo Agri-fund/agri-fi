@@ -34,8 +34,7 @@ import {
 @ApiTags('stellar')
 @ApiBearerAuth('jwt')
 @UseGuards(AuthGuard('jwt'))
-@Version('1')
-@Controller('stellar')
+@Controller({ version: '1', path: 'stellar' })
 export class StellarController {
   private readonly networkPassphrase: string;
   constructor(

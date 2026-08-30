@@ -61,6 +61,23 @@ function readVarint(bytes: Uint8Array, offset: number): number | null {
   return null;
 }
 
+function readVarintValue(
+  bytes: Uint8Array,
+  offset: number,
+): { value: number; nextOffset: number } | null {
+  let value = 0;
+  let shift = 0;
+
+  for (let index = offset; index < bytes.length && shift < 35; index += 1) {
+    const byte = bytes[index];
+    value |= (byte & 0x7f) << shift;
+    if ((byte & 0x80) === 0) return { value, nextOffset: index + 1 };
+    shift += 7;
+  }
+
+  return null;
+}
+
 export function isValidIpfsCid(value: string): boolean {
   if (!value || /\s/.test(value)) return false;
 
@@ -81,4 +98,34 @@ export function isValidIpfsCid(value: string): boolean {
     hashCodeEnd === null ? null : readVarint(bytes, hashCodeEnd);
 
   return digestLengthEnd !== null && digestLengthEnd < bytes.length;
+}
+
+/** Verify content against CIDv0/CIDv1 SHA-256 or SHA-512 multihashes. */
+export function verifyIpfsContent(cid: string, content: Buffer): boolean {
+  if (!isValidIpfsCid(cid)) return false;
+
+  const encoded = cid.startsWith('Qm') ? decodeBase58(cid) : decodeBase32(cid);
+  if (!encoded) return false;
+
+  let hashCode: number;
+  let digest: Uint8Array;
+  if (cid.startsWith('Qm')) {
+    hashCode = encoded[0];
+    digest = encoded.slice(2);
+  } else {
+    const version = readVarintValue(encoded, 0);
+    const codec = version && readVarintValue(encoded, version.nextOffset);
+    const hash = codec && readVarintValue(encoded, codec.nextOffset);
+    const length = hash && readVarintValue(encoded, hash.nextOffset);
+    if (!version || !codec || !hash || !length || length.value !== encoded.length - length.nextOffset) {
+      return false;
+    }
+    hashCode = hash.value;
+    digest = encoded.slice(length.nextOffset);
+  }
+
+  const algorithm = hashCode === 0x12 ? 'sha256' : hashCode === 0x13 ? 'sha512' : null;
+  if (!algorithm) return false;
+  const calculated = createHash(algorithm).update(content).digest();
+  return calculated.length === digest.length && calculated.equals(Buffer.from(digest));
 }

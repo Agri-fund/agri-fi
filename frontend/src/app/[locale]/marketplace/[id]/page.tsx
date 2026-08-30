@@ -25,6 +25,14 @@ const ShipmentMap = dynamic(
   },
 );
 
+const ActivityFeed = dynamic(
+  () => import('@/components/deals/ActivityFeed').then(m => ({ default: m.ActivityFeed })),
+  {
+    ssr: false,
+    loading: () => <div className="h-48 skeleton rounded-2xl" aria-label="Loading activity feed…" />,
+  },
+);
+
 export const dynamic = 'force-static';
 export const dynamicParams = false;
 export const revalidate = false;
@@ -242,6 +250,11 @@ export default async function DealDetailPage({ params }: { params: { id: string 
 
           {/* Shipment Map — Issue #247 */}
           <ShipmentMap tradeDealId={deal.id} className="w-full" />
+
+          {/* Activity Feed — Issue #863 */}
+          <div className="card p-6">
+            <ActivityFeed tradeDealId={deal.id} />
+          </div>
 
         </div>
       </main>

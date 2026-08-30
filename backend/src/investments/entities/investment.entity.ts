@@ -5,6 +5,7 @@ import {
   ManyToOne,
   JoinColumn,
   CreateDateColumn,
+  DeleteDateColumn,
 } from 'typeorm';
 import { ApiProperty } from '@nestjs/swagger';
 import { User } from '../../auth/entities/user.entity';
@@ -13,6 +14,10 @@ import { TradeDeal } from '../../trade-deals/entities/trade-deal.entity';
 export enum InvestmentStatus {
   PENDING = 'pending',
   CONFIRMED = 'confirmed',
+  ACTIVE = 'active',
+  RELEASING = 'releasing',
+  COMPLETED = 'completed',
+  CANCELLED = 'cancelled',
   FAILED = 'failed',
   REFUNDED = 'refunded',
 }
@@ -95,4 +100,27 @@ export class Investment {
     example: '2024-01-15T10:30:00Z',
   })
   createdAt: Date;
+
+  @DeleteDateColumn({ name: 'deleted_at', nullable: true })
+  @ApiProperty({
+    description: 'Soft-delete timestamp',
+    nullable: true,
+  })
+  deletedAt: Date | null;
+
+  @Column({ name: 'receipt_url', type: 'varchar', length: 2048, nullable: true })
+  @ApiProperty({
+    description: 'S3 URL of the generated PDF payment receipt',
+    nullable: true,
+    example: 'https://bucket.s3.amazonaws.com/receipts/abc123.pdf',
+  })
+  receiptUrl: string | null;
+
+  @Column({ name: 'receipt_generated_at', type: 'timestamptz', nullable: true })
+  @ApiProperty({
+    description: 'Timestamp when the receipt PDF was generated',
+    nullable: true,
+    example: '2024-01-15T10:30:00Z',
+  })
+  receiptGeneratedAt: Date | null;
 }

@@ -3,7 +3,9 @@ import {
   Post,
   Get,
   Body,
+  Param,
   Query,
+  Patch,
   UseGuards,
   Request,
   RawBodyRequest,
@@ -33,7 +35,7 @@ import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { Sep10ChallengeDto } from './dto/sep10-challenge.dto';
 import { Sep10ResponseDto } from './dto/sep10-response.dto';
-import { EnableMfaDto } from './dto/mfa.dto';
+import { EnableMfaDto, VerifyMfaDto, DisableMfaDto } from './dto/mfa.dto';
 import { WebhookSignatureGuard } from './webhook-signature.guard';
 import { User } from './entities/user.entity';
 
@@ -75,7 +77,10 @@ export class AuthController {
     status: 403,
     description: 'CAPTCHA required or invalid (credential-stuffing protection)',
   })
-  @ApiResponse({ status: 429, description: 'Too many requests / login rate limited' })
+  @ApiResponse({
+    status: 429,
+    description: 'Too many requests / login rate limited',
+  })
   async login(
     @Body() dto: LoginDto,
     @Req() req: ExpressRequest,
@@ -84,17 +89,24 @@ export class AuthController {
     // #898 — feed request context into the credential-stuffing detectors.
     const forwarded = req.headers?.['x-forwarded-for'];
     const ip =
-      (typeof forwarded === 'string' ? forwarded.split(',')[0]?.trim() : undefined) ||
+      (typeof forwarded === 'string'
+        ? forwarded.split(',')[0]?.trim()
+        : undefined) ||
       req.ip ||
       undefined;
     const meta = {
       ip,
-      userAgent: typeof req.headers?.['user-agent'] === 'string'
-        ? req.headers['user-agent']
-        : undefined,
+      userAgent:
+        typeof req.headers?.['user-agent'] === 'string'
+          ? req.headers['user-agent']
+          : undefined,
       country:
         (req.headers?.['cf-ipcountry'] as string | undefined) ||
         (req.headers?.['x-geo-country'] as string | undefined),
+      acceptLanguage:
+        typeof req.headers?.['accept-language'] === 'string'
+          ? req.headers['accept-language']
+          : undefined,
     };
 
     const tokens = await this.authService.login(dto, meta);
@@ -152,6 +164,24 @@ export class AuthController {
   @ApiResponse({ status: 422, description: 'Unsupported document type' })
   submitKyc(@Request() req: AuthRequest, @Body() dto: SubmitKycDto) {
     return this.authService.submitKyc(req.user.id, dto);
+  }
+
+  @Get('kyc/draft')
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth('jwt')
+  @ApiOperation({ summary: 'Get the current user KYC draft' })
+  @ApiResponse({ status: 200, description: 'KYC draft returned' })
+  async getKycDraft(@Request() req: AuthRequest) {
+    return this.authService.getKycDraft(req.user.id);
+  }
+
+  @Patch('kyc/draft')
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth('jwt')
+  @ApiOperation({ summary: 'Save a KYC draft' })
+  @ApiResponse({ status: 200, description: 'KYC draft saved' })
+  async saveKycDraft(@Request() req: AuthRequest, @Body() draft: Record<string, unknown>) {
+    return this.authService.saveKycDraft(req.user.id, draft);
   }
 
   @Post('change-password')
@@ -213,6 +243,57 @@ export class AuthController {
     return this.authService.setupMfa(req.user.id);
   }
 
+  @Get('revoke-session/:token')
+  @ApiOperation({
+    summary: 'Revoke all sessions for a user via a revocation token',
+  })
+  @ApiResponse({ status: 200, description: 'All sessions revoked' })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid or expired revocation link',
+  })
+  async revokeSession(@Param('token') token: string) {
+    return this.authService.revokeSession(token);
+  }
+
+  @Get('unlock/:token')
+  @ApiOperation({
+    summary: 'Unlock a locked account using a signed unlock token',
+    description:
+      'Validates the unlock token sent via email and resets the account lockout. ' +
+      'Logs the unlock attempt to login_logs for audit purposes.',
+  })
+  @ApiResponse({ status: 200, description: 'Account unlocked successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid or expired unlock token' })
+  @ApiResponse({ status: 404, description: 'User not found' })
+  async unlockAccount(
+    @Param('token') token: string,
+    @Req() req: ExpressRequest,
+  ) {
+    const forwarded = req.headers?.['x-forwarded-for'];
+    const ip =
+      (typeof forwarded === 'string'
+        ? forwarded.split(',')[0]?.trim()
+        : undefined) ||
+      req.ip ||
+      undefined;
+    const meta = {
+      ip,
+      userAgent:
+        typeof req.headers?.['user-agent'] === 'string'
+          ? req.headers['user-agent']
+          : undefined,
+      country:
+        (req.headers?.['cf-ipcountry'] as string | undefined) ||
+        (req.headers?.['x-geo-country'] as string | undefined),
+      acceptLanguage:
+        typeof req.headers?.['accept-language'] === 'string'
+          ? req.headers['accept-language']
+          : undefined,
+    };
+    return this.authService.unlockAccount(token, meta);
+  }
+
   @Post('mfa/enable')
   @UseGuards(AuthGuard('jwt'))
   @ApiBearerAuth('jwt')
@@ -223,6 +304,36 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   enableMfa(@Request() req: AuthRequest, @Body() dto: EnableMfaDto) {
     return this.authService.enableMfa(req.user.id, dto.token);
+  }
+
+  @Post('mfa/verify')
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth('jwt')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Verify a TOTP token or backup code (login step-up)',
+  })
+  @ApiResponse({ status: 200, description: 'MFA verification successful' })
+  @ApiResponse({ status: 400, description: 'Invalid token' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({
+    status: 403,
+    description: 'MFA locked out due to too many attempts',
+  })
+  verifyMfa(@Request() req: AuthRequest, @Body() dto: VerifyMfaDto) {
+    return this.authService.verifyMfa(req.user.id, dto.token);
+  }
+
+  @Post('mfa/disable')
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth('jwt')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Disable MFA (requires current TOTP + password)' })
+  @ApiResponse({ status: 200, description: 'MFA disabled successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid token or password' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  disableMfa(@Request() req: AuthRequest, @Body() dto: DisableMfaDto) {
+    return this.authService.disableMfa(req.user.id, dto.token, dto.password);
   }
 
   @Get('stellar-challenge')

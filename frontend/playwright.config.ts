@@ -58,6 +58,25 @@ export default defineConfig({
       name: 'Mobile Safari',
       use: { ...devices['iPhone 12'] },
     },
+
+    /**
+     * iOS Safari 15 simulation project
+     *
+     * Uses the iPhone 12 device profile (Mobile Safari user-agent + 390×844 viewport)
+     * to simulate the rendering environment on iOS 14/15. WASM is disabled at the
+     * test level via page.addInitScript() in pdf-viewer.spec.ts, matching the actual
+     * behaviour of iOS Safari 15 and below with react-pdf's WASM worker.
+     */
+    {
+      name: 'iOS Safari 15 (WASM disabled)',
+      use: {
+        ...devices['iPhone 12'],
+        // Override the user-agent to reflect iOS 15 / Safari 15 more precisely.
+        // The UA string matches a real iPhone running iOS 15.6.
+        userAgent:
+          'Mozilla/5.0 (iPhone; CPU iPhone OS 15_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.6 Mobile/15E148 Safari/604.1',
+      },
+    },
   ],
 
   /* Run your local dev server before starting the tests */

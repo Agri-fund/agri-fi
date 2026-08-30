@@ -506,6 +506,60 @@
       ],
       "title": "Active Consumers per Queue",
       "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line"
+          },
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 5 },
+              { "color": "red", "value": 15 }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 35
+      },
+      "id": 15,
+      "options": {
+        "legend": {
+          "calcs": ["mean", "max"],
+          "displayMode": "table",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(stellar_tx_failed_total[5m])) / (sum(rate(stellar_tx_total[5m])) > 0 or 1) * 100",
+          "legendFormat": "Stellar Tx Error Rate (%)",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Stellar Tx Error Rate",
+      "type": "timeseries"
     }
   ],
   "refresh": "5s",

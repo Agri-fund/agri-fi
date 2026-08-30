@@ -41,5 +41,20 @@
   },
   "co-farmer-invitation": {
     "subject": "Vous avez été invité à co-cultiver un accord"
+  },
+  "drip-welcome": {
+    "subject": "Bienvenue sur Agri-Fi — Commencez votre parcours d'investissement"
+  },
+  "drip-how-it-works": {
+    "subject": "Comment fonctionne Agri-Fi : 5 étapes simples"
+  },
+  "drip-featured-deal": {
+    "subject": "Les offres vedettes de cette semaine sur Agri-Fi"
+  },
+  "drip-risk-returns": {
+    "subject": "Comprendre les risques et les rendements sur Agri-Fi"
+  },
+  "drip-last-chance": {
+    "subject": "Finalisez votre premier investissement — les deals se remplissent vite"
   }
 }

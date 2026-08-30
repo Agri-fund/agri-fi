@@ -134,6 +134,26 @@ export class User {
   })
   isMfaEnabled: boolean;
 
+  // #827 — MFA backup codes (bcrypt-hashed, single-use)
+  @Exclude()
+  @Column({ name: 'mfa_backup_codes', type: 'simple-json', nullable: true })
+  mfaBackupCodes: string[] | null;
+
+  // #827 — MFA failed attempt tracking
+  @Column({ name: 'mfa_failed_attempts', default: 0 })
+  mfaFailedAttempts: number;
+
+  @Column({ name: 'mfa_locked_until', type: 'timestamptz', nullable: true })
+  mfaLockedUntil: Date | null;
+
+  // #806 — admin MFA enforcement: flagged when admin/company_admin has no MFA set up
+  @Column({ name: 'mfa_enrollment_required', default: false })
+  @ApiProperty({
+    description: 'Whether this admin account must complete MFA enrollment before accessing the platform',
+    example: false,
+  })
+  mfaEnrollmentRequired: boolean;
+
   @CreateDateColumn({ name: 'created_at' })
   @ApiProperty({
     description: 'Account creation timestamp',
@@ -220,4 +240,27 @@ export class User {
     example: true,
   })
   emailDigestEnabled: boolean;
+
+  /**
+   * Set to true when the investor clicks the unsubscribe link in any drip
+   * email. Stops further sequence steps from being dispatched (GDPR / CAN-SPAM).
+   */
+  @Column({ name: 'email_sequence_unsubscribed', type: 'boolean', default: false })
+  @ApiProperty({
+    description: 'Whether the user has unsubscribed from the onboarding email sequence',
+    example: false,
+  })
+  emailSequenceUnsubscribed: boolean;
+
+  @DeleteDateColumn({ name: 'deleted_at', nullable: true })
+  deletedAt: Date | null;
+
+  @Column({ name: 'gdpr_erasure_requested_at', type: 'timestamptz', nullable: true })
+  gdprErasureRequestedAt: Date | null;
+
+  @Column({ name: 'gdpr_erasure_due_at', type: 'timestamptz', nullable: true })
+  gdprErasureDueAt: Date | null;
+
+  @Column({ name: 'gdpr_status', type: 'varchar', default: 'active' })
+  gdprStatus: 'active' | 'pending_erasure' | 'erased';
 }

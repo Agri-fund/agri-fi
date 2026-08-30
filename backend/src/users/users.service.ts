@@ -7,6 +7,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { randomBytes } from 'crypto';
 import { User, UserRole } from '../auth/entities/user.entity';
+import { UpdateOnboardingProgressDto } from './dto/update-onboarding-progress.dto';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
 import { Investment } from '../investments/entities/investment.entity';
 import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.entity';
@@ -99,12 +100,15 @@ export class UsersService {
 
   async deleteAccount(userId: string): Promise<void> {
     await this.dataSource.transaction(async (manager) => {
-      const user = await manager.findOne(User, { where: { id: userId } });
+      const user = await manager.findOne(User, { where: { id: userId }, withDeleted: true });
       if (!user) {
         throw new NotFoundException('User not found.');
       }
 
-      // Anonymize user PII
+      const now = new Date();
+      const dueAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // 30-day grace period
+
+      // Anonymize user PII immediately while preserving financial records with anonymized user ref
       const anonymizedUser = manager.create(User, {
         id: user.id,
         email: `deleted-${generateRandomString(16)}@example.com`,
@@ -114,8 +118,13 @@ export class UsersService {
         fullName: null,
         birthdate: null,
         taxId: null,
+        phone: null,
+        physicalAddress: null,
         isEmailVerified: false,
         emailVerificationToken: null,
+        gdprErasureRequestedAt: now,
+        gdprErasureDueAt: dueAt,
+        gdprStatus: 'pending_erasure',
         companyDetails: user.isCompany
           ? {
               companyName: `Deleted Company ${generateRandomString(8)}`,
@@ -143,8 +152,28 @@ export class UsersService {
         });
       }
 
+      // Record audit log for GDPR erasure request
+      const audit = manager.create(AuditLog, {
+        entityName: 'User',
+        entityId: userId,
+        action: 'DELETE',
+        userId: userId,
+        changes: `GDPR erasure requested. Account soft-deleted with 30-day grace period ending ${dueAt.toISOString()}`,
+        oldValues: { email: user.email, gdprStatus: user.gdprStatus },
+        newValues: { gdprStatus: 'pending_erasure', gdprErasureDueAt: dueAt.toISOString() },
+      });
+      await manager.save(AuditLog, audit);
+
       // Soft delete the user
       await manager.softDelete(User, userId);
+    });
+  }
+
+  async getPendingErasureQueue(): Promise<User[]> {
+    return this.userRepository.find({
+      where: { gdprStatus: 'pending_erasure' },
+      withDeleted: true,
+      order: { gdprErasureDueAt: 'ASC' },
     });
   }
 
@@ -384,7 +413,7 @@ export class UsersService {
         id: `kyc-${kyc.id}`,
         type: 'kyc',
         title: 'KYC submission',
-        description: `KYC verification ${kyc.status === 'verified' ? 'approved' : kyc.status === 'rejected' ? 'rejected' : 'submitted'}`,
+        description: `KYC verification ${kyc.status === 'approved' ? 'approved' : kyc.status === 'rejected' ? 'rejected' : 'submitted'}`,
         meta: {
           kycId: kyc.id,
           status: kyc.status,
@@ -540,5 +569,96 @@ export class UsersService {
       })),
       exportedAt: new Date().toISOString(),
     };
+  }
+
+  /**
+   * Returns the current onboarding progress for a farmer.
+   * Always returns the four checklist fields (defaulting to false if null).
+   */
+  async getOnboardingProgress(userId: string): Promise<{
+    profileComplete: boolean;
+    kycSubmitted: boolean;
+    firstDealCreated: boolean;
+    walletConnected: boolean;
+    allComplete: boolean;
+  }> {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('User not found.');
+    }
+
+    const progress = user.onboardingProgress ?? {
+      profileComplete: false,
+      kycSubmitted: false,
+      firstDealCreated: false,
+      walletConnected: false,
+    };
+
+    const allComplete =
+      progress.profileComplete &&
+      progress.kycSubmitted &&
+      progress.firstDealCreated &&
+      progress.walletConnected;
+
+    return { ...progress, allComplete };
+  }
+
+  /**
+   * Merges a partial checklist update into the user's persisted
+   * onboarding_progress column, then returns the full updated state.
+   * Once all four steps are true, allComplete is set to true.
+   */
+  async updateOnboardingProgress(
+    userId: string,
+    dto: UpdateOnboardingProgressDto,
+  ): Promise<{
+    profileComplete: boolean;
+    kycSubmitted: boolean;
+    firstDealCreated: boolean;
+    walletConnected: boolean;
+    allComplete: boolean;
+  }> {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('User not found.');
+    }
+
+    // Start from the stored progress (or zeros) and apply the partial update
+    const existing = user.onboardingProgress ?? {
+      profileComplete: false,
+      kycSubmitted: false,
+      firstDealCreated: false,
+      walletConnected: false,
+    };
+
+    const updated = {
+      profileComplete:
+        dto.profileComplete !== undefined
+          ? dto.profileComplete
+          : existing.profileComplete,
+      kycSubmitted:
+        dto.kycSubmitted !== undefined
+          ? dto.kycSubmitted
+          : existing.kycSubmitted,
+      firstDealCreated:
+        dto.firstDealCreated !== undefined
+          ? dto.firstDealCreated
+          : existing.firstDealCreated,
+      walletConnected:
+        dto.walletConnected !== undefined
+          ? dto.walletConnected
+          : existing.walletConnected,
+    };
+
+    user.onboardingProgress = updated;
+    await this.userRepository.save(user);
+
+    const allComplete =
+      updated.profileComplete &&
+      updated.kycSubmitted &&
+      updated.firstDealCreated &&
+      updated.walletConnected;
+
+    return { ...updated, allComplete };
   }
 }

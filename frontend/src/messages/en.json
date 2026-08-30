@@ -1,4 +1,23 @@
 {
+  "activityFeed": {
+    "title": "Activity Feed",
+    "empty": "No activity yet",
+    "emptyHint": "Events will appear here as the deal progresses",
+    "loadMore": "Load more",
+    "loading": "Loading…",
+    "loadError": "Failed to load activity feed",
+    "retry": "Try again",
+    "new": "new",
+    "dismissNew": "Dismiss new event count",
+    "events": {
+      "investor_joined": "A new investor joined",
+      "shipment_milestone": "Shipment milestone reached",
+      "funding_target_met": "Funding target met",
+      "payment_distributed": "Payment distribution triggered",
+      "document_uploaded": "Document uploaded by farmer",
+      "deal_status_changed": "Deal status changed"
+    }
+  },
   "nav": {
     "title": "Agric-onchain Finance",
     "dashboard": "Dashboard",
@@ -87,11 +106,11 @@
       "badge": "Stellar Blockchain",
       "title": "Transparent by design",
       "description": "Every investment, payout, and milestone is recorded on Stellar. Verify anything, anytime.",
-      "smartContracts": { "title": "Soroban Smart Contracts", "desc": "FarmCampaign contracts automate escrow, milestone releases, and revenue distribution — no manual intervention." },
+      "smartContracts": { "title": "Soroban Smart Contracts", "desc": "FarmCampaign contracts automate escrow, milestone releases, and revenue distribution." },
       "tokenized": { "title": "Tokenized Investments", "desc": "Each project issues Stellar assets. Investors hold tokens representing fractional ownership, tradeable on the DEX." },
-      "usdc": { "title": "USDC Settlements", "desc": "All payments use USDC on Stellar — stable, fast, and cross-border. Withdraw to local currency via Stellar Anchors." },
-      "certificates": { "title": "On-Chain Certificates", "desc": "Investment certificates are backed by immutable Stellar transactions. Proof of ownership, forever." },
-      "anchors": { "title": "Stellar Anchors", "desc": "Deposit NGN, KES, GHS, ZAR or USD and receive USDC instantly. Withdraw earnings to your local bank." },
+      "usdc": { "title": "USDC Settlements", "desc": "All payments use USDC on Stellar — stable, fast, and cross-border." },
+      "certificates": { "title": "On-Chain Certificates", "desc": "Investment certificates are backed by immutable Stellar transactions." },
+      "anchors": { "title": "Stellar Anchors", "desc": "Deposit NGN, KES, GHS, ZAR or USD and receive USDC instantly." },
       "audit": { "title": "Public Audit Trail", "desc": "Every contract address, transaction hash, and payout is publicly verifiable on Stellar Expert." },
       "viewData": "View Live Blockchain Data"
     },
@@ -205,6 +224,11 @@
     },
     "createTitle": "Create New Trade Deal",
     "draftRestored": "Restored draft from {time}",
+    "wizardBadge": "Deal listing wizard",
+    "createSubtitle": "Build a complete, investor-ready listing with guided steps, smart validation, and draft autosave.",
+    "saving": "Saving draft...",
+    "saved": "Draft saved",
+    "stepLabel": "Step {current} of {total}",
     "commodity": "Commodity Name",
     "quantity": "Quantity",
     "unit": "Unit",
@@ -216,6 +240,14 @@
     "createButton": "Create Deal",
     "creating": "Creating...",
     "cancel": "Cancel",
+    "back": "Back",
+    "next": "Next",
+    "submitForReview": "Submit for review",
+    "submitSuccess": "Deal submitted for admin review.",
+    "roiWarningHigh": "This ROI is unusually high. Please double-check your assumptions before submitting.",
+    "roiWarningNormal": "ROI looks within a normal range.",
+    "photoHelper": "Upload 1 to 10 photos. Each image must be at least 500px wide.",
+    "docHelper": "Upload the required documents for your commodity category before you submit.",
     "tokenInfo": "This will create {count} tokens at ${price} each.",
     "raised": "{amount} raised",
     "remainingOf": "{remaining} remaining of {total}",
@@ -233,62 +265,24 @@
       "tokenPriceFixed": "Token price must be exactly 100",
       "deliveryDateRequired": "Delivery date is required",
       "deliveryDateFuture": "End date must be in the future",
-      "invalidId": "Invalid ID"
+      "invalidId": "Invalid ID",
+      "titleRequired": "Title is required",
+      "countryRequired": "Country is required",
+      "shortDescriptionRequired": "Short description is required",
+      "duplicateTitle": "A deal with this title already exists.",
+      "minInvestmentLot": "Minimum investment lot must be greater than 0",
+      "expectedRoiMin": "Expected ROI must be greater than 0",
+      "durationRequired": "Duration is required",
+      "riskRequired": "Risk rating is required",
+      "longDescriptionRequired": "Story and impact are required",
+      "farmLocationRequired": "Farm location is required",
+      "photoMin": "Please upload at least one farm photo.",
+      "photoMax": "You can upload a maximum of 10 photos.",
+      "photoWidth": "Photos must be at least 500px wide.",
+      "mapRequired": "Please add latitude and longitude for the farm location.",
+      "documentRequired": "{name} is required for this commodity.",
+      "logisticsRequired": "Please complete all logistics milestones.",
+      "submitFailed": "Failed to submit the deal."
     }
-  },
-  "marketplace": {
-    "title": "Marketplace",
-    "subtitle": "Explore agricultural trade deals",
-    "searchPlaceholder": "Search commodity, trader...",
-    "filterByStatus": "Filter by Status",
-    "filterByCategory": "Filter by Category",
-    "sortBy": "Sort By",
-    "noDeals": "No deals available",
-    "loadingDeals": "Loading deals...",
-    "status": {
-      "draft": "Draft",
-      "published": "Published",
-      "funded": "Funded",
-      "completed": "Completed",
-      "cancelled": "Cancelled"
-    }
-  },
-  "common": {
-    "loading": "Loading...",
-    "error": "Error",
-    "success": "Success",
-    "processing": "Processing...",
-    "dismiss": "Dismiss",
-    "network": {
-      "offline": {
-        "title": "You are offline.",
-        "description": "Actions requiring internet access are disabled until connection is restored."
-      }
-    }
-  },
-  "referrals": {
-    "title": "Referral Program",
-    "description": "Share your referral link and earn rewards when referred users make their first investment.",
-    "yourLink": "Your Referral Link",
-    "copy": "Copy",
-    "copied": "Copied!",
-    "whatsapp": "WhatsApp",
-    "twitter": "Twitter",
-    "referredUsers": "Referred Users",
-    "noReferrals": "No referrals yet",
-    "shareToStart": "Share your link to start earning rewards!",
-    "linkClicks": "Link Clicks",
-    "registered": "Registered",
-    "rewarded": "Rewarded",
-    "totalEarned": "Total Earned",
-    "user": "User",
-    "status": "Status",
-    "reward": "Reward",
-    "date": "Date"
-  },
-  "format": {
-    "currency": "{value, number, currency}",
-    "date": "{value, date, short}",
-    "number": "{value, number}"
   }
 }

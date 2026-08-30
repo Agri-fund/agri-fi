@@ -1,0 +1,86 @@
+name: Staging PII Scan
+
+on:
+  pull_request:
+    paths:
+      - 'devops/scripts/anonymise-dump.ts'
+      - '.github/workflows/staging-refresh.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  pii-scan:
+    name: Verify Anonymisation Coverage
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install -g ts-node typescript
+
+      - name: Create test dump
+        run: |
+          cat > /tmp/test-dump.sql << 'EOF'
+          INSERT INTO "users" (id, email, password_hash, role, full_name, phone, wallet_address) VALUES
+          ('uuid-1', 'john.doe@realbank.com', 'hash123', 'farmer', 'John Doe', '+14155551234', 'GAZQGKXYLG2S5JXQLK7HJGJF3ZTPZJQXQJQXQJQXQJQXQJQXQJQX'),
+          ('uuid-2', 'jane.smith@company.org', 'hash456', 'investor', 'Jane Smith', '+2348012345678', 'GBCDABCDABCDABCDABCDABCDABCDABCDABCDABCDABCDABCDABCDABCD');
+          
+          INSERT INTO "login_logs" (id, user_id, ip_address, created_at) VALUES
+          ('log-1', 'uuid-1', '192.168.1.100', '2024-01-15'),
+          ('log-2', 'uuid-2', '10.0.0.55', '2024-01-16');
+          
+          INSERT INTO "kyc_submissions" (id, user_id, encrypted_data, status) VALUES
+          ('kyc-1', 'uuid-1', 'eyJhbGciOiJIUzI1NiJ9.eyJkYXRhIjoiU2Vuc2l0aXZlIGRhdGEifQ==', 'verified');
+          EOF
+
+      - name: Run anonymisation
+        run: |
+          ts-node devops/scripts/anonymise-dump.ts \
+            --input /tmp/test-dump.sql \
+            --output /tmp/anonymised-test.sql
+
+      - name: Verify anonymisation
+        run: |
+          echo "=== Checking anonymised output ==="
+          cat /tmp/anonymised-test.sql
+          echo ""
+          echo "=== Validation ==="
+          
+          # Check no real emails remain
+          if grep -q "john.doe@realbank.com" /tmp/anonymised-test.sql; then
+            echo "FAIL: Real email found in anonymised dump"
+            exit 1
+          fi
+          
+          if grep -q "jane.smith@company.org" /tmp/anonymised-test.sql; then
+            echo "FAIL: Real email found in anonymised dump"
+            exit 1
+          fi
+          
+          # Check no real phone numbers remain
+          if grep -q "+14155551234" /tmp/anonymised-test.sql; then
+            echo "FAIL: Real phone number found in anonymised dump"
+            exit 1
+          fi
+          
+          # Check no real IP addresses remain (except 127.0.0.x)
+          if grep -q "192.168.1.100" /tmp/anonymised-test.sql; then
+            echo "FAIL: Real IP address found in anonymised dump"
+            exit 1
+          fi
+          
+          # Check encrypted data is wiped
+          if grep -q "eyJhbGciOiJIUzI1NiJ9" /tmp/anonymised-test.sql; then
+            echo "FAIL: Encrypted KYC data found in anonymised dump"
+            exit 1
+          fi
+          
+          echo "PASS: All PII successfully anonymised"

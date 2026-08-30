@@ -161,6 +161,11 @@
     },
     "createTitle": "Unda Mkataba Mpya wa Biashara",
     "draftRestored": "Rasimu imerejeshwa kutoka {time}",
+    "wizardBadge": "Msaidizi wa orodha",
+    "createSubtitle": "Unda orodha kamili inayovutia wawekezaji kwa hatua zinazoongozwa, uthibitisho wa akili, na kuhifadhi rasimu kiotomatiki.",
+    "saving": "Inahifadhi rasimu...",
+    "saved": "Rasimu imehifadhiwa",
+    "stepLabel": "Hatua {current} kati ya {total}",
     "commodity": "Jina la Bidhaa",
     "quantity": "Kiasi",
     "unit": "Kitengo",
@@ -172,9 +177,57 @@
     "createButton": "Unda Mkataba",
     "creating": "Inaunda...",
     "cancel": "Ghairi",
+    "back": "Nyuma",
+    "next": "Inayofuata",
+    "submitForReview": "Tuma kwa ukaguzi",
+    "submitSuccess": "Biashara imetumwa kwa ukaguzi wa msimamizi.",
+    "roiWarningHigh": "ROI hii inaonekana juu isivyo kawaida. Tafadhali kagua makadirio kabla ya kutuma.",
+    "roiWarningNormal": "ROI inaonekana ndani ya kiwango cha kawaida.",
+    "photoHelper": "Pakia picha 1 hadi 10. Kila picha iwe na upana angalau 500px.",
+    "docHelper": "Pakia nyaraka zinazohitajika kwa jamii yako ya bidhaa kabla ya kutuma.",
     "tokenInfo": "Hii itaunda tokeni {count} kwa bei ya ${price} kila moja.",
     "raised": "{amount} imekusanywa",
     "remainingOf": "{remaining} zilizobaki kati ya {total}",
+    "fields": {
+      "title": "Kichwa cha biashara",
+      "commodity": "Bidhaa",
+      "country": "Nchi",
+      "region": "Eneo",
+      "shortDescription": "Maelezo mafupi",
+      "quantity": "Kiasi",
+      "unit": "Kitengo",
+      "totalValue": "Lengo la fedha",
+      "minInvestment": "Kiasi cha chini cha uwekezaji",
+      "expectedRoi": "ROI inayotarajiwa (%)",
+      "duration": "Muda (siku)",
+      "risk": "Kiwango cha hatari",
+      "roiWarning": "Onyo la ROI",
+      "longDescription": "Hadithi na athari",
+      "farmLocation": "Mahali pa shamba",
+      "mapPoint": "Kuradi",
+      "farmPhotos": "Picha za shamba",
+      "extraDocs": "Nyaraka za kusaidia",
+      "milestone": "Hatua",
+      "timeline": "Ratiba",
+      "owner": "Mwenye jukumu"
+    },
+    "steps": {
+      "1": { "eyebrow": "Msingi", "title": "Misingi ya biashara" },
+      "2": { "eyebrow": "Namba", "title": "Fedha" },
+      "3": { "eyebrow": "Hadithi", "title": "Hadithi na athari" },
+      "4": { "eyebrow": "Uthibitisho", "title": "Nyaraka" },
+      "5": { "eyebrow": "Mpango", "title": "Mpango wa usafirishaji" },
+      "6": { "eyebrow": "Ukaguzi", "title": "Kagua na tuma" }
+    },
+    "preview": {
+      "card": "Muonekano wa kadi",
+      "detailPage": "Muonekano wa ukurasa wa maelezo",
+      "map": "Mahali kwenye ramani",
+      "documents": "Nyaraka zilizopakiwa",
+      "placeholderTitle": "Kichwa chako",
+      "placeholderCommodity": "Bidhaa",
+      "placeholderSummary": "Muhtasari mfupi wa shamba na fursa."
+    },
     "validation": {
       "commodityRequired": "Jina la bidhaa linahitajika",
       "quantityMin": "Kiasi lazima kiwe angalau 1",
@@ -182,8 +235,71 @@
       "tokenPriceFixed": "Bei ya tokeni lazima iwe hasa 100",
       "deliveryDateRequired": "Tarehe ya utoaji inahitajika",
       "deliveryDateFuture": "Tarehe ya mwisho lazima iwe siku zijazo",
-      "invalidId": "Kitambulisho batili"
+      "invalidId": "Kitambulisho batili",
+      "titleRequired": "Kichwa kinahitajika",
+      "countryRequired": "Nchi inahitajika",
+      "shortDescriptionRequired": "Maelezo mafupi yanahitajika",
+      "duplicateTitle": "Tayari kuna biashara yenye kichwa hiki.",
+      "minInvestmentLot": "Kiasi cha chini cha uwekezaji lazima kiwe zaidi ya 0",
+      "expectedRoiMin": "ROI inayotarajiwa lazima iwe zaidi ya 0",
+      "durationRequired": "Muda unahitajika",
+      "riskRequired": "Kiwango cha hatari kinahitajika",
+      "longDescriptionRequired": "Hadithi na athari zinahitajika",
+      "farmLocationRequired": "Mahali pa shamba panahitajika",
+      "photoMin": "Pakia angalau picha moja ya shamba.",
+      "photoMax": "Unaweza kupakia picha zisizozidi 10.",
+      "photoWidth": "Picha lazima ziwe na upana angalau 500px.",
+      "mapRequired": "Ongeza latitudo na longitudo ya shamba.",
+      "documentRequired": "{name} inahitajika kwa bidhaa hii.",
+      "logisticsRequired": "Kamilisha hatua zote za usafirishaji.",
+      "submitFailed": "Imeshindwa kutuma biashara."
     }
+  },
+  "kyc": {
+    "badge": "Msaidizi wa KYC",
+    "title": "Kamilisha uthibitisho wako",
+    "subtitle": "Hifadhi maendeleo unapoongeza na uendelee baadaye kutoka rasimu.",
+    "restored": "Rasimu imerejeshwa kutoka {time}",
+    "stepLabel": "Hatua {current} kati ya {total}",
+    "fields": {
+      "fullName": "Jina kamili la kisheria",
+      "dateOfBirth": "Tarehe ya kuzaliwa",
+      "nationality": "Uraia",
+      "address": "Anwani ya makazi",
+      "idFront": "Mbele ya hati ya utambulisho",
+      "idBack": "Nyuma ya hati ya utambulisho",
+      "proofOfAddress": "Uthibitisho wa anwani",
+      "selfie": "Selfie pamoja na hati"
+    },
+    "hints": {
+      "documents": "Inakubali PDF, JPEG, na PNG. Upeo 10MB.",
+      "proof": "Tumia bili ya hivi karibuni au taarifa ya benki.",
+      "selfie": "Hakikisha uso na hati yako vinaonekana vizuri."
+    },
+    "errors": {
+      "fullName": "Jina kamili linahitajika",
+      "dateOfBirth": "Tarehe ya kuzaliwa inahitajika",
+      "dateOfBirthPast": "Tarehe ya kuzaliwa lazima iwe ya zamani",
+      "nationality": "Uraia unahitajika",
+      "address": "Anwani ya makazi inahitajika",
+      "frontRequired": "Mbele ya hati inahitajika",
+      "backRequired": "Nyuma ya hati inahitajika",
+      "proofRequired": "Uthibitisho wa anwani unahitajika",
+      "selfieRequired": "Selfie pamoja na hati inahitajika",
+      "photoWidth": "Picha lazima ziwe na upana angalau 500px",
+      "submitFailed": "Imeshindwa kutuma KYC"
+    },
+    "review": {
+      "personal": "Taarifa binafsi",
+      "files": "Faili zilizopakiwa",
+      "pending": "Inasubiri kupakiwa"
+    },
+    "exit": "Toka kwenye msaidizi",
+    "back": "Nyuma",
+    "next": "Inayofuata",
+    "submit": "Tuma kwa ukaguzi",
+    "submitting": "Inatuma...",
+    "submitted": "KYC imetumwa kwa ukaguzi."
   },
   "common": {
     "loading": "Inapakia...",
@@ -222,5 +338,38 @@
     "currency": "{value, number, currency}",
     "date": "{value, date, short}",
     "number": "{value, number}"
+  },
+  "tour": {
+    "welcome": {
+      "title": "Karibu Agri-Fi",
+      "text": "Hii ndio ziara ya haraka itakayokutambulisha na vipengele muhimu vya jukwaa. Unaweza kuanzisha upya ziara hii wakati wowote kutoka kwa Mipangilio."
+    },
+    "browseDeals": {
+      "title": "Vinjari Mikataba",
+      "text": "Tafuta fursa za uwekezaji katika mikataba ya biashara ya kilimo. Chuja kwa zao, hali, na zaidi."
+    },
+    "connectWallet": {
+      "title": "Unganisha Mfoldi Yako",
+      "text": "Unganisha mfoldi yako ya Stellar ili kuwekeza katika mikataba na kufuatilia portfolio yako kwenye mtandao."
+    },
+    "portfolioStats": {
+      "title": "Takwimu za Portfolio",
+      "text": "Fuatilia uwekezaji wako, faida, na utendaji wa mikataba kwa mtazamo mmoja."
+    },
+    "notificationBell": {
+      "title": "Kaa Umefahamishwa",
+      "text": "Pata arifa za wakati halisi kuhusu mikataba yako, uwekezaji, na masasisho ya jukwaa."
+    },
+    "complete": {
+      "title": "Uko Tayari!",
+      "text": "Uko tayari kuanza kuchunguza Agri-Fi. Furahia uwekezaji!"
+    },
+    "buttons": {
+      "next": "Ifuatayo",
+      "back": "Rudi",
+      "skip": "Ruka Ziara",
+      "finish": "Anza"
+    },
+    "restart": "Anza Upya Ziara"
   }
 }

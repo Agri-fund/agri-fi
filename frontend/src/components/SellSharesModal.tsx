@@ -127,17 +127,22 @@ export const SellSharesModal: React.FC<SellSharesModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="sell-shares-modal-title"
+    >
       <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md mx-4">
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-gray-800">
+          <h2 id="sell-shares-modal-title" className="text-lg font-semibold text-gray-900">
             Sell Shares — {tradeTokenCode}
           </h2>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 text-xl leading-none"
-            aria-label="Close"
+            className="text-gray-500 hover:text-gray-700 text-xl leading-none"
+            aria-label="Close modal"
           >
             ×
           </button>
@@ -150,7 +155,7 @@ export const SellSharesModal: React.FC<SellSharesModalProps> = ({
               state={txProgress.state}
               txHash={txProgress.txHash ?? undefined}
             />
-            <p className="text-xs text-slate-600 text-center mt-3">
+            <p className="text-xs text-slate-700 text-center mt-3">
               Processing your sell offer on the Stellar network...
             </p>
           </div>
@@ -167,13 +172,13 @@ export const SellSharesModal: React.FC<SellSharesModalProps> = ({
             )}
             
             <div className="bg-green-50 border border-green-200 rounded-xl p-4">
-              <p className="text-green-800 font-medium mb-1">Sell offer created!</p>
-              <p className="text-xs text-green-700 font-mono break-all">
+              <p className="text-green-900 font-medium mb-1">Sell offer created!</p>
+              <p className="text-xs text-green-800 font-mono break-all">
                 Tx: {successTxId}
               </p>
               <button
                 onClick={onClose}
-                className="mt-4 w-full bg-green-600 hover:bg-green-700 text-white py-2 rounded-xl text-sm font-medium"
+                className="mt-4 w-full bg-green-700 hover:bg-green-800 text-white py-2 rounded-xl text-sm font-medium"
               >
                 Done
               </button>
@@ -182,16 +187,17 @@ export const SellSharesModal: React.FC<SellSharesModalProps> = ({
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             {!isConnected && (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-800">
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-900">
                 Connect your wallet to list shares.
               </div>
             )}
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="sell-token-amount" className="block text-sm font-medium text-gray-800 mb-1">
                 Tokens to sell
               </label>
               <input
+                id="sell-token-amount"
                 type="number"
                 min={1}
                 max={maxTokens}
@@ -199,31 +205,33 @@ export const SellSharesModal: React.FC<SellSharesModalProps> = ({
                 onChange={(e) =>
                   setTokenAmount(e.target.value === '' ? '' : Number(e.target.value))
                 }
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+                aria-describedby="sell-token-max-help"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
                 placeholder={`1 – ${maxTokens}`}
               />
-              <p className="text-xs text-gray-400 mt-1">Max available: {maxTokens}</p>
+              <p id="sell-token-max-help" className="text-xs text-gray-600 mt-1">Max available: {maxTokens}</p>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="sell-token-price" className="block text-sm font-medium text-gray-800 mb-1">
                 Price per token (USDC)
               </label>
               <input
+                id="sell-token-price"
                 type="number"
                 min="0.0000001"
                 step="0.01"
                 value={pricePerToken}
                 onChange={(e) => setPricePerToken(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
                 placeholder="e.g. 1.05"
               />
             </div>
 
             {safeAmount > 0 && totalValue > 0 && (
-              <div className="bg-gray-50 rounded-lg px-3 py-2 text-sm text-gray-600">
+              <div className="bg-gray-50 rounded-lg px-3 py-2 text-sm text-gray-700">
                 You will receive up to{' '}
-                <span className="font-semibold text-gray-800">
+                <span className="font-semibold text-gray-900">
                   {totalValue.toFixed(2)} USDC
                 </span>{' '}
                 when the offer fills.
@@ -231,13 +239,13 @@ export const SellSharesModal: React.FC<SellSharesModalProps> = ({
             )}
 
             {error && (
-              <p className="text-sm text-red-600">{error}</p>
+              <p className="text-sm text-red-700">{error}</p>
             )}
 
             <button
               type="submit"
               disabled={isSubmitting || !isConnected}
-              className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-300 text-white py-2.5 rounded-xl text-sm font-medium transition-colors"
+              className="w-full bg-green-700 hover:bg-green-800 disabled:bg-gray-400 text-white py-2.5 rounded-xl text-sm font-medium transition-colors"
             >
               {isSubmitting ? 'Submitting…' : 'Sign & List Shares'}
             </button>

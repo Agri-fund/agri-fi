@@ -22,8 +22,7 @@ import { ConfirmDeliveryDto } from './dto/confirm-delivery.dto';
 @ApiTags('soroban')
 @ApiBearerAuth()
 @UseGuards(AuthGuard('jwt'), RolesGuard)
-@Version('1')
-@Controller('soroban')
+@Controller({ version: '1', path: 'soroban' })
 export class SorobanController {
   constructor(private readonly sorobanService: SorobanService) {}
 

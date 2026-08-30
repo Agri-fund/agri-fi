@@ -1,4 +1,7 @@
 # Agri-fi
+
+![Docker Security Scan](https://github.com/agri-fi/agri-fi/actions/workflows/docker-scan.yml/badge.svg)
+
 Creates a trade deal for agricultural produce (e.g. 10 tons of cocoa) and uploads supporting documents
 2. The platform issues a **Stellar asset** (Trade_Token) representing fractional ownership — each token = $100 USD
 3. **Investors** fund the deal by purchasing tokens; funds are held in a **Stellar escrow account**

@@ -77,7 +77,7 @@ export default function TraderDashboard() {
           <h1 className="page-title">Trader Dashboard</h1>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div data-tour="portfolio-stats" className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard label="Total Deals"  value={deals.length}                        icon="📋" color="bg-blue-50" />
           <StatCard label="Funded"       value={funded}                              icon="✅" color="bg-emerald-50" />
           <StatCard label="Completed"    value={completed}                           icon="🏆" color="bg-amber-50" />

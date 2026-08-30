@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { apiClient, User } from "@/lib/api";
 import DashboardLayout from "@/components/DashboardLayout";
+import { resetTour, isTourCompletedStatic } from "@/components/DashboardTour";
 
-type Tab = "account" | "verification" | "wallets" | "currency";
+type Tab = "account" | "verification" | "wallets" | "currency" | "notifications";
 
 const KYC_INFO: Record<string, { label: string; color: string; note: string }> =
   {
@@ -60,6 +61,16 @@ export default function SettingsPage() {
   const [unlinking, setUnlinking] = useState(false);
   const [unlinkMsg, setUnlinkMsg] = useState<string | null>(null);
 
+  // Tour restart state
+  const [tourRestartMsg, setTourRestartMsg] = useState<string | null>(null);
+
+  // Notification preferences state
+  const [notifPrefs, setNotifPrefs] = useState<
+    { notificationType: string; emailEnabled: boolean; pushEnabled: boolean; inAppEnabled: boolean }[]
+  >([]);
+  const [savingNotif, setSavingNotif] = useState(false);
+  const [notifMsg, setNotifMsg] = useState<string | null>(null);
+
   useEffect(() => {
     (async () => {
       const cached = apiClient.getCurrentUser();
@@ -76,6 +87,18 @@ export default function SettingsPage() {
       setName(u.name ?? "");
       setPreferredCurrency(u.preferredCurrency ?? "USD");
       setLoading(false);
+
+      // Fetch notification preferences
+      try {
+        const token = localStorage.getItem("auth_token");
+        const notifRes = await fetch("/api/v1/users/me/notification-preferences", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (notifRes.ok) {
+          const prefs = await notifRes.json();
+          setNotifPrefs(prefs);
+        }
+      } catch {}
     })();
   }, [router]);
 
@@ -154,6 +177,49 @@ export default function SettingsPage() {
     }
   };
 
+  const handleRestartTour = () => {
+    resetTour();
+    setTourRestartMsg("Tour reset! Navigate to your dashboard to start the tour.");
+    setTimeout(() => setTourRestartMsg(null), 3000);
+  };
+
+  const handleToggleNotifPref = async (
+    notificationType: string,
+    field: "emailEnabled" | "pushEnabled" | "inAppEnabled",
+    value: boolean,
+  ) => {
+    setSavingNotif(true);
+    setNotifMsg(null);
+    try {
+      const token = localStorage.getItem("auth_token");
+      const res = await fetch("/api/v1/users/me/notification-preferences", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ notificationType, [field]: value }),
+      });
+      if (!res.ok) throw new Error("Failed to save");
+      const updated = await res.json();
+      setNotifPrefs((prev) => {
+        const idx = prev.findIndex((p) => p.notificationType === notificationType);
+        if (idx >= 0) {
+          const next = [...prev];
+          next[idx] = updated;
+          return next;
+        }
+        return [...prev, updated];
+      });
+      setNotifMsg("Preference updated.");
+      setTimeout(() => setNotifMsg(null), 2000);
+    } catch {
+      setNotifMsg("Failed to save preference.");
+    } finally {
+      setSavingNotif(false);
+    }
+  };
+
   if (loading || !user) return null;
 
   const kycKey = user.kycStatus ?? "none";
@@ -164,6 +230,7 @@ export default function SettingsPage() {
     { id: "verification", label: "Verification", icon: "🛡️" },
     { id: "wallets", label: "Wallets", icon: "🔑" },
     { id: "currency", label: "Currency", icon: "💱" },
+    { id: "notifications", label: "Notifications", icon: "🔔" },
   ];
 
   return (
@@ -252,6 +319,28 @@ export default function SettingsPage() {
                 {saving ? "Saving…" : "Save Changes"}
               </button>
             </form>
+
+            {/* Help section */}
+            <div className="border-t border-slate-100 pt-5 mt-5">
+              <h3 className="text-sm font-semibold text-slate-700 mb-3">Help</h3>
+              <div className="flex items-center justify-between p-4 rounded-xl bg-slate-50 border border-slate-100">
+                <div>
+                  <p className="text-sm font-medium text-slate-900">Dashboard Tour</p>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Replay the interactive tour to learn about platform features.
+                  </p>
+                </div>
+                <button
+                  onClick={handleRestartTour}
+                  className="btn-secondary text-sm flex-shrink-0"
+                >
+                  Restart Tour
+                </button>
+              </div>
+              {tourRestartMsg && (
+                <p className="text-sm font-medium text-emerald-600 mt-2">{tourRestartMsg}</p>
+              )}
+            </div>
           </div>
         )}
 
@@ -464,6 +553,73 @@ export default function SettingsPage() {
                 for transparency.
               </p>
             </div>
+          </div>
+        )}
+
+        {/* ── Notifications tab ── */}
+        {tab === "notifications" && (
+          <div className="card p-6 space-y-5">
+            <h2 className="section-title">Notification Preferences</h2>
+            <p className="text-sm text-slate-600">
+              Choose how you receive notifications for each category. Toggle
+              individual channels on or off.
+            </p>
+
+            {notifPrefs.length === 0 && (
+              <p className="text-sm text-slate-400">Loading preferences…</p>
+            )}
+
+            <div className="space-y-4">
+              {notifPrefs.map((pref) => (
+                <div
+                  key={pref.notificationType}
+                  className="p-4 rounded-xl border border-slate-200 space-y-3"
+                >
+                  <p className="text-sm font-semibold text-slate-800 capitalize">
+                    {pref.notificationType.replace(/_/g, " ")}
+                  </p>
+                  <div className="flex gap-4">
+                    {([
+                      { field: "emailEnabled" as const, label: "Email" },
+                      { field: "pushEnabled" as const, label: "Push" },
+                      { field: "inAppEnabled" as const, label: "In-App" },
+                    ]).map(({ field, label }) => (
+                      <label
+                        key={field}
+                        className="flex items-center gap-2 text-sm text-slate-600"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={pref[field]}
+                          onChange={(e) =>
+                            handleToggleNotifPref(
+                              pref.notificationType,
+                              field,
+                              e.target.checked,
+                            )
+                          }
+                          disabled={savingNotif}
+                          className="w-4 h-4 rounded cursor-pointer"
+                        />
+                        {label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {notifMsg && (
+              <p
+                className={`text-sm font-medium ${
+                  notifMsg.includes("updated")
+                    ? "text-brand-600"
+                    : "text-red-500"
+                }`}
+              >
+                {notifMsg}
+              </p>
+            )}
           </div>
         )}
       </div>

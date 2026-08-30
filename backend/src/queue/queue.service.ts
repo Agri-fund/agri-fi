@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { ClientProxy } from '@nestjs/microservices';
-import { QueryRunner } from 'typeorm';
+import { EntityManager } from 'typeorm';
 import { PinoLogger } from 'nestjs-pino';
 import { ClsService } from 'nestjs-cls';
 import { QUEUE_SERVICE } from './queue.constants';
@@ -13,27 +13,27 @@ export interface BasePayload {
 
 export interface TransactionalQueueService {
   enqueueDealPublishTransactional(
-    queryRunner: QueryRunner,
+    entityManager: EntityManager,
     payload: Omit<DealPublishPayload, 'correlationId'>,
   ): Promise<void>;
 
   enqueueDealDeliveredTransactional(
-    queryRunner: QueryRunner,
+    entityManager: EntityManager,
     tradeDealId: string,
   ): Promise<void>;
 
   enqueueDealCleanupTransactional(
-    queryRunner: QueryRunner,
+    entityManager: EntityManager,
     tradeDealId: string,
   ): Promise<void>;
 
   enqueueInvestmentFundTransactional(
-    queryRunner: QueryRunner,
+    entityManager: EntityManager,
     payload: Omit<InvestmentFundPayload, 'correlationId'>,
   ): Promise<void>;
 
   enqueueDealFundedTransactional(
-    queryRunner: QueryRunner,
+    entityManager: EntityManager,
     payload: Omit<DealFundedPayload, 'correlationId'>,
   ): Promise<void>;
 }
@@ -172,12 +172,12 @@ export class QueueService implements TransactionalQueueService {
    * Use this when you need atomicity between DB updates and event publishing.
    */
   async enqueueDealPublishTransactional(
-    queryRunner: QueryRunner,
+    entityManager: EntityManager,
     payload: Omit<DealPublishPayload, 'correlationId'>,
   ): Promise<void> {
     const enrichedPayload = this.addCorrelationId(payload);
     await this.outboxService.writeEvent(
-      queryRunner,
+      entityManager,
       EVENTS.DEAL_PUBLISH,
       enrichedPayload,
     );
@@ -187,12 +187,12 @@ export class QueueService implements TransactionalQueueService {
    * Write a deal.delivered event to the outbox within the current transaction.
    */
   async enqueueDealDeliveredTransactional(
-    queryRunner: QueryRunner,
+    entityManager: EntityManager,
     tradeDealId: string,
   ): Promise<void> {
     const payload = this.addCorrelationId({ tradeDealId });
     await this.outboxService.writeEvent(
-      queryRunner,
+      entityManager,
       EVENTS.DEAL_DELIVERED,
       payload,
     );
@@ -202,12 +202,12 @@ export class QueueService implements TransactionalQueueService {
    * Write a deal.cleanup event to the outbox within the current transaction.
    */
   async enqueueDealCleanupTransactional(
-    queryRunner: QueryRunner,
+    entityManager: EntityManager,
     tradeDealId: string,
   ): Promise<void> {
     const payload = this.addCorrelationId({ tradeDealId });
     await this.outboxService.writeEvent(
-      queryRunner,
+      entityManager,
       EVENTS.DEAL_CLEANUP,
       payload,
     );
@@ -217,12 +217,12 @@ export class QueueService implements TransactionalQueueService {
    * Write an investment.fund event to the outbox within the current transaction.
    */
   async enqueueInvestmentFundTransactional(
-    queryRunner: QueryRunner,
+    entityManager: EntityManager,
     payload: Omit<InvestmentFundPayload, 'correlationId'>,
   ): Promise<void> {
     const enrichedPayload = this.addCorrelationId(payload);
     await this.outboxService.writeEvent(
-      queryRunner,
+      entityManager,
       EVENTS.INVESTMENT_FUND,
       enrichedPayload,
     );
@@ -232,7 +232,7 @@ export class QueueService implements TransactionalQueueService {
    * Write a deal.funded event to the outbox within the current transaction.
    */
   async enqueueDealFundedTransactional(
-    queryRunner: QueryRunner,
+    entityManager: EntityManager,
     payload: Omit<DealFundedPayload, 'correlationId'>,
   ): Promise<void> {
     const enrichedPayload = this.addCorrelationId(payload);
@@ -244,7 +244,7 @@ export class QueueService implements TransactionalQueueService {
       `Deal ${enrichedPayload.tradeDealId} fully funded — notifying ${enrichedPayload.investors.length} investor(s)`,
     );
     await this.outboxService.writeEvent(
-      queryRunner,
+      entityManager,
       EVENTS.DEAL_FUNDED,
       enrichedPayload,
     );

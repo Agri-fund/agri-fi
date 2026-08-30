@@ -35,6 +35,11 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { AuditModule } from './audit/audit.module';
 
 import { AchievementModule } from './achievements/achievement.module';
+import { EmailSequenceModule } from './email-sequence/email-sequence.module';
+import { SettlementModule } from './settlement/settlement.module';
+import { SearchModule } from './search/search.module';
+import { UpgradeModule } from './upgrade/upgrade.module';
+import { WebhooksModule } from './webhooks/webhooks.module';
 
 @Module({
   controllers: [AppController],
@@ -95,6 +100,11 @@ import { AchievementModule } from './achievements/achievement.module';
     MetricsModule,
     AuditModule,
     AchievementModule,
+    EmailSequenceModule,
+    SettlementModule,
+    SearchModule,
+    UpgradeModule,
+    WebhooksModule,
   ],
   providers: [
     {
@@ -113,6 +123,6 @@ export class AppModule implements NestModule {
     // ClsMiddleware MUST run before CorrelationIdMiddleware so it can safely call cls.set()
     consumer
       .apply(HttpLoggerMiddleware, ClsMiddleware, CorrelationIdMiddleware)
-      .forRoutes('*');
+      .forRoutes('{*splat}');
   }
 }

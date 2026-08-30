@@ -19,10 +19,21 @@ export interface Sep12PutCustomerRequest {
   address?: {
     city?: string;
     country_code?: string;
+    line1?: string;
   };
   id_type?: string;
   id_number?: string;
   id_country_code?: string;
+  birth_date?: string;
+
+  // Internal platform field names (#837) — mapped to SEP-12 equivalents.
+  firstName?: string;
+  lastName?: string;
+  dateOfBirth?: string;
+  nationalIdNumber?: string;
+  nationalIdType?: string;
+  addressLine1?: string;
+  countryCode?: string;
 }
 
 export interface Sep12CustomerResponse {
@@ -32,9 +43,11 @@ export interface Sep12CustomerResponse {
   last_name?: string;
   email_address?: string;
   mobile_number?: string;
+  birth_date?: string;
   address?: {
     city?: string;
     country_code?: string;
+    line1?: string;
   };
   id_type?: string;
   id_number?: string;
@@ -72,16 +85,24 @@ export class Sep12Service {
       throw new NotFoundException('User not found.');
     }
 
-    if (fields.first_name || fields.last_name) {
-      user.fullName = [fields.first_name, fields.last_name]
+    const sep12Fields = normalizeSep12Fields(fields);
+
+    if (sep12Fields.first_name || sep12Fields.last_name) {
+      user.fullName = [sep12Fields.first_name, sep12Fields.last_name]
         .filter(Boolean)
         .join(' ');
     }
-    if (fields.address?.country_code) {
-      user.country = fields.address.country_code;
+    if (sep12Fields.birth_date) {
+      user.birthdate = sep12Fields.birth_date;
     }
-    if (fields.id_number) {
-      user.taxId = fields.id_number;
+    if (sep12Fields.address?.line1) {
+      user.physicalAddress = sep12Fields.address.line1;
+    }
+    if (sep12Fields.address?.country_code) {
+      user.country = sep12Fields.address.country_code.toUpperCase();
+    }
+    if (sep12Fields.id_number) {
+      user.taxId = sep12Fields.id_number;
     }
 
     await this.userRepo.save(user);
@@ -91,8 +112,12 @@ export class Sep12Service {
 
     const submission = this.kycRepo.create({
       userId,
-      governmentIdUrl: fields.id_type ? `sep12:${fields.id_type}` : undefined,
+      governmentIdUrl: sep12Fields.id_type
+        ? `sep12:${sep12Fields.id_type}`
+        : undefined,
       status: isAutoApprove ? 'approved' : 'pending_review',
+      // Store both the internal user-field updates and the SEP-12 payload (#837)
+      sep12Data: sep12Fields as Record<string, unknown>,
     });
     await this.kycRepo.save(submission);
 
@@ -116,18 +141,45 @@ export class Sep12Service {
     }
 
     const nameParts = (user.fullName ?? '').split(' ');
+    const latestSubmission = await this.kycRepo.findOne({
+      where: { userId },
+      order: { createdAt: 'DESC' },
+    });
+    const stored = (latestSubmission?.sep12Data ?? {}) as Partial<Sep12CustomerResponse>;
 
     return {
       id: user.id,
       status: KYC_STATUS_MAP[user.kycStatus] ?? 'PROCESSING',
-      first_name: nameParts[0] || undefined,
-      last_name: nameParts.slice(1).join(' ') || undefined,
+      first_name: stored.first_name ?? (nameParts[0] || undefined),
+      last_name: stored.last_name ?? nameParts.slice(1).join(' ') || undefined,
       email_address: user.email,
+      birth_date: stored.birth_date ?? user.birthdate ?? undefined,
       address: {
-        country_code: user.country,
+        city: stored.address?.city,
+        country_code: stored.address?.country_code ?? user.country ?? undefined,
+        line1: stored.address?.line1 ?? user.physicalAddress ?? undefined,
       },
-      id_number: user.taxId ?? undefined,
+      id_type: stored.id_type,
+      id_number: stored.id_number ?? user.taxId ?? undefined,
+      id_country_code: stored.id_country_code,
     };
+  }
+
+  /**
+   * Fetch a SEP-12 customer by id (#837). Admins can view any customer;
+   * other callers may only view themselves.
+   */
+  async getCustomerById(
+    requester: User,
+    customerId: string,
+  ): Promise<Sep12CustomerResponse> {
+    if (requester.role !== 'admin' && requester.id !== customerId) {
+      throw new ForbiddenException({
+        code: 'SEP12_CUSTOMER_FORBIDDEN',
+        message: 'Only admins can view other customers.',
+      });
+    }
+    return this.getCustomer(customerId);
   }
 
   assertCustomerApproved(user: User): void {
