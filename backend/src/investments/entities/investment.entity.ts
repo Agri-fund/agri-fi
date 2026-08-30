@@ -108,7 +108,12 @@ export class Investment {
   })
   deletedAt: Date | null;
 
-  @Column({ name: 'receipt_url', type: 'varchar', length: 2048, nullable: true })
+  @Column({
+    name: 'receipt_url',
+    type: 'varchar',
+    length: 2048,
+    nullable: true,
+  })
   @ApiProperty({
     description: 'S3 URL of the generated PDF payment receipt',
     nullable: true,

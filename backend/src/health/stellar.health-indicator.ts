@@ -1,5 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { HealthCheckError, HealthIndicator, HealthIndicatorResult } from '@nestjs/terminus';
+import {
+  HealthCheckError,
+  HealthIndicator,
+  HealthIndicatorResult,
+} from '@nestjs/terminus';
 import { HorizonFailoverClient } from '../stellar/horizon-failover';
 
 export interface StellarHealthDetails {
@@ -57,15 +61,12 @@ export class StellarHealthIndicator extends HealthIndicator {
 
     // Return unhealthy if all nodes are down (critical failure)
     if (allUnhealthy) {
-      throw new HealthCheckError(
-        'Stellar Horizon: All nodes unreachable',
-        {
-          stellar: {
-            status: 'down',
-            details,
-          },
+      throw new HealthCheckError('Stellar Horizon: All nodes unreachable', {
+        stellar: {
+          status: 'down',
+          details,
         },
-      );
+      });
     }
 
     // Return degraded if any node is down (warning)
@@ -115,15 +116,12 @@ export class StellarHealthIndicator extends HealthIndicator {
     };
 
     if (allUnhealthy) {
-      throw new HealthCheckError(
-        'Stellar Horizon: All nodes unreachable',
-        {
-          stellar: {
-            status: 'down',
-            details,
-          },
+      throw new HealthCheckError('Stellar Horizon: All nodes unreachable', {
+        stellar: {
+          status: 'down',
+          details,
         },
-      );
+      });
     }
 
     if (!nodeStatuses.every((n) => n.healthy)) {

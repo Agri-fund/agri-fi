@@ -254,7 +254,14 @@ export class DocumentsController {
   @ApiBody({
     schema: {
       type: 'object',
-      required: ['chunk', 'fileId', 'chunkIndex', 'totalChunks', 'docType', 'tradeDealId'],
+      required: [
+        'chunk',
+        'fileId',
+        'chunkIndex',
+        'totalChunks',
+        'docType',
+        'tradeDealId',
+      ],
       properties: {
         chunk: { type: 'string', format: 'binary' },
         fileId: { type: 'string' },
@@ -283,7 +290,11 @@ export class DocumentsController {
 
     let session = this.chunkStore.get(fileId);
     if (!session) {
-      session = { chunks: new Array(totalChunks).fill(null), totalChunks, receivedCount: 0 };
+      session = {
+        chunks: new Array(totalChunks).fill(null),
+        totalChunks,
+        receivedCount: 0,
+      };
       this.chunkStore.set(fileId, session);
     }
 
@@ -310,7 +321,10 @@ export class DocumentsController {
     summary: 'Assemble uploaded chunks and finalize document upload',
   })
   @ApiResponse({ status: 201, description: 'Document assembled and uploaded' })
-  @ApiResponse({ status: 400, description: 'Missing chunks or invalid request' })
+  @ApiResponse({
+    status: 400,
+    description: 'Missing chunks or invalid request',
+  })
   async uploadComplete(
     @Body() dto: UploadCompleteDto,
     @Request() req: AuthRequest,

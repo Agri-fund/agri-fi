@@ -145,13 +145,15 @@ export class Sep12Service {
       where: { userId },
       order: { createdAt: 'DESC' },
     });
-    const stored = (latestSubmission?.sep12Data ?? {}) as Partial<Sep12CustomerResponse>;
+    const stored = (latestSubmission?.sep12Data ??
+      {}) as Partial<Sep12CustomerResponse>;
 
     return {
       id: user.id,
       status: KYC_STATUS_MAP[user.kycStatus] ?? 'PROCESSING',
       first_name: stored.first_name ?? (nameParts[0] || undefined),
-      last_name: stored.last_name ?? nameParts.slice(1).join(' ') || undefined,
+      last_name:
+        (stored.last_name ?? nameParts.slice(1).join(' ')) || undefined,
       email_address: user.email,
       birth_date: stored.birth_date ?? user.birthdate ?? undefined,
       address: {

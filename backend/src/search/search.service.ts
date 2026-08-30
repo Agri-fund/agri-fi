@@ -1,7 +1,4 @@
-import {
-  Injectable,
-  BadRequestException,
-} from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 
@@ -40,7 +37,9 @@ export class SearchService {
   ): Promise<UnifiedSearchResponse> {
     const trimmed = query?.trim();
     if (!trimmed || trimmed.length < 2) {
-      throw new BadRequestException('Search query must be at least 2 characters');
+      throw new BadRequestException(
+        'Search query must be at least 2 characters',
+      );
     }
 
     const safeLimit = Math.min(Math.max(1, limit), MAX_LIMIT);
@@ -59,7 +58,11 @@ export class SearchService {
       response.farmers = await this.searchFarmers(tsQuery, trimmed, safeLimit);
     }
     if (types.includes('documents')) {
-      response.documents = await this.searchDocuments(tsQuery, trimmed, safeLimit);
+      response.documents = await this.searchDocuments(
+        tsQuery,
+        trimmed,
+        safeLimit,
+      );
     }
 
     return response;

@@ -11,10 +11,7 @@ import { User } from './user.entity';
 import { encryptionTransformer } from '../../common/encryption.transformer';
 
 export type KycSubmissionStatus =
-  | 'pending_review'
-  | 'approved'
-  | 'rejected'
-  | 'expired';
+  'pending_review' | 'approved' | 'rejected' | 'expired';
 
 @Entity('kyc_submissions')
 export class KycSubmission {

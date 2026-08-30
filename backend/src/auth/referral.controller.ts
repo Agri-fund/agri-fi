@@ -32,7 +32,10 @@ export class ReferralController {
   @Get()
   @UseGuards(AuthGuard('jwt'))
   @ApiOperation({ summary: 'Get referral stats for the authenticated user' })
-  @ApiResponse({ status: 200, description: 'Referral stats with code and referral list' })
+  @ApiResponse({
+    status: 200,
+    description: 'Referral stats with code and referral list',
+  })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async getReferralStats(@Request() req: AuthRequest) {
     return this.referralService.getReferralStats(req.user.id);

@@ -26,10 +26,7 @@ export type TradeDealStatus =
   | 'expired';
 
 export type SettlementStatus =
-  | 'pending'
-  | 'settling'
-  | 'settled'
-  | 'settlement_failed';
+  'pending' | 'settling' | 'settled' | 'settlement_failed';
 
 @Entity('trade_deals')
 @Index(['farmerId', 'status'])
@@ -86,7 +83,13 @@ export class TradeDeal {
   })
   totalValue: number;
 
-  @Column({ name: 'expected_roi', type: 'decimal', precision: 6, scale: 2, nullable: true })
+  @Column({
+    name: 'expected_roi',
+    type: 'decimal',
+    precision: 6,
+    scale: 2,
+    nullable: true,
+  })
   @ApiProperty({
     description: 'Expected annual ROI percentage',
     required: false,
@@ -104,7 +107,13 @@ export class TradeDeal {
   })
   durationDays: number | null;
 
-  @Column({ name: 'min_investment_lot', type: 'decimal', precision: 18, scale: 2, nullable: true })
+  @Column({
+    name: 'min_investment_lot',
+    type: 'decimal',
+    precision: 18,
+    scale: 2,
+    nullable: true,
+  })
   @ApiProperty({
     description: 'Minimum investment amount',
     required: false,
@@ -234,10 +243,22 @@ export class TradeDeal {
   })
   farmLocation: string | null;
 
-  @Column({ name: 'farm_latitude', type: 'decimal', precision: 10, scale: 6, nullable: true })
+  @Column({
+    name: 'farm_latitude',
+    type: 'decimal',
+    precision: 10,
+    scale: 6,
+    nullable: true,
+  })
   farmLatitude: number | null;
 
-  @Column({ name: 'farm_longitude', type: 'decimal', precision: 10, scale: 6, nullable: true })
+  @Column({
+    name: 'farm_longitude',
+    type: 'decimal',
+    precision: 10,
+    scale: 6,
+    nullable: true,
+  })
   farmLongitude: number | null;
 
   @Column({ name: 'farm_photos', type: 'jsonb', default: () => "'[]'" })
@@ -248,7 +269,11 @@ export class TradeDeal {
     previewUrl?: string | null;
   }>;
 
-  @Column({ name: 'supporting_documents', type: 'jsonb', default: () => "'[]'" })
+  @Column({
+    name: 'supporting_documents',
+    type: 'jsonb',
+    default: () => "'[]'",
+  })
   supportingDocuments: Array<{
     name: string;
     type: string;
@@ -321,7 +346,13 @@ export class TradeDeal {
   appTraceId: string | null;
 
   // #828 — Risk scoring
-  @Column({ name: 'risk_score', type: 'decimal', precision: 5, scale: 2, nullable: true })
+  @Column({
+    name: 'risk_score',
+    type: 'decimal',
+    precision: 5,
+    scale: 2,
+    nullable: true,
+  })
   @ApiProperty({
     description: 'Composite risk score (0-100, higher = riskier)',
     nullable: true,
@@ -373,7 +404,12 @@ export class TradeDeal {
   })
   lotStep: number;
 
-  @Column({ name: 'settlement_status', type: 'varchar', length: 32, default: 'pending' })
+  @Column({
+    name: 'settlement_status',
+    type: 'varchar',
+    length: 32,
+    default: 'pending',
+  })
   @ApiProperty({
     description: 'On-chain settlement status (#899)',
     enum: ['pending', 'settling', 'settled', 'settlement_failed'],
@@ -388,7 +424,13 @@ export class TradeDeal {
   })
   settlementTxHash: string | null;
 
-  @Column({ name: 'settlement_harvest_amount', type: 'decimal', precision: 18, scale: 7, nullable: true })
+  @Column({
+    name: 'settlement_harvest_amount',
+    type: 'decimal',
+    precision: 18,
+    scale: 7,
+    nullable: true,
+  })
   settlementHarvestAmount: number | null;
 
   @Column({ name: 'settlement_quality_grade', type: 'int', nullable: true })

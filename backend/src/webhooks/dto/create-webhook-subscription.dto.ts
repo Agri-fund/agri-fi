@@ -1,4 +1,10 @@
-import { IsUrl, IsArray, IsString, IsOptional, IsBoolean } from 'class-validator';
+import {
+  IsUrl,
+  IsArray,
+  IsString,
+  IsOptional,
+  IsBoolean,
+} from 'class-validator';
 
 export class CreateWebhookSubscriptionDto {
   @IsUrl({ require_tld: false })

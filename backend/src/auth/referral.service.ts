@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ReferralCode } from './entities/referral-code.entity';
@@ -35,7 +35,8 @@ export class ReferralService {
     do {
       newCode = generateCode();
       attempts++;
-      if (attempts > 10) throw new Error('Failed to generate unique referral code');
+      if (attempts > 10)
+        throw new Error('Failed to generate unique referral code');
     } while (await this.referralCodeRepo.findOne({ where: { code: newCode } }));
 
     code = this.referralCodeRepo.create({ userId, code: newCode });
@@ -43,7 +44,9 @@ export class ReferralService {
   }
 
   async trackClick(code: string): Promise<{ referralId: string }> {
-    const referralCode = await this.referralCodeRepo.findOne({ where: { code } });
+    const referralCode = await this.referralCodeRepo.findOne({
+      where: { code },
+    });
     if (!referralCode) throw new NotFoundException('Invalid referral code');
 
     const referral = this.referralRepo.create({
@@ -55,7 +58,9 @@ export class ReferralService {
   }
 
   async trackRegistration(refereeId: string, code: string): Promise<void> {
-    const referralCode = await this.referralCodeRepo.findOne({ where: { code } });
+    const referralCode = await this.referralCodeRepo.findOne({
+      where: { code },
+    });
     if (!referralCode) return;
 
     const referral = this.referralRepo.create({
@@ -108,9 +113,13 @@ export class ReferralService {
     return {
       code: code.code,
       totalClicks: referrals.filter((r) => r.status === 'clicked').length,
-      totalRegistered: referrals.filter((r) => r.status === 'registered').length,
+      totalRegistered: referrals.filter((r) => r.status === 'registered')
+        .length,
       totalRewarded: referrals.filter((r) => r.status === 'rewarded').length,
-      totalRewardAmount: referrals.reduce((sum, r) => sum + Number(r.rewardAmount), 0),
+      totalRewardAmount: referrals.reduce(
+        (sum, r) => sum + Number(r.rewardAmount),
+        0,
+      ),
       referrals,
     };
   }

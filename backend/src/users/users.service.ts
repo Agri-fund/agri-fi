@@ -100,7 +100,10 @@ export class UsersService {
 
   async deleteAccount(userId: string): Promise<void> {
     await this.dataSource.transaction(async (manager) => {
-      const user = await manager.findOne(User, { where: { id: userId }, withDeleted: true });
+      const user = await manager.findOne(User, {
+        where: { id: userId },
+        withDeleted: true,
+      });
       if (!user) {
         throw new NotFoundException('User not found.');
       }
@@ -160,7 +163,10 @@ export class UsersService {
         userId: userId,
         changes: `GDPR erasure requested. Account soft-deleted with 30-day grace period ending ${dueAt.toISOString()}`,
         oldValues: { email: user.email, gdprStatus: user.gdprStatus },
-        newValues: { gdprStatus: 'pending_erasure', gdprErasureDueAt: dueAt.toISOString() },
+        newValues: {
+          gdprStatus: 'pending_erasure',
+          gdprErasureDueAt: dueAt.toISOString(),
+        },
       });
       await manager.save(AuditLog, audit);
 
@@ -299,10 +305,7 @@ export class UsersService {
    *
    * Returns the most recent `limit` events, sorted newest-first.
    */
-  async getActivityLog(
-    userId: string,
-    limit = 50,
-  ): Promise<ActivityLogItem[]> {
+  async getActivityLog(userId: string, limit = 50): Promise<ActivityLogItem[]> {
     const events: ActivityLogItem[] = [];
 
     // ── Investments ────────────────────────────────────────────────────────
@@ -362,7 +365,10 @@ export class UsersService {
     });
     for (const ms of milestones) {
       const milestoneLabels: Record<string, string> = {
-        farm: 'Farm', warehouse: 'Warehouse', port: 'Port', importer: 'Importer',
+        farm: 'Farm',
+        warehouse: 'Warehouse',
+        port: 'Port',
+        importer: 'Importer',
       };
       events.push({
         id: `ms-${ms.id}`,

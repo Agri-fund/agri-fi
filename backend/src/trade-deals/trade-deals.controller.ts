@@ -43,7 +43,6 @@ import {
   InviteCoFarmerDto,
 } from './dto/co-farmer.dto';
 import { DealCoFarmer } from './entities/deal-co-farmer.entity';
-import { ActivityFeedService } from './activity-feed.service';
 import { ActivityFeedResponseDto } from './dto/activity-feed.dto';
 
 import { TradeDealAccessRequest, TradeDealsGuard } from './trade-deals.guard';
@@ -137,7 +136,10 @@ export class TradeDealsController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 403, description: 'Admin role required' })
   @ApiResponse({ status: 404, description: 'Trade deal not found' })
-  @ApiResponse({ status: 422, description: 'Deal not in draft or deployment failed' })
+  @ApiResponse({
+    status: 422,
+    description: 'Deal not in draft or deployment failed',
+  })
   async approveDeal(
     @Param('id') id: string,
     @Request() req: AuthRequest,
@@ -159,8 +161,14 @@ export class TradeDealsController {
       'Invite an existing farmer user as a co-farmer on a deal (lead farmer or trader)',
   })
   @ApiResponse({ status: 201, description: 'Invitation created and emailed' })
-  @ApiResponse({ status: 400, description: 'Portion exceeds 100% or invalid target' })
-  @ApiResponse({ status: 403, description: 'Not the lead farmer or assigned trader' })
+  @ApiResponse({
+    status: 400,
+    description: 'Portion exceeds 100% or invalid target',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Not the lead farmer or assigned trader',
+  })
   @ApiResponse({ status: 404, description: 'Trade deal not found' })
   async inviteCoFarmer(
     @Param('id') id: string,
@@ -174,7 +182,10 @@ export class TradeDealsController {
   @UseGuards(AuthGuard('jwt'))
   @ApiBearerAuth('jwt')
   @ApiOperation({ summary: 'List co-farmers for a trade deal' })
-  @ApiResponse({ status: 200, description: 'Co-farmer list (invitation tokens hidden)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Co-farmer list (invitation tokens hidden)',
+  })
   async listCoFarmers(@Param('id') id: string): Promise<DealCoFarmer[]> {
     const records = await this.dealCoFarmersService.listCoFarmers(id);
     // Never expose invitation tokens through the API.
@@ -197,7 +208,11 @@ export class TradeDealsController {
     @Request() req: AuthRequest,
     @Body() dto: AcceptCoFarmerInvitationDto,
   ): Promise<DealCoFarmer> {
-    return this.dealCoFarmersService.acceptInvitation(id, req.user.id, dto.token);
+    return this.dealCoFarmersService.acceptInvitation(
+      id,
+      req.user.id,
+      dto.token,
+    );
   }
 
   @Post(':id/co-farmers/decline')
@@ -216,7 +231,11 @@ export class TradeDealsController {
     @Request() req: AuthRequest,
     @Body() dto: AcceptCoFarmerInvitationDto,
   ): Promise<DealCoFarmer> {
-    return this.dealCoFarmersService.declineInvitation(id, req.user.id, dto.token);
+    return this.dealCoFarmersService.declineInvitation(
+      id,
+      req.user.id,
+      dto.token,
+    );
   }
 
   @Delete(':id/co-farmers/:farmerId')
@@ -229,8 +248,14 @@ export class TradeDealsController {
       'Remove a co-farmer from a deal before delivery (lead farmer or trader)',
   })
   @ApiResponse({ status: 204, description: 'Co-farmer removed' })
-  @ApiResponse({ status: 403, description: 'Not the lead farmer or assigned trader' })
-  @ApiResponse({ status: 404, description: 'Trade deal or co-farmer not found' })
+  @ApiResponse({
+    status: 403,
+    description: 'Not the lead farmer or assigned trader',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Trade deal or co-farmer not found',
+  })
   async removeCoFarmer(
     @Param('id') id: string,
     @Param('farmerId') farmerId: string,
@@ -335,8 +360,16 @@ export class TradeDealsController {
     summary: 'Get activity feed for a trade deal (cursor-paginated)',
   })
   @ApiParam({ name: 'id', description: 'Trade deal UUID' })
-  @ApiQuery({ name: 'cursor', required: false, description: 'Opaque pagination cursor' })
-  @ApiQuery({ name: 'limit', required: false, description: 'Page size (max 50, default 20)' })
+  @ApiQuery({
+    name: 'cursor',
+    required: false,
+    description: 'Opaque pagination cursor',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    description: 'Page size (max 50, default 20)',
+  })
   @ApiResponse({ status: 200, description: 'Activity feed events' })
   @ApiResponse({ status: 404, description: 'Trade deal not found' })
   async getActivityFeed(
@@ -345,7 +378,8 @@ export class TradeDealsController {
     @Query('limit') limit?: string,
     @Request() req?: any,
   ): Promise<ActivityFeedResponseDto> {
-    const isAdmin = req?.user?.role === 'admin' || req?.user?.role === 'company_admin';
+    const isAdmin =
+      req?.user?.role === 'admin' || req?.user?.role === 'company_admin';
     return this.activityFeedService.getFeed(id, {
       cursor,
       limit: limit ? parseInt(limit, 10) : undefined,

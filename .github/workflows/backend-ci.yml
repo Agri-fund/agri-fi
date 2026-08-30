@@ -47,6 +47,8 @@ jobs:
       ENCRYPTION_KEY: ci-test-encryption-key-32chars!!
       RABBITMQ_URL: amqp://localhost:5672
       NOTIFICATIONS_ENABLED: "false"
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
 
     steps:
       - uses: actions/checkout@v4
@@ -114,10 +116,10 @@ jobs:
 
       - name: SonarQube scan
         uses: SonarSource/sonarqube-scan-action@v6
-        if: ${{ always() && secrets.SONAR_HOST_URL != '' }}
+        if: ${{ always() && env.SONAR_HOST_URL != '' }}
         env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+          SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ env.SONAR_HOST_URL }}
         with:
           args: >
             -Dsonar.projectKey=agri-fi-backend

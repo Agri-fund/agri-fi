@@ -1,14 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication, HttpStatus } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
+import { INestApplication } from '@nestjs/common';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import * as request from 'supertest';
-import * as bcrypt from 'bcrypt';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
-import { User } from './entities/user.entity';
-import { LoginLog } from '../database/entities/login-log.entity';
 import { SecurityThreatService } from './security-threat.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { QueueService } from '../queue/queue.service';
@@ -27,16 +22,7 @@ import { OfacSanctionsCheckService } from './utils/ofac-sanctions-check';
  */
 describe('Auth - Account Lockout & Unlock (Integration)', () => {
   let app: INestApplication;
-  let authService: AuthService;
   let jwtService: JwtService;
-  let notificationsService: NotificationsService;
-
-  const testUser = {
-    email: 'lockout-test@example.com',
-    password: 'SecurePassword123!',
-    role: 'farmer' as const,
-    country: 'NG',
-  };
 
   beforeAll(async () => {
     // Mocking dependencies since we're testing the service logic, not real DB
@@ -128,9 +114,7 @@ describe('Auth - Account Lockout & Unlock (Integration)', () => {
     app = module.createNestApplication();
     await app.init();
 
-    authService = module.get<AuthService>(AuthService);
     jwtService = module.get<JwtService>(JwtService);
-    notificationsService = module.get<NotificationsService>(NotificationsService);
   });
 
   afterAll(async () => {
@@ -245,11 +229,8 @@ describe('Auth - Account Lockout & Unlock (Integration)', () => {
 
     it('should reject invalid unlock token', async () => {
       // Invalid token format
-      const invalidToken = 'not.a.valid.jwt';
-
       // The endpoint should return 400 Bad Request
       // with code 'INVALID_UNLOCK_TOKEN'
-
       // This would be tested via actual HTTP call:
       // await request(app.getHttpServer())
       //   .get(`/auth/unlock/${invalidToken}`)
@@ -322,7 +303,6 @@ describe('Auth - Account Lockout & Unlock (Integration)', () => {
       // 4. Token is signed JWT with 15-min expiry
       // 5. Fallback message about automatic unlock in 15 minutes
 
-      const mockEmail = 'user@example.com';
       const unlockToken = jwtService.sign(
         { sub: 'user-123', typ: 'account_unlock' },
         { expiresIn: '15m' },
@@ -344,7 +324,7 @@ describe('Auth - Account Lockout & Unlock (Integration)', () => {
       );
 
       const decoded = jwtService.verify(token);
-      const expiryMs = (decoded.exp * 1000) - Date.now();
+      const expiryMs = decoded.exp * 1000 - Date.now();
 
       // Should be close to 15 minutes (900,000 ms)
       expect(expiryMs).toBeGreaterThan(14 * 60 * 1000);

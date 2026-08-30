@@ -9,32 +9,77 @@ export class CompleteInvestorRLS1950000000000 implements MigrationInterface {
   name = 'CompleteInvestorRLS1950000000000';
 
   private readonly policies: Array<{ table: string; predicate: string }> = [
-    { table: 'investments', predicate: 'app.user_in_current_company("investor_id")' },
-    { table: 'transaction_logs', predicate: 'app.user_in_current_company("user_id")' },
-    { table: 'transaction_audit_log', predicate: 'app.user_in_current_company("user_id")' },
-    { table: 'payment_distributions', predicate: 'app.user_in_current_company("recipient_id")' },
+    {
+      table: 'investments',
+      predicate: 'app.user_in_current_company("investor_id")',
+    },
+    {
+      table: 'transaction_logs',
+      predicate: 'app.user_in_current_company("user_id")',
+    },
+    {
+      table: 'transaction_audit_log',
+      predicate: 'app.user_in_current_company("user_id")',
+    },
+    {
+      table: 'payment_distributions',
+      predicate: 'app.user_in_current_company("recipient_id")',
+    },
     {
       table: 'investment_events',
-      predicate: 'EXISTS (SELECT 1 FROM investments i WHERE i.id = "investment_events"."investment_id" AND app.user_in_current_company(i.investor_id))',
+      predicate:
+        'EXISTS (SELECT 1 FROM investments i WHERE i.id = "investment_events"."investment_id" AND app.user_in_current_company(i.investor_id))',
     },
-    { table: 'investor_email_sequences', predicate: 'app.user_in_current_company("user_id")' },
-    { table: 'kyc_submissions', predicate: 'app.user_in_current_company("user_id")' },
-    { table: 'notifications', predicate: 'app.user_in_current_company("user_id")' },
-    { table: 'notification_preferences', predicate: 'app.user_in_current_company("user_id")' },
-    { table: 'achievements', predicate: 'app.user_in_current_company("user_id")' },
-    { table: 'login_logs', predicate: 'app.user_in_current_company("user_id")' },
-    { table: 'audit_logs', predicate: 'app.user_in_current_company("user_id")' },
-    { table: 'investments_archive', predicate: 'app.user_in_current_company("investor_id")' },
+    {
+      table: 'investor_email_sequences',
+      predicate: 'app.user_in_current_company("user_id")',
+    },
+    {
+      table: 'kyc_submissions',
+      predicate: 'app.user_in_current_company("user_id")',
+    },
+    {
+      table: 'notifications',
+      predicate: 'app.user_in_current_company("user_id")',
+    },
+    {
+      table: 'notification_preferences',
+      predicate: 'app.user_in_current_company("user_id")',
+    },
+    {
+      table: 'achievements',
+      predicate: 'app.user_in_current_company("user_id")',
+    },
+    {
+      table: 'login_logs',
+      predicate: 'app.user_in_current_company("user_id")',
+    },
+    {
+      table: 'audit_logs',
+      predicate: 'app.user_in_current_company("user_id")',
+    },
+    {
+      table: 'investments_archive',
+      predicate: 'app.user_in_current_company("investor_id")',
+    },
     {
       table: 'secondary_trades',
-      predicate: 'app.user_in_current_company("seller_id") OR app.user_in_current_company("buyer_id")',
+      predicate:
+        'app.user_in_current_company("seller_id") OR app.user_in_current_company("buyer_id")',
     },
-    { table: 'account_merge_recovery', predicate: 'app.user_in_current_company("original_investor_id")' },
+    {
+      table: 'account_merge_recovery',
+      predicate: 'app.user_in_current_company("original_investor_id")',
+    },
   ];
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "company_id" UUID`);
-    await queryRunner.query(`CREATE INDEX IF NOT EXISTS "idx_users_company_id" ON "users" ("company_id")`);
+    await queryRunner.query(
+      `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "company_id" UUID`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX IF NOT EXISTS "idx_users_company_id" ON "users" ("company_id")`,
+    );
 
     await queryRunner.query(`
       CREATE SCHEMA IF NOT EXISTS app;
@@ -77,15 +122,25 @@ export class CompleteInvestorRLS1950000000000 implements MigrationInterface {
 
   public async down(queryRunner: QueryRunner): Promise<void> {
     for (const { table } of [...this.policies].reverse()) {
-      await queryRunner.query(`DROP POLICY IF EXISTS "${table}_company_isolation" ON "${table}"`);
-      await queryRunner.query(`ALTER TABLE "${table}" DISABLE ROW LEVEL SECURITY`);
+      await queryRunner.query(
+        `DROP POLICY IF EXISTS "${table}_company_isolation" ON "${table}"`,
+      );
+      await queryRunner.query(
+        `ALTER TABLE "${table}" DISABLE ROW LEVEL SECURITY`,
+      );
     }
 
-    await queryRunner.query(`DROP POLICY IF EXISTS "users_company_isolation" ON "users"`);
+    await queryRunner.query(
+      `DROP POLICY IF EXISTS "users_company_isolation" ON "users"`,
+    );
     await queryRunner.query(`ALTER TABLE "users" DISABLE ROW LEVEL SECURITY`);
-    await queryRunner.query(`DROP FUNCTION IF EXISTS app.user_in_current_company(UUID)`);
+    await queryRunner.query(
+      `DROP FUNCTION IF EXISTS app.user_in_current_company(UUID)`,
+    );
     await queryRunner.query(`DROP SCHEMA IF EXISTS app`);
     await queryRunner.query(`DROP INDEX IF EXISTS "idx_users_company_id"`);
-    await queryRunner.query(`ALTER TABLE "users" DROP COLUMN IF EXISTS "company_id"`);
+    await queryRunner.query(
+      `ALTER TABLE "users" DROP COLUMN IF EXISTS "company_id"`,
+    );
   }
 }

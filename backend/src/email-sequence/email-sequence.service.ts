@@ -57,7 +57,10 @@ export class EmailSequenceService {
    * Called by AuthService immediately after the user row is persisted.
    * Idempotent: silently skips on duplicate key (same user+step).
    */
-  async scheduleForUser(userId: string, registrationTime: Date = new Date()): Promise<void> {
+  async scheduleForUser(
+    userId: string,
+    registrationTime: Date = new Date(),
+  ): Promise<void> {
     const rows = DRIP_STEPS.map((s) => {
       const scheduledAt = new Date(registrationTime);
       scheduledAt.setDate(scheduledAt.getDate() + s.dayOffset);
@@ -118,7 +121,10 @@ export class EmailSequenceService {
     if (!user.emailSequenceUnsubscribed) {
       await this.userRepo.update(userId, { emailSequenceUnsubscribed: true });
       await this.haltForUser(userId);
-      this.logger.info({ userId }, 'User unsubscribed from drip email sequence');
+      this.logger.info(
+        { userId },
+        'User unsubscribed from drip email sequence',
+      );
     }
   }
 
@@ -172,7 +178,10 @@ export class EmailSequenceService {
   @Cron(CronExpression.EVERY_HOUR)
   async processPendingSteps(): Promise<void> {
     const now = new Date();
-    this.logger.info({ now }, 'EmailSequenceService: processing pending drip steps');
+    this.logger.info(
+      { now },
+      'EmailSequenceService: processing pending drip steps',
+    );
 
     const due = await this.sequenceRepo.find({
       where: {
@@ -212,7 +221,10 @@ export class EmailSequenceService {
       return;
     }
 
-    const appUrl = this.config.get<string>('APP_BASE_URL', 'http://localhost:3001');
+    const appUrl = this.config.get<string>(
+      'APP_BASE_URL',
+      'http://localhost:3001',
+    );
     const unsubToken = this.encodeUnsubscribeToken(user.id);
     const unsubscribeUrl = `${appUrl}/email-sequence/unsubscribe?token=${unsubToken}`;
 
@@ -222,7 +234,10 @@ export class EmailSequenceService {
       appUrl,
       unsubscribeUrl,
       // CAN-SPAM: physical mailing address in footer
-      physicalAddress: this.config.get<string>('COMPANY_ADDRESS', 'Agri-Fi Ltd, Nairobi, Kenya'),
+      physicalAddress: this.config.get<string>(
+        'COMPANY_ADDRESS',
+        'Agri-Fi Ltd, Nairobi, Kenya',
+      ),
       companyName: 'Agri-Fi',
     };
 
@@ -233,12 +248,24 @@ export class EmailSequenceService {
         user.preferredLanguage,
       );
 
-      await this.notificationsService.sendEmail(user.email, subject, text, html);
+      await this.notificationsService.sendEmail(
+        user.email,
+        subject,
+        text,
+        html,
+      );
 
-      await this.sequenceRepo.update(row.id, { sentAt: new Date(), error: null });
+      await this.sequenceRepo.update(row.id, {
+        sentAt: new Date(),
+        error: null,
+      });
 
       this.logger.info(
-        { userId: user.id, step: row.sequenceStep, template: step.templateName },
+        {
+          userId: user.id,
+          step: row.sequenceStep,
+          template: step.templateName,
+        },
         'Drip email dispatched successfully',
       );
     } catch (err: any) {

@@ -87,7 +87,10 @@ export class Sep12Controller {
   @ApiParam({ name: 'id', description: 'Customer (user) UUID' })
   @ApiResponse({ status: 200, description: 'SEP-12 compliant customer record' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({ status: 403, description: 'Not allowed to view this customer' })
+  @ApiResponse({
+    status: 403,
+    description: 'Not allowed to view this customer',
+  })
   @ApiResponse({ status: 404, description: 'Customer not found' })
   async getCustomerById(
     @Param('id') id: string,

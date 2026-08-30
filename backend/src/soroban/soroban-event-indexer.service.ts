@@ -245,17 +245,15 @@ export class SorobanEventIndexer implements OnModuleInit, OnModuleDestroy {
         return [];
       }
 
-      return eventsResponse.events.map(
-        (event: any): ContractEvent => ({
-          id: `${event.id}`,
-          transactionHash: event.transactionHash,
-          ledger: event.ledger,
-          contractId: event.contractId,
-          type: event.type,
-          topic: event.topic || [],
-          value: event.value || {},
-        }),
-      );
+      return eventsResponse.events.map((event: any): ContractEvent => ({
+        id: `${event.id}`,
+        transactionHash: event.transactionHash,
+        ledger: event.ledger,
+        contractId: event.contractId,
+        type: event.type,
+        topic: event.topic || [],
+        value: event.value || {},
+      }));
     } catch (error) {
       this.logger.debug({ error }, 'Error querying events from RPC');
       return [];

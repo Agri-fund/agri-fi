@@ -50,7 +50,10 @@ export class PayoutDeadLetterConsumer {
     const tradeDealId = payload?.tradeDealId ?? 'unknown';
     const xDeath = originalMsg?.properties?.headers?.['x-death'];
     const totalAttempts = Array.isArray(xDeath)
-      ? xDeath.reduce((sum: number, d: { count?: number }) => sum + (d.count ?? 0), 0)
+      ? xDeath.reduce(
+          (sum: number, d: { count?: number }) => sum + (d.count ?? 0),
+          0,
+        )
       : 'unknown';
 
     this.logger.error(
@@ -106,9 +109,7 @@ export class PayoutDeadLetterConsumer {
 
     try {
       await this.notificationsService.sendEmail(opsEmail, subject, text, html);
-      this.logger.log(
-        `DLQ ops alert email dispatched for deal ${tradeDealId}`,
-      );
+      this.logger.log(`DLQ ops alert email dispatched for deal ${tradeDealId}`);
     } catch (err: any) {
       this.logger.error(
         { error: err.message },
@@ -127,9 +128,7 @@ export class PayoutDeadLetterConsumer {
           `${totalAttempts} attempts. The message has been routed to ` +
           `\`agric_onchain_escrow_queue.dlq\`. **Manual intervention required.**`,
       );
-      this.logger.log(
-        `DLQ Discord alert dispatched for deal ${tradeDealId}`,
-      );
+      this.logger.log(`DLQ Discord alert dispatched for deal ${tradeDealId}`);
     } catch (err: any) {
       this.logger.warn(
         { error: err.message },

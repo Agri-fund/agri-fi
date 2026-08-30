@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { NotificationPreference } from './entities/notification-preference.entity';
@@ -85,7 +85,9 @@ export class NotificationPreferencesService {
     }
   }
 
-  private async seedDefaults(userId: string): Promise<NotificationPreference[]> {
+  private async seedDefaults(
+    userId: string,
+  ): Promise<NotificationPreference[]> {
     const prefs = DEFAULT_NOTIFICATION_TYPES.map((type) =>
       this.preferenceRepo.create({
         userId,

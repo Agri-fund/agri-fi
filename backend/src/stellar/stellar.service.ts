@@ -770,7 +770,10 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       .build();
 
     fundIssuerTx.sign(this.platformKeypair, issuerKeypair);
-    await this.submitWithRetrySigned(fundIssuerTx, [this.platformKeypair, issuerKeypair]);
+    await this.submitWithRetrySigned(fundIssuerTx, [
+      this.platformKeypair,
+      issuerKeypair,
+    ]);
 
     const tradeAsset = createAsset(assetCode, issuerKeypair.publicKey());
 
@@ -814,7 +817,9 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       .build();
 
     mintTx.sign(issuerKeypair);
-    const mintResult = await this.submitWithRetrySigned(mintTx, [issuerKeypair]);
+    const mintResult = await this.submitWithRetrySigned(mintTx, [
+      issuerKeypair,
+    ]);
 
     const txId = (mintResult as any).hash as string;
     this.logger.info(
@@ -1169,7 +1174,9 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
                 Operation.payment({
                   destination: platformWallet,
                   asset: this.usdcAsset,
-                  amount: new BigNumber(platformStroops).dividedBy(1e7).toFixed(7),
+                  amount: new BigNumber(platformStroops)
+                    .dividedBy(1e7)
+                    .toFixed(7),
                 }),
               );
             }
@@ -2086,7 +2093,11 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     return holders.map((h) => ({
       walletAddress: h.walletAddress,
       tokenAmount: h.tokenAmount,
-      totalTo  /**
+      totalTokens,
+    }));
+  }
+
+  /**
    * Emits structured transaction log entries for all Stellar transaction attempts (#803).
    */
   public logStructuredTx(params: {
@@ -2114,9 +2125,15 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     };
 
     if (params.status === 'success') {
-      this.logger.info(logData, `Stellar transaction [${params.operation}] succeeded`);
+      this.logger.info(
+        logData,
+        `Stellar transaction [${params.operation}] succeeded`,
+      );
     } else {
-      this.logger.error(logData, `Stellar transaction [${params.operation}] failed`);
+      this.logger.error(
+        logData,
+        `Stellar transaction [${params.operation}] failed`,
+      );
     }
   }
 
@@ -2127,7 +2144,8 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
   private isTxTooLateError(err: any): boolean {
     const resultCodes = err?.response?.data?.extras?.result_codes;
     if (resultCodes?.transaction === 'tx_too_late') return true;
-    if (typeof err?.message === 'string' && err.message.includes('tx_too_late')) return true;
+    if (typeof err?.message === 'string' && err.message.includes('tx_too_late'))
+      return true;
     return false;
   }
 
@@ -2163,11 +2181,16 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
    * On tx_too_late (expired timebound), throws immediately — callers that hold the
    * signing keys should use submitWithRetrySigned instead (#681).
    */
-  private async submitWithRetry(tx: any, operationName = 'submitTransaction', correlationId?: string): Promise<any> {
+  private async submitWithRetry(
+    tx: any,
+    operationName = 'submitTransaction',
+    correlationId?: string,
+  ): Promise<any> {
     const RETRYABLE = new Set([429, 503, 504]);
     const MAX_RETRIES = 3;
     const startTime = Date.now();
-    const txHash = typeof tx?.hash === 'function' ? tx.hash().toString('hex') : tx?.hash;
+    const txHash =
+      typeof tx?.hash === 'function' ? tx.hash().toString('hex') : tx?.hash;
 
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
@@ -2277,7 +2300,14 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         const randomJitter = Math.floor(Math.random() * 500);
         const delayMs = baseDelayMs * Math.pow(2, attempt) + randomJitter;
         this.logger.warn(
-          { attempt, status, delayMs, jitter: randomJitter, correlationId, txHash },
+          {
+            attempt,
+            status,
+            delayMs,
+            jitter: randomJitter,
+            correlationId,
+            txHash,
+          },
           `Transient Horizon error (${status ?? 'timeout'}); retrying with exponential backoff and jitter in ${delayMs}ms`,
         );
         await new Promise((resolve) => setTimeout(resolve, delayMs));
@@ -2291,7 +2321,11 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
   private isInsufficientFeeError(err: any): boolean {
     const resultCodes = err?.response?.data?.extras?.result_codes;
     if (resultCodes?.transaction === 'tx_insufficient_fee') return true;
-    if (typeof err?.message === 'string' && err.message.includes('tx_insufficient_fee')) return true;
+    if (
+      typeof err?.message === 'string' &&
+      err.message.includes('tx_insufficient_fee')
+    )
+      return true;
     return false;
   }
 
@@ -2315,7 +2349,8 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
       const tx = await buildTx(currentFee.toString());
       tx.sign(signer);
-      const txHash = typeof tx?.hash === 'function' ? tx.hash().toString('hex') : tx?.hash;
+      const txHash =
+        typeof tx?.hash === 'function' ? tx.hash().toString('hex') : tx?.hash;
 
       try {
         const result = await this.server.submitTransaction(tx);
@@ -2332,7 +2367,13 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         if (this.isInsufficientFeeError(err) && currentFee < maxFeeNum) {
           currentFee = Math.min(currentFee * 2, maxFeeNum);
           this.logger.warn(
-            { attempt, newFee: currentFee, maxFee: maxFeeNum, correlationId, txHash },
+            {
+              attempt,
+              newFee: currentFee,
+              maxFee: maxFeeNum,
+              correlationId,
+              txHash,
+            },
             `tx_insufficient_fee detected — retrying with higher fee (${currentFee} stroops)`,
           );
           continue;
@@ -2347,9 +2388,6 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
           error: err?.message,
         });
         throw err;
-      }
-    }
-  }ow err;
       }
     }
 

@@ -49,9 +49,26 @@ const COMMODITY_VOLATILITY: Record<string, number> = {
 
 // Country weather risk baseline (0-100 scale)
 const COUNTRY_WEATHER_RISK: Record<string, number> = {
-  GH: 40, KE: 50, NG: 55, TZ: 45, UG: 42, ET: 60, CI: 38,
-  SN: 35, ML: 55, BF: 52, ZM: 38, MW: 36, MZ: 48, IN: 58,
-  BR: 42, VN: 45, ID: 50, TH: 40, MX: 44, CO: 46,
+  GH: 40,
+  KE: 50,
+  NG: 55,
+  TZ: 45,
+  UG: 42,
+  ET: 60,
+  CI: 38,
+  SN: 35,
+  ML: 55,
+  BF: 52,
+  ZM: 38,
+  MW: 36,
+  MZ: 48,
+  IN: 58,
+  BR: 42,
+  VN: 45,
+  ID: 50,
+  TH: 40,
+  MX: 44,
+  CO: 46,
 };
 
 @Injectable()
@@ -80,7 +97,10 @@ export class RiskScoringService {
     const farmerRepayment = await this.scoreFarmerRepayment(deal.farmerId);
     const commodityVolatility = this.scoreCommodityVolatility(deal.commodity);
     const weatherRisk = this.scoreWeatherRisk(deal.farmer?.country);
-    const dealDuration = this.scoreDealDuration(deal.deliveryDate, deal.createdAt);
+    const dealDuration = this.scoreDealDuration(
+      deal.deliveryDate,
+      deal.createdAt,
+    );
     const collateralCoverage = this.scoreCollateralCoverage(deal);
 
     const breakdown: RiskBreakdown = {
@@ -124,7 +144,9 @@ export class RiskScoringService {
       where: [{ status: 'open' }, { status: 'funded' }],
     });
 
-    this.logger.info(`Recalculating risk scores for ${deals.length} active deals`);
+    this.logger.info(
+      `Recalculating risk scores for ${deals.length} active deals`,
+    );
 
     for (const deal of deals) {
       try {
@@ -180,13 +202,14 @@ export class RiskScoringService {
    * Longer deals carry more uncertainty.
    */
   private scoreDealDuration(deliveryDate: Date, createdAt: Date): number {
-    const now = new Date();
     const delivery = new Date(deliveryDate);
     const created = new Date(createdAt);
 
     const totalDays = Math.max(
       1,
-      Math.ceil((delivery.getTime() - created.getTime()) / (1000 * 60 * 60 * 24)),
+      Math.ceil(
+        (delivery.getTime() - created.getTime()) / (1000 * 60 * 60 * 24),
+      ),
     );
 
     // <30 days = low risk, 30-90 = medium, 90-180 = high, >180 = very high
@@ -216,7 +239,9 @@ export class RiskScoringService {
     return 85;
   }
 
-  private scoreToRating(score: number): 'Low' | 'Medium' | 'High' | 'Very High' {
+  private scoreToRating(
+    score: number,
+  ): 'Low' | 'Medium' | 'High' | 'Very High' {
     if (score <= 25) return 'Low';
     if (score <= 50) return 'Medium';
     if (score <= 75) return 'High';

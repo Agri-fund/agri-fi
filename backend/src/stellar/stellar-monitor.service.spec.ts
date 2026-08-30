@@ -2,7 +2,6 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Horizon } from '@stellar/stellar-sdk';
 import axios from 'axios';
 import { StellarMonitorService } from './stellar-monitor.service';
 import { StellarService } from './stellar.service';
@@ -74,49 +73,19 @@ describe('StellarMonitorService - Account Merge Recovery', () => {
   });
 
   describe('processAccountMergeTx', () => {
+    const mockTx = {
+      id: 'abc123def456',
+      source_account: mockOriginalKey,
+      operations: [
+        {
+          type: 'account_merge',
+          source_account: mockOriginalKey,
+          into: mockMergedKey,
+        },
+      ],
+    };
+
     it('should create merge recovery record when detecting account merge operation', async () => {
-      const mockTx = {
-        id: 'abc123def456',
-        source_account: mockOriginalKey,
-        operations: [
-          {
-            type: 'account_merge',
-            source_account: mockOriginalKey,
-            into: mockMergedKey,
-          },
-        ],
-      }).compile();
-
-      const customService = module.get<StellarMonitorService>(
-        StellarMonitorService,
-      );
-      expect((customService as any).BALANCE_THRESHOLD_XLM).toBe(100);
-    });
-
-    it('should handle invalid STELLAR_PLATFORM_SECRET gracefully', async () => {
-      const invalidConfig = {
-        get: jest.fn((key: string, defaultVal?: any) => {
-          if (key === 'STELLAR_PLATFORM_SECRET') {
-            return 'invalid-secret-key';
-          }
-          return defaultVal ?? '';
-        }),
-      };
-
-      const module: TestingModule = await Test.createTestingModule({
-        providers: [
-          StellarMonitorService,
-          { provide: ConfigService, useValue: invalidConfig },
-        ],
-      }).compile();
-
-      const invalidService = module.get<StellarMonitorService>(
-        StellarMonitorService,
-      );
-      expect((invalidService as any).platformAccountId).toBeNull();
-    });
-  });
-
       const mockRecord = {
         id: 'recovery-123',
         originalPublicKey: mockOriginalKey,
@@ -147,13 +116,30 @@ describe('StellarMonitorService - Account Merge Recovery', () => {
       expect(mergeRecoveryRepo.save).toHaveBeenCalledWith(mockRecord);
     });
 
-    it('should handle missing native balance', async () => {
-      const mockAccount = {
-        balances: [{ asset_type: 'credit_alphanum4', balance: '500.0000000' }],
-        sequenceNumber: () => '12345',
-        subentry_count: 0,
+    it('should handle invalid STELLAR_PLATFORM_SECRET gracefully', async () => {
+      const invalidConfig = {
+        get: jest.fn((key: string, defaultVal?: any) => {
+          if (key === 'STELLAR_PLATFORM_SECRET') {
+            return 'invalid-secret-key';
+          }
+          return defaultVal ?? '';
+        }),
       };
 
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          StellarMonitorService,
+          { provide: ConfigService, useValue: invalidConfig },
+        ],
+      }).compile();
+
+      const invalidService = module.get<StellarMonitorService>(
+        StellarMonitorService,
+      );
+      expect((invalidService as any).platformAccountId).toBeNull();
+    });
+
+    it('should handle missing native balance', async () => {
       const existingRecord = {
         id: 'recovery-existing',
         originalPublicKey: mockOriginalKey,

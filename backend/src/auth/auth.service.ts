@@ -1295,7 +1295,7 @@ export class AuthService {
     let payload: any;
     try {
       payload = this.jwtService.verify(token);
-    } catch (err: any) {
+    } catch {
       throw new BadRequestException({
         code: 'INVALID_UNLOCK_TOKEN',
         message: 'Invalid or expired unlock token.',

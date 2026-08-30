@@ -10,7 +10,10 @@ import {
 } from 'class-validator';
 
 export class SubmitKycDto {
-  @ApiPropertyOptional({ example: 'Amina Yusuf', description: 'Full legal name' })
+  @ApiPropertyOptional({
+    example: 'Amina Yusuf',
+    description: 'Full legal name',
+  })
   @IsOptional()
   @IsString()
   @IsNotEmpty()
@@ -28,7 +31,10 @@ export class SubmitKycDto {
   @IsNotEmpty()
   nationality?: string;
 
-  @ApiPropertyOptional({ example: '12 Cocoa Street, Lagos', description: 'Residential address' })
+  @ApiPropertyOptional({
+    example: '12 Cocoa Street, Lagos',
+    description: 'Residential address',
+  })
   @IsOptional()
   @IsString()
   @IsNotEmpty()

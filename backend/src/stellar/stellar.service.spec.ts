@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { StellarService, InvestorShare } from './stellar.service';
 import { PinoLogger } from 'nestjs-pino';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { TransactionLog, TxStatus } from './entities/transaction-log.entity';
+import { TransactionLog } from './entities/transaction-log.entity';
 import { KmsService } from '../kms/kms.service';
 import {
   Keypair,
@@ -96,14 +96,17 @@ describe('StellarService', () => {
           provide: KmsService,
           useValue: {
             // Simple symmetric stub: prefix-tag so decrypt can validate the input
-            encrypt: jest.fn(async (plainText: string) =>
-              'mock:' + Buffer.from(plainText).toString('base64'),
+            encrypt: jest.fn(
+              async (plainText: string) =>
+                'mock:' + Buffer.from(plainText).toString('base64'),
             ),
             decrypt: jest.fn(async (cipherText: string) => {
               if (!cipherText.startsWith('mock:')) {
                 throw new Error('Invalid encrypted payload format');
               }
-              return Buffer.from(cipherText.slice(5), 'base64').toString('utf8');
+              return Buffer.from(cipherText.slice(5), 'base64').toString(
+                'utf8',
+              );
             }),
           },
         },
@@ -157,9 +160,12 @@ describe('StellarService', () => {
     });
 
     it('should build a single-op XDR when trustline already exists', async () => {
-      Object.defineProperty((service as any).horizonClient, 'activeServer', { get: () => ({
-        loadAccount: jest.fn().mockResolvedValue(makeAccount('100', 1, true)),
-      }), configurable: true });
+      Object.defineProperty((service as any).horizonClient, 'activeServer', {
+        get: () => ({
+          loadAccount: jest.fn().mockResolvedValue(makeAccount('100', 1, true)),
+        }),
+        configurable: true,
+      });
 
       const xdr = await service.createInvestmentTransaction(
         investorWallet,
@@ -174,9 +180,12 @@ describe('StellarService', () => {
     });
 
     it('should prepend changeTrust op when trustline is missing', async () => {
-      Object.defineProperty((service as any).horizonClient, 'activeServer', { get: () => ({
-        loadAccount: jest.fn().mockResolvedValue(makeAccount('10', 0, false)),
-      }), configurable: true });
+      Object.defineProperty((service as any).horizonClient, 'activeServer', {
+        get: () => ({
+          loadAccount: jest.fn().mockResolvedValue(makeAccount('10', 0, false)),
+        }),
+        configurable: true,
+      });
 
       const xdr = await service.createInvestmentTransaction(
         investorWallet,
@@ -190,9 +199,12 @@ describe('StellarService', () => {
     });
 
     it('should throw when XLM balance is insufficient for trustline reserve', async () => {
-      Object.defineProperty((service as any).horizonClient, 'activeServer', { get: () => ({
-        loadAccount: jest.fn().mockResolvedValue(makeAccount('1', 0, false)),
-      }), configurable: true });
+      Object.defineProperty((service as any).horizonClient, 'activeServer', {
+        get: () => ({
+          loadAccount: jest.fn().mockResolvedValue(makeAccount('1', 0, false)),
+        }),
+        configurable: true,
+      });
 
       await expect(
         service.createInvestmentTransaction(
@@ -212,9 +224,10 @@ describe('StellarService', () => {
     const makeHorizonServer = (resolvedValue?: any, rejectedWith?: any) => ({
       transactions: () => ({
         transaction: () => ({
-          call: resolvedValue !== undefined
-            ? jest.fn().mockResolvedValue(resolvedValue)
-            : jest.fn().mockRejectedValue(rejectedWith),
+          call:
+            resolvedValue !== undefined
+              ? jest.fn().mockResolvedValue(resolvedValue)
+              : jest.fn().mockRejectedValue(rejectedWith),
         }),
       }),
     });
@@ -222,10 +235,11 @@ describe('StellarService', () => {
     describe('cache miss — no Redis client', () => {
       it('should return "pending" for a 404 response', async () => {
         (service as any).sequenceRedis = null;
-        Object.defineProperty((service as any).horizonClient, 'activeServer', { get: () => makeHorizonServer(
-          undefined,
-          { response: { status: 404 } },
-        ), configurable: true });
+        Object.defineProperty((service as any).horizonClient, 'activeServer', {
+          get: () =>
+            makeHorizonServer(undefined, { response: { status: 404 } }),
+          configurable: true,
+        });
 
         const status = await service.getTransactionStatus('nonexistent-tx-id');
         expect(status).toBe('pending');
@@ -233,7 +247,10 @@ describe('StellarService', () => {
 
       it('should return "success" for a successful transaction', async () => {
         (service as any).sequenceRedis = null;
-        Object.defineProperty((service as any).horizonClient, 'activeServer', { get: () => makeHorizonServer({ successful: true }), configurable: true });
+        Object.defineProperty((service as any).horizonClient, 'activeServer', {
+          get: () => makeHorizonServer({ successful: true }),
+          configurable: true,
+        });
 
         const status = await service.getTransactionStatus('some-tx-id');
         expect(status).toBe('success');
@@ -241,7 +258,10 @@ describe('StellarService', () => {
 
       it('should return "failed" for an unsuccessful transaction', async () => {
         (service as any).sequenceRedis = null;
-        Object.defineProperty((service as any).horizonClient, 'activeServer', { get: () => makeHorizonServer({ successful: false }), configurable: true });
+        Object.defineProperty((service as any).horizonClient, 'activeServer', {
+          get: () => makeHorizonServer({ successful: false }),
+          configurable: true,
+        });
 
         const status = await service.getTransactionStatus('some-tx-id');
         expect(status).toBe('failed');
@@ -251,11 +271,14 @@ describe('StellarService', () => {
     describe('cache hit — Redis has a terminal status', () => {
       it('should return "success" directly from cache without hitting Horizon', async () => {
         const mockCall = jest.fn();
-        Object.defineProperty((service as any).horizonClient, 'activeServer', { get: () => ({
-          transactions: () => ({
-            transaction: () => ({ call: mockCall }),
+        Object.defineProperty((service as any).horizonClient, 'activeServer', {
+          get: () => ({
+            transactions: () => ({
+              transaction: () => ({ call: mockCall }),
+            }),
           }),
-        }), configurable: true });
+          configurable: true,
+        });
         (service as any).sequenceRedis = {
           get: jest.fn().mockResolvedValue('success'),
           setEx: jest.fn().mockResolvedValue('OK'),
@@ -270,11 +293,14 @@ describe('StellarService', () => {
 
       it('should return "failed" directly from cache without hitting Horizon', async () => {
         const mockCall = jest.fn();
-        Object.defineProperty((service as any).horizonClient, 'activeServer', { get: () => ({
-          transactions: () => ({
-            transaction: () => ({ call: mockCall }),
+        Object.defineProperty((service as any).horizonClient, 'activeServer', {
+          get: () => ({
+            transactions: () => ({
+              transaction: () => ({ call: mockCall }),
+            }),
           }),
-        }), configurable: true });
+          configurable: true,
+        });
         (service as any).sequenceRedis = {
           get: jest.fn().mockResolvedValue('failed'),
           setEx: jest.fn().mockResolvedValue('OK'),
@@ -296,7 +322,10 @@ describe('StellarService', () => {
           setEx: mockSetEx,
           isOpen: true,
         };
-        Object.defineProperty((service as any).horizonClient, 'activeServer', { get: () => makeHorizonServer({ successful: true }), configurable: true });
+        Object.defineProperty((service as any).horizonClient, 'activeServer', {
+          get: () => makeHorizonServer({ successful: true }),
+          configurable: true,
+        });
 
         const status = await service.getTransactionStatus('new-success-tx');
 
@@ -315,7 +344,10 @@ describe('StellarService', () => {
           setEx: mockSetEx,
           isOpen: true,
         };
-        Object.defineProperty((service as any).horizonClient, 'activeServer', { get: () => makeHorizonServer({ successful: false }), configurable: true });
+        Object.defineProperty((service as any).horizonClient, 'activeServer', {
+          get: () => makeHorizonServer({ successful: false }),
+          configurable: true,
+        });
 
         const status = await service.getTransactionStatus('new-failed-tx');
 
@@ -334,10 +366,11 @@ describe('StellarService', () => {
           setEx: mockSetEx,
           isOpen: true,
         };
-        Object.defineProperty((service as any).horizonClient, 'activeServer', { get: () => makeHorizonServer(
-          undefined,
-          { response: { status: 404 } },
-        ), configurable: true });
+        Object.defineProperty((service as any).horizonClient, 'activeServer', {
+          get: () =>
+            makeHorizonServer(undefined, { response: { status: 404 } }),
+          configurable: true,
+        });
 
         const status = await service.getTransactionStatus('pending-tx');
 
@@ -353,7 +386,10 @@ describe('StellarService', () => {
           setEx: jest.fn().mockResolvedValue('OK'),
           isOpen: true,
         };
-        Object.defineProperty((service as any).horizonClient, 'activeServer', { get: () => makeHorizonServer({ successful: true }), configurable: true });
+        Object.defineProperty((service as any).horizonClient, 'activeServer', {
+          get: () => makeHorizonServer({ successful: true }),
+          configurable: true,
+        });
 
         const status = await service.getTransactionStatus('tx-redis-get-error');
 
@@ -366,7 +402,10 @@ describe('StellarService', () => {
           setEx: jest.fn().mockRejectedValue(new Error('Redis write error')),
           isOpen: true,
         };
-        Object.defineProperty((service as any).horizonClient, 'activeServer', { get: () => makeHorizonServer({ successful: true }), configurable: true });
+        Object.defineProperty((service as any).horizonClient, 'activeServer', {
+          get: () => makeHorizonServer({ successful: true }),
+          configurable: true,
+        });
 
         const status = await service.getTransactionStatus('tx-redis-set-error');
 
@@ -380,7 +419,10 @@ describe('StellarService', () => {
           setEx: mockSetEx,
           isOpen: true,
         };
-        Object.defineProperty((service as any).horizonClient, 'activeServer', { get: () => makeHorizonServer({ successful: true }), configurable: true });
+        Object.defineProperty((service as any).horizonClient, 'activeServer', {
+          get: () => makeHorizonServer({ successful: true }),
+          configurable: true,
+        });
 
         const status = await service.getTransactionStatus('tx-corrupted-cache');
 
@@ -551,7 +593,9 @@ describe('StellarService', () => {
     beforeEach(() => {
       freezeMockServer = {
         loadAccount: jest.fn().mockResolvedValue(mockAccount),
-        submitTransaction: jest.fn().mockResolvedValue({ hash: 'freeze-tx-hash' }),
+        submitTransaction: jest
+          .fn()
+          .mockResolvedValue({ hash: 'freeze-tx-hash' }),
       };
       Object.defineProperty((service as any).horizonClient, 'activeServer', {
         get: () => freezeMockServer,
@@ -1272,7 +1316,9 @@ describe('StellarService', () => {
 
         const spySetTimeout = jest.spyOn(global, 'setTimeout');
 
-        const result = await (service as any).submitWithRetry({ id: 'mock-tx' });
+        const result = await (service as any).submitWithRetry({
+          id: 'mock-tx',
+        });
 
         expect(result).toEqual({ hash: 'tx-hash-success' });
         expect(mockServer.submitTransaction).toHaveBeenCalledTimes(3);

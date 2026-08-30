@@ -1,4 +1,4 @@
-import { IsString, IsInt, IsUUID, Min, Max } from 'class-validator';
+import { IsString, IsInt, IsUUID, Min } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class UploadChunkDto {
@@ -26,7 +26,9 @@ export class UploadChunkDto {
 }
 
 export class UploadCompleteDto {
-  @ApiProperty({ description: 'Unique file identifier matching the chunked upload session' })
+  @ApiProperty({
+    description: 'Unique file identifier matching the chunked upload session',
+  })
   @IsString()
   fileId: string;
 

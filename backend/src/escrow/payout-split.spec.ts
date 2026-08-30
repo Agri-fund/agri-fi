@@ -7,10 +7,7 @@ describe('computeFarmerPayoutSplits (#891)', () => {
     portionPercent,
   });
 
-  const co = (
-    id: string,
-    portionPercent: number,
-  ): PayoutParticipant => ({
+  const co = (id: string, portionPercent: number): PayoutParticipant => ({
     farmerId: id,
     walletAddress: `G${id.toUpperCase()}`,
     portionPercent,
@@ -92,13 +89,17 @@ describe('computeFarmerPayoutSplits (#891)', () => {
       ]);
       expect(sumOf(payouts)).toBe(0.03);
       // First two are floored whole cents
-      expect(payouts[0].amountUsd * 100).toBe(Math.floor(payouts[0].amountUsd * 100));
-      expect(payouts[1].amountUsd * 100).toBe(Math.floor(payouts[1].amountUsd * 100));
+      expect(payouts[0].amountUsd * 100).toBe(
+        Math.floor(payouts[0].amountUsd * 100),
+      );
+      expect(payouts[1].amountUsd * 100).toBe(
+        Math.floor(payouts[1].amountUsd * 100),
+      );
     });
   });
 
   describe('boundary conditions', () => {
-    it("drops the lead farmer when co-farmers commit 100%", () => {
+    it('drops the lead farmer when co-farmers commit 100%', () => {
       const payouts = computeFarmerPayoutSplits(5000, [
         lead(0),
         co('a', 60),

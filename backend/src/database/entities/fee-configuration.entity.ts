@@ -106,8 +106,7 @@ export class FeeConfiguration {
     nullable: true,
   })
   @ApiProperty({
-    description:
-      'When this fee configuration expires (null = indefinite)',
+    description: 'When this fee configuration expires (null = indefinite)',
     nullable: true,
     example: null,
   })

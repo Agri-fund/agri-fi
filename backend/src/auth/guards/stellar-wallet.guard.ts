@@ -16,11 +16,9 @@ export class StellarWalletGuard implements CanActivate {
 
     const account = request.headers['x-stellar-account'] as string | undefined;
     const signatureB64 = request.headers['x-stellar-signature'] as
-      | string
-      | undefined;
+      string | undefined;
     const timestamp = request.headers['x-stellar-timestamp'] as
-      | string
-      | undefined;
+      string | undefined;
 
     if (!account || !signatureB64 || !timestamp) {
       throw new UnauthorizedException({

@@ -1,7 +1,10 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { InvestmentEvent, InvestmentEventType } from './entities/investment-event.entity';
+import {
+  InvestmentEvent,
+  InvestmentEventType,
+} from './entities/investment-event.entity';
 import { InvestmentStatus } from './entities/investment.entity';
 
 export interface StateProjection {
@@ -36,7 +39,9 @@ export class InvestmentEventStore {
       actorId: actorId ?? null,
     });
     const saved = await this.eventRepo.save(event);
-    this.logger.log(`Appended event ${eventType} for investment ${investmentId}`);
+    this.logger.log(
+      `Appended event ${eventType} for investment ${investmentId}`,
+    );
     return saved;
   }
 
@@ -56,7 +61,9 @@ export class InvestmentEventStore {
   async rebuildStateFromEvents(investmentId: string): Promise<StateProjection> {
     const events = await this.getEvents(investmentId);
     if (events.length === 0) {
-      throw new NotFoundException(`No events found for investment ${investmentId}`);
+      throw new NotFoundException(
+        `No events found for investment ${investmentId}`,
+      );
     }
 
     let status = InvestmentStatus.PENDING;

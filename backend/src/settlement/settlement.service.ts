@@ -1,7 +1,4 @@
-import {
-  Injectable,
-  Logger,
-} from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
@@ -10,13 +7,9 @@ import { Document } from '../trade-deals/entities/document.entity';
 import { SorobanService } from '../soroban/soroban.service';
 import { StellarService } from '../stellar/stellar.service';
 import { NotificationsService } from '../notifications/notifications.service';
-import { nativeToScVal } from '@stellar/stellar-sdk';
 
 export type SettlementStatus =
-  | 'pending'
-  | 'settling'
-  | 'settled'
-  | 'settlement_failed';
+  'pending' | 'settling' | 'settled' | 'settlement_failed';
 
 const HARVEST_DOC_TYPES = ['harvest_completion', 'warehouse_receipt'] as const;
 
@@ -41,11 +34,18 @@ export class SettlementService {
    */
   async onDocumentApproved(document: Document): Promise<TradeDeal | null> {
     if (!document.signatureVerified) {
-      this.logger.debug({ documentId: document.id }, 'Skipping settlement: signature not verified');
+      this.logger.debug(
+        { documentId: document.id },
+        'Skipping settlement: signature not verified',
+      );
       return null;
     }
 
-    if (!HARVEST_DOC_TYPES.includes(document.docType as typeof HARVEST_DOC_TYPES[number])) {
+    if (
+      !HARVEST_DOC_TYPES.includes(
+        document.docType as (typeof HARVEST_DOC_TYPES)[number],
+      )
+    ) {
       return null;
     }
 
@@ -56,7 +56,10 @@ export class SettlementService {
 
     // Idempotent: skip if already settled
     if (deal.settlementStatus === 'settled') {
-      this.logger.info({ dealId: deal.id }, 'Settlement already completed — skipping');
+      this.logger.info(
+        { dealId: deal.id },
+        'Settlement already completed — skipping',
+      );
       return deal;
     }
 
@@ -76,8 +79,14 @@ export class SettlementService {
       '',
     );
     if (!settlementContractId) {
-      this.logger.warn({ dealId: deal.id }, 'Settlement contract not configured');
-      await this.markSettlementFailed(deal, 'Settlement contract not configured');
+      this.logger.warn(
+        { dealId: deal.id },
+        'Settlement contract not configured',
+      );
+      await this.markSettlementFailed(
+        deal,
+        'Settlement contract not configured',
+      );
       return deal;
     }
 
@@ -103,10 +112,16 @@ export class SettlementService {
       deal.status = 'completed';
       await this.dealRepo.save(deal);
 
-      this.logger.info({ dealId: deal.id, txHash }, 'Campaign settled on-chain');
+      this.logger.info(
+        { dealId: deal.id, txHash },
+        'Campaign settled on-chain',
+      );
       return deal;
     } catch (err: any) {
-      this.logger.error({ dealId: deal.id, err: err.message }, 'Settlement failed');
+      this.logger.error(
+        { dealId: deal.id, err: err.message },
+        'Settlement failed',
+      );
       await this.markSettlementFailed(deal, err.message);
       throw err;
     }
@@ -116,7 +131,10 @@ export class SettlementService {
     return this.stellarService.getVerificationUrl(txHash);
   }
 
-  private async markSettlementFailed(deal: TradeDeal, reason: string): Promise<void> {
+  private async markSettlementFailed(
+    deal: TradeDeal,
+    reason: string,
+  ): Promise<void> {
     deal.settlementStatus = 'settlement_failed';
     await this.dealRepo.save(deal);
 
@@ -128,7 +146,10 @@ export class SettlementService {
     );
   }
 
-  private extractHarvestAmount(document: Document | undefined, deal: TradeDeal): number {
+  private extractHarvestAmount(
+    document: Document | undefined,
+    deal: TradeDeal,
+  ): number {
     const meta = document?.metadata as Record<string, unknown> | undefined;
     if (meta?.harvestAmount != null) return Number(meta.harvestAmount);
     return Number(deal.quantity);

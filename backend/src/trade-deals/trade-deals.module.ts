@@ -105,6 +105,12 @@ const DEALS_CACHE_TTL_MS = 30_000;
       labelNames: ['alertType'],
     }),
   ],
-  exports: [TradeDealsService, DealCoFarmersService, DealDigestService, RiskScoringService, ActivityFeedService],
+  exports: [
+    TradeDealsService,
+    DealCoFarmersService,
+    DealDigestService,
+    RiskScoringService,
+    ActivityFeedService,
+  ],
 })
 export class TradeDealsModule {}

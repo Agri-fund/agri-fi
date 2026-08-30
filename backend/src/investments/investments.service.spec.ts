@@ -105,7 +105,9 @@ describe('InvestmentsService', () => {
     };
     queueService = {
       enqueueInvestmentFund: jest.fn().mockResolvedValue(undefined),
-      enqueueInvestmentFundTransactional: jest.fn().mockResolvedValue(undefined),
+      enqueueInvestmentFundTransactional: jest
+        .fn()
+        .mockResolvedValue(undefined),
       enqueueDealFundedTransactional: jest.fn().mockResolvedValue(undefined),
     };
 
@@ -262,8 +264,16 @@ describe('InvestmentsService', () => {
         tokenAmount: 1100,
         amountUsd: 11000,
         complianceData: {
-          originator: { name: 'Alice', address: '123 St', accountNumber: 'ACC1' },
-          beneficiary: { name: 'Bob', address: '456 St', accountNumber: 'ACC2' },
+          originator: {
+            name: 'Alice',
+            address: '123 St',
+            accountNumber: 'ACC1',
+          },
+          beneficiary: {
+            name: 'Bob',
+            address: '456 St',
+            accountNumber: 'ACC2',
+          },
         },
       };
 
@@ -282,8 +292,16 @@ describe('InvestmentsService', () => {
         tokenAmount: 100,
         amountUsd: 11000,
         complianceData: {
-          originator: { name: 'Alice', address: '123 St', accountNumber: 'ACC1' },
-          beneficiary: { name: 'Bob', address: '456 St', accountNumber: 'ACC2' },
+          originator: {
+            name: 'Alice',
+            address: '123 St',
+            accountNumber: 'ACC1',
+          },
+          beneficiary: {
+            name: 'Bob',
+            address: '456 St',
+            accountNumber: 'ACC2',
+          },
         },
       };
 
@@ -440,7 +458,9 @@ describe('InvestmentsService', () => {
         'signed-xdr-payload',
       );
 
-      expect(queueService.enqueueInvestmentFundTransactional).toHaveBeenCalledWith(
+      expect(
+        queueService.enqueueInvestmentFundTransactional,
+      ).toHaveBeenCalledWith(
         expect.anything(),
         expect.objectContaining({
           investmentId: 'inv-1',
