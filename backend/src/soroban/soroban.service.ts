@@ -615,8 +615,6 @@ export class SorobanService {
       );
     }
   }
-}
-
 
   // ── RevenueDistributor contract methods (Issue #873) ────────────────────────
 
@@ -703,3 +701,4 @@ export class SorobanService {
     const result = await this.readContract(contractId, 'get_distribution_count', []);
     return Number(result ?? 0);
   }
+}

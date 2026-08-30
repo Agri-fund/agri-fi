@@ -5,10 +5,12 @@
  * changes to the local database in real-time.
  *
  * Features:
- * - Polls Horizon API for contract events
- * - Tracks processed events to avoid duplicates
+ * - Polls the Soroban RPC for contract events
+ * - Tracks processed events (persisted — see ProcessedSorobanEvent) to avoid
+ *   duplicate processing across restarts
  * - Updates database records based on contract events
- * - Handles retries and error recovery
+ * - Cross-checks the applied state against the contract's own on-chain
+ *   state and raises a discrepancy alert on mismatch (#791)
  * - Emits internal events for downstream processing
  */
 
@@ -17,39 +19,46 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
 import { PinoLogger } from 'nestjs-pino';
 import { Repository } from 'typeorm';
-import {
-  Horizon,
-  Networks,
-  rpc,
-} from '@stellar/stellar-sdk';
+import { Horizon, Networks, rpc, scValToNative } from '@stellar/stellar-sdk';
 import { TransactionLog, TxStatus } from '../stellar/entities/transaction-log.entity';
 import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.entity';
 import { QueueService } from '../queue/queue.service';
-import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
+import { TradeDeal, TradeDealStatus } from '../trade-deals/entities/trade-deal.entity';
+import { ProcessedSorobanEvent } from './entities/processed-soroban-event.entity';
+import { SorobanService } from './soroban.service';
+import { AuditService } from '../audit/audit.service';
 
 /**
- * Represents a processed event to prevent duplicate processing
- */
-export interface ProcessedEvent {
-  eventId: string;
-  transactionHash: string;
-  contractId: string;
-  eventType: string;
-  processedAt: Date;
-}
-
-/**
- * Represents a contract event structure
+ * A contract event, already decoded from XDR into native JS values by the
+ * time it reaches processEvent/handlers — `topic`/`value` are native, not
+ * ScVal. `type` is the decoded first topic (the event's own name, e.g.
+ * "status_changed"), not an RPC field — the RPC's own `type` field is just
+ * 'contract' | 'system' | 'diagnostic' and was never a business event name.
  */
 export interface ContractEvent {
   id: string;
-  transactionHash: string;
+  txHash: string;
   ledger: number;
   contractId: string;
   type: string;
-  topic: string[];
-  value: Record<string, unknown>;
+  topic: unknown[];
+  value: unknown;
 }
+
+/**
+ * FarmCampaign's on-chain CampaignStatus values (the second topic on a
+ * "status_changed" event, e.g. symbol_short!("funded")) mapped to this
+ * backend's TradeDealStatus. "active" and "paused" have no direct
+ * TradeDealStatus equivalent today — logged and skipped rather than guessed,
+ * so a bad guess never corrupts deal state.
+ */
+const CAMPAIGN_STATUS_TO_DEAL_STATUS: Partial<Record<string, TradeDealStatus>> = {
+  open: 'open',
+  funded: 'funded',
+  delivered: 'delivered',
+  completed: 'completed',
+  failed: 'failed',
+};
 
 @Injectable()
 export class SorobanEventIndexer implements OnModuleInit, OnModuleDestroy {
@@ -58,15 +67,18 @@ export class SorobanEventIndexer implements OnModuleInit, OnModuleDestroy {
   private readonly networkPassphrase: string;
   private pollingInterval: NodeJS.Timer | null = null;
   private lastLedger: number = 0;
-  private readonly processedEventsCache = new Map<string, ProcessedEvent>();
   private isRunning = false;
 
-  // Contract addresses (should be in config)
-  private readonly contractAddresses = {
-    farmCampaign: process.env.FARM_CAMPAIGN_CONTRACT || '',
-    projectFactory: process.env.PROJECT_FACTORY_CONTRACT || '',
-    revenueDistributor: process.env.REVENUE_DISTRIBUTOR_CONTRACT || '',
-    marketplaceSettlement: process.env.MARKETPLACE_SETTLEMENT_CONTRACT || '',
+  // Contract addresses. Read via the injected ConfigService (not
+  // process.env directly, #791) so this class is actually testable with a
+  // mocked ConfigService — a prior version read process.env at class-field
+  // init time, which always evaluated to '' under jest, silently defeating
+  // the contract-id matching in processEvent for any test that exercised it.
+  private readonly contractAddresses: {
+    farmCampaign: string;
+    projectFactory: string;
+    revenueDistributor: string;
+    marketplaceSettlement: string;
   };
 
   constructor(
@@ -78,7 +90,11 @@ export class SorobanEventIndexer implements OnModuleInit, OnModuleDestroy {
     private readonly milestoneRepo: Repository<ShipmentMilestone>,
     @InjectRepository(TradeDeal)
     private readonly dealRepo: Repository<TradeDeal>,
+    @InjectRepository(ProcessedSorobanEvent)
+    private readonly processedEventsRepo: Repository<ProcessedSorobanEvent>,
     private readonly queueService: QueueService,
+    private readonly sorobanService: SorobanService,
+    private readonly auditService: AuditService,
   ) {
     this.logger.setContext(SorobanEventIndexer.name);
 
@@ -96,6 +112,13 @@ export class SorobanEventIndexer implements OnModuleInit, OnModuleDestroy {
     this.horizonServer = new Horizon.Server(horizonUrl);
     this.networkPassphrase =
       network === 'mainnet' ? Networks.PUBLIC : Networks.TESTNET;
+
+    this.contractAddresses = {
+      farmCampaign: config.get<string>('FARM_CAMPAIGN_CONTRACT', ''),
+      projectFactory: config.get<string>('PROJECT_FACTORY_CONTRACT', ''),
+      revenueDistributor: config.get<string>('REVENUE_DISTRIBUTOR_CONTRACT', ''),
+      marketplaceSettlement: config.get<string>('MARKETPLACE_SETTLEMENT_CONTRACT', ''),
+    };
   }
 
   /**
@@ -134,9 +157,32 @@ export class SorobanEventIndexer implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Initialize the last ledger to start polling from
+   * Initialize the last ledger to start polling from (#791).
+   *
+   * Resumes from the highest ledger of any event we've already persisted to
+   * processed_soroban_events, so a restart doesn't reprocess recent events
+   * or (worse) silently skip everything older than 100 ledgers back. Only
+   * falls back to "current tip minus 100" on a genuinely fresh deployment
+   * with no processed-event history yet.
    */
   private async initializeLastLedger() {
+    try {
+      const { max } = await this.processedEventsRepo
+        .createQueryBuilder('e')
+        .select('MAX(e.ledger)', 'max')
+        .getRawOne<{ max: number | string | null }>();
+      if (max !== null && max !== undefined) {
+        this.lastLedger = Number(max);
+        this.logger.info(
+          { ledger: this.lastLedger },
+          'Resuming event indexing from last processed ledger',
+        );
+        return;
+      }
+    } catch (error) {
+      this.logger.warn({ error }, 'Could not read last processed ledger from DB');
+    }
+
     try {
       const ledger = await this.horizonServer.ledgers().limit(1).order('desc').call();
       if (ledger.records && ledger.records.length > 0) {
@@ -227,12 +273,14 @@ export class SorobanEventIndexer implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Query events from Soroban RPC
+   * Query events from the Soroban RPC and decode their XDR topics/value
+   * into native JS values (#791). `getEvents` already returns `topic` as
+   * `xdr.ScVal[]` and `value` as `xdr.ScVal` (not raw base64), so
+   * `scValToNative` is all that's needed — no manual XDR parsing.
    */
   private async queryEvents(): Promise<ContractEvent[]> {
     try {
-      // Query for contract events using the RPC getEvents method
-      const eventsResponse = await (this.rpcServer as any).getEvents({
+      const eventsResponse = await this.rpcServer.getEvents({
         startLedger: this.lastLedger,
         filters: this.buildEventFilters(),
         limit: 100,
@@ -242,17 +290,21 @@ export class SorobanEventIndexer implements OnModuleInit, OnModuleDestroy {
         return [];
       }
 
-      return eventsResponse.events.map(
-        (event: any): ContractEvent => ({
+      return eventsResponse.events.map((event): ContractEvent => {
+        const topic = (event.topic ?? []).map((t) => scValToNative(t));
+        return {
           id: `${event.id}`,
-          transactionHash: event.transactionHash,
+          txHash: event.txHash,
           ledger: event.ledger,
-          contractId: event.contractId,
-          type: event.type,
-          topic: event.topic || [],
-          value: event.value || {},
-        }),
-      );
+          contractId: event.contractId?.contractId() ?? '',
+          // The event's own name is its first topic (e.g. "status_changed"),
+          // not the RPC's `type` field (which is just 'contract'/'system'/
+          // 'diagnostic' and was never a business event name).
+          type: typeof topic[0] === 'string' ? topic[0] : '',
+          topic,
+          value: event.value ? scValToNative(event.value) : undefined,
+        };
+      });
     } catch (error) {
       this.logger.debug({ error }, 'Error querying events from RPC');
       return [];
@@ -272,7 +324,7 @@ export class SorobanEventIndexer implements OnModuleInit, OnModuleDestroy {
       if (contractId) {
         filters.push({
           contractIds: [contractId],
-          type: 'contract',
+          type: 'contract' as const,
         });
       }
     }
@@ -281,12 +333,18 @@ export class SorobanEventIndexer implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Process a single contract event
+   * Process a single contract event, idempotently (#791).
+   *
+   * Idempotency is now a persisted check (processed_soroban_events, keyed
+   * by the RPC's own globally-unique event id) instead of an in-process
+   * Map, so replaying events after a restart does not reprocess them — the
+   * in-memory version was empty again on every restart.
    */
   private async processEvent(event: ContractEvent) {
-    // Check if already processed
-    const eventKey = `${event.transactionHash}-${event.contractId}-${event.type}`;
-    if (this.processedEventsCache.has(eventKey)) {
+    const alreadyProcessed = await this.processedEventsRepo.findOne({
+      where: { id: event.id },
+    });
+    if (alreadyProcessed) {
       return;
     }
 
@@ -304,54 +362,63 @@ export class SorobanEventIndexer implements OnModuleInit, OnModuleDestroy {
         await this.handleRevenueDistributorEvent(event);
       }
 
-      // Mark as processed
-      this.processedEventsCache.set(eventKey, {
-        eventId: event.id,
-        transactionHash: event.transactionHash,
-        contractId: event.contractId,
-        eventType: event.type,
-        processedAt: new Date(),
-      });
-
-      // Clean up old cache entries (keep last 1000)
-      if (this.processedEventsCache.size > 1000) {
-        const firstKey = this.processedEventsCache.keys().next().value;
-        this.processedEventsCache.delete(firstKey);
-      }
+      // Mark as processed — after a successful handler run, so a failed
+      // handler can be retried on the next poll instead of being silently
+      // skipped forever.
+      await this.processedEventsRepo
+        .insert({
+          id: event.id,
+          contractId: event.contractId,
+          transactionHash: event.txHash,
+          ledger: event.ledger,
+          eventType: event.type,
+        })
+        .catch((err) => {
+          // Duplicate key = another poll already recorded this event
+          // concurrently; the work is done either way, nothing to retry.
+          this.logger.debug({ err, eventId: event.id }, 'processed_soroban_events insert skipped');
+        });
 
       this.logger.debug(
-        { transactionHash: event.transactionHash, eventType: event.type },
+        { txHash: event.txHash, eventType: event.type },
         'Event processed successfully',
       );
     } catch (error) {
       this.logger.warn(
-        { error, transactionHash: event.transactionHash },
+        { error, txHash: event.txHash },
         'Error processing event',
       );
     }
   }
 
   /**
-   * Handle FarmCampaign contract events
+   * Handle FarmCampaign contract events.
+   *
+   * Only "status_changed" (the deal-status-sync event, #791) is actually
+   * wired up to real on-chain topic names below. "milestone_completed" and
+   * "funding_received" never corresponded to any topic this contract
+   * actually emits (the real topics are "milestone" and "invested" with a
+   * different payload shape) — left as unreached cases rather than removed,
+   * flagged here for whoever picks up milestone/funding sync as a follow-up.
    */
   private async handleFarmCampaignEvent(event: ContractEvent) {
-    const { type, value, transactionHash } = event;
+    const { type, topic, txHash, ledger, contractId } = event;
 
     switch (type) {
+      case 'status_changed':
+        await this.handleStatusChanged(topic, contractId, txHash, ledger);
+        break;
+
+      // Not real on-chain topic names — see method doc comment above.
       case 'milestone_completed':
-        await this.handleMilestoneCompleted(value as any, transactionHash);
+        await this.handleMilestoneCompleted(event.value as any, txHash);
         break;
-
       case 'funding_received':
-        await this.handleFundingReceived(value as any, transactionHash);
-        break;
-
-      case 'campaign_status_changed':
-        await this.handleCampaignStatusChanged(value as any, transactionHash);
+        await this.handleFundingReceived(event.value as any, txHash);
         break;
 
       default:
-        this.logger.debug({ eventType: type }, 'Unknown event type');
+        this.logger.debug({ eventType: type }, 'Unhandled FarmCampaign event type');
     }
   }
 
@@ -359,15 +426,15 @@ export class SorobanEventIndexer implements OnModuleInit, OnModuleDestroy {
    * Handle MarketplaceSettlement contract events
    */
   private async handleMarketplaceSettlementEvent(event: ContractEvent) {
-    const { type, value, transactionHash } = event;
+    const { type, value, txHash } = event;
 
     switch (type) {
       case 'settlement_completed':
-        await this.handleSettlementCompleted(value as any, transactionHash);
+        await this.handleSettlementCompleted(value as any, txHash);
         break;
 
       case 'trade_settled':
-        await this.handleTradeSettled(value as any, transactionHash);
+        await this.handleTradeSettled(value as any, txHash);
         break;
 
       default:
@@ -379,15 +446,120 @@ export class SorobanEventIndexer implements OnModuleInit, OnModuleDestroy {
    * Handle RevenueDistributor contract events
    */
   private async handleRevenueDistributorEvent(event: ContractEvent) {
-    const { type, value, transactionHash } = event;
+    const { type, value, txHash } = event;
 
     switch (type) {
       case 'revenue_distributed':
-        await this.handleRevenueDistributed(value as any, transactionHash);
+        await this.handleRevenueDistributed(value as any, txHash);
         break;
 
       default:
         this.logger.debug({ eventType: type }, 'Unknown revenue event');
+    }
+  }
+
+  /**
+   * Handle a FarmCampaign "status_changed" event — the on-chain signal this
+   * backend calls "deal status changed" (#791; there is no event literally
+   * named "DealStatusChanged" on-chain — this is it).
+   *
+   * The event carries no dealId field at all: farm_campaign contracts are
+   * deployed one-per-deal, so the deal is identified by *which contract*
+   * emitted the event (`contractId`), matched against
+   * `TradeDeal.sorobanCampaignContractId` — not by a payload field.
+   */
+  private async handleStatusChanged(
+    topic: unknown[],
+    contractId: string,
+    txHash: string,
+    ledger: number,
+  ) {
+    const rawStatus = topic[1];
+    const newStatus =
+      typeof rawStatus === 'string'
+        ? CAMPAIGN_STATUS_TO_DEAL_STATUS[rawStatus.toLowerCase()]
+        : undefined;
+
+    if (!newStatus) {
+      this.logger.warn(
+        { contractId, rawStatus, txHash },
+        'status_changed event with unmapped/unknown campaign status — skipped',
+      );
+      return;
+    }
+
+    const deal = await this.dealRepo.findOne({
+      where: { sorobanCampaignContractId: contractId },
+    });
+    if (!deal) {
+      this.logger.warn(
+        { contractId, newStatus, txHash },
+        'status_changed event for a contract with no matching trade deal — skipped',
+      );
+      return;
+    }
+
+    await this.dealRepo.update({ id: deal.id }, { status: newStatus });
+
+    this.logger.info(
+      { dealId: deal.id, contractId, newStatus, txHash, ledger },
+      'Deal status synced from on-chain event',
+    );
+
+    this.queueService.emit('deal.status.changed', {
+      dealId: deal.id,
+      status: newStatus,
+      txHash,
+      timestamp: new Date(),
+    });
+
+    await this.checkStatusDiscrepancy(deal.id, contractId, newStatus);
+  }
+
+  /**
+   * Cross-checks the DB status we just wrote against the contract's own
+   * on-chain state and raises a discrepancy alert if they disagree (#791).
+   * Best-effort: any failure here is logged and swallowed rather than
+   * failing the sync itself, which has already succeeded by this point.
+   */
+  private async checkStatusDiscrepancy(
+    dealId: string,
+    contractId: string,
+    dbStatus: TradeDealStatus,
+  ): Promise<void> {
+    try {
+      const state = (await this.sorobanService.getCampaignState(contractId)) as
+        | { status?: unknown }
+        | null;
+      const chainStatusRaw = state?.status;
+      // scValToNative decodes a unit-variant contract enum either as a bare
+      // string or as { tag: 'Funded', values: [] } depending on SDK
+      // version — handle both.
+      const chainStatusTag =
+        typeof chainStatusRaw === 'string'
+          ? chainStatusRaw
+          : (chainStatusRaw as { tag?: string } | undefined)?.tag;
+      if (!chainStatusTag) return;
+
+      const chainStatusMapped = CAMPAIGN_STATUS_TO_DEAL_STATUS[chainStatusTag.toLowerCase()];
+      if (chainStatusMapped && chainStatusMapped !== dbStatus) {
+        this.logger.error(
+          { dealId, contractId, dbStatus, chainStatus: chainStatusMapped },
+          'Deal status discrepancy detected between DB and on-chain state',
+        );
+        await this.auditService.logEvent({
+          actorId: null,
+          actorRole: 'soroban-event-indexer',
+          route: 'soroban-indexer:status-discrepancy',
+          statusCode: 500,
+          requestDetails: { dealId, contractId, dbStatus, chainStatus: chainStatusMapped },
+        });
+      }
+    } catch (error) {
+      this.logger.debug(
+        { error, dealId, contractId },
+        'Could not cross-check deal status against on-chain state',
+      );
     }
   }
 
@@ -477,41 +649,6 @@ export class SorobanEventIndexer implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Handle campaign status change event
-   */
-  private async handleCampaignStatusChanged(data: any, txHash: string) {
-    try {
-      const { dealId, newStatus } = data;
-
-      // Update deal status
-      await this.dealRepo.update(
-        { id: dealId },
-        {
-          status: newStatus,
-        },
-      );
-
-      this.logger.info(
-        { dealId, newStatus, txHash },
-        'Campaign status changed on-chain',
-      );
-
-      // Emit event
-      this.queueService.emit('deal.status.changed', {
-        dealId,
-        status: newStatus,
-        txHash,
-        timestamp: new Date(),
-      });
-    } catch (error) {
-      this.logger.error(
-        { error, txHash },
-        'Error handling campaign_status_changed event',
-      );
-    }
-  }
-
-  /**
    * Handle settlement completed event
    */
   private async handleSettlementCompleted(data: any, txHash: string) {
@@ -593,7 +730,6 @@ export class SorobanEventIndexer implements OnModuleInit, OnModuleDestroy {
     return {
       isRunning: this.isRunning,
       lastLedger: this.lastLedger,
-      processedEventsCount: this.processedEventsCache.size,
     };
   }
 

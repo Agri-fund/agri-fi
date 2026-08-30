@@ -2095,7 +2095,11 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     return holders.map((h) => ({
       walletAddress: h.walletAddress,
       tokenAmount: h.tokenAmount,
-      totalTo  /**
+      totalTokens,
+    }));
+  }
+
+  /**
    * Emits structured transaction log entries for all Stellar transaction attempts (#803).
    */
   public logStructuredTx(params: {
@@ -2270,15 +2274,6 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
           (status !== undefined && RETRYABLE.has(status)) || isTimeout;
 
         if (!isRetryable || attempt === MAX_RETRIES) {
-          const durationMs = Date.now() - startTime;
-          this.logStructuredTx({
-            correlationId,
-            txHash,
-            operation: operationName,
-            durationMs,
-            status: isTimeout ? 'timeout' : 'failed',
-            error: err?.message,
-          });
           throw err;
         }
 
@@ -2286,7 +2281,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         const randomJitter = Math.floor(Math.random() * 500);
         const delayMs = baseDelayMs * Math.pow(2, attempt) + randomJitter;
         this.logger.warn(
-          { attempt, status, delayMs, jitter: randomJitter, correlationId, txHash },
+          { attempt, status, delayMs, jitter: randomJitter },
           `Transient Horizon error (${status ?? 'timeout'}); retrying with exponential backoff and jitter in ${delayMs}ms`,
         );
         await new Promise((resolve) => setTimeout(resolve, delayMs));
@@ -2356,9 +2351,6 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
           error: err?.message,
         });
         throw err;
-      }
-    }
-  }ow err;
       }
     }
 

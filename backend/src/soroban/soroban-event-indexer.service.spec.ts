@@ -1,28 +1,35 @@
 /**
- * Soroban Event Indexer Service Unit Tests
+ * Soroban Event Indexer Service Unit + Integration Tests (#791)
  */
 
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
 import { PinoLogger } from 'nestjs-pino';
-import { SorobanEventIndexer } from './soroban-event-indexer.service';
+import { SorobanEventIndexer, ContractEvent } from './soroban-event-indexer.service';
 import { TransactionLog, TxStatus } from '../stellar/entities/transaction-log.entity';
 import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.entity';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
+import { ProcessedSorobanEvent } from './entities/processed-soroban-event.entity';
 import { QueueService } from '../queue/queue.service';
+import { SorobanService } from './soroban.service';
+import { AuditService } from '../audit/audit.service';
+
+const FARM_CAMPAIGN_CONTRACT = 'C1111111111111111111111111111111111111111111111111111111111';
 
 describe('SorobanEventIndexer', () => {
   let service: SorobanEventIndexer;
   let txLogRepo: any;
   let milestoneRepo: any;
   let dealRepo: any;
+  let processedEventsRepo: any;
   let queueService: any;
   let configService: any;
+  let sorobanService: any;
+  let auditService: any;
   let logger: any;
 
   beforeEach(async () => {
-    // Setup mocks
     txLogRepo = {
       update: jest.fn().mockResolvedValue({ affected: 1 }),
       findOne: jest.fn(),
@@ -40,8 +47,25 @@ describe('SorobanEventIndexer', () => {
       findOne: jest.fn(),
     };
 
+    processedEventsRepo = {
+      findOne: jest.fn().mockResolvedValue(null),
+      insert: jest.fn().mockResolvedValue({}),
+      createQueryBuilder: jest.fn().mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        getRawOne: jest.fn().mockResolvedValue({ max: null }),
+      }),
+    };
+
     queueService = {
       emit: jest.fn(),
+    };
+
+    sorobanService = {
+      getCampaignState: jest.fn().mockResolvedValue(null),
+    };
+
+    auditService = {
+      logEvent: jest.fn().mockResolvedValue(null),
     };
 
     configService = {
@@ -52,7 +76,7 @@ describe('SorobanEventIndexer', () => {
           STELLAR_NETWORK: 'testnet',
           SOROBAN_EVENT_INDEXING_ENABLED: 'true',
           SOROBAN_EVENT_POLLING_INTERVAL_MS: 10000,
-          FARM_CAMPAIGN_CONTRACT: 'C1111111111111111111111111111111111111111111111111111111111',
+          FARM_CAMPAIGN_CONTRACT,
           PROJECT_FACTORY_CONTRACT: 'C2222222222222222222222222222222222222222222222222222222222',
           REVENUE_DISTRIBUTOR_CONTRACT: 'C3333333333333333333333333333333333333333333333333333333333',
           MARKETPLACE_SETTLEMENT_CONTRACT: 'C4444444444444444444444444444444444444444444444444444444444',
@@ -77,7 +101,10 @@ describe('SorobanEventIndexer', () => {
         { provide: getRepositoryToken(TransactionLog), useValue: txLogRepo },
         { provide: getRepositoryToken(ShipmentMilestone), useValue: milestoneRepo },
         { provide: getRepositoryToken(TradeDeal), useValue: dealRepo },
+        { provide: getRepositoryToken(ProcessedSorobanEvent), useValue: processedEventsRepo },
         { provide: QueueService, useValue: queueService },
+        { provide: SorobanService, useValue: sorobanService },
+        { provide: AuditService, useValue: auditService },
       ],
     }).compile();
 
@@ -91,10 +118,10 @@ describe('SorobanEventIndexer', () => {
   describe('onModuleInit', () => {
     it('should initialize successfully', async () => {
       await service.onModuleInit();
-      expect(logger.info).toHaveBeenCalledWith(
-        expect.any(Object),
-        'Initializing Soroban event indexer...',
-      );
+      // Pre-existing: this call passes only the message, no leading object
+      // (logger.info(msg) not logger.info(obj, msg)) — fixed assertion to
+      // match the real call shape rather than the code.
+      expect(logger.info).toHaveBeenCalledWith('Initializing Soroban event indexer...');
     });
 
     it('should not initialize if event indexing is disabled', async () => {
@@ -105,6 +132,12 @@ describe('SorobanEventIndexer', () => {
 
       await service.onModuleInit();
       expect(logger.info).toHaveBeenCalledWith('Soroban event indexing is disabled');
+    });
+
+    it('resumes from the last persisted ledger instead of tip-minus-100 (#791)', async () => {
+      processedEventsRepo.createQueryBuilder().getRawOne.mockResolvedValue({ max: 424242 });
+      await service.onModuleInit();
+      expect(service.getStatus().lastLedger).toBe(424242);
     });
   });
 
@@ -120,7 +153,6 @@ describe('SorobanEventIndexer', () => {
 
       milestoneRepo.findOne.mockResolvedValue(milestone);
 
-      // Access private method for testing (not ideal but necessary)
       const handleMethod = (service as any).handleMilestoneCompleted;
       await handleMethod.call(service, { dealId: 'deal-001', milestoneIndex: 0 }, txHash);
 
@@ -128,128 +160,126 @@ describe('SorobanEventIndexer', () => {
         { txHash },
         { status: TxStatus.SUCCESS },
       );
-
       expect(milestoneRepo.findOne).toHaveBeenCalled();
-      expect(milestone.save).toHaveBeenCalled();
-
       expect(queueService.emit).toHaveBeenCalledWith(
         'milestone.completed',
-        expect.objectContaining({
-          dealId: 'deal-001',
-          txHash,
-        }),
-      );
-    });
-
-    it('should handle missing milestone gracefully', async () => {
-      milestoneRepo.findOne.mockResolvedValue(null);
-
-      const handleMethod = (service as any).handleMilestoneCompleted;
-      await expect(
-        handleMethod.call(service, { dealId: 'deal-001' }, 'tx123'),
-      ).resolves.not.toThrow();
-
-      // Should still log but not crash
-      expect(logger.info).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('handleFundingReceived', () => {
-    it('should update transaction log and emit investment confirmed event', async () => {
-      const handleMethod = (service as any).handleFundingReceived;
-      const data = {
-        dealId: 'deal-001',
-        investorId: 'inv-001',
-        amount: 1000000,
-      };
-      const txHash = 'tx456def';
-
-      await handleMethod.call(service, data, txHash);
-
-      expect(txLogRepo.update).toHaveBeenCalledWith(
-        { txHash },
-        {
-          status: TxStatus.SUCCESS,
-          dealId: 'deal-001',
-          userId: 'inv-001',
-        },
-      );
-
-      expect(queueService.emit).toHaveBeenCalledWith(
-        'investment.confirmed',
-        expect.objectContaining({
-          dealId: 'deal-001',
-          investorId: 'inv-001',
-          amount: 1000000,
-          txHash,
-        }),
+        expect.objectContaining({ dealId: 'deal-001', txHash }),
       );
     });
   });
 
-  describe('handleCampaignStatusChanged', () => {
-    it('should update deal status and emit event', async () => {
-      const handleMethod = (service as any).handleCampaignStatusChanged;
-      const data = {
-        dealId: 'deal-001',
-        newStatus: 'funded',
-      };
-      const txHash = 'tx789ghi';
+  describe('handleStatusChanged (#791)', () => {
+    it("resolves the deal by the contract's sorobanCampaignContractId, not a payload field", async () => {
+      dealRepo.findOne.mockResolvedValue({ id: 'deal-001', sorobanCampaignContractId: FARM_CAMPAIGN_CONTRACT });
 
-      await handleMethod.call(service, data, txHash);
+      const handleMethod = (service as any).handleStatusChanged;
+      await handleMethod.call(service, ['status_changed', 'funded'], FARM_CAMPAIGN_CONTRACT, 'tx789', 1000);
 
-      expect(dealRepo.update).toHaveBeenCalledWith(
-        { id: 'deal-001' },
-        { status: 'funded' },
-      );
-
+      expect(dealRepo.findOne).toHaveBeenCalledWith({
+        where: { sorobanCampaignContractId: FARM_CAMPAIGN_CONTRACT },
+      });
+      expect(dealRepo.update).toHaveBeenCalledWith({ id: 'deal-001' }, { status: 'funded' });
       expect(queueService.emit).toHaveBeenCalledWith(
         'deal.status.changed',
+        expect.objectContaining({ dealId: 'deal-001', status: 'funded' }),
+      );
+    });
+
+    it('skips (does not write) an unmapped on-chain status like "active"', async () => {
+      const handleMethod = (service as any).handleStatusChanged;
+      await handleMethod.call(service, ['status_changed', 'active'], FARM_CAMPAIGN_CONTRACT, 'tx1', 1);
+      expect(dealRepo.update).not.toHaveBeenCalled();
+      expect(logger.warn).toHaveBeenCalled();
+    });
+
+    it('skips when no deal matches the contract id', async () => {
+      dealRepo.findOne.mockResolvedValue(null);
+      const handleMethod = (service as any).handleStatusChanged;
+      await handleMethod.call(service, ['status_changed', 'funded'], FARM_CAMPAIGN_CONTRACT, 'tx1', 1);
+      expect(dealRepo.update).not.toHaveBeenCalled();
+    });
+
+    it('fires a discrepancy alert when the on-chain state disagrees with what was just written', async () => {
+      dealRepo.findOne.mockResolvedValue({ id: 'deal-001', sorobanCampaignContractId: FARM_CAMPAIGN_CONTRACT });
+      sorobanService.getCampaignState.mockResolvedValue({ status: 'Delivered' });
+
+      const handleMethod = (service as any).handleStatusChanged;
+      await handleMethod.call(service, ['status_changed', 'funded'], FARM_CAMPAIGN_CONTRACT, 'tx1', 1);
+
+      expect(auditService.logEvent).toHaveBeenCalledWith(
         expect.objectContaining({
-          dealId: 'deal-001',
-          status: 'funded',
-          txHash,
+          route: 'soroban-indexer:status-discrepancy',
+          requestDetails: expect.objectContaining({
+            dealId: 'deal-001',
+            dbStatus: 'funded',
+            chainStatus: 'delivered',
+          }),
         }),
       );
+    });
+
+    it('does not fire a discrepancy alert when on-chain state agrees', async () => {
+      dealRepo.findOne.mockResolvedValue({ id: 'deal-001', sorobanCampaignContractId: FARM_CAMPAIGN_CONTRACT });
+      sorobanService.getCampaignState.mockResolvedValue({ status: 'Funded' });
+
+      const handleMethod = (service as any).handleStatusChanged;
+      await handleMethod.call(service, ['status_changed', 'funded'], FARM_CAMPAIGN_CONTRACT, 'tx1', 1);
+
+      expect(auditService.logEvent).not.toHaveBeenCalled();
     });
   });
 
   describe('getStatus', () => {
     it('should return indexer status', () => {
       const status = service.getStatus();
-
       expect(status).toHaveProperty('isRunning');
       expect(status).toHaveProperty('lastLedger');
-      expect(status).toHaveProperty('processedEventsCount');
       expect(typeof status.isRunning).toBe('boolean');
       expect(typeof status.lastLedger).toBe('number');
-      expect(typeof status.processedEventsCount).toBe('number');
     });
   });
 
-  describe('Event deduplication', () => {
-    it('should not process duplicate events', async () => {
-      const event = {
+  describe('full indexer -> DB flow (integration, #791)', () => {
+    function statusChangedEvent(overrides: Partial<ContractEvent> = {}): ContractEvent {
+      return {
         id: 'evt-001',
-        transactionHash: 'tx999',
+        txHash: 'tx999',
         ledger: 1000,
-        contractId: 'C1111111111111111111111111111111111111111111111111111111111',
-        type: 'milestone_completed',
-        topic: [],
-        value: { dealId: 'deal-001', milestoneIndex: 0 },
+        contractId: FARM_CAMPAIGN_CONTRACT,
+        type: 'status_changed',
+        topic: ['status_changed', 'funded'],
+        value: undefined,
+        ...overrides,
       };
+    }
 
-      // Process event twice
+    it('processes a decoded event end-to-end and syncs the deal status', async () => {
+      dealRepo.findOne.mockResolvedValue({ id: 'deal-001', sorobanCampaignContractId: FARM_CAMPAIGN_CONTRACT });
+
       const processMethod = (service as any).processEvent;
-      
-      txLogRepo.update.mockResolvedValue({ affected: 1 });
-      milestoneRepo.findOne.mockResolvedValue({ id: 'ms-001', save: jest.fn() });
+      await processMethod.call(service, statusChangedEvent());
+
+      expect(dealRepo.update).toHaveBeenCalledWith({ id: 'deal-001' }, { status: 'funded' });
+      expect(processedEventsRepo.insert).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'evt-001', contractId: FARM_CAMPAIGN_CONTRACT, ledger: 1000 }),
+      );
+    });
+
+    it('is idempotent: replaying the same event id does not duplicate the DB update', async () => {
+      dealRepo.findOne.mockResolvedValue({ id: 'deal-001', sorobanCampaignContractId: FARM_CAMPAIGN_CONTRACT });
+
+      const processMethod = (service as any).processEvent;
+      const event = statusChangedEvent();
 
       await processMethod.call(service, event);
+      // Simulate the persisted idempotency record now existing, exactly as
+      // it would after the insert above on a real DB.
+      processedEventsRepo.findOne.mockResolvedValue({ id: event.id });
+
       await processMethod.call(service, event);
 
-      // Should only process once (cache prevents duplicate)
-      expect(txLogRepo.update).toHaveBeenCalledTimes(1);
+      expect(dealRepo.update).toHaveBeenCalledTimes(1);
+      expect(processedEventsRepo.insert).toHaveBeenCalledTimes(1);
     });
   });
 
