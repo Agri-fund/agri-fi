@@ -24,7 +24,7 @@ jobs:
           node-version: '20'
 
       - name: Install dependencies
-        run: npm install -g ts-node typescript
+        run: npm install -g ts-node@10.9.2 typescript@5.7.3
 
       - name: Create test dump
         run: |
