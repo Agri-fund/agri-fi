@@ -5,10 +5,11 @@ export const validateEnvironment = (config: Record<string, unknown>) => {
     JWT_SECRET: Joi.string().required().trim(),
     STELLAR_NETWORK: Joi.string().required().trim(),
     DATABASE_PASSWORD: Joi.string().required().trim(),
-    GOOGLE_CLIENT_ID: Joi.string().trim().allow(''),
-    GOOGLE_CLIENT_SECRET: Joi.string().trim().allow(''),
-    GOOGLE_CALLBACK_URL: Joi.string().uri().trim().allow(''),
-    FRONTEND_URL: Joi.string().uri().trim().allow(''),
+    CLAM_SCAN_ENABLED: Joi.when('NODE_ENV', {
+      is: 'production',
+      then: Joi.boolean().truthy('true').valid(true).required(),
+      otherwise: Joi.boolean().default(true),
+    }),
   }).unknown(true); // Allow other env vars that aren't validated
 
   const { error, value } = schema.validate(config, { abortEarly: false });
