@@ -24,14 +24,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { User } from './entities/user.entity';
 import { ApiBody } from '@nestjs/swagger';
-import {
-  IsIn,
-  IsString,
-  IsBoolean,
-  IsUUID,
-  IsOptional,
-  MinLength,
-} from 'class-validator';
+import { IsIn, IsString, IsBoolean, IsUUID, MinLength } from 'class-validator';
 import { Roles } from './decorators/roles.decorator';
 import { RolesGuard } from './roles.guard';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -45,6 +38,7 @@ import { SecurityThreatService } from './security-threat.service';
 import { SettlementService } from '../settlement/settlement.service';
 import { DocumentsService } from '../documents/documents.service';
 import { StorageService } from '../storage/storage.service';
+import { EscrowDlqService } from '../escrow/escrow-dlq.service';
 
 class UpdateUserRoleDto {
   @IsIn(['farmer', 'trader', 'investor', 'company_admin', 'admin'])
@@ -89,6 +83,7 @@ export class AdminController {
     private readonly settlementService: SettlementService,
     private readonly documentsService: DocumentsService,
     private readonly storageService: StorageService,
+    private readonly escrowDlqService: EscrowDlqService,
     @InjectRepository(TradeDeal)
     private readonly tradeDealRepo: Repository<TradeDeal>,
     @InjectRepository(Document)
@@ -96,6 +91,30 @@ export class AdminController {
     @InjectRepository(AdminAction)
     private readonly adminActionRepo: Repository<AdminAction>,
   ) {}
+
+  @Get('dlq')
+  @ApiOperation({ summary: 'List escrow dead-letter queue messages' })
+  @ApiResponse({ status: 200, description: 'DLQ messages' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
+  async listDlqMessages() {
+    return this.escrowDlqService.listMessages();
+  }
+
+  @Post('dlq/:id/replay')
+  @ApiOperation({ summary: 'Replay one escrow dead-letter queue message' })
+  @ApiResponse({ status: 200, description: 'Message replay result' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
+  async replayDlqMessage(@Param('id') id: string) {
+    return this.escrowDlqService.replayMessage(id);
+  }
+
+  @Post('dlq/replay-all')
+  @ApiOperation({ summary: 'Replay all escrow dead-letter queue messages' })
+  @ApiResponse({ status: 200, description: 'Bulk replay result' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
+  async replayAllDlqMessages() {
+    return this.escrowDlqService.replayAll();
+  }
 
   @Get('documents')
   @ApiOperation({ summary: 'List uploaded documents for admin verification' })

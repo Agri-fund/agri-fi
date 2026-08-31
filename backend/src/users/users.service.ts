@@ -3,10 +3,13 @@ import {
   ForbiddenException,
   NotFoundException,
   ConflictException,
+  Inject,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, DataSource } from 'typeorm';
 import { randomBytes } from 'crypto';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import type { Cache } from 'cache-manager';
 import { User, UserRole } from '../auth/entities/user.entity';
 import { UpdateOnboardingProgressDto } from './dto/update-onboarding-progress.dto';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
@@ -27,6 +30,21 @@ export interface CurrentUserProfile {
   companyDetails: User['companyDetails'];
   country: string;
   createdAt: Date;
+}
+
+export interface PublicUserProfile {
+  id: string;
+  role: UserRole;
+  country: string;
+  kycStatus: User['kycStatus'];
+  walletAddress: string | null; // truncated
+  creditScore: number | null;
+  createdAt: Date;
+  // computed
+  dealsCompleted: number;
+  activeDeals: number;
+  reputationScore: number;
+  onTimeRepaymentRate: number;
 }
 
 export type DashboardDealRole = 'farmer' | 'trader';
@@ -77,6 +95,8 @@ export class UsersService {
     @InjectRepository(AuditLog)
     private readonly auditLogRepository: Repository<AuditLog>,
     private readonly dataSource: DataSource,
+    @Inject(CACHE_MANAGER)
+    private readonly cacheManager: Cache,
   ) {}
 
   async getProfile(userId: string): Promise<CurrentUserProfile> {
@@ -96,6 +116,107 @@ export class UsersService {
       companyDetails: user.companyDetails,
       country: user.country,
       createdAt: user.createdAt,
+    };
+  }
+
+  /**
+   * Returns a public-safe profile for a given user (no PII).
+   * Reputation score is cached in Redis with a 15-minute TTL
+   * under key `farmer:reputation:{id}`.
+   */
+  async getPublicProfile(targetId: string): Promise<PublicUserProfile> {
+    const user = await this.userRepository.findOne({ where: { id: targetId } });
+    if (!user) {
+      throw new NotFoundException('User not found.');
+    }
+
+    // Truncate wallet address: show first 4 + "..." + last 4 chars
+    const truncatedWallet = user.walletAddress
+      ? `${user.walletAddress.slice(0, 4)}...${user.walletAddress.slice(-4)}`
+      : null;
+
+    // --- Compute deal counts ---
+    const allFarmerDeals = await this.tradeDealRepository.find({
+      where: { farmerId: targetId },
+      select: ['id', 'status'],
+    });
+    const dealsCompleted = allFarmerDeals.filter((d) => d.status === 'completed').length;
+    const activeDeals = allFarmerDeals.filter(
+      (d) => d.status === 'published' || d.status === 'funded',
+    ).length;
+
+    // --- Reputation score with Redis cache ---
+    const cacheKey = `farmer:reputation:${targetId}`;
+    const REPUTATION_TTL_MS = 15 * 60 * 1000; // 15 minutes
+
+    let reputationScore: number;
+    let onTimeRepaymentRate: number;
+
+    const cached = await this.cacheManager.get<{
+      reputationScore: number;
+      onTimeRepaymentRate: number;
+    }>(cacheKey);
+
+    if (cached) {
+      reputationScore = cached.reputationScore;
+      onTimeRepaymentRate = cached.onTimeRepaymentRate;
+    } else {
+      // Derive on-time repayment rate from completed deals with confirmed payments
+      const completedDealIds = allFarmerDeals
+        .filter((d) => d.status === 'completed')
+        .map((d) => d.id);
+
+      let computedRepaymentRate = 0;
+      if (completedDealIds.length > 0) {
+        const confirmedPayments = await this.paymentDistributionRepository.count({
+          where: {
+            tradeDealId: In(completedDealIds),
+            recipientId: targetId,
+            recipientType: 'farmer',
+            status: 'confirmed',
+          },
+        });
+        computedRepaymentRate =
+          completedDealIds.length > 0
+            ? confirmedPayments / completedDealIds.length
+            : 0;
+      }
+
+      // Use stored creditScore if available; otherwise derive a simple reputation
+      // score (0–100) from deal completion rate and repayment rate
+      const totalDeals = allFarmerDeals.length;
+      const completionRate = totalDeals > 0 ? dealsCompleted / totalDeals : 0;
+
+      if (user.creditScore !== null) {
+        // Map FICO-like 300-850 to 0-100
+        reputationScore = Math.round(((user.creditScore - 300) / 550) * 100);
+      } else {
+        reputationScore = Math.round(
+          computedRepaymentRate * 50 + completionRate * 50,
+        );
+      }
+
+      onTimeRepaymentRate = computedRepaymentRate;
+
+      await this.cacheManager.set(
+        cacheKey,
+        { reputationScore, onTimeRepaymentRate },
+        REPUTATION_TTL_MS,
+      );
+    }
+
+    return {
+      id: user.id,
+      role: user.role,
+      country: user.country,
+      kycStatus: user.kycStatus,
+      walletAddress: truncatedWallet,
+      creditScore: user.creditScore,
+      createdAt: user.createdAt,
+      dealsCompleted,
+      activeDeals,
+      reputationScore,
+      onTimeRepaymentRate,
     };
   }
 

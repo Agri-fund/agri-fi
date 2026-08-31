@@ -56,6 +56,12 @@ export interface LoginMeta {
   acceptLanguage?: string;
 }
 
+export interface GoogleIdentity {
+  subject: string;
+  email: string;
+  emailVerified: boolean;
+}
+
 @Injectable()
 export class AuthService {
   private readonly sep10SigningKeypair: Keypair;
@@ -466,6 +472,60 @@ export class AuthService {
       ...tokens,
       redirect: safeRedirect || undefined,
     };
+  }
+
+  async loginWithGoogle(identity: GoogleIdentity): Promise<{
+    accessToken: string;
+    refreshToken: string;
+  }> {
+    if (!identity.emailVerified) {
+      throw new UnauthorizedException(
+        'Your Google email address must be verified before signing in.',
+      );
+    }
+
+    let user = await this.userRepo.findOne({
+      where: { googleSubject: identity.subject },
+    });
+
+    if (user && user.role !== 'investor') {
+      throw new ForbiddenException(
+        'Google sign-in is available for investor accounts only.',
+      );
+    }
+
+    if (!user) {
+      user = await this.userRepo.findOne({ where: { email: identity.email } });
+      if (user && user.role !== 'investor') {
+        throw new ForbiddenException(
+          'Google sign-in is available for investor accounts only.',
+        );
+      }
+    }
+
+    if (!user) {
+      user = this.userRepo.create({
+        email: identity.email,
+        googleSubject: identity.subject,
+        passwordHash: await this.hashPassword(randomBytes(32).toString('hex')),
+        role: 'investor',
+        country: 'UN',
+        kycStatus: 'pending',
+        isEmailVerified: true,
+      });
+    } else if (!user.googleSubject) {
+      user.googleSubject = identity.subject;
+    } else if (user.googleSubject !== identity.subject) {
+      throw new UnauthorizedException(
+        'This email is already linked to a different Google account.',
+      );
+    }
+
+    user.failedLoginAttempts = 0;
+    user.lockoutUntil = null;
+    user.isEmailVerified = true;
+    await this.userRepo.save(user);
+    return this.issueTokenPair(user);
   }
 
   /** Persists a LoginLog row and alerts the user about unrecognized devices. */
