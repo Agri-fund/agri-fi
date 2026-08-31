@@ -28,6 +28,14 @@
     "queue:retry-dlq": "ts-node scripts/retry-dlq.ts"
   },
   "dependencies": {
+    "@apollo/server": "^4.11.0",
+    "@as-integrations/express5": "^1.0.0",
+    "@nestjs/apollo": "^12.2.0",
+    "@nestjs/graphql": "^12.2.0",
+    "dataloader": "^2.2.2",
+    "graphql": "^16.9.0",
+    "graphql-depth-limit": "^1.1.0",
+    "graphql-subscriptions": "^2.0.0",
     "@aws-sdk/client-kms": "^3.1075.0",
     "@aws-sdk/client-s3": "^3.1016.0",
     "@aws-sdk/client-secrets-manager": "^3.1075.0",
@@ -99,6 +107,7 @@
     "@nestjs/cli": "^11.0.24",
     "@nestjs/schematics": "^11.1.0",
     "@nestjs/testing": "^11.2.3",
+    "@types/graphql-depth-limit": "^1.1.5",
     "@types/amqplib": "^0.10.0",
     "@types/bcrypt": "^5.0.0",
     "@types/cron": "^2.0.1",

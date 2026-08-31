@@ -7,6 +7,7 @@ import {
   Request,
   Body,
   Query,
+  Param,
   BadRequestException,
   ForbiddenException,
   Res,
@@ -20,6 +21,7 @@ import {
   ApiOperation,
   ApiResponse,
   ApiBearerAuth,
+  ApiParam,
 } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { UsersService } from './users.service';
@@ -54,7 +56,6 @@ export class UsersController {
   async getCurrentUser(@Request() req: AuthRequest) {
     return this.usersService.getProfile(req.user.id);
   }
-
   @Delete('me')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete the authenticated user account (GDPR Right to be Forgotten)' })
