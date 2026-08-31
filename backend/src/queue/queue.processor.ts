@@ -864,9 +864,13 @@ export class QueueProcessor implements OnApplicationShutdown {
     );
     if (!usdcContractId) return;
 
-    const deadlineTs = Math.floor(new Date(deal.deliveryDate).getTime() / 1000);
+    const deadlineTs = Math.floor(
+      new Date(deal.fundingDeadline ?? deal.deliveryDate).getTime() / 1000,
+    );
     const fundingTargetStroops = BigInt(
-      Math.round(Number(deal.totalValue) * 1e7),
+      Math.round(
+        Number(deal.minimumFundingTarget ?? deal.totalValue) * 1e7,
+      ),
     );
 
     const txHash = await this.sorobanService.initializeCampaign(

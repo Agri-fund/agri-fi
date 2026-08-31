@@ -122,6 +122,30 @@ export class AdminController {
     private readonly adminActionRepo: Repository<AdminAction>,
   ) {}
 
+  @Get('dlq')
+  @ApiOperation({ summary: 'List escrow dead-letter queue messages' })
+  @ApiResponse({ status: 200, description: 'DLQ messages' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
+  async listDlqMessages() {
+    return this.escrowDlqService.listMessages();
+  }
+
+  @Post('dlq/:id/replay')
+  @ApiOperation({ summary: 'Replay one escrow dead-letter queue message' })
+  @ApiResponse({ status: 200, description: 'Message replay result' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
+  async replayDlqMessage(@Param('id') id: string) {
+    return this.escrowDlqService.replayMessage(id);
+  }
+
+  @Post('dlq/replay-all')
+  @ApiOperation({ summary: 'Replay all escrow dead-letter queue messages' })
+  @ApiResponse({ status: 200, description: 'Bulk replay result' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
+  async replayAllDlqMessages() {
+    return this.escrowDlqService.replayAll();
+  }
+
   @Get('documents')
   @ApiOperation({ summary: 'List uploaded documents for admin verification' })
   @ApiResponse({ status: 200, description: 'List of documents' })

@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
 import {
   BadRequestException,
   ForbiddenException,
@@ -18,6 +19,7 @@ import {
 } from '../investments/entities/investment.entity';
 import { StellarService } from '../stellar/stellar.service';
 import { QueueService } from '../queue/queue.service';
+import { RiskScoringService } from './risk-scoring.service';
 
 const mockFarmer = (): User => ({
   id: 'farmer-uuid',
@@ -133,6 +135,21 @@ describe('TradeDealsService', () => {
         { provide: getRepositoryToken(Investment), useValue: investmentRepo },
         { provide: StellarService, useValue: stellarService },
         { provide: QueueService, useValue: queueService },
+        {
+          provide: RiskScoringService,
+          useValue: { computeAndPersist: jest.fn(), recalculateAll: jest.fn() },
+        },
+        {
+          provide: DataSource,
+          useValue: {
+            transaction: jest.fn(async (callback) =>
+              callback({
+                update: jest.fn().mockResolvedValue({ affected: 1 }),
+                save: jest.fn().mockImplementation(async (entity) => entity),
+              }),
+            ),
+          },
+        },
         { provide: PinoLogger, useValue: logger },
       ],
     }).compile();

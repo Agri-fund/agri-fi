@@ -122,6 +122,7 @@ export class AuthModule {}
   providers: [
     AuthService,
     JwtStrategy,
+    GoogleStrategy,
     KycGuard,
     RolesGuard,
     MfaGuard,

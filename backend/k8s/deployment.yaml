@@ -4,6 +4,14 @@
 # `agri-fi-backend-green`. Exactly one slot is "active" at a time — the
 # agri-fi-backend Service selects it via its `slot` label. Deploys go to the
 # inactive slot, get smoke tested, then the Service selector is flipped.
+#
+# PgBouncer sidecar (#839):
+#   Each pod runs two extra containers alongside the backend:
+#   - pgbouncer     : connection pooler on port 6432 (transaction mode)
+#   - pgbouncer-exporter : Prometheus metrics for pool utilisation on port 9127
+#   The backend connects to localhost:6432 instead of postgres:5432 directly,
+#   so the DATABASE_HOST / DATABASE_PORT env vars (or DATABASE_URL) must point
+#   to localhost:6432 — see devops/k8s/configmap.yaml.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -22,8 +30,22 @@ spec:
       labels:
         app: agri-fi-backend
         slot: blue
+      annotations:
+        # Tell Prometheus to scrape the pgbouncer_exporter sidecar on port 9127.
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9127"
+        prometheus.io/path: "/metrics"
     spec:
+      volumes:
+        - name: pgbouncer-config
+          configMap:
+            name: pgbouncer-config
+        - name: pgbouncer-userlist
+          secret:
+            secretName: pgbouncer-userlist
+            optional: true
       containers:
+        # ── Main backend application ──────────────────────────────────────
         - name: backend
           image: agri-fi/backend:latest
           imagePullPolicy: IfNotPresent
@@ -55,6 +77,128 @@ spec:
             limits:
               cpu: "500m"
               memory: "512Mi"
+
+        # ── PgBouncer sidecar ─────────────────────────────────────────────
+        # Listens on localhost:6432 and proxies to the real Postgres service.
+        # Uses transaction pooling (pool_mode = transaction) so that NestJS
+        # TypeORM connections are multiplexed across a smaller number of real
+        # Postgres server connections (max_connections_per_pool = 100).
+        - name: pgbouncer
+          image: bitnami/pgbouncer:1.22.1
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: pgbouncer
+              containerPort: 6432
+          env:
+            # Bitnami image reads these env vars and writes pgbouncer.ini.
+            # We also mount the full pgbouncer.ini from the ConfigMap so that
+            # fine-grained settings (pool_mode, pool sizes) are explicit.
+            - name: PGBOUNCER_DATABASE
+              valueFrom:
+                configMapKeyRef:
+                  name: agri-fi-backend-config
+                  key: DATABASE_NAME
+            - name: POSTGRESQL_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: agri-fi-backend-config
+                  key: DATABASE_HOST
+            - name: POSTGRESQL_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: agri-fi-backend-config
+                  key: DATABASE_PORT
+            - name: POSTGRESQL_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: agri-fi-backend-secrets
+                  key: DATABASE_USER
+                  optional: true
+            - name: POSTGRESQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: agri-fi-backend-secrets
+                  key: DATABASE_PASSWORD
+                  optional: true
+            # Override defaults with the mounted pgbouncer.ini
+            - name: PGBOUNCER_SET_DATABASE_USER
+              value: "yes"
+            - name: PGBOUNCER_SET_DATABASE_PASSWORD
+              value: "yes"
+            - name: PGBOUNCER_POOL_MODE
+              value: "transaction"
+            - name: PGBOUNCER_MAX_CLIENT_CONN
+              value: "200"
+            - name: PGBOUNCER_DEFAULT_POOL_SIZE
+              value: "100"
+            - name: PGBOUNCER_MIN_POOL_SIZE
+              value: "5"
+            - name: PGBOUNCER_STATS_USERS
+              value: "pgbouncer"
+            - name: PGBOUNCER_LISTEN_PORT
+              value: "6432"
+            - name: PGBOUNCER_LISTEN_ADDR
+              value: "127.0.0.1"
+          volumeMounts:
+            - name: pgbouncer-config
+              mountPath: /bitnami/pgbouncer/conf/pgbouncer.ini
+              subPath: pgbouncer.ini
+              readOnly: true
+            - name: pgbouncer-userlist
+              mountPath: /bitnami/pgbouncer/conf/userlist.txt
+              subPath: userlist.txt
+              readOnly: true
+          readinessProbe:
+            tcpSocket:
+              port: pgbouncer
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: pgbouncer
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "32Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+
+        # ── pgbouncer_exporter sidecar ────────────────────────────────────
+        # Scrapes PgBouncer's internal stats (SHOW POOLS, SHOW STATS, etc.)
+        # and exposes them as Prometheus metrics on port 9127.
+        - name: pgbouncer-exporter
+          image: prometheuscommunity/pgbouncer-exporter:v0.7.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: prom-metrics
+              containerPort: 9127
+          args:
+            - --pgBouncer.connectionString=postgresql://pgbouncer:$(PGBOUNCER_STATS_PASSWORD)@127.0.0.1:6432/pgbouncer?sslmode=disable
+            - --web.listen-address=:9127
+            - --web.telemetry-path=/metrics
+          env:
+            - name: PGBOUNCER_STATS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: agri-fi-backend-secrets
+                  key: DATABASE_PASSWORD
+                  optional: true
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: prom-metrics
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: "25m"
+              memory: "16Mi"
+            limits:
+              cpu: "100m"
+              memory: "64Mi"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -74,8 +218,21 @@ spec:
       labels:
         app: agri-fi-backend
         slot: green
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9127"
+        prometheus.io/path: "/metrics"
     spec:
+      volumes:
+        - name: pgbouncer-config
+          configMap:
+            name: pgbouncer-config
+        - name: pgbouncer-userlist
+          secret:
+            secretName: pgbouncer-userlist
+            optional: true
       containers:
+        # ── Main backend application ──────────────────────────────────────
         - name: backend
           image: agri-fi/backend:latest
           imagePullPolicy: IfNotPresent
@@ -107,6 +264,118 @@ spec:
             limits:
               cpu: "500m"
               memory: "512Mi"
+
+        # ── PgBouncer sidecar ─────────────────────────────────────────────
+        - name: pgbouncer
+          image: bitnami/pgbouncer:1.22.1
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: pgbouncer
+              containerPort: 6432
+          env:
+            - name: PGBOUNCER_DATABASE
+              valueFrom:
+                configMapKeyRef:
+                  name: agri-fi-backend-config
+                  key: DATABASE_NAME
+            - name: POSTGRESQL_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: agri-fi-backend-config
+                  key: DATABASE_HOST
+            - name: POSTGRESQL_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: agri-fi-backend-config
+                  key: DATABASE_PORT
+            - name: POSTGRESQL_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: agri-fi-backend-secrets
+                  key: DATABASE_USER
+                  optional: true
+            - name: POSTGRESQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: agri-fi-backend-secrets
+                  key: DATABASE_PASSWORD
+                  optional: true
+            - name: PGBOUNCER_SET_DATABASE_USER
+              value: "yes"
+            - name: PGBOUNCER_SET_DATABASE_PASSWORD
+              value: "yes"
+            - name: PGBOUNCER_POOL_MODE
+              value: "transaction"
+            - name: PGBOUNCER_MAX_CLIENT_CONN
+              value: "200"
+            - name: PGBOUNCER_DEFAULT_POOL_SIZE
+              value: "100"
+            - name: PGBOUNCER_MIN_POOL_SIZE
+              value: "5"
+            - name: PGBOUNCER_STATS_USERS
+              value: "pgbouncer"
+            - name: PGBOUNCER_LISTEN_PORT
+              value: "6432"
+            - name: PGBOUNCER_LISTEN_ADDR
+              value: "127.0.0.1"
+          volumeMounts:
+            - name: pgbouncer-config
+              mountPath: /bitnami/pgbouncer/conf/pgbouncer.ini
+              subPath: pgbouncer.ini
+              readOnly: true
+            - name: pgbouncer-userlist
+              mountPath: /bitnami/pgbouncer/conf/userlist.txt
+              subPath: userlist.txt
+              readOnly: true
+          readinessProbe:
+            tcpSocket:
+              port: pgbouncer
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: pgbouncer
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "32Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+
+        # ── pgbouncer_exporter sidecar ────────────────────────────────────
+        - name: pgbouncer-exporter
+          image: prometheuscommunity/pgbouncer-exporter:v0.7.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: prom-metrics
+              containerPort: 9127
+          args:
+            - --pgBouncer.connectionString=postgresql://pgbouncer:$(PGBOUNCER_STATS_PASSWORD)@127.0.0.1:6432/pgbouncer?sslmode=disable
+            - --web.listen-address=:9127
+            - --web.telemetry-path=/metrics
+          env:
+            - name: PGBOUNCER_STATS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: agri-fi-backend-secrets
+                  key: DATABASE_PASSWORD
+                  optional: true
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: prom-metrics
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: "25m"
+              memory: "16Mi"
+            limits:
+              cpu: "100m"
+              memory: "64Mi"
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -119,16 +388,21 @@ data:
   PORT: "3001"
   LOG_LEVEL: "info"
   LOG_PRETTY: "false"
-  DATABASE_HOST: "postgres"
-  DATABASE_PORT: "5432"
+  # PgBouncer sidecar runs on localhost:6432 — app connects here, not to
+  # postgres:5432 directly.  Real Postgres host/port are used by PgBouncer
+  # itself (injected into the sidecar via env vars above).
+  DATABASE_HOST: "localhost"
+  DATABASE_PORT: "6432"
   DATABASE_NAME: "agric_onchain"
+  # Kept for reference / legacy code paths that read individual vars.
+  # Canonical upstream Postgres is still accessible via the service name.
+  DATABASE_UPSTREAM_HOST: "postgres"
+  DATABASE_UPSTREAM_PORT: "5432"
   RABBITMQ_URL: "amqp://rabbitmq:5672"
   STELLAR_NETWORK: "testnet"
   STELLAR_HORIZON_URL: "https://horizon-testnet.stellar.org"
   ALLOWED_ORIGINS: "http://agri-fi-frontend"
   ALLOWED_HOSTS: "agri-fi.local,api.agri-fi.local"
-  
-  # IPFS/Storage Configuration (non-sensitive)
   IPFS_GATEWAY: "https://api.web3.storage"
   AWS_REGION: "us-east-1"
   AWS_S3_BUCKET: "your-s3-bucket-name"

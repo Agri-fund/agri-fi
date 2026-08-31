@@ -27,6 +27,17 @@ export function isPushSupported(): boolean {
 }
 
 /**
+ * Returns the current browser permission state for notifications.
+ */
+export function getPushPermissionStatus(): NotificationPermission | 'unsupported' {
+  if (typeof window === 'undefined' || !('Notification' in window)) {
+    return 'unsupported';
+  }
+
+  return Notification.permission;
+}
+
+/**
  * Converts a VAPID public key (Base64url string) to the Uint8Array format
  * required by `PushManager.subscribe`.
  */

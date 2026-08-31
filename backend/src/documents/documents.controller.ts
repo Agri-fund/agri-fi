@@ -23,7 +23,6 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { AuthGuard } from '@nestjs/passport';
 import { DocumentsService } from './documents.service';
-import { ClamScanService } from './clam-scan.service';
 import { User } from '../auth/entities/user.entity';
 
 interface AuthRequest extends Request {
@@ -84,10 +83,7 @@ export class DocumentsController {
   /** In-memory cache: SHA-256(fileBuffer) → upload result, to avoid redundant IPFS calls */
   private readonly ipfsCache = new Map<string, object>();
 
-  constructor(
-    private readonly documentsService: DocumentsService,
-    private readonly clamScan: ClamScanService,
-  ) {}
+  constructor(private readonly documentsService: DocumentsService) {}
 
   @Post()
   @Throttle({ default: { limit: 20, ttl: 60000 } })
@@ -127,8 +123,10 @@ export class DocumentsController {
   @ApiResponse({
     status: 400,
     description:
-      'Missing file, unsupported type, dangerous extension, file too large, or virus detected',
+      'Missing file, unsupported type, dangerous extension, or file too large',
   })
+  @ApiResponse({ status: 422, description: 'Virus detected' })
+  @ApiResponse({ status: 503, description: 'Malware scanner unavailable' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'Trade deal not found' })
   @ApiResponse({
@@ -185,12 +183,8 @@ export class DocumentsController {
     file.originalname = sanitized;
 
     // ── 4. Malware scan ──────────────────────────────────────────────────────
-    const scanResult = await this.clamScan.scan(file.buffer);
-    if (!scanResult.isClean) {
-      throw new BadRequestException(
-        `File rejected: virus detected (${scanResult.virusName})`,
-      );
-    }
+    // Scan before consulting the cache so every upload request is inspected.
+    await this.documentsService.scanBeforeUpload(file, req.user.id);
 
     // ── 5. Content-hash deduplication cache ──────────────────────────────────
     // SHA-256 of raw bytes uniquely identifies file content. If the same bytes

@@ -146,6 +146,50 @@
       "connectWallet": "Unganisha pochi yako katika urambazaji wa juu"
     }
   },
+  "wallet": {
+    "title": "Unganisha Pochi ya Stellar",
+    "subtitle": "Chagua mtoa huduma wa pochi",
+    "description": "Ufunguo wako wa siri haujatoka kwenye pochi yako. Agri-Fi inaona ufunguo wako wa umma tu.",
+    "connectButton": "Unganisha Pochi",
+    "connecting": "Inaunganisha…",
+    "connected": "Imeunganishwa",
+    "disconnect": "Tenganisha",
+    "freighter": {
+      "name": "Freighter",
+      "type": "Kiendelezi cha kivinjari"
+    },
+    "albedo": {
+      "name": "Albedo",
+      "type": "Msimamizi wa wavuti — hakuna usakinishaji"
+    },
+    "walletConnect": {
+      "name": "WalletConnect",
+      "type": "Unganisha kupitia msimbo wa QR au kiungo cha moja kwa moja"
+    },
+    "detected": "Imegunduliwa",
+    "install": "Sakinisha",
+    "alwaysAvailable": "Inapatikana daima",
+    "openDialog": "Fungua kisanduku cha kuunganisha pochi",
+    "closeDialog": "Funga kisanduku cha kuunganisha pochi",
+    "error": "Hitilafu ya kuunganisha pochi",
+    "errorConnect": "Imeshindwa kuunganisha pochi",
+    "errorLink": "Imeshindwa kuunganisha pochi na akaunti",
+    "pleaseTryAgain": "Tafadhali jaribu tena",
+    "onboarding": {
+      "title": "Unganisha pochi yako",
+      "subtitle": "Chagua pochi ya Stellar kuanza",
+      "comingSoon": "Inakuja hivi karibuni",
+      "termsNote": "Kwa kuunganisha, unakubali Masharti yetu ya Huduma. Funguo zako zinabaki kwenye pochi yako.",
+      "networkMismatch": "Mtandao usiolingana: pochi yako ipo kwenye {detected} lakini programu hii inahitaji {expected}. Tafadhali badilisha mtandao kwenye pochi yako.",
+      "freighterGuide": {
+        "title": "Jinsi ya kusakinisha Freighter",
+        "step1": "Tembelea freighter.app na ubonyeze Sakinisha",
+        "step2": "Ongeza kiendelezi kwenye kivinjari chako",
+        "step3": "Unda au ingiza akaunti ya Stellar",
+        "cta": "Sakinisha Freighter →"
+      }
+    }
+  },
   "deals": {
     "coFarmers": {
       "title": "Wakulima Wenza",
@@ -333,6 +377,71 @@
     "status": "Hali",
     "reward": "Zawodi",
     "date": "Tarehe"
+  },
+  "farmerProfile": {
+    "nav": {
+      "marketplace": "Soko"
+    },
+    "hero": {
+      "title": "Mkulima kutoka {country}",
+      "avatarAlt": "Picha ya mkulima kutoka {country}",
+      "memberSince": "Mwanachama tangu {date}"
+    },
+    "verification": {
+      "heading": "Uthibitishaji na Beji",
+      "kycLabel": "Hali ya KYC: {status}",
+      "walletConnected": "Mkoba umeunganishwa",
+      "dealsCount": "{count, plural, one {# mkataba umekamilika} other {# mikataba imekamilika}}",
+      "kyc": {
+        "verified": "KYC Imethibitishwa",
+        "pending": "KYC Inasubiri",
+        "rejected": "KYC Imekataliwa",
+        "expired": "KYC Imeisha"
+      }
+    },
+    "reputation": {
+      "heading": "Alama ya Sifa",
+      "gaugeAriaLabel": "Alama ya sifa: {score} kati ya 100",
+      "tooltip": "Kulingana na historia ya mikataba na malipo",
+      "excellent": "Bora sana",
+      "good": "Nzuri",
+      "fair": "Ya kutosha",
+      "poor": "Inahitaji kuboresha",
+      "creditScore": "Alama ya Mkopo",
+      "onTimeRate": "Malipo kwa wakati",
+      "creditTier": {}
+    },
+    "creditTier": {
+      "excellent": "Bora sana",
+      "good": "Nzuri",
+      "fair": "Ya kutosha"
+    },
+    "activeDeals": {
+      "heading": "Mikataba Inayoendelea",
+      "none": "Hakuna mikataba inayoendelea kwa sasa.",
+      "activeDeal": "Mkataba Unaoendelea",
+      "statusActive": "Inaendelea",
+      "viewOnMarketplace": "Tazama sokoni",
+      "browseLink": "Vinjari soko",
+      "cardAriaLabel": "Mkataba unaoendelea namba {number}"
+    },
+    "completedDeals": {
+      "heading": "Mikataba Iliyokamilika",
+      "tableCaption": "Orodha ya mikataba ya biashara iliyokamilika",
+      "colDeal": "Mkataba",
+      "colStatus": "Hali",
+      "colRepayment": "Kiwango cha malipo",
+      "none": "Bado hakuna mkataba uliokamilika.",
+      "dealLabel": "Mkataba #{number}",
+      "statusCompleted": "Imekamilika"
+    },
+    "stats": {
+      "heading": "Muhtasari",
+      "dealsCompleted": "Mikataba iliyokamilika",
+      "activeDeals": "Mikataba inayoendelea",
+      "memberSince": "Mwanachama tangu",
+      "country": "Nchi"
+    }
   },
   "format": {
     "currency": "{value, number, currency}",
