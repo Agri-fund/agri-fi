@@ -14,6 +14,12 @@ export interface JwtPayload {
   role: string;
   tokenVersion?: number;
   typ?: 'access' | 'refresh';
+  /** Unique id for this refresh token — used to detect rotation replay. */
+  jti?: string;
+  /** Id shared by every refresh token in a rotation chain. */
+  familyId?: string;
+  iat?: number;
+  exp?: number;
 }
 
 @Injectable()

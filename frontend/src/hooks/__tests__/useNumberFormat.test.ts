@@ -1,10 +1,9 @@
 import { useNumberFormat } from '../useNumberFormat';
+import { useLocale } from 'next-intl';
 
-jest.mock('next-intl', () => ({
-  useLocale: jest.fn(() => 'en'),
+vi.mock('next-intl', () => ({
+  useLocale: vi.fn(() => 'en'),
 }));
-
-const { useLocale } = require('next-intl');
 
 describe('useNumberFormat', () => {
   const testLocales = ['en', 'es', 'fr', 'pt', 'sw'];

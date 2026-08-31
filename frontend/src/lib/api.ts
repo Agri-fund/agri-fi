@@ -1,6 +1,24 @@
 const API_BASE = "http://localhost:3001";
 const API_VERSION = "/v1";
 
+// ── Public (no-auth) fetch helper — used by ActivityFeed and other public endpoints ──
+export async function apiFetchPublic<T>(path: string): Promise<T> {
+  const versionedPath = path.startsWith('/v1') || path.startsWith('/v2')
+    ? path
+    : `${API_VERSION}${path}`;
+  const res = await fetch(`${API_BASE}${versionedPath}`, {
+    headers: { "Content-Type": "application/json" },
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    const err: any = new Error(body?.message ?? res.statusText);
+    err.response = { status: res.status, data: body };
+    throw err;
+  }
+  return res.json();
+}
+
 // ── Types ────────────────────────────────────────────────────────────────────
 
 export interface User {
@@ -193,6 +211,9 @@ function normalizeDeal(raw: any): Deal {
     delivery_date: raw.delivery_date ?? raw.deliveryDate ?? "",
     annual_roi: raw.annual_roi ?? raw.annualRoi ?? 0.15, // Default 15%
     term_days: raw.term_days ?? raw.termDays ?? 90, // Default 90 days
+    expected_roi: raw.expected_roi ?? raw.expectedRoi ?? null,
+    duration_days: raw.duration_days ?? raw.durationDays ?? null,
+    risk_rating: raw.risk_rating ?? raw.riskRating ?? null,
     created_at: raw.created_at ?? raw.createdAt ?? "",
     documents: raw.documents,
     milestones: raw.milestones,

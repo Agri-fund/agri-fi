@@ -4,6 +4,7 @@ import {
   ServiceUnavailableException,
   ConflictException,
   NotFoundException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
@@ -15,6 +16,7 @@ import {
 } from '@aws-sdk/client-s3';
 import axios from 'axios';
 import { randomUUID } from 'crypto';
+import { isValidIpfsCid, verifyIpfsContent } from '../documents/ipfs-cid';
 
 export interface StorageResult {
   hash: string;
@@ -82,6 +84,45 @@ export class StorageService {
       return `${this.ipfsGateway}/ipfs/${hash}`;
     }
     return `https://${this.s3Bucket}.s3.${this.s3Region}.amazonaws.com/${hash}`;
+  }
+
+  /**
+   * Fetches an IPFS document and verifies its bytes against the stored CID.
+   * Gateway responses are untrusted until this check succeeds.
+   */
+  async fetchAndVerifyIpfsDocument(cidString: string): Promise<Buffer> {
+    if (!isValidIpfsCid(cidString)) {
+      throw new UnprocessableEntityException('Stored IPFS CID is invalid.');
+    }
+
+    try {
+      const response = await axios.get(
+        `${this.ipfsGateway.replace(/\/$/, '')}/ipfs/${cidString}`,
+        {
+          responseType: 'arraybuffer',
+          headers: this.ipfsToken
+            ? { Authorization: `Bearer ${this.ipfsToken}` }
+            : undefined,
+        },
+      );
+      const data = Buffer.from(response.data);
+      if (!verifyIpfsContent(cidString, data)) {
+        this.logger.error(`IPFS CID mismatch for ${cidString}`);
+        throw new ConflictException(
+          'Retrieved document content does not match its stored IPFS CID.',
+        );
+      }
+
+      return data;
+    } catch (err: any) {
+      if (err instanceof ConflictException || err instanceof UnprocessableEntityException) {
+        throw err;
+      }
+      this.logger.error(`Failed to retrieve IPFS document ${cidString}: ${err.message}`);
+      throw new ServiceUnavailableException(
+        `Failed to retrieve IPFS document: ${err.message}`,
+      );
+    }
   }
 
   /**

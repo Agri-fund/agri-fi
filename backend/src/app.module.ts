@@ -40,6 +40,7 @@ import { EmailSequenceModule } from './email-sequence/email-sequence.module';
 import { SettlementModule } from './settlement/settlement.module';
 import { SearchModule } from './search/search.module';
 import { UpgradeModule } from './upgrade/upgrade.module';
+import { WebhooksModule } from './webhooks/webhooks.module';
 
 @Module({
   controllers: [AppController],
@@ -102,10 +103,10 @@ import { UpgradeModule } from './upgrade/upgrade.module';
     AchievementModule,
     GraphQLApiModule,
     EmailSequenceModule,
-    ArchivalModule,
     SettlementModule,
     SearchModule,
     UpgradeModule,
+    WebhooksModule,
   ],
   providers: [
     {

@@ -12,7 +12,16 @@
         <tr><td style="font-size:20px;font-weight:bold;color:#166534;padding-bottom:16px;">Agri-Fi</td></tr>
         <tr><td style="font-size:18px;font-weight:bold;padding-bottom:12px;">Investment Confirmed</td></tr>
         <tr><td style="font-size:14px;line-height:22px;">
-<p style="margin:0 0 12px 0;">Thank you for investing in <strong>{{dealName}}</strong>.</p><p style="margin:0 0 12px 0;">Amount invested: <strong>${{amount}}</strong></p><p style="margin:0 0 12px 0;">Tokens purchased: <strong>{{tokenAmount}}</strong></p><p style="margin:0 0 12px 0;">On-chain transaction: <code>{{txId}}</code></p>
+<p style="margin:0 0 12px 0;">Thank you for investing in <strong>{{dealName}}</strong>.</p>
+<p style="margin:0 0 12px 0;">Amount invested: <strong>${{amount}}</strong></p>
+<p style="margin:0 0 12px 0;">Tokens purchased: <strong>{{tokenAmount}}</strong></p>
+<p style="margin:0 0 12px 0;">On-chain transaction: <code>{{txId}}</code></p>
+{{#if receiptUrl}}
+<p style="margin:0 0 12px 0;">
+  Download your payment receipt:
+  <a href="{{receiptUrl}}" style="color:#166534;font-weight:bold;">Download PDF Receipt</a>
+</p>
+{{/if}}
         </td></tr>
         <tr><td style="font-size:12px;color:#6b7280;padding-top:24px;border-top:1px solid #e5e7eb;">
           Agri-Fi &middot; Secure agricultural trade financing

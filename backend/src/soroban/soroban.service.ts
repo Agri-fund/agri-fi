@@ -616,3 +616,90 @@ export class SorobanService {
     }
   }
 }
+
+
+  // ── RevenueDistributor contract methods (Issue #873) ────────────────────────
+
+  /**
+   * Registers a token holder in the revenue_distributor contract.
+   * Must be called for each confirmed investor before triggering distribution.
+   *
+   * @param contractId    Revenue distributor contract address
+   * @param holderAddress Investor's Stellar wallet address
+   * @param balance       Token balance in stroops (integer)
+   */
+  async registerRevenueHolder(
+    contractId: string,
+    holderAddress: string,
+    balance: bigint,
+  ): Promise<string> {
+    const args = [
+      new Address(this.platformKeypair.publicKey()).toScVal(),
+      new Address(holderAddress).toScVal(),
+      nativeToScVal(balance, { type: 'i128' }),
+    ];
+    return this.invokeContract(contractId, 'register_holder', args);
+  }
+
+  /**
+   * Triggers pro-rata revenue distribution to all registered holders.
+   *
+   * After calling this, the service cross-checks on-chain payouts against
+   * expected amounts and fires a discrepancy alert if any payout differs
+   * from expected by > 0.001 USDC (1_000 stroops).
+   *
+   * @param contractId   Revenue distributor contract address
+   * @param usdcToken    USDC asset contract address
+   * @param totalAmount  Total USDC to distribute in stroops
+   * @param expectedPayouts  Map of holderAddress -> expected amount for cross-check
+   */
+  async triggerRevenueDistribution(
+    contractId: string,
+    usdcToken: string,
+    totalAmount: bigint,
+    expectedPayouts?: Map<string, bigint>,
+  ): Promise<{ hash: string; discrepancies: Array<{ holder: string; expected: bigint; actual: bigint }> }> {
+    const args = [
+      new Address(this.platformKeypair.publicKey()).toScVal(),
+      new Address(usdcToken).toScVal(),
+      nativeToScVal(totalAmount, { type: 'i128' }),
+    ];
+
+    const hash = await this.invokeContract(contractId, 'distribute', args);
+    this.logger.info({ contractId, totalAmount: totalAmount.toString(), hash }, 'Revenue distribution triggered');
+
+    const discrepancies: Array<{ holder: string; expected: bigint; actual: bigint }> = [];
+
+    if (expectedPayouts && expectedPayouts.size > 0) {
+      // Cross-check: read actual payouts from the contract
+      try {
+        const actualMap = (await this.readContract(contractId, 'get_holders', [])) as Record<string, unknown> | null;
+        if (actualMap) {
+          const TOLERANCE_STROOPS = BigInt(1_000); // 0.001 USDC
+          for (const [holder, expected] of expectedPayouts.entries()) {
+            const actual = BigInt((actualMap as any)[holder] ?? 0);
+            const diff = expected > actual ? expected - actual : actual - expected;
+            if (diff > TOLERANCE_STROOPS) {
+              discrepancies.push({ holder, expected, actual });
+              this.logger.error(
+                { holder, expected: expected.toString(), actual: actual.toString(), diff: diff.toString() },
+                'Revenue distribution discrepancy detected',
+              );
+            }
+          }
+        }
+      } catch (err: any) {
+        this.logger.warn({ err: err.message }, 'Could not cross-check distribution payouts');
+      }
+    }
+
+    return { hash, discrepancies };
+  }
+
+  /**
+   * Returns the current distribution count from the revenue_distributor contract.
+   */
+  async getRevenueDistributionCount(contractId: string): Promise<number> {
+    const result = await this.readContract(contractId, 'get_distribution_count', []);
+    return Number(result ?? 0);
+  }

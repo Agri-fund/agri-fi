@@ -211,4 +211,126 @@ export class MarketplaceSettlementService {
       txHash: trade.txHash,
     });
   }
+
+  // ── Order Book & Matching Engine (#812) ───────────────────────────────────
+
+  async createSellOrder(dto: {
+    sellerId: string;
+    investmentId: string;
+    dealId: string;
+    askPrice: number;
+    quantity: number;
+    expiry?: Date;
+  }) {
+    const sellRepo = this.dataSource.getRepository('SellOrder');
+    const order = sellRepo.create({
+      sellerId: dto.sellerId,
+      investmentId: dto.investmentId,
+      dealId: dto.dealId,
+      askPrice: dto.askPrice,
+      quantity: dto.quantity,
+      filledQuantity: 0,
+      expiry: dto.expiry || null,
+      status: 'open',
+    });
+    const saved = await sellRepo.save(order);
+    this.matchOrders(dto.dealId).catch((err) =>
+      this.logger.error({ err, dealId: dto.dealId }, 'Order matching error'),
+    );
+    return saved;
+  }
+
+  async createBuyOrder(dto: {
+    buyerId: string;
+    dealId: string;
+    bidPrice: number;
+    quantity: number;
+    expiry?: Date;
+  }) {
+    const buyRepo = this.dataSource.getRepository('BuyOrder');
+    const order = buyRepo.create({
+      buyerId: dto.buyerId,
+      dealId: dto.dealId,
+      bidPrice: dto.bidPrice,
+      quantity: dto.quantity,
+      filledQuantity: 0,
+      expiry: dto.expiry || null,
+      status: 'open',
+    });
+    const saved = await buyRepo.save(order);
+    this.matchOrders(dto.dealId).catch((err) =>
+      this.logger.error({ err, dealId: dto.dealId }, 'Order matching error'),
+    );
+    return saved;
+  }
+
+  async getOrderBook(dealId: string) {
+    const sellRepo = this.dataSource.getRepository('SellOrder');
+    const buyRepo = this.dataSource.getRepository('BuyOrder');
+
+    const [asks, bids] = await Promise.all([
+      sellRepo.find({
+        where: { dealId, status: 'open' },
+        order: { askPrice: 'ASC' },
+      }),
+      buyRepo.find({
+        where: { dealId, status: 'open' },
+        order: { bidPrice: 'DESC' },
+      }),
+    ]);
+
+    return { dealId, asks, bids };
+  }
+
+  async matchOrders(dealId: string): Promise<void> {
+    const sellRepo = this.dataSource.getRepository<any>('SellOrder');
+    const buyRepo = this.dataSource.getRepository<any>('BuyOrder');
+
+    const asks = await sellRepo.find({
+      where: { dealId, status: 'open' },
+      order: { askPrice: 'ASC', createdAt: 'ASC' },
+    });
+
+    const bids = await buyRepo.find({
+      where: { dealId, status: 'open' },
+      order: { bidPrice: 'DESC', createdAt: 'ASC' },
+    });
+
+    for (const ask of asks) {
+      for (const bid of bids) {
+        if (Number(ask.askPrice) <= Number(bid.bidPrice)) {
+          const askRemaining = Number(ask.quantity) - Number(ask.filledQuantity);
+          const bidRemaining = Number(bid.quantity) - Number(bid.filledQuantity);
+          if (askRemaining <= 0 || bidRemaining <= 0) continue;
+
+          const matchQty = Math.min(askRemaining, bidRemaining);
+          const matchPrice = Number(ask.askPrice);
+
+          try {
+            await this.createSecondaryTrade({
+              sellerId: ask.sellerId,
+              buyerId: bid.buyerId,
+              tokenCode: 'FARM_SHARE',
+              tokenAmount: matchQty,
+              pricePerToken: matchPrice,
+            });
+
+            ask.filledQuantity = Number(ask.filledQuantity) + matchQty;
+            bid.filledQuantity = Number(bid.filledQuantity) + matchQty;
+
+            if (ask.filledQuantity >= ask.quantity) ask.status = 'filled';
+            else ask.status = 'partially_filled';
+
+            if (bid.filledQuantity >= bid.quantity) bid.status = 'filled';
+            else bid.status = 'partially_filled';
+
+            await sellRepo.save(ask);
+            await buyRepo.save(bid);
+          } catch (err) {
+            this.logger.error({ err }, 'Order match execution failed');
+          }
+        }
+      }
+    }
+  }
 }

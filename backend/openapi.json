@@ -493,6 +493,71 @@
           }
         }
       }
+    },
+    "/api/v1/investments/orders/sell": {
+      "post": {
+        "summary": "Create secondary market sell order",
+        "tags": ["investments"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "investmentId": { "type": "string" },
+                  "dealId": { "type": "string" },
+                  "askPrice": { "type": "number" },
+                  "quantity": { "type": "number" },
+                  "expiry": { "type": "string", "format": "date-time" }
+                },
+                "required": ["investmentId", "dealId", "askPrice", "quantity"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Sell order created successfully" }
+        }
+      }
+    },
+    "/api/v1/investments/orders/buy": {
+      "post": {
+        "summary": "Create secondary market buy order",
+        "tags": ["investments"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "dealId": { "type": "string" },
+                  "bidPrice": { "type": "number" },
+                  "quantity": { "type": "number" },
+                  "expiry": { "type": "string", "format": "date-time" }
+                },
+                "required": ["dealId", "bidPrice", "quantity"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Buy order created successfully" }
+        }
+      }
+    },
+    "/api/v1/investments/orders/orderbook/{dealId}": {
+      "get": {
+        "summary": "Get secondary market order book for a deal",
+        "tags": ["investments"],
+        "parameters": [
+          { "name": "dealId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Live bids and asks" }
+        }
+      }
     }
   }
 }
