@@ -43,6 +43,14 @@ interface AuthRequest extends ExpressRequest {
   user: User;
 }
 
+interface GoogleAuthRequest extends ExpressRequest {
+  user: {
+    subject: string;
+    email: string;
+    emailVerified: boolean;
+  };
+}
+
 @ApiTags('auth')
 @Version('1')
 @Controller('auth')
@@ -114,6 +122,29 @@ export class AuthController {
     res.cookie('access_token', tokens.accessToken, opts);
     res.cookie('refresh_token', tokens.refreshToken, opts);
     return tokens;
+  }
+
+  @Get('google')
+  @UseGuards(AuthGuard('google'))
+  @ApiOperation({ summary: 'Start optional Google investor sign-in' })
+  googleLogin() {
+    return;
+  }
+
+  @Get('google/callback')
+  @UseGuards(AuthGuard('google'))
+  @ApiOperation({ summary: 'Complete Google investor sign-in' })
+  async googleCallback(
+    @Req() req: GoogleAuthRequest,
+    @Res() res: Response,
+  ) {
+    const tokens = await this.authService.loginWithGoogle(req.user);
+    const opts = this.authService.cookieOptions();
+    res.cookie('access_token', tokens.accessToken, opts);
+    res.cookie('refresh_token', tokens.refreshToken, opts);
+    res.redirect(
+      `${process.env.FRONTEND_URL ?? 'http://localhost:3000/en'}/login?oauth=success`,
+    );
   }
 
   @Post('refresh')
