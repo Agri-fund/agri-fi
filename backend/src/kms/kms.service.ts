@@ -1,6 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { KMSClient, GenerateDataKeyCommand, DecryptCommand } from '@aws-sdk/client-kms';
+import {
+  KMSClient,
+  GenerateDataKeyCommand,
+  DecryptCommand,
+} from '@aws-sdk/client-kms';
 import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
 
 /**
@@ -43,7 +47,10 @@ export class KmsService {
     // 2. Encrypt the secret locally with the DEK (AES‑256‑CBC)
     const iv = randomBytes(16);
     const cipher = createCipheriv('aes-256-cbc', dek, iv);
-    const encrypted = Buffer.concat([cipher.update(plainText, 'utf8'), cipher.final()]);
+    const encrypted = Buffer.concat([
+      cipher.update(plainText, 'utf8'),
+      cipher.final(),
+    ]);
 
     // 3. Return a JSON payload
     const payload = {
@@ -77,7 +84,11 @@ export class KmsService {
     const dek = Buffer.from(decryptResult.Plaintext);
 
     // 2. Decrypt the secret locally
-    const decipher = createDecipheriv('aes-256-cbc', dek, Buffer.from(iv, 'hex'));
+    const decipher = createDecipheriv(
+      'aes-256-cbc',
+      dek,
+      Buffer.from(iv, 'hex'),
+    );
     const decrypted = Buffer.concat([
       decipher.update(Buffer.from(ciphertext, 'hex')),
       decipher.final(),

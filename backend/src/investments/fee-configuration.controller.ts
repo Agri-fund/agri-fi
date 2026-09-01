@@ -10,7 +10,12 @@ import {
   UseGuards,
   BadRequestException,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { FeeConfigurationService } from './fee-configuration.service';
 import {
   CreateFeeConfigurationDto,
@@ -45,7 +50,9 @@ export class FeeConfigurationController {
   })
   @ApiResponse({ status: 400, description: 'Invalid input' })
   @ApiResponse({ status: 409, description: 'Configuration already exists' })
-  async create(@Body() dto: CreateFeeConfigurationDto): Promise<FeeConfiguration> {
+  async create(
+    @Body() dto: CreateFeeConfigurationDto,
+  ): Promise<FeeConfiguration> {
     return this.feeConfigService.create(dto);
   }
 
@@ -61,7 +68,10 @@ export class FeeConfigurationController {
     schema: {
       type: 'object',
       properties: {
-        data: { type: 'array', items: { $ref: '#/components/schemas/FeeConfiguration' } },
+        data: {
+          type: 'array',
+          items: { $ref: '#/components/schemas/FeeConfiguration' },
+        },
         total: { type: 'number' },
         skip: { type: 'number' },
         take: { type: 'number' },
@@ -79,7 +89,8 @@ export class FeeConfigurationController {
   @Get('deal-types')
   @ApiOperation({
     summary: 'Get all deal types with fee configurations',
-    description: 'Returns a list of unique deal types that have fee configurations.',
+    description:
+      'Returns a list of unique deal types that have fee configurations.',
   })
   @ApiResponse({
     status: 200,
@@ -127,7 +138,10 @@ export class FeeConfigurationController {
       },
     },
   })
-  @ApiResponse({ status: 404, description: 'No configurations found for deal type' })
+  @ApiResponse({
+    status: 404,
+    description: 'No configurations found for deal type',
+  })
   async getMatrix(
     @Param('dealType') dealType: string,
   ): Promise<Record<string, Record<string, number>>> {
@@ -176,7 +190,10 @@ export class FeeConfigurationController {
       'Delete an inactive fee configuration. Active configurations must be expired first.',
   })
   @ApiResponse({ status: 204, description: 'Fee configuration deleted' })
-  @ApiResponse({ status: 400, description: 'Cannot delete active configuration' })
+  @ApiResponse({
+    status: 400,
+    description: 'Cannot delete active configuration',
+  })
   @ApiResponse({ status: 404, description: 'Fee configuration not found' })
   async delete(@Param('id') id: string): Promise<void> {
     await this.feeConfigService.delete(id);

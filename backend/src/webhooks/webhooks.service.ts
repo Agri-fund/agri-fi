@@ -5,7 +5,10 @@ import { HttpService } from '@nestjs/axios';
 import { createHmac, randomBytes } from 'crypto';
 import { firstValueFrom } from 'rxjs';
 import { WebhookSubscription } from './entities/webhook-subscription.entity';
-import { CreateWebhookSubscriptionDto, UpdateWebhookSubscriptionDto } from './dto/create-webhook-subscription.dto';
+import {
+  CreateWebhookSubscriptionDto,
+  UpdateWebhookSubscriptionDto,
+} from './dto/create-webhook-subscription.dto';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
 
 @Injectable()
@@ -18,7 +21,9 @@ export class WebhooksService {
     private readonly httpService: HttpService,
   ) {}
 
-  async createSubscription(dto: CreateWebhookSubscriptionDto): Promise<WebhookSubscription> {
+  async createSubscription(
+    dto: CreateWebhookSubscriptionDto,
+  ): Promise<WebhookSubscription> {
     const secret = dto.secret || randomBytes(32).toString('hex');
     const sub = this.subscriptionRepo.create({
       url: dto.url,
@@ -41,7 +46,10 @@ export class WebhooksService {
     return sub;
   }
 
-  async updateSubscription(id: string, dto: UpdateWebhookSubscriptionDto): Promise<WebhookSubscription> {
+  async updateSubscription(
+    id: string,
+    dto: UpdateWebhookSubscriptionDto,
+  ): Promise<WebhookSubscription> {
     const sub = await this.findOneSubscription(id);
     Object.assign(sub, dto);
     return await this.subscriptionRepo.save(sub);
@@ -63,13 +71,19 @@ export class WebhooksService {
   /**
    * Dispatches deal.funding_progress event to all active subscribers.
    */
-  async dispatchFundingProgress(deal: TradeDeal, milestone: number, actualPct: number): Promise<void> {
+  async dispatchFundingProgress(
+    deal: TradeDeal,
+    milestone: number,
+    actualPct: number,
+  ): Promise<void> {
     const subscriptions = await this.subscriptionRepo.find({
       where: { isActive: true },
     });
 
     const eventSubscribers = subscriptions.filter(
-      (sub) => sub.events.includes('deal.funding_progress') || sub.events.includes('*'),
+      (sub) =>
+        sub.events.includes('deal.funding_progress') ||
+        sub.events.includes('*'),
     );
 
     if (eventSubscribers.length === 0) {
@@ -140,7 +154,9 @@ export class WebhooksService {
       }
     }
 
-    this.logger.error(`Failed to deliver webhook to ${sub.url} after ${maxAttempts} attempts`);
+    this.logger.error(
+      `Failed to deliver webhook to ${sub.url} after ${maxAttempts} attempts`,
+    );
     return false;
   }
 }

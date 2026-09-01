@@ -26,7 +26,9 @@ export class UploadChunkDto {
 }
 
 export class UploadCompleteDto {
-  @ApiProperty({ description: 'Unique file identifier matching the chunked upload session' })
+  @ApiProperty({
+    description: 'Unique file identifier matching the chunked upload session',
+  })
   @IsString()
   fileId: string;
 

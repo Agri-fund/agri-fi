@@ -29,7 +29,10 @@ import { User } from '../../auth/entities/user.entity';
 @Index('IDX_ies_pending', ['sentAt', 'scheduledAt'])
 export class InvestorEmailSequence {
   @PrimaryGeneratedColumn('uuid')
-  @ApiProperty({ description: 'Unique row identifier', example: 'a1b2c3d4-...' })
+  @ApiProperty({
+    description: 'Unique row identifier',
+    example: 'a1b2c3d4-...',
+  })
   id: string;
 
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
@@ -45,12 +48,18 @@ export class InvestorEmailSequence {
    * 0 = Welcome, 1 = HowItWorks, 2 = FeaturedDeal, 3 = RiskReturns, 4 = LastChance
    */
   @Column({ name: 'sequence_step', type: 'smallint' })
-  @ApiProperty({ description: 'Step index in the drip sequence (0–4)', example: 2 })
+  @ApiProperty({
+    description: 'Step index in the drip sequence (0–4)',
+    example: 2,
+  })
   sequenceStep: number;
 
   /** When the email should be sent (registration time + day offset). */
   @Column({ name: 'scheduled_at', type: 'timestamptz' })
-  @ApiProperty({ description: 'Scheduled send timestamp', example: '2026-08-26T09:00:00Z' })
+  @ApiProperty({
+    description: 'Scheduled send timestamp',
+    example: '2026-08-26T09:00:00Z',
+  })
   scheduledAt: Date;
 
   /**

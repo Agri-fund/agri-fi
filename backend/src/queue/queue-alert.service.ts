@@ -21,7 +21,10 @@ export class QueueAlertService {
     this.configService.get<string>('QUEUE_ALERT_THRESHOLD', '10'),
   );
   private readonly durationMs = Number(
-    this.configService.get<string>('QUEUE_ALERT_DURATION_MS', `${5 * 60 * 1000}`),
+    this.configService.get<string>(
+      'QUEUE_ALERT_DURATION_MS',
+      `${5 * 60 * 1000}`,
+    ),
   ); // 5 minutes
   private readonly webhookUrl = this.configService.get<string>(
     'DISCORD_WEBHOOK_URL',
@@ -44,7 +47,10 @@ export class QueueAlertService {
       const response = await firstValueFrom(
         this.httpService.get(apiUrl, { auth: this.buildAuth() }),
       );
-      const queueInfo = response.data as { messages: number; idle_since?: string };
+      const queueInfo = response.data as {
+        messages: number;
+        idle_since?: string;
+      };
       const readyCount = queueInfo.messages;
 
       this.logger.debug(`Queue ready messages: ${readyCount}`);
@@ -55,7 +61,10 @@ export class QueueAlertService {
           this.logger.warn(
             `Queue size exceeded threshold (${this.threshold}). Monitoring started.`,
           );
-        } else if (new Date().getTime() - this.highWaterStart.getTime() >= this.durationMs) {
+        } else if (
+          new Date().getTime() - this.highWaterStart.getTime() >=
+          this.durationMs
+        ) {
           await this.sendDiscordAlert(readyCount);
           // Reset after notification to avoid spamming.
           this.highWaterStart = null;
@@ -76,11 +85,22 @@ export class QueueAlertService {
   }
 
   private buildManagementApiUrl(): string {
-    const host = this.configService.get<string>('RABBITMQ_MANAGEMENT_HOST', 'localhost');
-    const port = this.configService.get<string>('RABBITMQ_MANAGEMENT_PORT', '15672');
-    const vhost = encodeURIComponent(this.configService.get<string>('RABBITMQ_VHOST', '/'));
+    const host = this.configService.get<string>(
+      'RABBITMQ_MANAGEMENT_HOST',
+      'localhost',
+    );
+    const port = this.configService.get<string>(
+      'RABBITMQ_MANAGEMENT_PORT',
+      '15672',
+    );
+    const vhost = encodeURIComponent(
+      this.configService.get<string>('RABBITMQ_VHOST', '/'),
+    );
     const queue = encodeURIComponent(
-      this.configService.get<string>('RABBITMQ_QUEUE_NAME', 'agric_onchain_queue'),
+      this.configService.get<string>(
+        'RABBITMQ_QUEUE_NAME',
+        'agric_onchain_queue',
+      ),
     );
     return `http://${host}:${port}/api/queues/${vhost}/${queue}`;
   }

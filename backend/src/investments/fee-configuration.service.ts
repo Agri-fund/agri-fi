@@ -53,9 +53,7 @@ export class FeeConfigurationService {
 
     // If effectiveTo is provided, ensure it's after effectiveFrom
     if (dto.effectiveTo && dto.effectiveTo <= dto.effectiveFrom) {
-      throw new BadRequestException(
-        'effectiveTo must be after effectiveFrom',
-      );
+      throw new BadRequestException('effectiveTo must be after effectiveFrom');
     }
 
     const config = this.feeConfigRepo.create(dto);
@@ -95,11 +93,10 @@ export class FeeConfigurationService {
       const now = new Date();
       if (query.active) {
         // Active: effectiveFrom <= now AND (effectiveTo IS NULL OR effectiveTo > now)
-        qb.andWhere('fc.effectiveFrom <= :now', { now })
-          .andWhere(
-            '(fc.effectiveTo IS NULL OR fc.effectiveTo > :now)',
-            { now },
-          );
+        qb.andWhere('fc.effectiveFrom <= :now', { now }).andWhere(
+          '(fc.effectiveTo IS NULL OR fc.effectiveTo > :now)',
+          { now },
+        );
       } else {
         // Inactive: effectiveTo IS NOT NULL AND effectiveTo <= now
         qb.andWhere('fc.effectiveTo IS NOT NULL AND fc.effectiveTo <= :now', {
@@ -135,9 +132,7 @@ export class FeeConfigurationService {
       config.effectiveFrom &&
       dto.effectiveTo <= config.effectiveFrom
     ) {
-      throw new BadRequestException(
-        'effectiveTo must be after effectiveFrom',
-      );
+      throw new BadRequestException('effectiveTo must be after effectiveFrom');
     }
 
     Object.assign(config, dto);

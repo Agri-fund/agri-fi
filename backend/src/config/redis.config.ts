@@ -84,10 +84,17 @@ export class RedisConfig {
 
     const { authToken, redisUrl } = await this.resolveSecret(baseUrl);
 
-    const tlsEnabled = this.configService.get<boolean>('REDIS_TLS_ENABLED', true);
+    const tlsEnabled = this.configService.get<boolean>(
+      'REDIS_TLS_ENABLED',
+      true,
+    );
     const caCertPath = this.configService.get<string>('REDIS_CA_CERT_PATH');
-    const clientCertPath = this.configService.get<string>('REDIS_CLIENT_CERT_PATH');
-    const clientKeyPath = this.configService.get<string>('REDIS_CLIENT_KEY_PATH');
+    const clientCertPath = this.configService.get<string>(
+      'REDIS_CLIENT_CERT_PATH',
+    );
+    const clientKeyPath = this.configService.get<string>(
+      'REDIS_CLIENT_KEY_PATH',
+    );
 
     // Build TLS configuration if enabled
     const tlsConfig: Record<string, string | boolean> = {};

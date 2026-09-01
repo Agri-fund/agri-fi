@@ -52,8 +52,7 @@ interface GoogleAuthRequest extends ExpressRequest {
 }
 
 @ApiTags('auth')
-@Version('1')
-@Controller('auth')
+@Controller({ path: 'auth', version: '1' })
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
@@ -211,7 +210,10 @@ export class AuthController {
   @ApiBearerAuth('jwt')
   @ApiOperation({ summary: 'Save a KYC draft' })
   @ApiResponse({ status: 200, description: 'KYC draft saved' })
-  async saveKycDraft(@Request() req: AuthRequest, @Body() draft: Record<string, unknown>) {
+  async saveKycDraft(
+    @Request() req: AuthRequest,
+    @Body() draft: Record<string, unknown>,
+  ) {
     return this.authService.saveKycDraft(req.user.id, draft);
   }
 

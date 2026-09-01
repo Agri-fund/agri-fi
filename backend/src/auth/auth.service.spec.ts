@@ -447,7 +447,9 @@ describe('AuthService', () => {
       (service as any).tokenBlocklistService = tokenBlocklistService;
       jwtService.verify = jest.fn().mockReturnValue(basePayload);
       // Mimic ConfigService's real fallback-to-default behavior.
-      configService.get.mockImplementation((_key: string, def?: unknown) => def);
+      configService.get.mockImplementation(
+        (_key: string, def?: unknown) => def,
+      );
     });
 
     it('rotates the refresh token: marks the old jti used and keeps the family id', async () => {
@@ -458,10 +460,9 @@ describe('AuthService', () => {
       expect(tokenBlocklistService.isRefreshTokenRotated).toHaveBeenCalledWith(
         'jti-1',
       );
-      expect(tokenBlocklistService.markRefreshTokenRotated).toHaveBeenCalledWith(
-        'jti-1',
-        expect.any(Number),
-      );
+      expect(
+        tokenBlocklistService.markRefreshTokenRotated,
+      ).toHaveBeenCalledWith('jti-1', expect.any(Number));
       expect(jwtService.sign).toHaveBeenCalledWith(
         expect.objectContaining({ typ: 'refresh', familyId: 'family-1' }),
         expect.objectContaining({ expiresIn: '7d' }),

@@ -75,9 +75,11 @@ export class Sep38Service {
     }
 
     const feeAmt = (sellAmt * this.platformFeeBps) / BPS_DIVISOR;
-    const netBuyAmt = buyAmt - (feeAmt * price);
+    const netBuyAmt = buyAmt - feeAmt * price;
 
-    const expiresAt = new Date(Date.now() + QUOTE_TTL_SECONDS * 1000).toISOString();
+    const expiresAt = new Date(
+      Date.now() + QUOTE_TTL_SECONDS * 1000,
+    ).toISOString();
     const quoteId = `quote_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 
     const quote: Sep38QuoteResponse = {
@@ -94,11 +96,17 @@ export class Sep38Service {
       },
     };
 
-    this.logger.info({ quoteId, sell_asset, buy_asset, price }, 'SEP-38 quote issued');
+    this.logger.info(
+      { quoteId, sell_asset, buy_asset, price },
+      'SEP-38 quote issued',
+    );
     return quote;
   }
 
-  private async fetchPrice(sellAsset: string, buyAsset: string): Promise<number> {
+  private async fetchPrice(
+    sellAsset: string,
+    buyAsset: string,
+  ): Promise<number> {
     const xlmUsdcPair =
       (sellAsset.startsWith('native') && buyAsset.startsWith('USDC')) ||
       (buyAsset.startsWith('native') && sellAsset.startsWith('USDC'));
@@ -107,7 +115,10 @@ export class Sep38Service {
       return this.config.get<number>('SEP38_XLM_USDC_RATE', 0.1);
     }
 
-    this.logger.warn({ sellAsset, buyAsset }, 'Unsupported asset pair — returning 1:1 price');
+    this.logger.warn(
+      { sellAsset, buyAsset },
+      'Unsupported asset pair — returning 1:1 price',
+    );
     return 1;
   }
 }

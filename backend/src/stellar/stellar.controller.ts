@@ -114,7 +114,14 @@ export class StellarController {
       );
     }
     const result = await this.stellarService.submitTransaction(signedXdr, {
-      allowedOpTypes: ['payment', 'changeTrust', 'manageSellOffer', 'manageBuyOffer', 'pathPaymentStrictSend', 'pathPaymentStrictReceive'],
+      allowedOpTypes: [
+        'payment',
+        'changeTrust',
+        'manageSellOffer',
+        'manageBuyOffer',
+        'pathPaymentStrictSend',
+        'pathPaymentStrictReceive',
+      ],
     });
     return { hash: result?.hash ?? (result as any)?.id, success: true };
   }
@@ -135,7 +142,13 @@ export class StellarController {
         targetWallet: { type: 'string' },
         amount: { type: 'string' },
       },
-      required: ['assetCode', 'issuerPublicKey', 'issuerSecret', 'targetWallet', 'amount'],
+      required: [
+        'assetCode',
+        'issuerPublicKey',
+        'issuerSecret',
+        'targetWallet',
+        'amount',
+      ],
     },
   })
   @ApiResponse({ status: 200, description: 'Clawback executed successfully' })
@@ -151,11 +164,23 @@ export class StellarController {
   ) {
     const caller = req.user as User;
     if (caller.role !== 'admin') {
-      throw new HttpException('Only admins can execute clawbacks', HttpStatus.FORBIDDEN);
+      throw new HttpException(
+        'Only admins can execute clawbacks',
+        HttpStatus.FORBIDDEN,
+      );
     }
 
-    if (!assetCode || !issuerPublicKey || !issuerSecret || !targetWallet || !amount) {
-      throw new HttpException('Missing required parameters', HttpStatus.BAD_REQUEST);
+    if (
+      !assetCode ||
+      !issuerPublicKey ||
+      !issuerSecret ||
+      !targetWallet ||
+      !amount
+    ) {
+      throw new HttpException(
+        'Missing required parameters',
+        HttpStatus.BAD_REQUEST,
+      );
     }
 
     try {
@@ -163,7 +188,7 @@ export class StellarController {
         assetCode,
         issuerPublicKey,
         issuerSecret,
-        [{ walletAddress: targetWallet, tokenAmount: parseFloat(amount) }]
+        [{ walletAddress: targetWallet, tokenAmount: parseFloat(amount) }],
       );
       return { success: true };
     } catch (error: any) {
@@ -184,7 +209,8 @@ export class StellarController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Configure multi-signature for platform fee wallet',
-    description: 'Sets up 2-of-3 multi-sig authorization for the platform account to require 2 signatures for any transfers.',
+    description:
+      'Sets up 2-of-3 multi-sig authorization for the platform account to require 2 signatures for any transfers.',
   })
   @ApiResponse({
     status: 200,
@@ -224,7 +250,8 @@ export class StellarController {
   @Get('platform-wallet/multisig-config')
   @ApiOperation({
     summary: 'Get multi-signature configuration of platform wallet',
-    description: 'Returns the current signers and thresholds configured on the platform account for audit purposes.',
+    description:
+      'Returns the current signers and thresholds configured on the platform account for audit purposes.',
   })
   @ApiResponse({
     status: 200,
@@ -262,11 +289,25 @@ export class StellarController {
   @Get('logs')
   @ApiOperation({
     summary: 'Get transaction logs with cursor-based pagination',
-    description: 'Returns paginated transaction logs using limit and cursor parameters.',
+    description:
+      'Returns paginated transaction logs using limit and cursor parameters.',
   })
-  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Number of logs to return (default 20, max 100)' })
-  @ApiQuery({ name: 'cursor', required: false, type: String, description: 'Cursor token for pagination' })
-  @ApiResponse({ status: 200, description: 'Transaction logs retrieved successfully' })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Number of logs to return (default 20, max 100)',
+  })
+  @ApiQuery({
+    name: 'cursor',
+    required: false,
+    type: String,
+    description: 'Cursor token for pagination',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Transaction logs retrieved successfully',
+  })
   async getTransactionLogs(
     @Req() req: Request,
     @Query('limit') limit?: number,

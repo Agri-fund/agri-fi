@@ -531,8 +531,7 @@ export class QueueProcessor implements OnApplicationShutdown {
     // Derive a stable idempotency key: prefer an explicit messageId on the
     // payload; fall back to userId+type for notification events.
     const businessId =
-      data.messageId ??
-      `${data.userId ?? 'unknown'}-${data.type ?? 'unknown'}`;
+      data.messageId ?? `${data.userId ?? 'unknown'}-${data.type ?? 'unknown'}`;
     const idemKey = IdempotencyService.buildKey(
       'email.notification',
       businessId,
@@ -621,7 +620,8 @@ export class QueueProcessor implements OnApplicationShutdown {
       data.userName ??
       details.farmerName ??
       details.investorName ??
-      (user?.fullName ?? deriveNameFromEmail(user?.email ?? data.email ?? ''));
+      user?.fullName ??
+      deriveNameFromEmail(user?.email ?? data.email ?? '');
 
     const vars: Record<string, unknown> = {
       userName: displayName,
@@ -695,7 +695,7 @@ export class QueueProcessor implements OnApplicationShutdown {
       };
     }
     if (data.type === 'deal_completed') {
-      let subject = `Deal Completed: ${data.dealDetails?.commodity}`;
+      const subject = `Deal Completed: ${data.dealDetails?.commodity}`;
       let text = `The deal you participated in (${data.dealDetails?.commodity}) has been completed.`;
       let html = `<h3>Deal Completed</h3><p>The deal you participated in (<strong>${data.dealDetails?.commodity}</strong>) has been completed.</p>`;
 

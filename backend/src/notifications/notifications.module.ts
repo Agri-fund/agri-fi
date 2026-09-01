@@ -18,10 +18,7 @@ import { WsJwtGuard } from './ws-jwt.guard';
     AuthModule,
     TypeOrmModule.forFeature([NotificationEntity, NotificationPreference]),
   ],
-  controllers: [
-    NotificationsController,
-    NotificationPreferencesController,
-  ],
+  controllers: [NotificationsController, NotificationPreferencesController],
   providers: [
     NotificationsService,
     EmailTemplateService,
@@ -29,6 +26,10 @@ import { WsJwtGuard } from './ws-jwt.guard';
     NotificationPreferencesService,
     WsJwtGuard,
   ],
-  exports: [NotificationsService, EmailTemplateService, NotificationPreferencesService],
+  exports: [
+    NotificationsService,
+    EmailTemplateService,
+    NotificationPreferencesService,
+  ],
 })
 export class NotificationsModule {}

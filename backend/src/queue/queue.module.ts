@@ -41,7 +41,12 @@ export { QUEUE_SERVICE } from './queue.constants';
       },
     ]),
   ],
-  providers: [QueueService, QueueAlertService, QueueTopologyService, IdempotencyService],
+  providers: [
+    QueueService,
+    QueueAlertService,
+    QueueTopologyService,
+    IdempotencyService,
+  ],
   exports: [
     QueueService,
     ClientsModule,

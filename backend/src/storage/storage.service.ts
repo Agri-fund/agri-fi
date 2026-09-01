@@ -115,10 +115,15 @@ export class StorageService {
 
       return data;
     } catch (err: any) {
-      if (err instanceof ConflictException || err instanceof UnprocessableEntityException) {
+      if (
+        err instanceof ConflictException ||
+        err instanceof UnprocessableEntityException
+      ) {
         throw err;
       }
-      this.logger.error(`Failed to retrieve IPFS document ${cidString}: ${err.message}`);
+      this.logger.error(
+        `Failed to retrieve IPFS document ${cidString}: ${err.message}`,
+      );
       throw new ServiceUnavailableException(
         `Failed to retrieve IPFS document: ${err.message}`,
       );

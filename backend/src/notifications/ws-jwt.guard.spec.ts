@@ -21,7 +21,10 @@ describe('WsJwtGuard', () => {
   let jwtService: JwtService;
 
   beforeEach(() => {
-    jwtService = new JwtService({ secret: 'test-secret', signOptions: { expiresIn: '1h' } });
+    jwtService = new JwtService({
+      secret: 'test-secret',
+      signOptions: { expiresIn: '1h' },
+    });
     guard = new WsJwtGuard(jwtService);
   });
 
@@ -44,20 +47,22 @@ describe('WsJwtGuard', () => {
   });
 
   it('rejects an expired token and emits auth_error', () => {
-    const token = jwtService.sign(
-      { sub: 'user-1' },
-      { expiresIn: '0s' },
-    );
+    const token = jwtService.sign({ sub: 'user-1' }, { expiresIn: '0s' });
     const ctx = makeContext({ auth: { token }, headers: {} });
     expect(() => guard.canActivate(ctx)).toThrow(/Token expired/);
     const client = ctx.switchToWs().getClient() as any;
-    expect(client.emit).toHaveBeenCalledWith('auth_error', { message: 'Token expired' });
+    expect(client.emit).toHaveBeenCalledWith('auth_error', {
+      message: 'Token expired',
+    });
     expect(client.disconnect).toHaveBeenCalledWith(true);
   });
 
   it('extracts token from Authorization header when auth.token is absent', () => {
     const token = jwtService.sign({ sub: 'user-2' });
-    const ctx = makeContext({ auth: {}, headers: { authorization: `Bearer ${token}` } });
+    const ctx = makeContext({
+      auth: {},
+      headers: { authorization: `Bearer ${token}` },
+    });
     expect(guard.canActivate(ctx)).toBe(true);
   });
 });

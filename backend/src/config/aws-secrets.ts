@@ -95,11 +95,13 @@ export async function rotationHandler(event: {
       // Generate a new random password and store it as AWSPENDING.
       const newPassword = generateSecurePassword();
       const currentSecret = await getDbCredentials(SecretId);
-      const pending: DbCredentials = { ...currentSecret, password: newPassword };
+      const pending: DbCredentials = {
+        ...currentSecret,
+        password: newPassword,
+      };
 
-      const { PutSecretValueCommand } = await import(
-        '@aws-sdk/client-secrets-manager'
-      );
+      const { PutSecretValueCommand } =
+        await import('@aws-sdk/client-secrets-manager');
       await client.send(
         new PutSecretValueCommand({
           SecretId,
@@ -137,9 +139,8 @@ export async function rotationHandler(event: {
 
     case 'finishSecret': {
       // Promote AWSPENDING to AWSCURRENT.
-      const { UpdateSecretVersionStageCommand } = await import(
-        '@aws-sdk/client-secrets-manager'
-      );
+      const { UpdateSecretVersionStageCommand } =
+        await import('@aws-sdk/client-secrets-manager');
       const current = await client.send(
         new DescribeSecretCommand({ SecretId }),
       );

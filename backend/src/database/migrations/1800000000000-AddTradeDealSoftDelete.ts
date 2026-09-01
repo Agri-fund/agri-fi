@@ -26,9 +26,7 @@ export class AddTradeDealSoftDelete1800000000000 implements MigrationInterface {
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(
-      `DROP INDEX IF EXISTS "IDX_trade_deals_status"`,
-    );
+    await queryRunner.query(`DROP INDEX IF EXISTS "IDX_trade_deals_status"`);
 
     await queryRunner.query(
       `ALTER TABLE "trade_deals" DROP COLUMN IF EXISTS "deleted_at"`,

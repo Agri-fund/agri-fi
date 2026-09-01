@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
@@ -65,17 +70,25 @@ export interface InternalKycFields {
  * Maps internal KYC field names to the standardised Stellar SEP-12
  * customer schema (#837).
  */
-export function mapInternalKycToSep12(fields: InternalKycFields): Sep12PutCustomerRequest {
+export function mapInternalKycToSep12(
+  fields: InternalKycFields,
+): Sep12PutCustomerRequest {
   const mapped: Sep12PutCustomerRequest = {};
   if (fields.firstName !== undefined) mapped.first_name = fields.firstName;
   if (fields.lastName !== undefined) mapped.last_name = fields.lastName;
   if (fields.dateOfBirth !== undefined) mapped.birth_date = fields.dateOfBirth;
-  if (fields.nationalIdNumber !== undefined) mapped.id_number = fields.nationalIdNumber;
-  if (fields.nationalIdType !== undefined) mapped.id_type = fields.nationalIdType;
+  if (fields.nationalIdNumber !== undefined)
+    mapped.id_number = fields.nationalIdNumber;
+  if (fields.nationalIdType !== undefined)
+    mapped.id_type = fields.nationalIdType;
   if (fields.addressLine1 !== undefined || fields.countryCode !== undefined) {
     mapped.address = {
-      ...(fields.addressLine1 !== undefined ? { line1: fields.addressLine1 } : {}),
-      ...(fields.countryCode !== undefined ? { country_code: fields.countryCode } : {}),
+      ...(fields.addressLine1 !== undefined
+        ? { line1: fields.addressLine1 }
+        : {}),
+      ...(fields.countryCode !== undefined
+        ? { country_code: fields.countryCode }
+        : {}),
     };
   }
   return mapped;
@@ -145,7 +158,10 @@ export function normalizeSep12Fields(
     assertIso8601Date(normalized.birth_date, 'birth_date');
   }
   if (normalized.address?.country_code !== undefined) {
-    assertIso3166Alpha2(normalized.address.country_code, 'address.country_code');
+    assertIso3166Alpha2(
+      normalized.address.country_code,
+      'address.country_code',
+    );
   }
   if (normalized.id_country_code !== undefined) {
     assertIso3166Alpha2(normalized.id_country_code, 'id_country_code');
@@ -154,7 +170,10 @@ export function normalizeSep12Fields(
   return normalized;
 }
 
-const KYC_STATUS_MAP: Record<string, 'ACCEPTED' | 'PROCESSING' | 'VERIFIED' | 'REJECTED'> = {
+const KYC_STATUS_MAP: Record<
+  string,
+  'ACCEPTED' | 'PROCESSING' | 'VERIFIED' | 'REJECTED'
+> = {
   pending: 'PROCESSING',
   verified: 'VERIFIED',
   rejected: 'REJECTED',
@@ -242,13 +261,15 @@ export class Sep12Service {
       where: { userId },
       order: { createdAt: 'DESC' },
     });
-    const stored = (latestSubmission?.sep12Data ?? {}) as Partial<Sep12CustomerResponse>;
+    const stored = (latestSubmission?.sep12Data ??
+      {}) as Partial<Sep12CustomerResponse>;
 
     return {
       id: user.id,
       status: KYC_STATUS_MAP[user.kycStatus] ?? 'PROCESSING',
       first_name: stored.first_name ?? (nameParts[0] || undefined),
-      last_name: stored.last_name ?? nameParts.slice(1).join(' ') || undefined,
+      last_name:
+        (stored.last_name ?? nameParts.slice(1).join(' ')) || undefined,
       email_address: user.email,
       birth_date: stored.birth_date ?? user.birthdate ?? undefined,
       address: {

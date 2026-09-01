@@ -36,7 +36,10 @@ export class InvestmentEvent {
   payload: Record<string, any>;
 
   @Column({ name: 'actor_id', nullable: true })
-  @ApiProperty({ description: 'UUID of user or admin triggering the event', nullable: true })
+  @ApiProperty({
+    description: 'UUID of user or admin triggering the event',
+    nullable: true,
+  })
   actorId: string | null;
 
   @CreateDateColumn({ name: 'occurred_at' })

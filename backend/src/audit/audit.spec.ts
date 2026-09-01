@@ -26,7 +26,11 @@ describe('AuditModule', () => {
 
     beforeEach(() => {
       repoMock = {
-        create: jest.fn((dto) => ({ ...dto, id: 'uuid-123', timestamp: new Date() })),
+        create: jest.fn((dto) => ({
+          ...dto,
+          id: 'uuid-123',
+          timestamp: new Date(),
+        })),
         save: jest.fn(async (entity) => entity),
         find: jest.fn(async () => []),
       };

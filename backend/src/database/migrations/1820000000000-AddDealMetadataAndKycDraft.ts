@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddDealMetadataAndKycDraft1820000000000
-  implements MigrationInterface
-{
+export class AddDealMetadataAndKycDraft1820000000000 implements MigrationInterface {
   name = 'AddDealMetadataAndKycDraft1820000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {

@@ -41,7 +41,13 @@ export class SellOrder {
   @ApiProperty({ description: 'Token quantity offered for sale' })
   quantity: number;
 
-  @Column({ name: 'filled_quantity', type: 'decimal', precision: 36, scale: 7, default: 0 })
+  @Column({
+    name: 'filled_quantity',
+    type: 'decimal',
+    precision: 36,
+    scale: 7,
+    default: 0,
+  })
   @ApiProperty({ description: 'Token quantity already filled' })
   filledQuantity: number;
 
@@ -82,7 +88,13 @@ export class BuyOrder {
   @ApiProperty({ description: 'Token quantity requested' })
   quantity: number;
 
-  @Column({ name: 'filled_quantity', type: 'decimal', precision: 36, scale: 7, default: 0 })
+  @Column({
+    name: 'filled_quantity',
+    type: 'decimal',
+    precision: 36,
+    scale: 7,
+    default: 0,
+  })
   @ApiProperty({ description: 'Token quantity already filled' })
   filledQuantity: number;
 
