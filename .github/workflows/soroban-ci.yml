@@ -51,7 +51,7 @@ jobs:
       # Install the Stellar CLI (which ships the `stellar contract bindings`
       # sub-command formerly known as `soroban contract bindings typescript`).
       - name: Install Stellar CLI
-        run: cargo install --locked stellar-cli --features opt
+        run: cargo install --locked stellar-cli
         env:
           CARGO_NET_RETRY: "5"
 
