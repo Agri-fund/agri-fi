@@ -227,10 +227,12 @@ describe('FeeCalculatorService', () => {
         grossAmount: 10000,
       });
 
-      const expectedAmount = Math.round((10000 * 2.333) / 100 * 100) / 100;
+      const expectedAmount = Math.round(((10000 * 2.333) / 100) * 100) / 100;
       expect(result.platformOriginationFee?.amount).toBe(expectedAmount);
       // Verify no floating point errors
-      expect(result.platformOriginationFee?.amount.toString().split('.')[1]?.length).toBeLessThanOrEqual(2);
+      expect(
+        result.platformOriginationFee?.amount.toString().split('.')[1]?.length,
+      ).toBeLessThanOrEqual(2);
     });
 
     it('should throw error when no fee configuration found', async () => {
@@ -333,9 +335,8 @@ describe('FeeCalculatorService', () => {
     it('should return false when deal type has no configurations', async () => {
       jest.spyOn(feeConfigRepo, 'count').mockResolvedValue(0);
 
-      const result = await service.validateDealTypeHasConfigurations(
-        'UnknownCommodity',
-      );
+      const result =
+        await service.validateDealTypeHasConfigurations('UnknownCommodity');
       expect(result).toBe(false);
     });
   });

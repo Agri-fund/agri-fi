@@ -5,13 +5,14 @@ import { ClamScanService } from './clam-scan.service';
 import { StellarModule } from '../stellar/stellar.module';
 import { TradeDealsModule } from '../trade-deals/trade-deals.module';
 import { SettlementModule } from '../settlement/settlement.module';
+import { AuditModule } from '../audit/audit.module';
 
 // StorageModule is intentionally not imported eagerly: it constructs an
 // S3Client at module init, which adds to boot time for every request path
 // even though document upload is only exercised by this one feature. It's
 // lazy-loaded on first upload instead — see DocumentsService.getStorageService().
 @Module({
-  imports: [StellarModule, TradeDealsModule, SettlementModule],
+  imports: [StellarModule, TradeDealsModule, SettlementModule, AuditModule],
   controllers: [DocumentsController],
   providers: [DocumentsService, ClamScanService],
   exports: [DocumentsService],

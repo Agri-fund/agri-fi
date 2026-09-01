@@ -43,9 +43,16 @@ interface AuthRequest extends ExpressRequest {
   user: User;
 }
 
+interface GoogleAuthRequest extends ExpressRequest {
+  user: {
+    subject: string;
+    email: string;
+    emailVerified: boolean;
+  };
+}
+
 @ApiTags('auth')
-@Version('1')
-@Controller('auth')
+@Controller({ path: 'auth', version: '1' })
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
@@ -116,6 +123,29 @@ export class AuthController {
     return tokens;
   }
 
+  @Get('google')
+  @UseGuards(AuthGuard('google'))
+  @ApiOperation({ summary: 'Start optional Google investor sign-in' })
+  googleLogin() {
+    return;
+  }
+
+  @Get('google/callback')
+  @UseGuards(AuthGuard('google'))
+  @ApiOperation({ summary: 'Complete Google investor sign-in' })
+  async googleCallback(
+    @Req() req: GoogleAuthRequest,
+    @Res() res: Response,
+  ) {
+    const tokens = await this.authService.loginWithGoogle(req.user);
+    const opts = this.authService.cookieOptions();
+    res.cookie('access_token', tokens.accessToken, opts);
+    res.cookie('refresh_token', tokens.refreshToken, opts);
+    res.redirect(
+      `${process.env.FRONTEND_URL ?? 'http://localhost:3000/en'}/login?oauth=success`,
+    );
+  }
+
   @Post('refresh')
   @Throttle({ login: { limit: 5, ttl: 60000 } })
   @ApiOperation({ summary: 'Exchange a refresh token for a new access token' })
@@ -180,7 +210,10 @@ export class AuthController {
   @ApiBearerAuth('jwt')
   @ApiOperation({ summary: 'Save a KYC draft' })
   @ApiResponse({ status: 200, description: 'KYC draft saved' })
-  async saveKycDraft(@Request() req: AuthRequest, @Body() draft: Record<string, unknown>) {
+  async saveKycDraft(
+    @Request() req: AuthRequest,
+    @Body() draft: Record<string, unknown>,
+  ) {
     return this.authService.saveKycDraft(req.user.id, draft);
   }
 

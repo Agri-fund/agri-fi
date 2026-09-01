@@ -2,7 +2,11 @@ import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PinoLogger } from 'nestjs-pino';
 import { ConfigService } from '@nestjs/config';
-import { ClientProxy, ClientProxyFactory, Transport } from '@nestjs/microservices';
+import {
+  ClientProxy,
+  ClientProxyFactory,
+  Transport,
+} from '@nestjs/microservices';
 import { OutboxEntity } from './outbox.entity';
 import { OutboxService } from './outbox.service';
 import { encryptPayload } from '../queue/queue.crypto';
@@ -87,19 +91,30 @@ export class OutboxProcessor implements OnModuleInit, OnModuleDestroy {
         `Successfully processed outbox event`,
       );
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
 
       await this.outboxService.markFailed(event.id, errorMessage);
       this.outboxService.recordPublishError(event.eventType);
 
       this.logger.warn(
-        { eventId: event.id, eventType: event.eventType, error: errorMessage, retryCount: event.retryCount + 1 },
+        {
+          eventId: event.id,
+          eventType: event.eventType,
+          error: errorMessage,
+          retryCount: event.retryCount + 1,
+        },
         `Failed to process outbox event, will retry`,
       );
 
       if (event.retryCount + 1 >= MAX_RETRIES) {
         this.logger.error(
-          { eventId: event.id, eventType: event.eventType, error: errorMessage, retryCount: event.retryCount + 1 },
+          {
+            eventId: event.id,
+            eventType: event.eventType,
+            error: errorMessage,
+            retryCount: event.retryCount + 1,
+          },
           `Outbox event exceeded max retries (${MAX_RETRIES}), moving to dead letter`,
         );
       }

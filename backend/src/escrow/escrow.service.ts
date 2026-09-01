@@ -149,149 +149,151 @@ export class EscrowService {
     let idempotencyMarkedDone = false;
 
     try {
-    // ── Phase 2: Stellar escrow release (irreversible, outside any DB tx) ─────
-    // The Stellar ledger is append-only; there is no rollback. We execute this
-    // before opening the DB transaction so a Stellar failure leaves the database
-    // unchanged. If the DB writes below fail after Stellar succeeds we log the
-    // Stellar TX IDs and alert ops so the distributions can be reconstructed.
-    const escrowSecret = this.stellarService.decryptSecret(
-      deal.escrowSecretKey,
-    );
-
-    let stellarTxIds: string[];
-    try {
-      stellarTxIds = await this.stellarService.releaseEscrow(
-        escrowSecret,
-        deal.farmer.walletAddress,
-        investorShares,
-        platformWallet,
-        deal.totalValue,
-      );
-    } catch (stellarError) {
-      this.logger.error(
-        { tradeDealId, error: stellarError.message },
-        'Stellar escrow release failed — no DB writes were made',
-      );
-      await this.handleEscrowFailure(tradeDealId, stellarError);
-      throw stellarError;
-    }
-
-    const stellarTxId = stellarTxIds[0];
-
-    // ── Phase 3: DB transaction — all writes commit or roll back together ──────
-    // Uses an explicit QueryRunner so the transaction lifecycle (BEGIN / COMMIT /
-    // ROLLBACK) is fully visible and controllable (#744).
-    const qr: QueryRunner = this.dataSource.createQueryRunner();
-    await qr.connect();
-    await qr.startTransaction();
-
-    // Farmer-side payout rows produced inside the transaction; consumed by the
-    // post-commit notification pass below.
-    let farmerDistributions: PaymentDistribution[] = [];
-
-    try {
-      const totalValue = Number(deal.totalValue);
-      const [platformAmount, investorPool] = this.splitTotalValue(totalValue);
-      const investorAmounts = this.allocateProportionalAmounts(
-        investorPool,
-        investments.map((inv) => inv.tokenAmount),
+      // ── Phase 2: Stellar escrow release (irreversible, outside any DB tx) ─────
+      // The Stellar ledger is append-only; there is no rollback. We execute this
+      // before opening the DB transaction so a Stellar failure leaves the database
+      // unchanged. If the DB writes below fail after Stellar succeeds we log the
+      // Stellar TX IDs and alert ops so the distributions can be reconstructed.
+      const escrowSecret = this.stellarService.decryptSecret(
+        deal.escrowSecretKey,
       );
 
-      // #891 — farmer-side payouts: the 98% pool is split between the lead
-      // farmer and accepted co-farmers according to committed portions.
-      // Rows are persisted here inside the same transaction so a failure
-      // rolls back farmer + investor + platform records together.
-      farmerDistributions = await this.distributePayment(tradeDealId, {
-        qr,
-        stellarTxId,
-      });
+      let stellarTxIds: string[];
+      try {
+        stellarTxIds = await this.stellarService.releaseEscrow(
+          escrowSecret,
+          deal.farmer.walletAddress,
+          investorShares,
+          platformWallet,
+          deal.totalValue,
+        );
+      } catch (stellarError) {
+        this.logger.error(
+          { tradeDealId, error: stellarError.message },
+          'Stellar escrow release failed — no DB writes were made',
+        );
+        await this.handleEscrowFailure(tradeDealId, stellarError);
+        throw stellarError;
+      }
 
-      // Build PaymentDistribution records for all investors
-      const paymentDistributions: PaymentDistribution[] = [];
+      const stellarTxId = stellarTxIds[0];
 
-      for (const [index, investment] of investments.entries()) {
+      // ── Phase 3: DB transaction — all writes commit or roll back together ──────
+      // Uses an explicit QueryRunner so the transaction lifecycle (BEGIN / COMMIT /
+      // ROLLBACK) is fully visible and controllable (#744).
+      const qr: QueryRunner = this.dataSource.createQueryRunner();
+      await qr.connect();
+      await qr.startTransaction();
+
+      // Farmer-side payout rows produced inside the transaction; consumed by the
+      // post-commit notification pass below.
+      let farmerDistributions: PaymentDistribution[] = [];
+
+      try {
+        const totalValue = Number(deal.totalValue);
+        const [platformAmount, investorPool] = this.splitTotalValue(totalValue);
+        const investorAmounts = this.allocateProportionalAmounts(
+          investorPool,
+          investments.map((inv) => inv.tokenAmount),
+        );
+
+        // #891 — farmer-side payouts: the 98% pool is split between the lead
+        // farmer and accepted co-farmers according to committed portions.
+        // Rows are persisted here inside the same transaction so a failure
+        // rolls back farmer + investor + platform records together.
+        farmerDistributions = await this.distributePayment(tradeDealId, {
+          qr,
+          stellarTxId,
+        });
+
+        // Build PaymentDistribution records for all investors
+        const paymentDistributions: PaymentDistribution[] = [];
+
+        for (const [index, investment] of investments.entries()) {
+          paymentDistributions.push(
+            qr.manager.create(PaymentDistribution, {
+              tradeDealId,
+              recipientType: 'investor',
+              recipientId: investment.investorId,
+              walletAddress: investment.investor.walletAddress!,
+              amountUsd: investorAmounts[index],
+              stellarTxId,
+              status: 'confirmed',
+            }),
+          );
+        }
+
+        // Platform fee distribution record
         paymentDistributions.push(
           qr.manager.create(PaymentDistribution, {
             tradeDealId,
-            recipientType: 'investor',
-            recipientId: investment.investorId,
-            walletAddress: investment.investor.walletAddress!,
-            amountUsd: investorAmounts[index],
+            recipientType: 'platform',
+            recipientId: null,
+            walletAddress: platformWallet,
+            amountUsd: platformAmount,
             stellarTxId,
             status: 'confirmed',
           }),
         );
+
+        // Persist investor + platform distributions atomically (farmer rows were
+        // already persisted by distributePayment within this same transaction).
+        await qr.manager.save(PaymentDistribution, paymentDistributions);
+
+        // Mark deal as completed
+        const appTraceId = `app-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 10)}`;
+        await qr.manager.update(TradeDeal, tradeDealId, {
+          status: 'completed',
+          appTraceId,
+        });
+
+        // All DB writes succeeded — commit
+        await qr.commitTransaction();
+        await this.idempotency.markDone(idempotencyKey);
+        idempotencyMarkedDone = true;
+
+        this.logger.info(
+          `Deal ${tradeDealId} committed to completed. Stellar TX: ${stellarTxId}`,
+        );
+      } catch (dbError) {
+        // Roll back all DB writes atomically. The Stellar release already
+        // happened, so we log the Stellar TX ID for manual reconciliation.
+        await qr.rollbackTransaction();
+
+        this.logger.error(
+          {
+            tradeDealId,
+            stellarTxId,
+            error: dbError.message,
+          },
+          'DB transaction rolled back after successful Stellar release — ' +
+            'manual reconciliation required using the Stellar TX ID above',
+        );
+
+        await this.handleEscrowFailure(tradeDealId, dbError);
+        throw dbError;
+      } finally {
+        // Always release the QueryRunner back to the pool — prevents connection leaks.
+        await qr.release();
       }
 
-      // Platform fee distribution record
-      paymentDistributions.push(
-        qr.manager.create(PaymentDistribution, {
+      // ── Phase 4: Side-effects (outside transaction to avoid rollback on non-critical failures) ──
+      setTimeout(() => {
+        this.sendCompletionNotifications(
           tradeDealId,
-          recipientType: 'platform',
-          recipientId: null,
-          walletAddress: platformWallet,
-          amountUsd: platformAmount,
-          stellarTxId,
-          status: 'confirmed',
-        }),
-      );
-
-      // Persist investor + platform distributions atomically (farmer rows were
-      // already persisted by distributePayment within this same transaction).
-      await qr.manager.save(PaymentDistribution, paymentDistributions);
-
-      // Mark deal as completed
-      const appTraceId = `app-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 10)}`;
-      await qr.manager.update(TradeDeal, tradeDealId, {
-        status: 'completed',
-        appTraceId,
-      });
-
-      // All DB writes succeeded — commit
-      await qr.commitTransaction();
-      await this.idempotency.markDone(idempotencyKey);
-      idempotencyMarkedDone = true;
-
-      this.logger.info(
-        `Deal ${tradeDealId} committed to completed. Stellar TX: ${stellarTxId}`,
-      );
-    } catch (dbError) {
-      // Roll back all DB writes atomically. The Stellar release already
-      // happened, so we log the Stellar TX ID for manual reconciliation.
-      await qr.rollbackTransaction();
-
-      this.logger.error(
-        {
-          tradeDealId,
-          stellarTxId,
-          error: dbError.message,
-        },
-        'DB transaction rolled back after successful Stellar release — ' +
-          'manual reconciliation required using the Stellar TX ID above',
-      );
-
-      await this.handleEscrowFailure(tradeDealId, dbError);
-      throw dbError;
-    } finally {
-      // Always release the QueryRunner back to the pool — prevents connection leaks.
-      await qr.release();
-    }
-
-    // ── Phase 4: Side-effects (outside transaction to avoid rollback on non-critical failures) ──
-    setTimeout(() => {
-      this.sendCompletionNotifications(
-        tradeDealId,
-        deal,
-        investments,
-        farmerDistributions.map((d) => ({
-          recipientId: d.recipientId,
-          amountUsd: Number(d.amountUsd),
-        })),
-      );
-      this.queueService.enqueueDealCleanup(tradeDealId).catch((err: Error) => {
-        this.logger.error(`Failed to enqueue deal cleanup: ${err.message}`);
-      });
-    }, 0);
+          deal,
+          investments,
+          farmerDistributions.map((d) => ({
+            recipientId: d.recipientId,
+            amountUsd: Number(d.amountUsd),
+          })),
+        );
+        this.queueService
+          .enqueueDealCleanup(tradeDealId)
+          .catch((err: Error) => {
+            this.logger.error(`Failed to enqueue deal cleanup: ${err.message}`);
+          });
+      }, 0);
     } catch (error) {
       if (!idempotencyMarkedDone) {
         await this.idempotency.releaseLease(idempotencyKey);
@@ -353,10 +355,7 @@ export class EscrowService {
           walletAddress: deal.farmer.walletAddress,
           portionPercent:
             100 -
-            coFarmers.reduce(
-              (sum, cf) => sum + Number(cf.portionPercent),
-              0,
-            ),
+            coFarmers.reduce((sum, cf) => sum + Number(cf.portionPercent), 0),
         },
         ...coFarmers.map((cf) => ({
           farmerId: cf.farmerId,

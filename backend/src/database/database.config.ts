@@ -61,10 +61,7 @@ export class DatabaseConfig
           'DATABASE_POOL_MAX',
           isProduction ? 50 : 10,
         ),
-        min: this.config.get<number>(
-          'DATABASE_POOL_MIN',
-          isProduction ? 5 : 2,
-        ),
+        min: this.config.get<number>('DATABASE_POOL_MIN', isProduction ? 5 : 2),
 
         // ── Timeout settings ─────────────────────────────────────────────────
         /** Milliseconds a connection can sit idle before being released back to

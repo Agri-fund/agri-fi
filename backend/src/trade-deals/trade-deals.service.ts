@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Optional,
   NotFoundException,
   BadRequestException,
   UnprocessableEntityException,
@@ -20,6 +21,7 @@ import {
 import { StellarService } from '../stellar/stellar.service';
 import { QueueService } from '../queue/queue.service';
 import { RiskScoringService } from './risk-scoring.service';
+import { SorobanService } from '../soroban/soroban.service';
 
 const VALID_DOC_TYPES: DocumentType[] = [
   'purchase_agreement',
@@ -30,8 +32,10 @@ const VALID_DOC_TYPES: DocumentType[] = [
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
 const PUBLIC_STATUSES: TradeDealStatus[] = ['open', 'funded'];
 
-type DealSearchSortBy = 'newest' | 'highest_roi' | 'closing_soon' | 'most_funded';
-type DealDurationBucket = '<3 months' | '3-6 months' | '6-12 months' | '>12 months';
+type DealSearchSortBy =
+  'newest' | 'highest_roi' | 'closing_soon' | 'most_funded';
+type DealDurationBucket =
+  '<3 months' | '3-6 months' | '6-12 months' | '>12 months';
 
 export interface TradeDealSearchQuery {
   commodity?: string;
@@ -49,7 +53,9 @@ export interface TradeDealSearchQuery {
   q?: string;
 }
 
-function bucketToDayRange(bucket?: DealDurationBucket): [number, number] | null {
+function bucketToDayRange(
+  bucket?: DealDurationBucket,
+): [number, number] | null {
   if (!bucket) return null;
   if (bucket === '<3 months') return [0, 90];
   if (bucket === '3-6 months') return [91, 180];
@@ -85,6 +91,7 @@ export class TradeDealsService {
     private readonly stellarService: StellarService,
     private readonly queueService: QueueService,
     private readonly riskScoringService: RiskScoringService,
+    @Optional() private readonly sorobanService?: SorobanService,
     private readonly logger: PinoLogger,
     private readonly dataSource: DataSource,
   ) {
@@ -170,6 +177,8 @@ export class TradeDealsService {
       traderId: effectiveTraderId,
       totalInvested: 0,
       deliveryDate: new Date(dto.delivery_date),
+      fundingDeadline: new Date(dto.funding_deadline ?? dto.delivery_date),
+      minimumFundingTarget: dto.minimum_funding_target ?? dto.total_value,
       minLotSize: dto.min_lot_size ?? 1,
       lotStep: dto.lot_step ?? 1,
       escrowPublicKey: null,
@@ -190,7 +199,10 @@ export class TradeDealsService {
 
     // #828 — compute initial risk score (non-blocking)
     this.riskScoringService.computeAndPersist(saved.id).catch((err) => {
-      this.logger.warn({ dealId: saved.id, error: err.message }, 'Failed to compute initial risk score');
+      this.logger.warn(
+        { dealId: saved.id, error: err.message },
+        'Failed to compute initial risk score',
+      );
     });
 
     return saved;
@@ -262,24 +274,30 @@ export class TradeDealsService {
     }
 
     if (query.country) {
-      qb.andWhere('LOWER(COALESCE(deal.country, \'\')) LIKE LOWER(:country)', {
+      qb.andWhere("LOWER(COALESCE(deal.country, '')) LIKE LOWER(:country)", {
         country: `%${query.country}%`,
       });
     }
 
     if (query.region) {
-      qb.andWhere('LOWER(COALESCE(deal.region, \'\')) LIKE LOWER(:region)', {
+      qb.andWhere("LOWER(COALESCE(deal.region, '')) LIKE LOWER(:region)", {
         region: `%${query.region}%`,
       });
     }
 
-    if (typeof query.minAmount === 'number' && Number.isFinite(query.minAmount)) {
+    if (
+      typeof query.minAmount === 'number' &&
+      Number.isFinite(query.minAmount)
+    ) {
       qb.andWhere('COALESCE(deal.min_investment_lot, 0) >= :minAmount', {
         minAmount: query.minAmount,
       });
     }
 
-    if (typeof query.maxAmount === 'number' && Number.isFinite(query.maxAmount)) {
+    if (
+      typeof query.maxAmount === 'number' &&
+      Number.isFinite(query.maxAmount)
+    ) {
       qb.andWhere('COALESCE(deal.min_investment_lot, 0) <= :maxAmount', {
         maxAmount: query.maxAmount,
       });
@@ -335,15 +353,19 @@ export class TradeDealsService {
 
     switch (query.sortBy) {
       case 'highest_roi':
-        qb.orderBy('COALESCE(deal.expected_roi, 0)', 'DESC')
-          .addOrderBy('deal.created_at', 'DESC');
+        qb.orderBy('COALESCE(deal.expected_roi, 0)', 'DESC').addOrderBy(
+          'deal.created_at',
+          'DESC',
+        );
         break;
       case 'closing_soon':
         qb.orderBy('deal.delivery_date', 'ASC');
         break;
       case 'most_funded':
-        qb.orderBy('deal.total_invested', 'DESC')
-          .addOrderBy('deal.created_at', 'DESC');
+        qb.orderBy('deal.total_invested', 'DESC').addOrderBy(
+          'deal.created_at',
+          'DESC',
+        );
         break;
       case 'newest':
       default:
@@ -727,6 +749,13 @@ export class TradeDealsService {
       });
     }
 
+    if (Number(deal.totalInvested) >= Number(deal.totalValue)) {
+      throw new UnprocessableEntityException({
+        code: 'DEAL_FUNDED',
+        message: 'Cannot expire a deal that has already reached its funding target.',
+      });
+    }
+
     const confirmedInvestments =
       deal.investments?.filter(
         (inv) => inv.status === InvestmentStatus.CONFIRMED,
@@ -809,6 +838,85 @@ export class TradeDealsService {
     });
 
     return saved;
+  }
+
+  async closeUnderfundedDeal(dealId: string): Promise<TradeDeal> {
+    const deal = await this.tradeDealRepo.findOne({
+      where: { id: dealId },
+      relations: ['investments', 'investments.investor'],
+    });
+
+    if (!deal) throw new NotFoundException('Trade deal not found.');
+    if (deal.status !== 'open') {
+      throw new UnprocessableEntityException({
+        code: 'DEAL_NOT_OPEN',
+        message: `Cannot close a deal in "${deal.status}" status.`,
+      });
+    }
+
+    const minimumTarget = Number(deal.minimumFundingTarget ?? deal.totalValue);
+    if (Number(deal.totalInvested) >= minimumTarget) {
+      throw new UnprocessableEntityException({
+        code: 'FUNDING_TARGET_REACHED',
+        message: 'Cannot close a deal that reached its minimum funding target.',
+      });
+    }
+
+    const confirmedInvestments = (deal.investments ?? []).filter(
+      (investment) => investment.status === InvestmentStatus.CONFIRMED,
+    );
+
+    if (deal.sorobanCampaignContractId && this.sorobanService) {
+      await this.sorobanService.markCampaignFailed(
+        deal.sorobanCampaignContractId,
+      );
+      for (const investment of confirmedInvestments) {
+        const walletAddress = investment.investor?.walletAddress;
+        if (!walletAddress) {
+          throw new UnprocessableEntityException({
+            code: 'INVESTOR_WALLET_REQUIRED',
+            message: `Investment ${investment.id} has no wallet address for refund.`,
+          });
+        }
+        await this.sorobanService.refundCampaignInvestor(
+          deal.sorobanCampaignContractId,
+          walletAddress,
+        );
+      }
+    } else {
+      await this.refundConfirmedInvestmentsWithClawback(deal, confirmedInvestments);
+    }
+
+    if (confirmedInvestments.length > 0) {
+      await this.investmentRepo.update(
+        confirmedInvestments.map((investment) => investment.id),
+        { status: InvestmentStatus.REFUNDED },
+      );
+    }
+    deal.status = 'expired';
+    deal.appTraceId = `app-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 10)}`;
+    return this.tradeDealRepo.save(deal);
+  }
+
+  private async refundConfirmedInvestmentsWithClawback(
+    deal: TradeDeal,
+    confirmedInvestments: Investment[],
+  ): Promise<void> {
+    if (!deal.issuerPublicKey || !deal.issuerSecretKey || !deal.stellarAssetTxId) return;
+    const shares = confirmedInvestments
+      .filter((investment) => investment.investor?.walletAddress)
+      .map((investment) => ({
+        walletAddress: investment.investor!.walletAddress as string,
+        tokenAmount: Number(investment.tokenAmount),
+      }));
+    if (shares.length === 0) return;
+    const issuerSecret = await this.stellarService.decryptSecret(deal.issuerSecretKey);
+    await this.stellarService.clawbackTokens(
+      deal.tokenSymbol,
+      deal.issuerPublicKey,
+      issuerSecret,
+      shares,
+    );
   }
 
   async findByUser(userId: string, role: string): Promise<any[]> {

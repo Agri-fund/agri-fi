@@ -28,7 +28,12 @@ export class TradeDealsCronService {
     const overdueDeals = await this.tradeDealRepo
       .createQueryBuilder('deal')
       .where('deal.status = :status', { status: 'open' })
-      .andWhere('deal.delivery_date < :now', { now })
+      .andWhere('COALESCE(deal.funding_deadline, deal.delivery_date) < :now', {
+        now,
+      })
+      .andWhere(
+        'deal.total_invested < COALESCE(deal.minimum_funding_target, deal.total_value)',
+      )
       .getMany();
 
     if (overdueDeals.length === 0) {
@@ -43,8 +48,8 @@ export class TradeDealsCronService {
 
     for (const deal of overdueDeals) {
       try {
-        await this.tradeDealsService.expireDeal(deal.id);
-        this.logger.info({ dealId: deal.id }, 'Successfully expired deal');
+        await this.tradeDealsService.closeUnderfundedDeal(deal.id);
+        this.logger.info({ dealId: deal.id }, 'Successfully closed underfunded deal');
       } catch (error) {
         this.logger.error(
           { dealId: deal.id, error: error.message },

@@ -100,11 +100,7 @@ describe('DealCoFarmersService (#891)', () => {
     });
 
     it('creates an invitation and enqueues a localized email', async () => {
-      const record = await service.inviteCoFarmer(
-        'deal-1',
-        'lead-farmer',
-        dto,
-      );
+      const record = await service.inviteCoFarmer('deal-1', 'lead-farmer', dto);
 
       expect(record.status).toBe('invited');
       expect(record.portionPercent).toBe(25);
@@ -160,9 +156,7 @@ describe('DealCoFarmersService (#891)', () => {
     });
 
     it('rejects inviting the lead farmer as their own co-farmer', async () => {
-      userRepo.findOne.mockResolvedValue(
-        buildUser({ id: 'lead-farmer' }),
-      );
+      userRepo.findOne.mockResolvedValue(buildUser({ id: 'lead-farmer' }));
       await expect(
         service.inviteCoFarmer('deal-1', 'lead-farmer', dto),
       ).rejects.toThrow(ConflictException);
@@ -195,11 +189,7 @@ describe('DealCoFarmersService (#891)', () => {
         status: 'removed',
       });
 
-      const record = await service.inviteCoFarmer(
-        'deal-1',
-        'lead-farmer',
-        dto,
-      );
+      const record = await service.inviteCoFarmer('deal-1', 'lead-farmer', dto);
       // Removed row excluded → 40 + 25 = 65 ≤ 100; existing row re-invited
       expect(record.status).toBe('invited');
       expect(coFarmerRepo.create).not.toHaveBeenCalled();
@@ -284,7 +274,9 @@ describe('DealCoFarmersService (#891)', () => {
     });
 
     it('blocks removal after delivery', async () => {
-      tradeDealRepo.findOne.mockResolvedValue(buildDeal({ status: 'delivered' }));
+      tradeDealRepo.findOne.mockResolvedValue(
+        buildDeal({ status: 'delivered' }),
+      );
       await expect(
         service.removeCoFarmer('deal-1', 'co-farmer-1', 'lead-farmer'),
       ).rejects.toThrow(UnprocessableEntityException);
@@ -294,7 +286,9 @@ describe('DealCoFarmersService (#891)', () => {
   describe('assertAllCoFarmersVerified (KYC gate)', () => {
     it('passes immediately when the deal has no co-farmers', async () => {
       coFarmerRepo.find.mockResolvedValue([]);
-      await expect(service.assertAllCoFarmersVerified('deal-1')).resolves.toBeUndefined();
+      await expect(
+        service.assertAllCoFarmersVerified('deal-1'),
+      ).resolves.toBeUndefined();
     });
 
     it('passes when every co-farmer accepted and is KYC verified', async () => {
@@ -310,7 +304,9 @@ describe('DealCoFarmersService (#891)', () => {
           farmer: { kycStatus: 'unverified' },
         },
       ]);
-      await expect(service.assertAllCoFarmersVerified('deal-1')).resolves.toBeUndefined();
+      await expect(
+        service.assertAllCoFarmersVerified('deal-1'),
+      ).resolves.toBeUndefined();
     });
 
     it('throws when an invitation is still pending', async () => {

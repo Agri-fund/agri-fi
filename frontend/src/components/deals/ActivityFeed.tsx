@@ -190,7 +190,7 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
   const renderEventMeta = (event: ActivityEvent) => {
     const { type, meta } = event;
     if (type === 'shipment_milestone' && meta.notes) {
-      return <p className="text-xs text-slate-400 mt-1 italic">"{String(meta.notes)}"</p>;
+      return <p className="text-xs text-slate-400 mt-1 italic">&ldquo;{String(meta.notes)}&rdquo;</p>;
     }
     if (type === 'investor_joined' && isAdmin && meta.amountUsd) {
       return (

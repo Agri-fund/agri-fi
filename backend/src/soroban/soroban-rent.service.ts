@@ -76,13 +76,13 @@ export class SorobanRentService implements OnModuleInit {
 
     const contractIds = await this.fetchActiveContractIds();
     if (contractIds.length === 0) {
-      this.logger.log('No active Soroban contracts found — skipping rent bump.');
+      this.logger.log(
+        'No active Soroban contracts found — skipping rent bump.',
+      );
       return;
     }
 
-    this.logger.log(
-      `Found ${contractIds.length} active contract(s) to check.`,
-    );
+    this.logger.log(`Found ${contractIds.length} active contract(s) to check.`);
 
     let extended = 0;
     let failed = 0;
@@ -123,7 +123,9 @@ export class SorobanRentService implements OnModuleInit {
       try {
         await this.restoreAndExtend(contractId);
         this.archivedContracts.delete(contractId);
-        this.logger.log(`Successfully restored archived contract ${contractId}.`);
+        this.logger.log(
+          `Successfully restored archived contract ${contractId}.`,
+        );
       } catch (err: any) {
         this.logger.error(
           `Recovery failed for archived contract ${contractId}: ${err.message}`,
@@ -140,7 +142,10 @@ export class SorobanRentService implements OnModuleInit {
    * is flagged as near-expiry from an external monitor.
    */
   async bumpContractRent(contractId: string): Promise<string> {
-    return this.soroban.extendContractTtl(contractId, DEFAULT_EXTEND_TO_LEDGERS);
+    return this.soroban.extendContractTtl(
+      contractId,
+      DEFAULT_EXTEND_TO_LEDGERS,
+    );
   }
 
   /**
@@ -148,7 +153,9 @@ export class SorobanRentService implements OnModuleInit {
    * Called when the platform detects that escrow payouts are failing
    * due to an archived contract state.
    */
-  async recoverContract(contractId: string): Promise<{ restoreHash: string; extendHash: string }> {
+  async recoverContract(
+    contractId: string,
+  ): Promise<{ restoreHash: string; extendHash: string }> {
     return this.restoreAndExtend(contractId);
   }
 
@@ -192,7 +199,9 @@ export class SorobanRentService implements OnModuleInit {
     contractId: string,
   ): Promise<{ restoreHash: string; extendHash: string }> {
     const restoreHash = await this.soroban.restoreArchivedContract(contractId);
-    this.logger.log(`Restored archived contract ${contractId}. tx: ${restoreHash}`);
+    this.logger.log(
+      `Restored archived contract ${contractId}. tx: ${restoreHash}`,
+    );
 
     const extendHash = await this.soroban.extendContractTtl(
       contractId,

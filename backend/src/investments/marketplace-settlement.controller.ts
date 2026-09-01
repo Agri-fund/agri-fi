@@ -115,7 +115,14 @@ export class MarketplaceSettlementController {
   @ApiResponse({ status: 201, description: 'Sell order created successfully' })
   async createSellOrder(
     @Request() req: any,
-    @Body() dto: { investmentId: string; dealId: string; askPrice: number; quantity: number; expiry?: string },
+    @Body()
+    dto: {
+      investmentId: string;
+      dealId: string;
+      askPrice: number;
+      quantity: number;
+      expiry?: string;
+    },
   ) {
     return this.settlementService.createSellOrder({
       sellerId: req.user.id,
@@ -133,7 +140,13 @@ export class MarketplaceSettlementController {
   @ApiResponse({ status: 201, description: 'Buy order created successfully' })
   async createBuyOrder(
     @Request() req: any,
-    @Body() dto: { dealId: string; bidPrice: number; quantity: number; expiry?: string },
+    @Body()
+    dto: {
+      dealId: string;
+      bidPrice: number;
+      quantity: number;
+      expiry?: string;
+    },
   ) {
     return this.settlementService.createBuyOrder({
       buyerId: req.user.id,

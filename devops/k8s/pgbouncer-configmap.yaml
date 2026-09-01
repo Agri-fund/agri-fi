@@ -1,0 +1,87 @@
+# PgBouncer configuration ConfigMap (#839)
+#
+# Mounts pgbouncer.ini into the pgbouncer sidecar container at:
+#   /bitnami/pgbouncer/conf/pgbouncer.ini
+#
+# Apply with:
+#   kubectl apply -f devops/k8s/pgbouncer-configmap.yaml
+#
+# The companion Secret `pgbouncer-userlist` (not tracked in git) must contain
+# the `userlist.txt` key with entries in the format:
+#   "username" "md5<hash>"
+# Create it with:
+#   kubectl create secret generic pgbouncer-userlist \
+#     --from-file=userlist.txt=devops/k8s/userlist.txt
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pgbouncer-config
+  namespace: default
+  labels:
+    app: agri-fi
+    component: pgbouncer
+data:
+  pgbouncer.ini: |
+    ; PgBouncer configuration for agri-fi (#839)
+    ;
+    ; Pool topology
+    ; ─────────────
+    ; Each backend pod has one PgBouncer sidecar listening on 127.0.0.1:6432.
+    ; The NestJS application connects to localhost:6432 rather than postgres:5432.
+    ; PgBouncer maintains up to 100 server connections to the real Postgres service
+    ; while accepting up to 200 simultaneous client connections from the app.
+    ;
+    ; Pool mode: transaction
+    ; ──────────────────────
+    ; Server connection is held only for the duration of a single transaction,
+    ; giving maximum connection efficiency for short-lived TypeORM transactions.
+
+    [databases]
+    ; Route the application database to the upstream Postgres service.
+    ; POSTGRESQL_HOST, POSTGRESQL_PORT, PGBOUNCER_DATABASE env vars from the
+    ; Bitnami image override host/port/dbname at runtime.
+    agric_onchain = host=postgres port=5432 dbname=agric_onchain pool_size=100
+
+    ; Virtual database for pgbouncer_exporter stats queries — no real Postgres
+    ; connection is opened for this entry.
+    pgbouncer = host=127.0.0.1 port=6432 dbname=pgbouncer
+
+    [pgbouncer]
+    ; ── Network ────────────────────────────────────────────────────────────
+    listen_addr = 127.0.0.1
+    listen_port = 6432
+
+    ; ── Authentication ──────────────────────────────────────────────────────
+    auth_type = md5
+    auth_file = /bitnami/pgbouncer/conf/userlist.txt
+
+    ; ── Pooling ─────────────────────────────────────────────────────────────
+    pool_mode = transaction
+    max_client_conn = 200
+    default_pool_size = 100
+    min_pool_size = 5
+    reserve_pool_size = 5
+    reserve_pool_timeout = 3.0
+
+    ; ── Timeouts ────────────────────────────────────────────────────────────
+    client_login_timeout = 60
+    server_idle_timeout = 600
+    server_connect_timeout = 15
+    query_timeout = 0
+    client_idle_timeout = 0
+
+    ; ── Server lifecycle ─────────────────────────────────────────────────────
+    server_check_query = select 1
+    server_check_delay = 30
+    server_lifetime = 3600
+    server_reset_query = DISCARD ALL
+
+    ; ── Stats & admin ────────────────────────────────────────────────────────
+    stats_users = pgbouncer
+    stats_period = 60
+
+    ; ── Logging ──────────────────────────────────────────────────────────────
+    log_connections = 0
+    log_disconnections = 0
+    log_pooler_errors = 1
+    verbose = 0

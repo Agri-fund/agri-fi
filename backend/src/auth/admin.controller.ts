@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Param,
   UseGuards,
   Request,
@@ -31,6 +32,9 @@ import {
   IsUUID,
   IsOptional,
   MinLength,
+  IsArray,
+  ArrayMinSize,
+  ValidateIf,
 } from 'class-validator';
 import { Roles } from './decorators/roles.decorator';
 import { RolesGuard } from './roles.guard';
@@ -45,6 +49,7 @@ import { SecurityThreatService } from './security-threat.service';
 import { SettlementService } from '../settlement/settlement.service';
 import { DocumentsService } from '../documents/documents.service';
 import { StorageService } from '../storage/storage.service';
+import { AuditService } from '../audit/audit.service';
 
 class UpdateUserRoleDto {
   @IsIn(['farmer', 'trader', 'investor', 'company_admin', 'admin'])
@@ -71,13 +76,30 @@ class RejectDocumentDto {
   reason: string;
 }
 
+class BulkKycDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsUUID('all', { each: true })
+  userIds: string[];
+
+  @IsIn(['approve', 'reject'])
+  action: 'approve' | 'reject';
+
+  /**
+   * Reason is mandatory for rejections.
+   */
+  @ValidateIf((o) => o.action === 'reject')
+  @IsString()
+  @MinLength(3)
+  reason?: string;
+}
+
 interface AuthRequest extends Request {
   user: User;
 }
 
 @ApiTags('admin')
-@Version('1')
-@Controller('admin')
+@Controller({ path: 'admin', version: '1' })
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 @Roles('admin')
 @ApiBearerAuth('jwt')
@@ -90,6 +112,7 @@ export class AdminController {
     private readonly settlementService: SettlementService,
     private readonly documentsService: DocumentsService,
     private readonly storageService: StorageService,
+    private readonly auditService: AuditService,
     @InjectRepository(TradeDeal)
     private readonly tradeDealRepo: Repository<TradeDeal>,
     @InjectRepository(Document)
@@ -97,6 +120,30 @@ export class AdminController {
     @InjectRepository(AdminAction)
     private readonly adminActionRepo: Repository<AdminAction>,
   ) {}
+
+  @Get('dlq')
+  @ApiOperation({ summary: 'List escrow dead-letter queue messages' })
+  @ApiResponse({ status: 200, description: 'DLQ messages' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
+  async listDlqMessages() {
+    return this.escrowDlqService.listMessages();
+  }
+
+  @Post('dlq/:id/replay')
+  @ApiOperation({ summary: 'Replay one escrow dead-letter queue message' })
+  @ApiResponse({ status: 200, description: 'Message replay result' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
+  async replayDlqMessage(@Param('id') id: string) {
+    return this.escrowDlqService.replayMessage(id);
+  }
+
+  @Post('dlq/replay-all')
+  @ApiOperation({ summary: 'Replay all escrow dead-letter queue messages' })
+  @ApiResponse({ status: 200, description: 'Bulk replay result' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
+  async replayAllDlqMessages() {
+    return this.escrowDlqService.replayAll();
+  }
 
   @Get('documents')
   @ApiOperation({ summary: 'List uploaded documents for admin verification' })
@@ -138,7 +185,10 @@ export class AdminController {
     const document = await this.documentRepo.findOne({ where: { id } });
     if (!document) throw new NotFoundException('Document not found');
 
-    if (document.ipfsHash.startsWith('Qm') || document.ipfsHash.startsWith('bafy')) {
+    if (
+      document.ipfsHash.startsWith('Qm') ||
+      document.ipfsHash.startsWith('bafy')
+    ) {
       await this.storageService.fetchAndVerifyIpfsDocument(document.ipfsHash);
     }
 
@@ -218,6 +268,76 @@ export class AdminController {
     @Query('reason') reason?: string,
   ) {
     return this.authService.approveKyc(userId, req.user.id, reason);
+  }
+
+  @Patch('kyc/bulk')
+  @ApiOperation({
+    summary: 'Bulk approve or reject multiple KYC submissions',
+    description:
+      'Processes a list of user IDs. Each action is recorded individually in the audit log ' +
+      'and an email notification is sent to each affected user. ' +
+      'Reason is mandatory when action = "reject".',
+  })
+  @ApiBody({ type: BulkKycDto })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Bulk operation completed (see processed/failures in response)',
+    schema: {
+      properties: {
+        processed: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              userId: { type: 'string' },
+              kycStatus: { type: 'string' },
+            },
+          },
+        },
+        failures: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              userId: { type: 'string' },
+              reason: { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Validation error or missing reason for rejection',
+  })
+  @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
+  async bulkKyc(@Request() req: AuthRequest, @Body() dto: BulkKycDto) {
+    const result = await this.authService.bulkApproveOrRejectKyc({
+      userIds: dto.userIds,
+      action: dto.action,
+      reason: dto.reason,
+      adminId: req.user.id,
+      adminRole: req.user.role,
+    });
+
+    // Log the overall bulk operation in system_audit_log
+    await this.auditService.logEvent({
+      actorId: req.user.id,
+      actorRole: req.user.role,
+      route: 'PATCH /admin/kyc/bulk',
+      statusCode: 200,
+      requestDetails: {
+        action: dto.action,
+        total: dto.userIds.length,
+        processed: result.processed.length,
+        failures: result.failures.length,
+        reason: dto.reason ?? null,
+      },
+    });
+
+    return result;
   }
 
   @Post('kyc/:id/approve-corporate')
@@ -310,9 +430,22 @@ export class AdminController {
   @ApiOperation({
     summary: 'List failed escrow payment transactions for admin review',
   })
-  @ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number (default 1)' })
-  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Items per page (default 20, max 100)' })
-  @ApiResponse({ status: 200, description: 'Paginated list of failed payments' })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    type: Number,
+    description: 'Page number (default 1)',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Items per page (default 20, max 100)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Paginated list of failed payments',
+  })
   @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
   async getFailedPayments(
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
@@ -336,9 +469,14 @@ export class AdminController {
   @ApiResponse({
     status: 201,
     description: 'Retry event enqueued',
-    schema: { properties: { queued: { type: 'boolean' }, dealId: { type: 'string' } } },
+    schema: {
+      properties: { queued: { type: 'boolean' }, dealId: { type: 'string' } },
+    },
   })
-  @ApiResponse({ status: 400, description: 'Transaction not in failed state or has no deal' })
+  @ApiResponse({
+    status: 400,
+    description: 'Transaction not in failed state or has no deal',
+  })
   @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
   @ApiResponse({ status: 404, description: 'Transaction log not found' })
   async retryFailedPayment(@Param('id') id: string) {
@@ -349,7 +487,8 @@ export class AdminController {
 
   @Get('security/blocks')
   @ApiOperation({
-    summary: 'List credential-stuffing enforcement blocks (CAPTCHA, rate limits, subnets)',
+    summary:
+      'List credential-stuffing enforcement blocks (CAPTCHA, rate limits, subnets)',
   })
   @ApiResponse({ status: 200, description: 'List of security blocks' })
   @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
@@ -361,8 +500,14 @@ export class AdminController {
   @ApiOperation({
     summary: 'Approve a pending /16 subnet block proposed by detection',
   })
-  @ApiResponse({ status: 200, description: 'Subnet block approved and enforced' })
-  @ApiResponse({ status: 400, description: 'Block is not a pending subnet block' })
+  @ApiResponse({
+    status: 200,
+    description: 'Subnet block approved and enforced',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Block is not a pending subnet block',
+  })
   @ApiResponse({ status: 404, description: 'Block not found' })
   async approveSecurityBlock(
     @Request() req: AuthRequest,

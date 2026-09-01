@@ -10,7 +10,11 @@ import { QueueModule } from '../queue/queue.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ShipmentMilestone, ShipmentSensorReading, TradeDeal]),
+    TypeOrmModule.forFeature([
+      ShipmentMilestone,
+      ShipmentSensorReading,
+      TradeDeal,
+    ]),
     QueueModule,
   ],
   providers: [ShipmentsService, SensorReadingsService],

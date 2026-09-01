@@ -146,6 +146,50 @@
       "connectWallet": "Connecter votre portefeuille dans la navigation supérieure"
     }
   },
+  "wallet": {
+    "title": "Connecter le portefeuille Stellar",
+    "subtitle": "Choisissez un fournisseur de portefeuille",
+    "description": "Votre clé privée ne quitte jamais votre portefeuille. Agri-Fi ne voit que votre clé publique.",
+    "connectButton": "Connecter le portefeuille",
+    "connecting": "Connexion…",
+    "connected": "Connecté",
+    "disconnect": "Déconnecter",
+    "freighter": {
+      "name": "Freighter",
+      "type": "Extension de navigateur"
+    },
+    "albedo": {
+      "name": "Albedo",
+      "type": "Signataire web — aucune installation requise"
+    },
+    "walletConnect": {
+      "name": "WalletConnect",
+      "type": "Se connecter via QR code ou lien direct"
+    },
+    "detected": "Détecté",
+    "install": "Installer",
+    "alwaysAvailable": "Toujours disponible",
+    "openDialog": "Ouvrir la boîte de connexion du portefeuille",
+    "closeDialog": "Fermer la boîte de connexion du portefeuille",
+    "error": "Erreur de connexion du portefeuille",
+    "errorConnect": "Échec de la connexion du portefeuille",
+    "errorLink": "Échec de la liaison du portefeuille",
+    "pleaseTryAgain": "Veuillez réessayer",
+    "onboarding": {
+      "title": "Connectez votre portefeuille",
+      "subtitle": "Choisissez un portefeuille Stellar pour commencer",
+      "comingSoon": "Bientôt disponible",
+      "termsNote": "En vous connectant, vous acceptez nos conditions d'utilisation. Vos clés restent dans votre portefeuille.",
+      "networkMismatch": "Réseau incorrect : votre portefeuille est sur {detected} mais cette application nécessite {expected}. Veuillez changer de réseau dans votre portefeuille.",
+      "freighterGuide": {
+        "title": "Comment installer Freighter",
+        "step1": "Visitez freighter.app et cliquez sur Installer",
+        "step2": "Ajoutez l'extension à votre navigateur",
+        "step3": "Créez ou importez un compte Stellar",
+        "cta": "Installer Freighter →"
+      }
+    }
+  },
   "deals": {
     "coFarmers": {
       "title": "Co-agriculteurs",
@@ -333,6 +377,71 @@
     "status": "Statut",
     "reward": "Récompense",
     "date": "Date"
+  },
+  "farmerProfile": {
+    "nav": {
+      "marketplace": "Marché"
+    },
+    "hero": {
+      "title": "Agriculteur de {country}",
+      "avatarAlt": "Avatar de l'agriculteur de {country}",
+      "memberSince": "Membre depuis {date}"
+    },
+    "verification": {
+      "heading": "Vérification et Badges",
+      "kycLabel": "Statut KYC : {status}",
+      "walletConnected": "Portefeuille connecté",
+      "dealsCount": "{count, plural, one {# contrat complété} other {# contrats complétés}}",
+      "kyc": {
+        "verified": "KYC Vérifié",
+        "pending": "KYC En attente",
+        "rejected": "KYC Rejeté",
+        "expired": "KYC Expiré"
+      }
+    },
+    "reputation": {
+      "heading": "Score de Réputation",
+      "gaugeAriaLabel": "Score de réputation : {score} sur 100",
+      "tooltip": "Basé sur l'historique des contrats et des paiements",
+      "excellent": "Excellent",
+      "good": "Bon",
+      "fair": "Correct",
+      "poor": "À améliorer",
+      "creditScore": "Score de Crédit",
+      "onTimeRate": "Remboursement à temps",
+      "creditTier": {}
+    },
+    "creditTier": {
+      "excellent": "Excellent",
+      "good": "Bon",
+      "fair": "Correct"
+    },
+    "activeDeals": {
+      "heading": "Contrats Actifs",
+      "none": "Aucun contrat actif pour le moment.",
+      "activeDeal": "Contrat Actif",
+      "statusActive": "Actif",
+      "viewOnMarketplace": "Voir sur le marché",
+      "browseLink": "Parcourir le marché",
+      "cardAriaLabel": "Contrat actif n°{number}"
+    },
+    "completedDeals": {
+      "heading": "Contrats Complétés",
+      "tableCaption": "Liste des contrats commerciaux complétés",
+      "colDeal": "Contrat",
+      "colStatus": "Statut",
+      "colRepayment": "Taux de remboursement",
+      "none": "Aucun contrat complété pour l'instant.",
+      "dealLabel": "Contrat n°{number}",
+      "statusCompleted": "Complété"
+    },
+    "stats": {
+      "heading": "Résumé",
+      "dealsCompleted": "Contrats complétés",
+      "activeDeals": "Contrats actifs",
+      "memberSince": "Membre depuis",
+      "country": "Pays"
+    }
   },
   "format": {
     "currency": "{value, number, currency}",

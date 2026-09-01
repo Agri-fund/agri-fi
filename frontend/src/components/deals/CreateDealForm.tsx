@@ -333,6 +333,19 @@ export function CreateDealForm({ onSuccess, onCancel }: CreateDealFormProps) {
     }
     setCoFarmerError(null);
 
+    const creationPromise = fetch('/api/trade-deals', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    }).then(async (response) => {
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to create deal');
+      }
+    });
+
     if (currentStep === 3) {
       const missingDoc = requiredDocs.find((doc) => !documents.find((entry) => entry.key === doc.key)?.file);
       if (missingDoc) nextErrors.documents = t('validation.documentRequired', { name: missingDoc.label });

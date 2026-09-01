@@ -10,10 +10,7 @@
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PinoLogger } from 'nestjs-pino';
-import {
-  Sep12Service,
-  mapInternalKycToSep12,
-} from './sep12.service';
+import { Sep12Service, mapInternalKycToSep12 } from './sep12.service';
 import { User } from '../auth/entities/user.entity';
 import { KycSubmission } from '../auth/entities/kyc-submission.entity';
 

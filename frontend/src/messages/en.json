@@ -181,6 +181,10 @@
       "name": "Albedo",
       "type": "Web-based signer — no install needed"
     },
+    "walletConnect": {
+      "name": "WalletConnect",
+      "type": "Connect via QR code or deep link"
+    },
     "detected": "Detected",
     "install": "Install",
     "alwaysAvailable": "Always available",
@@ -189,7 +193,21 @@
     "error": "Error connecting wallet",
     "errorConnect": "Failed to connect wallet",
     "errorLink": "Failed to link wallet",
-    "pleaseTryAgain": "Please try again"
+    "pleaseTryAgain": "Please try again",
+    "onboarding": {
+      "title": "Connect your wallet",
+      "subtitle": "Choose a Stellar wallet to get started",
+      "comingSoon": "Coming soon",
+      "termsNote": "By connecting, you agree to our Terms of Service. Your keys stay in your wallet.",
+      "networkMismatch": "Network mismatch: your wallet is on {detected} but this app requires {expected}. Please switch networks in your wallet.",
+      "freighterGuide": {
+        "title": "How to install Freighter",
+        "step1": "Visit freighter.app and click Install",
+        "step2": "Add the extension to your browser",
+        "step3": "Create or import a Stellar account",
+        "cta": "Install Freighter →"
+      }
+    }
   },
   "investment": {
     "title": "Invest",
@@ -284,5 +302,158 @@
       "logisticsRequired": "Please complete all logistics milestones.",
       "submitFailed": "Failed to submit the deal."
     }
+  },
+  "marketplace": {
+    "title": "Marketplace",
+    "subtitle": "Explore agricultural trade deals",
+    "searchPlaceholder": "Search commodity, trader...",
+    "filterByStatus": "Filter by Status",
+    "filterByCategory": "Filter by Category",
+    "sortBy": "Sort By",
+    "noDeals": "No deals available",
+    "loadingDeals": "Loading deals...",
+    "status": {
+      "draft": "Draft",
+      "published": "Published",
+      "funded": "Funded",
+      "completed": "Completed",
+      "cancelled": "Cancelled"
+    }
+  },
+  "common": {
+    "loading": "Loading...",
+    "error": "Error",
+    "success": "Success",
+    "processing": "Processing...",
+    "dismiss": "Dismiss",
+    "network": {
+      "offline": {
+        "title": "You are offline.",
+        "description": "Actions requiring internet access are disabled until connection is restored."
+      }
+    }
+  },
+  "referrals": {
+    "title": "Referral Program",
+    "description": "Share your referral link and earn rewards when referred users make their first investment.",
+    "yourLink": "Your Referral Link",
+    "copy": "Copy",
+    "copied": "Copied!",
+    "whatsapp": "WhatsApp",
+    "twitter": "Twitter",
+    "referredUsers": "Referred Users",
+    "noReferrals": "No referrals yet",
+    "shareToStart": "Share your link to start earning rewards!",
+    "linkClicks": "Link Clicks",
+    "registered": "Registered",
+    "rewarded": "Rewarded",
+    "totalEarned": "Total Earned",
+    "user": "User",
+    "status": "Status",
+    "reward": "Reward",
+    "date": "Date"
+  },
+  "farmerProfile": {
+    "nav": {
+      "marketplace": "Marketplace"
+    },
+    "hero": {
+      "title": "Farmer from {country}",
+      "avatarAlt": "Farmer avatar from {country}",
+      "memberSince": "Member since {date}"
+    },
+    "verification": {
+      "heading": "Verification & Badges",
+      "kycLabel": "KYC status: {status}",
+      "walletConnected": "Wallet connected",
+      "dealsCount": "{count, plural, one {# deal completed} other {# deals completed}}",
+      "kyc": {
+        "verified": "KYC Verified",
+        "pending": "KYC Pending",
+        "rejected": "KYC Rejected",
+        "expired": "KYC Expired"
+      }
+    },
+    "reputation": {
+      "heading": "Reputation Score",
+      "gaugeAriaLabel": "Reputation score: {score} out of 100",
+      "tooltip": "Based on deal history & repayment",
+      "excellent": "Excellent",
+      "good": "Good",
+      "fair": "Fair",
+      "poor": "Needs improvement",
+      "creditScore": "Credit Score",
+      "onTimeRate": "On-time repayment",
+      "creditTier": {}
+    },
+    "creditTier": {
+      "excellent": "Excellent",
+      "good": "Good",
+      "fair": "Fair"
+    },
+    "activeDeals": {
+      "heading": "Active Deals",
+      "none": "No active deals at the moment.",
+      "activeDeal": "Active Deal",
+      "statusActive": "Active",
+      "viewOnMarketplace": "View on marketplace",
+      "browseLink": "Browse marketplace",
+      "cardAriaLabel": "Active deal #{number}"
+    },
+    "completedDeals": {
+      "heading": "Completed Deals",
+      "tableCaption": "List of completed trade deals",
+      "colDeal": "Deal",
+      "colStatus": "Status",
+      "colRepayment": "Repayment rate",
+      "none": "No completed deals yet.",
+      "dealLabel": "Deal #{number}",
+      "statusCompleted": "Completed"
+    },
+    "stats": {
+      "heading": "Summary",
+      "dealsCompleted": "Deals completed",
+      "activeDeals": "Active deals",
+      "memberSince": "Member since",
+      "country": "Country"
+    }
+  },
+  "format": {
+    "currency": "{value, number, currency}",
+    "date": "{value, date, short}",
+    "number": "{value, number}"
+  },
+  "tour": {
+    "welcome": {
+      "title": "Welcome to Agri-Fi",
+      "text": "This quick tour will walk you through the key features of the platform. You can restart this tour anytime from Settings."
+    },
+    "browseDeals": {
+      "title": "Browse Deals",
+      "text": "Find investment opportunities in agricultural trade deals. Filter by commodity, status, and more."
+    },
+    "connectWallet": {
+      "title": "Connect Your Wallet",
+      "text": "Connect your Stellar wallet to invest in deals and track your portfolio on-chain."
+    },
+    "portfolioStats": {
+      "title": "Portfolio Stats",
+      "text": "Track your investments, returns, and deal performance at a glance."
+    },
+    "notificationBell": {
+      "title": "Stay Updated",
+      "text": "Get real-time notifications about your deals, investments, and platform updates."
+    },
+    "complete": {
+      "title": "You're All Set!",
+      "text": "You're ready to start exploring Agri-Fi. Happy investing!"
+    },
+    "buttons": {
+      "next": "Next",
+      "back": "Back",
+      "skip": "Skip Tour",
+      "finish": "Get Started"
+    },
+    "restart": "Restart Tour"
   }
 }

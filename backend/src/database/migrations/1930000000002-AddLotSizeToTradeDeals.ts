@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddLotSizeToTradeDeals1930000000002
-  implements MigrationInterface
-{
+export class AddLotSizeToTradeDeals1930000000002 implements MigrationInterface {
   name = 'AddLotSizeToTradeDeals1930000000002';
 
   public async up(queryRunner: QueryRunner): Promise<void> {

@@ -38,11 +38,33 @@ export class AdminArchiveController {
   ) {}
 
   @Get('deals')
-  @ApiOperation({ summary: 'Query archived trade deals by year range (admin only)' })
-  @ApiQuery({ name: 'startYear', required: false, type: Number, description: 'Start year (e.g. 2020)' })
-  @ApiQuery({ name: 'endYear', required: false, type: Number, description: 'End year (e.g. 2024)' })
-  @ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number (default 1)' })
-  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Items per page (default 20)' })
+  @ApiOperation({
+    summary: 'Query archived trade deals by year range (admin only)',
+  })
+  @ApiQuery({
+    name: 'startYear',
+    required: false,
+    type: Number,
+    description: 'Start year (e.g. 2020)',
+  })
+  @ApiQuery({
+    name: 'endYear',
+    required: false,
+    type: Number,
+    description: 'End year (e.g. 2024)',
+  })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    type: Number,
+    description: 'Page number (default 1)',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Items per page (default 20)',
+  })
   @ApiResponse({ status: 200, description: 'Archived deals list' })
   @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
   async getArchivedDeals(
@@ -54,8 +76,12 @@ export class AdminArchiveController {
     const where: any = {};
 
     if (startYear || endYear) {
-      const start = startYear ? new Date(`${startYear}-01-01T00:00:00.000Z`) : new Date('1970-01-01');
-      const end = endYear ? new Date(`${endYear}-12-31T23:59:59.999Z`) : new Date('2099-12-31');
+      const start = startYear
+        ? new Date(`${startYear}-01-01T00:00:00.000Z`)
+        : new Date('1970-01-01');
+      const end = endYear
+        ? new Date(`${endYear}-12-31T23:59:59.999Z`)
+        : new Date('2099-12-31');
       where.createdAt = Between(start, end);
     }
 
@@ -97,9 +123,7 @@ export class AdminArchiveController {
   @ApiOperation({ summary: 'Query archived shipment milestones (admin only)' })
   @ApiQuery({ name: 'tradeDealId', required: false, type: String })
   @ApiResponse({ status: 200, description: 'Archived milestones list' })
-  async getArchivedMilestones(
-    @Query('tradeDealId') tradeDealId?: string,
-  ) {
+  async getArchivedMilestones(@Query('tradeDealId') tradeDealId?: string) {
     const where: any = tradeDealId ? { tradeDealId } : {};
     return this.milestoneArchiveRepo.find({
       where,

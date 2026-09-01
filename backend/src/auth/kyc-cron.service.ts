@@ -17,7 +17,7 @@ type ReminderDay = (typeof KYC_REMINDER_DAYS)[number];
 const ALERT_FIELD_MAP: Record<ReminderDay, keyof KycSubmission> = {
   30: 'alert30SentAt',
   14: 'alert15SentAt', // reusing the existing column (was "15d", now 14d per spec)
-  7: 'alert3SentAt',   // reusing the existing column (was "3d", now 7d per spec)
+  7: 'alert3SentAt', // reusing the existing column (was "3d", now 7d per spec)
 };
 
 @Injectable()
@@ -121,7 +121,12 @@ export class KycCronService {
       `<p>The Agri-Fi Compliance Team</p>`;
 
     try {
-      await this.notificationsService.sendEmail(user.email, subject, text, html);
+      await this.notificationsService.sendEmail(
+        user.email,
+        subject,
+        text,
+        html,
+      );
 
       // Persist in-app notification as well
       await this.notificationsService.createNotification({
@@ -203,13 +208,19 @@ export class KycCronService {
         `<p>Please <a href="${resubmissionUrl}">resubmit your documents immediately</a>.</p>` +
         `<p>The Agri-Fi Compliance Team</p>`;
 
-      await this.notificationsService.sendEmail(user.email, subject, text, html);
+      await this.notificationsService.sendEmail(
+        user.email,
+        subject,
+        text,
+        html,
+      );
 
       await this.notificationsService.createNotification({
         userId: user.id,
         type: 'kyc',
         title: 'KYC document expired',
-        message: 'Your KYC document has expired. Please resubmit to restore access.',
+        message:
+          'Your KYC document has expired. Please resubmit to restore access.',
         linkUrl: resubmissionUrl,
         metadataJson: {
           submissionId: submission.id,

@@ -24,7 +24,10 @@ describe('FailedPaymentsService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         FailedPaymentsService,
-        { provide: getRepositoryToken(TransactionLog), useFactory: mockTxLogRepo },
+        {
+          provide: getRepositoryToken(TransactionLog),
+          useFactory: mockTxLogRepo,
+        },
         { provide: QueueService, useFactory: mockQueueService },
       ],
     }).compile();
@@ -49,7 +52,10 @@ describe('FailedPaymentsService', () => {
         },
       ];
 
-      txLogRepo.findAndCount.mockResolvedValue([mockRows as TransactionLog[], 1]);
+      txLogRepo.findAndCount.mockResolvedValue([
+        mockRows as TransactionLog[],
+        1,
+      ]);
 
       const result = await service.getFailedPayments(1, 20);
 
@@ -132,7 +138,9 @@ describe('FailedPaymentsService', () => {
 
       const result = await service.retryFailedPayment('tx-1');
 
-      expect(queueService.enqueueDealDelivered).toHaveBeenCalledWith('deal-abc');
+      expect(queueService.enqueueDealDelivered).toHaveBeenCalledWith(
+        'deal-abc',
+      );
       expect(result).toEqual({ queued: true, dealId: 'deal-abc' });
     });
 

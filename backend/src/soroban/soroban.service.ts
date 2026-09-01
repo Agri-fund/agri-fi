@@ -264,6 +264,17 @@ export class SorobanService {
     return this.invokeContract(contractId, 'mark_failed', args);
   }
 
+  async refundCampaignInvestor(
+    contractId: string,
+    investorAddress: string,
+  ): Promise<string> {
+    const args = [
+      new Address(this.platformKeypair.publicKey()).toScVal(),
+      new Address(investorAddress).toScVal(),
+    ];
+    return this.invokeContract(contractId, 'refund_by_admin', args);
+  }
+
   async getCampaignState(contractId: string): Promise<unknown> {
     return this.readContract(contractId, 'get_state', []);
   }

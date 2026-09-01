@@ -34,6 +34,7 @@ import { SubmitKycDto } from './dto/submit-kyc.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { QueueService } from '../queue/queue.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { AuditService } from '../audit/audit.service';
 import { JwtPayload } from './jwt.strategy';
 import { sanitizeRedirectUrl } from './utils/redirect-sanitizer';
 import { OfacSanctionsCheckService } from './utils/ofac-sanctions-check';
@@ -54,6 +55,12 @@ export interface LoginMeta {
   userAgent?: string;
   country?: string;
   acceptLanguage?: string;
+}
+
+export interface GoogleIdentity {
+  subject: string;
+  email: string;
+  emailVerified: boolean;
 }
 
 @Injectable()
@@ -81,6 +88,7 @@ export class AuthService {
     private readonly tokenBlocklistService: TokenBlocklistService,
     private readonly securityThreat: SecurityThreatService,
     @Optional() private readonly emailSequenceService: EmailSequenceService,
+    @Optional() private readonly auditService: AuditService,
   ) {
     const network = this.configService.get<string>(
       'STELLAR_NETWORK',
@@ -468,6 +476,60 @@ export class AuthService {
     };
   }
 
+  async loginWithGoogle(identity: GoogleIdentity): Promise<{
+    accessToken: string;
+    refreshToken: string;
+  }> {
+    if (!identity.emailVerified) {
+      throw new UnauthorizedException(
+        'Your Google email address must be verified before signing in.',
+      );
+    }
+
+    let user = await this.userRepo.findOne({
+      where: { googleSubject: identity.subject },
+    });
+
+    if (user && user.role !== 'investor') {
+      throw new ForbiddenException(
+        'Google sign-in is available for investor accounts only.',
+      );
+    }
+
+    if (!user) {
+      user = await this.userRepo.findOne({ where: { email: identity.email } });
+      if (user && user.role !== 'investor') {
+        throw new ForbiddenException(
+          'Google sign-in is available for investor accounts only.',
+        );
+      }
+    }
+
+    if (!user) {
+      user = this.userRepo.create({
+        email: identity.email,
+        googleSubject: identity.subject,
+        passwordHash: await this.hashPassword(randomBytes(32).toString('hex')),
+        role: 'investor',
+        country: 'UN',
+        kycStatus: 'pending',
+        isEmailVerified: true,
+      });
+    } else if (!user.googleSubject) {
+      user.googleSubject = identity.subject;
+    } else if (user.googleSubject !== identity.subject) {
+      throw new UnauthorizedException(
+        'This email is already linked to a different Google account.',
+      );
+    }
+
+    user.failedLoginAttempts = 0;
+    user.lockoutUntil = null;
+    user.isEmailVerified = true;
+    await this.userRepo.save(user);
+    return this.issueTokenPair(user);
+  }
+
   /** Persists a LoginLog row and alerts the user about unrecognized devices. */
   private async recordSuccessfulLogin(
     user: User,
@@ -650,24 +712,33 @@ export class AuthService {
 
   // ── logout & token revocation ──────────────────────────────────────────────
 
+  /**
+   * Logout a user. If a raw token string is provided it will be blocklisted
+   * until its natural expiry. In all cases the user's `tokenVersion` is
+   * incremented to immediately invalidate existing sessions.
+   */
   async logout(userId: string, token?: string): Promise<{ message: string }> {
+    // If a token string is provided, try to blocklist it until expiry.
     if (token) {
       try {
         const decoded: any = this.jwtService.decode(token);
         if (decoded && typeof decoded.exp === 'number') {
           const remainingSeconds = decoded.exp - Math.floor(Date.now() / 1000);
           if (remainingSeconds > 0) {
-            await this.tokenBlocklistService.blocklistToken(
-              token,
-              remainingSeconds,
-            );
+            await this.tokenBlocklistService.blocklistToken(token, remainingSeconds);
           }
         }
       } catch {
-        // decode error ignored
+        // ignore decode errors — still proceed to invalidate sessions
       }
     }
-    return { message: 'Logged out successfully' };
+
+    // Bump tokenVersion so all issued JWTs become invalid immediately.
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found.');
+    user.tokenVersion = (user.tokenVersion ?? 0) + 1;
+    await this.userRepo.save(user);
+    return { message: 'Logged out successfully.' };
   }
 
   // ── MFA ───────────────────────────────────────────────────────────────────
@@ -757,8 +828,8 @@ export class AuthService {
 
     // Verify password
     const passwordValid = await this.verifyPassword(
-      password,
       user.passwordHash,
+      password,
     );
     if (!passwordValid) {
       throw new BadRequestException('Invalid password.');
@@ -839,16 +910,6 @@ export class AuthService {
     } catch {
       return false;
     }
-  }
-
-  private async verifyPassword(
-    password: string,
-    hash: string,
-  ): Promise<boolean> {
-    if (this.isBcryptHash(hash)) {
-      return bcrypt.compare(password, hash);
-    }
-    return argon2.verify(hash, password);
   }
 
   // ── wallet ─────────────────────────────────────────────────────────────────
@@ -1261,14 +1322,7 @@ export class AuthService {
     };
   }
 
-  async logout(userId: string): Promise<{ message: string }> {
-    const user = await this.userRepo.findOne({ where: { id: userId } });
-    if (!user) throw new NotFoundException('User not found.');
 
-    user.tokenVersion = (user.tokenVersion ?? 0) + 1;
-    await this.userRepo.save(user);
-    return { message: 'Logged out successfully.' };
-  }
 
   // ── account unlock ────────────────────────────────────────────────────────
 
@@ -1279,7 +1333,7 @@ export class AuthService {
   private generateUnlockToken(userId: string): string {
     return this.jwtService.sign(
       { sub: userId, typ: 'account_unlock' },
-      { expiresIn: '15m' },
+      { expiresIn: '15m' } as any,
     );
   }
 
@@ -1293,43 +1347,28 @@ export class AuthService {
   ): Promise<{ message: string }> {
     let payload: any;
     try {
-      payload = this.jwtService.verify(token);
-    } catch (err: any) {
-      throw new BadRequestException({
-        code: 'INVALID_UNLOCK_TOKEN',
-        message: 'Invalid or expired unlock token.',
-      });
+      payload = this.jwtService.verify(token) as any;
+    } catch (err) {
+      throw new BadRequestException({ code: 'INVALID_UNLOCK_TOKEN', message: 'Invalid unlock token.' });
     }
 
-    if (payload.typ !== 'account_unlock') {
-      throw new BadRequestException({
-        code: 'INVALID_UNLOCK_TOKEN',
-        message: 'Invalid unlock token.',
-      });
+    if (!payload || payload.typ !== 'account_unlock' || !payload.sub) {
+      throw new BadRequestException({ code: 'INVALID_UNLOCK_TOKEN', message: 'Invalid unlock token.' });
     }
 
-    const userId = payload.sub;
+    const userId = payload.sub as string;
     const user = await this.userRepo.findOne({ where: { id: userId } });
-    if (!user) {
-      throw new NotFoundException('User not found.');
-    }
+    if (!user) throw new NotFoundException('User not found.');
 
-    // Reset lockout state
-    const wasLocked = user.lockoutUntil && user.lockoutUntil > new Date();
+    const wasLocked = !!(user.lockoutUntil && user.lockoutUntil > new Date());
     user.lockoutUntil = null;
     user.failedLoginAttempts = 0;
     await this.userRepo.save(user);
 
     // Log unlock attempt to login_logs with metadata
     if (meta?.ip) {
-      const deviceFingerprint = this.computeDeviceFingerprint(
-        meta.userAgent,
-        meta.acceptLanguage,
-      );
-      const countryCode = meta.country
-        ? meta.country.toUpperCase().slice(0, 2)
-        : null;
-
+      const deviceFingerprint = this.computeDeviceFingerprint(meta.userAgent, meta.acceptLanguage);
+      const countryCode = meta.country ? meta.country.toUpperCase().slice(0, 2) : null;
       await this.loginLogRepo.save(
         this.loginLogRepo.create({
           userId: user.id,
@@ -1343,10 +1382,162 @@ export class AuthService {
     }
 
     return {
-      message: wasLocked
-        ? 'Account has been unlocked successfully. You can now log in.'
-        : 'Account unlock token validated.',
+      message: wasLocked ? 'Account has been unlocked successfully. You can now log in.' : 'Account unlock token validated.',
     };
+  }
+
+  // ── bulk KYC (#800) ────────────────────────────────────────────────────────
+
+  /**
+   * Approve or reject multiple KYC submissions in a single request.
+   *
+   * For each userId:
+   *  - Updates the most recent `pending_review` submission to the new status.
+   *  - Updates the user's `kycStatus` on the user record.
+   *  - Writes an individual entry to `system_audit_logs`.
+   *  - Enqueues an email notification for the affected user.
+   *
+   * Entries that cannot be found (or have no pending submission) are recorded
+   * in the `failures` array in the response and do NOT abort the whole batch.
+   */
+  async bulkApproveOrRejectKyc(params: {
+    userIds: string[];
+    action: 'approve' | 'reject';
+    reason?: string;
+    adminId: string;
+    adminRole?: string;
+  }): Promise<{
+    processed: Array<{ userId: string; kycStatus: string }>;
+    failures: Array<{ userId: string; reason: string }>;
+  }> {
+    const { userIds, action, reason, adminId, adminRole } = params;
+
+    if (action === 'reject' && !reason?.trim()) {
+      throw new BadRequestException(
+        'A reason is required when rejecting KYC submissions.',
+      );
+    }
+
+    const processed: Array<{ userId: string; kycStatus: string }> = [];
+    const failures: Array<{ userId: string; reason: string }> = [];
+
+    for (const userId of userIds) {
+      try {
+        const user = await this.userRepo.findOne({ where: { id: userId } });
+        if (!user) {
+          failures.push({ userId, reason: 'User not found.' });
+          continue;
+        }
+
+        const submission = await this.kycRepo.findOne({
+          where: { userId, status: 'pending_review' },
+          order: { createdAt: 'DESC' },
+        });
+        if (!submission) {
+          failures.push({
+            userId,
+            reason: 'No pending KYC submission found for this user.',
+          });
+          continue;
+        }
+
+        if (action === 'approve') {
+          submission.status = 'approved';
+          await this.kycRepo.save(submission);
+
+          if (submission.isCorporate) {
+            user.isCompany = true;
+            user.companyDetails = {
+              companyName: submission.companyName ?? undefined,
+              registrationNumber: submission.registrationNumber ?? undefined,
+              articlesOfIncorporationUrl:
+                submission.articlesOfIncorporationUrl ?? undefined,
+            };
+          }
+
+          user.kycStatus = 'verified';
+          await this.userRepo.save(user);
+
+          await this.adminActionRepo.save(
+            this.adminActionRepo.create({
+              adminId,
+              targetUserId: user.id,
+              action: 'approve_kyc',
+              payload: { submissionId: submission.id, bulk: true },
+              reason: reason ?? null,
+            }),
+          );
+
+          // Write individual audit log entry
+          await this.auditService?.logEvent({
+            actorId: adminId,
+            actorRole: adminRole ?? 'admin',
+            route: 'PATCH /admin/kyc/bulk',
+            statusCode: 200,
+            requestDetails: {
+              action: 'approve',
+              userId,
+              submissionId: submission.id,
+              reason: reason ?? null,
+            },
+          });
+
+          this.queueService.emit('email.notification', {
+            type: 'kyc_verified',
+            email: user.email,
+            userId: user.id,
+          });
+
+          processed.push({ userId, kycStatus: user.kycStatus });
+        } else {
+          submission.status = 'rejected';
+          await this.kycRepo.save(submission);
+
+          user.kycStatus = 'rejected';
+          await this.userRepo.save(user);
+
+          await this.adminActionRepo.save(
+            this.adminActionRepo.create({
+              adminId,
+              targetUserId: user.id,
+              action: 'reject_kyc',
+              payload: { submissionId: submission.id, bulk: true },
+              reason: reason ?? null,
+            }),
+          );
+
+          // Write individual audit log entry
+          await this.auditService?.logEvent({
+            actorId: adminId,
+            actorRole: adminRole ?? 'admin',
+            route: 'PATCH /admin/kyc/bulk',
+            statusCode: 200,
+            requestDetails: {
+              action: 'reject',
+              userId,
+              submissionId: submission.id,
+              reason,
+            },
+          });
+
+          this.queueService.emit('email.notification', {
+            type: 'kyc_rejected',
+            email: user.email,
+            userId: user.id,
+            reason,
+          });
+
+          processed.push({ userId, kycStatus: user.kycStatus });
+        }
+      } catch (err: any) {
+        failures.push({
+          userId,
+          reason: err?.message ?? 'Unknown error.',
+        });
+      }
+    }
+
+    return { processed, failures };
   }
 
   // ── list users ─────────────────────────────────────────────────────────────
@@ -1523,15 +1714,11 @@ export class AuthService {
 
     const accessToken = this.jwtService.sign(
       { ...base, typ: 'access' },
-      {
-        expiresIn:
-          this.configService.get<string>('JWT_ACCESS_EXPIRES_IN') ??
-          this.configService.get<string>('JWT_EXPIRES_IN', '7d'),
-      },
+      { expiresIn: this.configService.get<string>('JWT_ACCESS_EXPIRES_IN') ?? this.configService.get<string>('JWT_EXPIRES_IN', '7d') } as any,
     );
     const refreshToken = this.jwtService.sign(
       { ...base, typ: 'refresh' },
-      { expiresIn: '7d' },
+      { expiresIn: '7d' } as any,
     );
 
     return { accessToken, refreshToken, publicKey: clientPublicKey };

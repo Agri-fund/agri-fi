@@ -23,6 +23,28 @@ scrape_configs:
     metrics_path: /metrics
     scrape_interval: 15s
 
+  # ── PgBouncer metrics (pgbouncer_exporter sidecar, port 9127) ───────────
+  # Each backend pod runs a pgbouncer_exporter sidecar that exposes PgBouncer
+  # internal stats (pool utilisation, active connections, queue depth, etc.)
+  # on port 9127.  Kubernetes pod annotations drive scraping in clusters with
+  # the Prometheus Kubernetes SD; the static config below covers the local
+  # docker-compose dev environment.
+  #
+  # Exposed metrics include (non-exhaustive):
+  #   pgbouncer_stats_total_requests_total   — total query/transaction count
+  #   pgbouncer_stats_total_received_bytes   — bytes received from clients
+  #   pgbouncer_pools_client_active_connections — active client connections
+  #   pgbouncer_pools_client_waiting_connections — clients waiting for a conn
+  #   pgbouncer_pools_server_active_connections  — active server connections
+  #   pgbouncer_pools_server_idle_connections    — idle server connections
+  #   pgbouncer_pools_maxwait_seconds            — longest client wait time
+  - job_name: pgbouncer
+    static_configs:
+      - targets:
+          - backend:9127
+    metrics_path: /metrics
+    scrape_interval: 15s
+
   # ── Prometheus self-monitoring ───────────────────────────────────────────
   - job_name: prometheus
     static_configs:

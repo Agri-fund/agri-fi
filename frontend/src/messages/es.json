@@ -163,6 +163,10 @@
       "name": "Albedo",
       "type": "Firmante basado en web — sin instalación"
     },
+    "walletConnect": {
+      "name": "WalletConnect",
+      "type": "Conectar vía código QR o enlace directo"
+    },
     "detected": "Detectado",
     "install": "Instalar",
     "alwaysAvailable": "Siempre disponible",
@@ -171,7 +175,21 @@
     "error": "Error al conectar billetera",
     "errorConnect": "Error al conectar con la billetera",
     "errorLink": "Error al vincular billetera",
-    "pleaseTryAgain": "Por favor, inténtalo de nuevo"
+    "pleaseTryAgain": "Por favor, inténtalo de nuevo",
+    "onboarding": {
+      "title": "Conecta tu billetera",
+      "subtitle": "Elige una billetera Stellar para comenzar",
+      "comingSoon": "Próximamente",
+      "termsNote": "Al conectarte, aceptas nuestros Términos de Servicio. Tus claves permanecen en tu billetera.",
+      "networkMismatch": "Red incorrecta: tu billetera está en {detected} pero esta aplicación requiere {expected}. Cambia de red en tu billetera.",
+      "freighterGuide": {
+        "title": "Cómo instalar Freighter",
+        "step1": "Visita freighter.app y haz clic en Instalar",
+        "step2": "Añade la extensión a tu navegador",
+        "step3": "Crea o importa una cuenta Stellar",
+        "cta": "Instalar Freighter →"
+      }
+    }
   },
   "investment": {
     "title": "Invertir",
@@ -350,6 +368,71 @@
     "logout": "Cerrar Sesión",
     "deleteAccount": "Eliminar Cuenta",
     "deleteAccountConfirm": "¿Estás seguro de que deseas eliminar tu cuenta? Esta acción no se puede deshacer."
+  },
+  "farmerProfile": {
+    "nav": {
+      "marketplace": "Mercado"
+    },
+    "hero": {
+      "title": "Agricultor de {country}",
+      "avatarAlt": "Avatar del agricultor de {country}",
+      "memberSince": "Miembro desde {date}"
+    },
+    "verification": {
+      "heading": "Verificación y Distintivos",
+      "kycLabel": "Estado KYC: {status}",
+      "walletConnected": "Billetera conectada",
+      "dealsCount": "{count, plural, one {# trato completado} other {# tratos completados}}",
+      "kyc": {
+        "verified": "KYC Verificado",
+        "pending": "KYC Pendiente",
+        "rejected": "KYC Rechazado",
+        "expired": "KYC Expirado"
+      }
+    },
+    "reputation": {
+      "heading": "Puntuación de Reputación",
+      "gaugeAriaLabel": "Puntuación de reputación: {score} de 100",
+      "tooltip": "Basado en historial de tratos y pagos",
+      "excellent": "Excelente",
+      "good": "Bueno",
+      "fair": "Regular",
+      "poor": "Necesita mejorar",
+      "creditScore": "Puntuación de Crédito",
+      "onTimeRate": "Pago a tiempo",
+      "creditTier": {}
+    },
+    "creditTier": {
+      "excellent": "Excelente",
+      "good": "Bueno",
+      "fair": "Regular"
+    },
+    "activeDeals": {
+      "heading": "Tratos Activos",
+      "none": "No hay tratos activos en este momento.",
+      "activeDeal": "Trato Activo",
+      "statusActive": "Activo",
+      "viewOnMarketplace": "Ver en el mercado",
+      "browseLink": "Explorar mercado",
+      "cardAriaLabel": "Trato activo #{number}"
+    },
+    "completedDeals": {
+      "heading": "Tratos Completados",
+      "tableCaption": "Lista de tratos comerciales completados",
+      "colDeal": "Trato",
+      "colStatus": "Estado",
+      "colRepayment": "Tasa de pago",
+      "none": "Aún no hay tratos completados.",
+      "dealLabel": "Trato #{number}",
+      "statusCompleted": "Completado"
+    },
+    "stats": {
+      "heading": "Resumen",
+      "dealsCompleted": "Tratos completados",
+      "activeDeals": "Tratos activos",
+      "memberSince": "Miembro desde",
+      "country": "País"
+    }
   },
   "format": {
     "currency": "{value, number, currency}",

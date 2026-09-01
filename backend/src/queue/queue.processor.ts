@@ -548,8 +548,7 @@ export class QueueProcessor implements OnApplicationShutdown {
     // Derive a stable idempotency key: prefer an explicit messageId on the
     // payload; fall back to userId+type for notification events.
     const businessId =
-      data.messageId ??
-      `${data.userId ?? 'unknown'}-${data.type ?? 'unknown'}`;
+      data.messageId ?? `${data.userId ?? 'unknown'}-${data.type ?? 'unknown'}`;
     const idemKey = IdempotencyService.buildKey(
       'email.notification',
       businessId,
@@ -638,7 +637,8 @@ export class QueueProcessor implements OnApplicationShutdown {
       data.userName ??
       details.farmerName ??
       details.investorName ??
-      (user?.fullName ?? deriveNameFromEmail(user?.email ?? data.email ?? ''));
+      user?.fullName ??
+      deriveNameFromEmail(user?.email ?? data.email ?? '');
 
     const vars: Record<string, unknown> = {
       userName: displayName,
@@ -712,7 +712,7 @@ export class QueueProcessor implements OnApplicationShutdown {
       };
     }
     if (data.type === 'deal_completed') {
-      let subject = `Deal Completed: ${data.dealDetails?.commodity}`;
+      const subject = `Deal Completed: ${data.dealDetails?.commodity}`;
       let text = `The deal you participated in (${data.dealDetails?.commodity}) has been completed.`;
       let html = `<h3>Deal Completed</h3><p>The deal you participated in (<strong>${data.dealDetails?.commodity}</strong>) has been completed.</p>`;
 
@@ -881,9 +881,13 @@ export class QueueProcessor implements OnApplicationShutdown {
     );
     if (!usdcContractId) return;
 
-    const deadlineTs = Math.floor(new Date(deal.deliveryDate).getTime() / 1000);
+    const deadlineTs = Math.floor(
+      new Date(deal.fundingDeadline ?? deal.deliveryDate).getTime() / 1000,
+    );
     const fundingTargetStroops = BigInt(
-      Math.round(Number(deal.totalValue) * 1e7),
+      Math.round(
+        Number(deal.minimumFundingTarget ?? deal.totalValue) * 1e7,
+      ),
     );
 
     const txHash = await this.sorobanService.initializeCampaign(
