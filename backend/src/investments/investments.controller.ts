@@ -2,9 +2,11 @@ import {
   Controller,
   Post,
   Get,
+  Patch,
   Param,
   Body,
   UseGuards,
+  UseInterceptors,
   Request,
   HttpCode,
   HttpStatus,
@@ -41,6 +43,8 @@ import { TradeDealsGuard } from '../trade-deals/trade-deals.guard';
 import { IdempotencyService } from '../queue/idempotency.service';
 import { InvestmentEventStore } from './investment-event-store.service';
 import { ReceiptService } from './receipt.service';
+import { CancelInvestmentDto } from './dto/cancel-investment.dto';
+import { AuditInterceptor } from '../audit/audit.interceptor';
 
 @ApiTags('investments')
 @ApiBearerAuth('jwt')
@@ -248,6 +252,45 @@ export class InvestmentsController {
       page: page ? parseInt(page, 10) : undefined,
       limit: limit ? parseInt(limit, 10) : undefined,
     });
+  }
+
+  /**
+   * Issue #788 — investor-initiated soft-cancel within the regulatory
+   * cooling-off window (default 48h, configurable via
+   * INVESTMENT_COOLING_OFF_HOURS), while the investment is still PENDING
+   * (i.e. before any funds have moved on-chain via fundEscrow).
+   */
+  @Patch(':id/cancel')
+  @UseInterceptors(AuditInterceptor)
+  @ApiOperation({
+    summary:
+      'Cancel a pending investment within the cooling-off window (investor only, #788)',
+  })
+  @ApiParam({ name: 'id', description: 'Investment UUID' })
+  @ApiResponse({ status: 200, description: 'Investment cancelled' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden — investor role required and must own the investment',
+  })
+  @ApiResponse({ status: 404, description: 'Investment not found' })
+  @ApiResponse({
+    status: 422,
+    description:
+      'Investment is no longer pending, or the cooling-off window has passed',
+  })
+  @UseGuards(RolesGuard)
+  @Roles('investor')
+  async cancelInvestment(
+    @Request() req: { user: { id: string } },
+    @Param('id') id: string,
+    @Body() dto: CancelInvestmentDto,
+  ) {
+    return this.investmentsService.requestCoolingOffCancel(
+      req.user.id,
+      id,
+      dto.reason,
+    );
   }
 
   /**

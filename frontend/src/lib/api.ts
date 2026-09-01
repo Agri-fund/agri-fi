@@ -338,6 +338,14 @@ export const apiClient = {
     return apiFetch<Deal[]>("/users/me/deals?role=trader");
   },
 
+  // PATCH /investments/:id/cancel
+  async cancelInvestment(investmentId: string, reason?: string): Promise<Investment> {
+    return apiFetch<Investment>(`/investments/${investmentId}/cancel`, {
+      method: "PATCH",
+      body: JSON.stringify(reason ? { reason } : {}),
+    });
+  },
+
   // GET /investments/my-investments
   async getInvestorInvestments(): Promise<Investment[]> {
     const response = await apiFetch<Investment[] | PaginatedResponse<any>>(

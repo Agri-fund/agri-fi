@@ -8,7 +8,7 @@ import { StellarService } from '../stellar/stellar.service';
 import { SorobanService } from '../soroban/soroban.service';
 import { TradeDealsService } from '../trade-deals/trade-deals.service';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
-import { Investment } from '../investments/entities/investment.entity';
+import { Investment, InvestmentStatus } from '../investments/entities/investment.entity';
 import { User } from '../auth/entities/user.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import {
@@ -338,6 +338,23 @@ export class QueueProcessor implements OnApplicationShutdown {
       this.logger.info(
         { investmentId: data.investmentId, status: lease.status },
         'investment.fund duplicate — acking without reprocessing',
+      );
+      channel.ack(originalMsg);
+      return;
+    }
+
+    // #788 — the investor may have cancelled during the cooling-off window
+    // between when this job was enqueued and now. Refuse to submit a real
+    // on-chain transfer for an investment that is no longer PENDING, rather
+    // than blindly overwriting whatever status a cancel (or any other path)
+    // already set.
+    const current = await this.investmentRepo.findOne({
+      where: { id: data.investmentId },
+    });
+    if (!current || current.status !== InvestmentStatus.PENDING) {
+      this.logger.info(
+        { investmentId: data.investmentId, status: current?.status },
+        'investment.fund skipped — investment is no longer pending (likely cancelled)',
       );
       channel.ack(originalMsg);
       return;
