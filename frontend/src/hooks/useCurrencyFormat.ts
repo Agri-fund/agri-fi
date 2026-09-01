@@ -9,12 +9,8 @@ export interface CurrencyFormatOptions {
 const FIAT_CURRENCIES = ['USD', 'EUR', 'KES', 'GBP', 'BRL', 'CAD', 'AUD', 'JPY'];
 
 export function useCurrencyFormat() {
-  let locale = 'en';
-  try {
-    locale = useLocale();
-  } catch {
-    locale = 'en';
-  }
+  const localeFromHook = useLocale();
+  const locale = localeFromHook ?? 'en';
 
   const formatCurrency = (
     amount: number | string,

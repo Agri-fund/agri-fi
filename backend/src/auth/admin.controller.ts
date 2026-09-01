@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Param,
   UseGuards,
   Request,
@@ -24,7 +25,17 @@ import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { User } from './entities/user.entity';
 import { ApiBody } from '@nestjs/swagger';
-import { IsIn, IsString, IsBoolean, IsUUID, MinLength } from 'class-validator';
+import {
+  IsIn,
+  IsString,
+  IsBoolean,
+  IsUUID,
+  IsOptional,
+  MinLength,
+  IsArray,
+  ArrayMinSize,
+  ValidateIf,
+} from 'class-validator';
 import { Roles } from './decorators/roles.decorator';
 import { RolesGuard } from './roles.guard';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -38,7 +49,7 @@ import { SecurityThreatService } from './security-threat.service';
 import { SettlementService } from '../settlement/settlement.service';
 import { DocumentsService } from '../documents/documents.service';
 import { StorageService } from '../storage/storage.service';
-import { EscrowDlqService } from '../escrow/escrow-dlq.service';
+import { AuditService } from '../audit/audit.service';
 
 class UpdateUserRoleDto {
   @IsIn(['farmer', 'trader', 'investor', 'company_admin', 'admin'])
@@ -65,6 +76,24 @@ class RejectDocumentDto {
   reason: string;
 }
 
+class BulkKycDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsUUID('all', { each: true })
+  userIds: string[];
+
+  @IsIn(['approve', 'reject'])
+  action: 'approve' | 'reject';
+
+  /**
+   * Reason is mandatory for rejections.
+   */
+  @ValidateIf((o) => o.action === 'reject')
+  @IsString()
+  @MinLength(3)
+  reason?: string;
+}
+
 interface AuthRequest extends Request {
   user: User;
 }
@@ -83,7 +112,7 @@ export class AdminController {
     private readonly settlementService: SettlementService,
     private readonly documentsService: DocumentsService,
     private readonly storageService: StorageService,
-    private readonly escrowDlqService: EscrowDlqService,
+    private readonly auditService: AuditService,
     @InjectRepository(TradeDeal)
     private readonly tradeDealRepo: Repository<TradeDeal>,
     @InjectRepository(Document)
@@ -239,6 +268,76 @@ export class AdminController {
     @Query('reason') reason?: string,
   ) {
     return this.authService.approveKyc(userId, req.user.id, reason);
+  }
+
+  @Patch('kyc/bulk')
+  @ApiOperation({
+    summary: 'Bulk approve or reject multiple KYC submissions',
+    description:
+      'Processes a list of user IDs. Each action is recorded individually in the audit log ' +
+      'and an email notification is sent to each affected user. ' +
+      'Reason is mandatory when action = "reject".',
+  })
+  @ApiBody({ type: BulkKycDto })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Bulk operation completed (see processed/failures in response)',
+    schema: {
+      properties: {
+        processed: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              userId: { type: 'string' },
+              kycStatus: { type: 'string' },
+            },
+          },
+        },
+        failures: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              userId: { type: 'string' },
+              reason: { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Validation error or missing reason for rejection',
+  })
+  @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
+  async bulkKyc(@Request() req: AuthRequest, @Body() dto: BulkKycDto) {
+    const result = await this.authService.bulkApproveOrRejectKyc({
+      userIds: dto.userIds,
+      action: dto.action,
+      reason: dto.reason,
+      adminId: req.user.id,
+      adminRole: req.user.role,
+    });
+
+    // Log the overall bulk operation in system_audit_log
+    await this.auditService.logEvent({
+      actorId: req.user.id,
+      actorRole: req.user.role,
+      route: 'PATCH /admin/kyc/bulk',
+      statusCode: 200,
+      requestDetails: {
+        action: dto.action,
+        total: dto.userIds.length,
+        processed: result.processed.length,
+        failures: result.failures.length,
+        reason: dto.reason ?? null,
+      },
+    });
+
+    return result;
   }
 
   @Post('kyc/:id/approve-corporate')

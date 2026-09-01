@@ -331,7 +331,7 @@ export function CreateDealForm({ onSuccess, onCancel }: CreateDealFormProps) {
         const errorData = await response.json();
         throw new Error(errorData.message || 'Failed to create deal');
       }
-    }
+    });
 
     if (currentStep === 3) {
       const missingDoc = requiredDocs.find((doc) => !documents.find((entry) => entry.key === doc.key)?.file);

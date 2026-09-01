@@ -30,6 +30,8 @@ import { MfaGuard } from './guards/mfa.guard';
 import { EscrowModule } from '../escrow/escrow.module';
 import { SettlementModule } from '../settlement/settlement.module';
 import { DocumentsModule } from '../documents/documents.module';
+import { AuditModule } from '../audit/audit.module';
+import { EmailSequenceModule } from '../email-sequence/email-sequence.module';
 
 @Module({
   imports: [
@@ -88,3 +90,59 @@ import { DocumentsModule } from '../documents/documents.module';
 })
 export class AuthModule {}
 
+@Module({
+  imports: [
+    TypeOrmModule.forFeature([
+      User,
+      KycSubmission,
+      TradeDeal,
+      Document,
+      LoginLog,
+      AdminAction,
+      SecurityIpBlock,
+    ]),
+    QueueModule,
+    NotificationsModule,
+    PassportModule,
+    EscrowModule,
+    EmailSequenceModule,
+    AuditModule,
+    SettlementModule,
+    DocumentsModule,
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        secret: config.getOrThrow<string>('JWT_SECRET'),
+        signOptions: { expiresIn: config.get<string>('JWT_EXPIRES_IN', '7d') },
+      }),
+    }),
+  ],
+  controllers: [AuthController, AdminController],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    GoogleStrategy,
+    KycGuard,
+    RolesGuard,
+    MfaGuard,
+    RedisConfig,
+    TokenBlocklistService,
+    SecurityThreatService,
+    OfacSanctionsCheckService,
+    KycCronService,
+  ],
+  exports: [
+    AuthService,
+    JwtModule,
+    TypeOrmModule,
+    KycGuard,
+    RolesGuard,
+    MfaGuard,
+    RedisConfig,
+    TokenBlocklistService,
+    SecurityThreatService,
+    OfacSanctionsCheckService,
+  ],
+})
+export class AuthModule {}

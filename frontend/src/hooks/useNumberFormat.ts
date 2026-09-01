@@ -7,12 +7,8 @@ export interface NumberFormatOptions {
 }
 
 export function useNumberFormat() {
-  let locale = 'en';
-  try {
-    locale = useLocale();
-  } catch {
-    locale = 'en';
-  }
+  const localeFromHook = useLocale();
+  const locale = localeFromHook ?? 'en';
 
   const formatNumber = (
     value: number | string,
