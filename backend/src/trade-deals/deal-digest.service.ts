@@ -283,7 +283,6 @@ export class DealDigestService implements OnModuleInit, OnModuleDestroy {
   /** SVG bar chart: one bar per active deal, height ∝ % funded. */
   renderFundingChart(deals: TradeDeal[]): string {
     if (deals.length === 0) return '';
-    const width = 520;
     const barWidth = 40;
     const gap = 20;
     const chartHeight = 120;

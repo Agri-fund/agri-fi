@@ -6,7 +6,6 @@ import {
   FeeType,
   InvestorTier,
 } from '../database/entities/fee-configuration.entity';
-import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
 import { User } from '../auth/entities/user.entity';
 
 /**

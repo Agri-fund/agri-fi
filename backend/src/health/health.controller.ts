@@ -7,14 +7,9 @@ import {
   DiskHealthIndicator,
 } from '@nestjs/terminus';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
-import { Transport } from '@nestjs/microservices';
-import { ConfigService } from '@nestjs/config';
 import { SkipThrottle } from '@nestjs/throttler';
 import { RabbitmqHealthIndicator } from './rabbitmq.health-indicator';
-import {
-  StellarHealthIndicator,
-  StellarHealthDetails,
-} from './stellar.health-indicator';
+import { StellarHealthIndicator } from './stellar.health-indicator';
 
 @ApiTags('health')
 @Controller({ path: 'health', version: '1' })

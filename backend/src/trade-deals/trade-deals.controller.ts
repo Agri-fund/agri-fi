@@ -43,7 +43,6 @@ import {
   InviteCoFarmerDto,
 } from './dto/co-farmer.dto';
 import { DealCoFarmer } from './entities/deal-co-farmer.entity';
-import { ActivityFeedService } from './activity-feed.service';
 import { ActivityFeedResponseDto } from './dto/activity-feed.dto';
 
 import { TradeDealAccessRequest, TradeDealsGuard } from './trade-deals.guard';

@@ -6,11 +6,7 @@ import { PinoLogger } from 'nestjs-pino';
 import { PaymentDistribution } from './entities/payment-distribution.entity';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
 import { DealCoFarmer } from '../trade-deals/entities/deal-co-farmer.entity';
-import {
-  computeFarmerPayoutSplits,
-  FarmerPayout,
-  PayoutParticipant,
-} from './payout-split';
+import { computeFarmerPayoutSplits, PayoutParticipant } from './payout-split';
 import {
   Investment,
   InvestmentStatus,

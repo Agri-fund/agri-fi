@@ -202,7 +202,6 @@ export class RiskScoringService {
    * Longer deals carry more uncertainty.
    */
   private scoreDealDuration(deliveryDate: Date, createdAt: Date): number {
-    const now = new Date();
     const delivery = new Date(deliveryDate);
     const created = new Date(createdAt);
 

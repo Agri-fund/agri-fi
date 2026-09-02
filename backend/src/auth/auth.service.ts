@@ -84,6 +84,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly queueService: QueueService,
+    private readonly notificationsService: NotificationsService,
     private readonly ofacSanctionsCheck: OfacSanctionsCheckService,
     private readonly tokenBlocklistService: TokenBlocklistService,
     private readonly securityThreat: SecurityThreatService,

@@ -267,9 +267,7 @@ export class SorobanEventIndexer implements OnModuleInit, OnModuleDestroy {
     const filters = [];
 
     // Filter for contract events from known contracts
-    for (const [contractName, contractId] of Object.entries(
-      this.contractAddresses,
-    )) {
+    for (const [, contractId] of Object.entries(this.contractAddresses)) {
       if (contractId) {
         filters.push({
           contractIds: [contractId],

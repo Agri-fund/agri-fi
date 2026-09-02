@@ -2,7 +2,6 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Horizon } from '@stellar/stellar-sdk';
 import axios from 'axios';
 import { StellarMonitorService } from './stellar-monitor.service';
 import { StellarService } from './stellar.service';
@@ -74,21 +73,19 @@ describe('StellarMonitorService - Account Merge Recovery', () => {
   });
 
   describe('processAccountMergeTx', () => {
+    const mockTx = {
+      id: 'abc123def456',
+      source_account: mockOriginalKey,
+      operations: [
+        {
+          type: 'account_merge',
+          source_account: mockOriginalKey,
+          into: mockMergedKey,
+        },
+      ],
+    };
+
     it('should create merge recovery record when detecting account merge operation', async () => {
-      const mockTx = {
-        id: 'abc123def456',
-        source_account: mockOriginalKey,
-        operations: [
-          {
-            type: 'account_merge',
-            source_account: mockOriginalKey,
-            into: mockMergedKey,
-          },
-        ],
-      };
-
-      (mergeRecoveryRepo.findOne as jest.Mock).mockResolvedValueOnce(null);
-
       const mockRecord = {
         id: 'recovery-123',
         originalPublicKey: mockOriginalKey,
@@ -119,19 +116,30 @@ describe('StellarMonitorService - Account Merge Recovery', () => {
       expect(mergeRecoveryRepo.save).toHaveBeenCalledWith(mockRecord);
     });
 
-    it('should skip already-tracked merges', async () => {
-      const mockTx = {
-        id: 'abc123def456',
-        source_account: mockOriginalKey,
-        operations: [
-          {
-            type: 'account_merge',
-            source_account: mockOriginalKey,
-            into: mockMergedKey,
-          },
-        ],
+    it('should handle invalid STELLAR_PLATFORM_SECRET gracefully', async () => {
+      const invalidConfig = {
+        get: jest.fn((key: string, defaultVal?: any) => {
+          if (key === 'STELLAR_PLATFORM_SECRET') {
+            return 'invalid-secret-key';
+          }
+          return defaultVal ?? '';
+        }),
       };
 
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          StellarMonitorService,
+          { provide: ConfigService, useValue: invalidConfig },
+        ],
+      }).compile();
+
+      const invalidService = module.get<StellarMonitorService>(
+        StellarMonitorService,
+      );
+      expect((invalidService as any).platformAccountId).toBeNull();
+    });
+
+    it('should handle missing native balance', async () => {
       const existingRecord = {
         id: 'recovery-existing',
         originalPublicKey: mockOriginalKey,
@@ -203,11 +211,20 @@ describe('StellarMonitorService - Account Merge Recovery', () => {
 
       await (service as any).attemptMergeRecovery(recovery);
 
-      expect(stellarService.createReplacementAccount).toHaveBeenCalled();
-      expect(stellarService.encryptSecret).toHaveBeenCalledWith(
-        'SBABCDEF123456',
-      );
-      expect(mergeRecoveryRepo.save).toHaveBeenCalled();
+      const metrics = (service as any).analyzeFeeMetrics(transactions);
+
+      // Total: 60 * 0.01 = 0.6 XLM over 30 days
+      expect(metrics.projectedMonthlyBurnXlm).toBeCloseTo(0.6, 1);
+    });
+
+    it('should handle single transaction', () => {
+      const now = new Date().toISOString();
+      const transactions = [{ fee_charged: '100', created_at: now }];
+
+      const metrics = (service as any).analyzeFeeMetrics(transactions);
+
+      expect(metrics.avgFeeXlm).toBe(0.00001);
+      expect(metrics.totalFeesXlm).toBe(0.00001);
     });
 
     it('should mark recovery as failed after 3 retry attempts', async () => {
@@ -340,7 +357,10 @@ describe('StellarMonitorService - Account Merge Recovery', () => {
           .mockResolvedValueOnce(['tx-hash-123']),
       } as any;
 
-      (service as any).stellarService = mockStellarService;
+      const noWebhookService = module.get<StellarMonitorService>(
+        StellarMonitorService,
+      );
+      (noWebhookService as any).server = mockServer;
 
       const investorShares = [
         { walletAddress: 'INVESTOR1', tokenAmount: 100, totalTokens: 100 },

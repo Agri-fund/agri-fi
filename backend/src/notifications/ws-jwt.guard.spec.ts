@@ -1,6 +1,6 @@
 import { ExecutionContext } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { WsJwtGuard, WS_AUTH_ERROR_CODE } from './ws-jwt.guard';
+import { WsJwtGuard } from './ws-jwt.guard';
 
 function makeContext(handshake: any = {}): ExecutionContext {
   const client = {

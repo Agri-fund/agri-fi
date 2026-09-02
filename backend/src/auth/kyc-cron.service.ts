@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, LessThanOrEqual, MoreThan } from 'typeorm';
+import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { PinoLogger } from 'nestjs-pino';
 import { KycSubmission } from './entities/kyc-submission.entity';
@@ -59,8 +59,9 @@ export class KycCronService {
       if (!submission.documentExpiresAt) continue;
 
       const expiresAt = new Date(submission.documentExpiresAt);
-      const msUntilExpiry = expiresAt.getTime() - now.getTime();
-      const daysUntilExpiry = Math.ceil(msUntilExpiry / (1000 * 60 * 60 * 24));
+      const daysUntilExpiry = Math.ceil(
+        (expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
+      );
 
       if (daysUntilExpiry <= 0) {
         await this.handleExpiration(submission);
@@ -92,7 +93,8 @@ export class KycCronService {
    */
   private async sendReminder(
     submission: KycSubmission,
-    daysRemaining: ReminderDay,
+    alertType: string,
+    alertField: keyof KycSubmission,
   ): Promise<void> {
     const user = submission.user;
     if (!user) {
@@ -142,41 +144,18 @@ export class KycCronService {
         },
       });
 
-      // Mark the alert as sent
-      const alertField = ALERT_FIELD_MAP[daysRemaining];
       await this.kycSubmissionRepo.update(submission.id, {
         [alertField]: new Date(),
       });
 
-      // Log to audit trail
-      await this.auditService.logEvent({
-        actorId: user.id,
-        actorRole: user.role,
-        route: 'kyc-cron/reminder',
-        statusCode: 200,
-        requestDetails: {
-          event: 'kyc_expiry_reminder_sent',
-          submissionId: submission.id,
-          userId: user.id,
-          daysRemaining,
-          documentExpiresAt: submission.documentExpiresAt,
-          alertField,
-        },
-      });
-
       this.logger.info(
-        { submissionId: submission.id, userId: user.id, daysRemaining },
-        `KYC expiry reminder sent (${daysRemaining}d)`,
+        { submissionId: submission.id, alertType },
+        `Successfully sent ${alertType} alert`,
       );
     } catch (error: any) {
       this.logger.error(
-        {
-          submissionId: submission.id,
-          userId: user.id,
-          daysRemaining,
-          error: error.message,
-        },
-        `Failed to send KYC expiry reminder (${daysRemaining}d)`,
+        { submissionId: submission.id, alertType, error: error.message },
+        `Failed to send ${alertType} alert`,
       );
     }
   }
@@ -244,13 +223,13 @@ export class KycCronService {
       });
 
       this.logger.info(
-        { submissionId: submission.id, userId: user.id },
-        'KYC submission expired; user kycStatus updated and notification sent',
+        { submissionId: submission.id, userId: submission.userId },
+        'Successfully expired KYC submission',
       );
     } catch (error: any) {
       this.logger.error(
-        { submissionId: submission.id, userId: user?.id, error: error.message },
-        'Failed to handle KYC expiration',
+        { submissionId: submission.id, error: error.message },
+        'Failed to expire KYC submission',
       );
     }
   }

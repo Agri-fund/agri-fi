@@ -21,10 +21,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-
-      - name: Install dependencies
-        run: npm install -g ts-node typescript
+          node-version: '24'
 
       - name: Create test dump
         run: |
@@ -43,7 +40,7 @@ jobs:
 
       - name: Run anonymisation
         run: |
-          ts-node devops/scripts/anonymise-dump.ts \
+          node devops/scripts/anonymise-dump.ts \
             --input /tmp/test-dump.sql \
             --output /tmp/anonymised-test.sql
 

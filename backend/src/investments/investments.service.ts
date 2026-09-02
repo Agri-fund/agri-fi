@@ -660,7 +660,7 @@ export class InvestmentsService {
           })),
         },
       );
-    } catch (err) {
+    } catch {
       // non-critical — log and swallow
     }
   }

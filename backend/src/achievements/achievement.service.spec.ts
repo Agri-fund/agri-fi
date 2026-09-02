@@ -5,7 +5,7 @@ import { Achievement } from './entities/achievement.entity';
 import { Investment } from '../investments/entities/investment.entity';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
 import { User } from '../auth/entities/user.entity';
-import { BadRequestException, ConflictException } from '@nestjs/common';
+import { BadRequestException } from '@nestjs/common';
 
 describe('AchievementService', () => {
   let service: AchievementService;

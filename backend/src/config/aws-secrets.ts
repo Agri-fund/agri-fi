@@ -3,6 +3,7 @@ import {
   GetSecretValueCommand,
   DescribeSecretCommand,
 } from '@aws-sdk/client-secrets-manager';
+import { randomInt } from 'crypto';
 
 export interface DbCredentials {
   host: string;
@@ -165,6 +166,5 @@ export async function rotationHandler(event: {
 function generateSecurePassword(length = 32): string {
   const chars =
     'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
-  const { randomInt } = require('crypto') as typeof import('crypto');
   return Array.from({ length }, () => chars[randomInt(chars.length)]).join('');
 }
