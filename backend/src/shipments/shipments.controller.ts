@@ -33,8 +33,7 @@ interface AuthRequest extends Request {
 @ApiTags('shipments')
 @ApiBearerAuth('jwt')
 @UseGuards(AuthGuard('jwt'))
-@Version('1')
-@Controller('shipments')
+@Controller({ path: 'shipments', version: '1' })
 export class ShipmentsController {
   constructor(
     private readonly shipmentsService: ShipmentsService,

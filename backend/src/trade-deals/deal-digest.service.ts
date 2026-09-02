@@ -54,7 +54,7 @@ export class DealDigestService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleInit(): Promise<void> {
-    this.redisClient = this.redisConfig.createClient();
+    this.redisClient = await this.redisConfig.createClient();
     if (this.redisClient && !this.redisClient.isOpen) {
       try {
         await this.redisClient.connect();

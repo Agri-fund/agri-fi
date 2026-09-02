@@ -82,6 +82,8 @@ export class RedisConfig {
       return null;
     }
 
+    const { authToken, redisUrl } = await this.resolveSecret(baseUrl);
+
     const tlsEnabled = this.configService.get<boolean>(
       'REDIS_TLS_ENABLED',
       true,

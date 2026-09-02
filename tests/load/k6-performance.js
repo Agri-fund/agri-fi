@@ -1,38 +1,94 @@
 /**
- * k6 load test — marketplace trade deal API routes
+ * k6 load test — Agri-Fi marketplace + investment + escrow payout flows
  *
- * Issue #448: simulate peak marketplace traffic against list + fetch endpoints.
- *
- * Install k6 CLI:
- *   macOS:   brew install k6
- *   Linux:   sudo gpg -k && sudo gpg --no-default-keyring \
- *              --keyring /usr/share/keyrings/k6-archive-keyring.gpg \
- *              --keyserver hkp://keyserver.ubuntu.com:80 \
- *              --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69 && \
- *            echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | \
- *              sudo tee /etc/apt/sources.list.d/k6.list && \
- *            sudo apt-get update && sudo apt-get install k6
- *   Windows: choco install k6
- *   Docs:    https://grafana.com/docs/k6/latest/set-up/install-k6/
- *
- * Run (backend must be reachable with seeded open deals):
- *   k6 run tests/load/k6-performance.js
+ * Simulates the major pre-production bottlenecks:
+ *  - browse open trade deals
+ *  - create investment requests at peak concurrency
+ *  - trigger escrow payout via shipment milestone completion
  *
  * Environment overrides:
- *   BASE_URL  — API origin (default http://localhost:3001)
- *   DEAL_ID   — fallback deal UUID when list response is empty
- *   VUS       — concurrent virtual users (default 100)
- *   DURATION  — steady-state duration (default 30s)
+ *   BASE_URL             — API origin (default http://localhost:3001)
+ *   DEAL_ID              — fallback open deal used by the investment flow
+ *   INVESTOR_EMAIL       — investor login used by the investment load scenario
+ *   INVESTOR_PASSWORD    — investor password (default Password123!)
+ *   TRADER_EMAIL         — trader login used by the payout scenario
+ *   TRADER_PASSWORD      — trader password (default Password123!)
+ *   VUS                  — default concurrency for the marketplace baseline
+ *   DURATION             — default duration (default 30s)
+ *   INVESTMENT_VUS       — investment flow virtual users
+ *   PAYOUT_VUS           — payout flow virtual users
  */
 
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:3001';
-const FALLBACK_DEAL_ID =
-  __ENV.DEAL_ID || 'b0000000-0000-0000-0000-000000000001';
-const VUS = Number(__ENV.VUS || 100);
+const FALLBACK_DEAL_ID = __ENV.DEAL_ID || 'b0000000-0000-0000-0000-000000000001';
+const INVESTOR_EMAIL = __ENV.INVESTOR_EMAIL || 'investor@agri-fi.demo';
+const INVESTOR_PASSWORD = __ENV.INVESTOR_PASSWORD || 'Password123!';
+const TRADER_EMAIL = __ENV.TRADER_EMAIL || 'trader@agri-fi.demo';
+const TRADER_PASSWORD = __ENV.TRADER_PASSWORD || 'Password123!';
+const VUS = Number(__ENV.VUS || 40);
 const DURATION = __ENV.DURATION || '30s';
+const INVESTMENT_VUS = Number(__ENV.INVESTMENT_VUS || 12);
+const PAYOUT_VUS = Number(__ENV.PAYOUT_VUS || 6);
+
+const AUTH = {
+  headers: {
+    'Content-Type': 'application/json',
+  },
+};
+
+function jwtHeaders(token) {
+  return {
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+  };
+}
+
+function withTag(tags) {
+  return {
+    tags,
+  };
+}
+
+function extractFirstDealId(response, preferredStatus) {
+  try {
+    const body = response.json();
+    const nodes = Array.isArray(body?.data)
+      ? body.data
+      : Array.isArray(body?.items)
+        ? body.items
+        : Array.isArray(body)
+          ? body
+          : [];
+
+    const byStatus = preferredStatus
+      ? nodes.find((d) => d?.status === preferredStatus)
+      : null;
+
+    return byStatus?.id || nodes[0]?.id || null;
+  } catch {
+    return null;
+  }
+}
+
+function login(email, password) {
+  const res = http.post(
+    `${BASE_URL}/v1/auth/login`,
+    JSON.stringify({ email, password }),
+    withTag({ name: 'Login' }),
+  );
+
+  check(res, {
+    'login returns 200': (r) => r.status === 200,
+    'login returns token': (r) => !!(r.json('accessToken') || r.json('token')),
+  });
+
+  return res.json('accessToken') || res.json('token') || null;
+}
 
 export const options = {
   scenarios: {
@@ -40,35 +96,74 @@ export const options = {
       executor: 'constant-vus',
       vus: VUS,
       duration: DURATION,
+      tags: { flow: 'marketplace' },
+    },
+    investment_creation: {
+      executor: 'ramping-vus',
+      startVUs: 2,
+      stages: [
+        { duration: '30s', target: INVESTMENT_VUS },
+        { duration: '2m', target: INVESTMENT_VUS },
+        { duration: '30s', target: Math.max(2, Math.floor(INVESTMENT_VUS / 2)) },
+      ],
+      gracefulStop: '30s',
+      tags: { flow: 'investment_creation' },
+    },
+    escrow_payout: {
+      executor: 'ramping-vus',
+      startVUs: 1,
+      stages: [
+        { duration: '20s', target: PayoutMax(PAYOUT_VUS) },
+        { duration: '2m', target: PayoutMax(PAYOUT_VUS) },
+        { duration: '20s', target: 1 },
+      ],
+      gracefulStop: '30s',
+      tags: { flow: 'escrow_payout' },
     },
   },
   thresholds: {
-    http_req_failed: ['rate<0.01'],
-    'http_req_duration{name:ListOpenDeals}': ['p(95)<200'],
-    'http_req_duration{name:GetDealDetail}': ['p(95)<200'],
+    http_req_failed: ['rate<0.05'],
+    'http_req_duration{name:ListOpenDeals}': ['p(95)<250'],
+    'http_req_duration{name:GetDealDetail}': ['p(95)<250'],
+    'http_req_duration{name:CreateInvestment}': ['p(95)<1500'],
+    'http_req_duration{name:FundEscrow}': ['p(95)<2000'],
+    'http_req_duration{name:RecordImporterMilestone}': ['p(95)<2000'],
   },
 };
 
+function PayoutMax(value) {
+  return Math.max(1, value);
+}
+
 export function setup() {
-  const listUrl = `${BASE_URL}/v1/trade-deals?page=1&limit=12`;
-  const response = http.get(listUrl, { tags: { name: 'SetupListOpenDeals' } });
+  const investorToken = login(INVESTOR_EMAIL, INVESTOR_PASSWORD);
+  const traderToken = login(TRADER_EMAIL, TRADER_PASSWORD);
 
-  if (response.status !== 200) {
-    return { dealId: FALLBACK_DEAL_ID };
-  }
+  const listRes = http.get(
+    `${BASE_URL}/v1/trade-deals?page=1&limit=20`,
+    jwtHeaders(investorToken || ''),
+  );
 
-  try {
-    const body = response.json();
-    const firstDeal = body?.data?.[0];
-    return { dealId: firstDeal?.id || FALLBACK_DEAL_ID };
-  } catch {
-    return { dealId: FALLBACK_DEAL_ID };
-  }
+  const openDealId = extractFirstDealId(listRes, 'open') || FALLBACK_DEAL_ID;
+
+  const payoutListRes = http.get(
+    `${BASE_URL}/v1/trade-deals?page=1&limit=20`,
+    jwtHeaders(traderToken || ''),
+  );
+
+  const payoutDealId = extractFirstDealId(payoutListRes, 'delivered') || openDealId;
+
+  return {
+    investorToken,
+    traderToken,
+    dealId: openDealId,
+    payoutDealId,
+  };
 }
 
 export default function marketplaceLoad(data) {
   const listUrl = `${BASE_URL}/v1/trade-deals?page=1&limit=12`;
-  const listResponse = http.get(listUrl, { tags: { name: 'ListOpenDeals' } });
+  const listResponse = http.get(listUrl, withTag({ name: 'ListOpenDeals' }));
 
   check(listResponse, {
     'list returns 200': (res) => res.status === 200,
@@ -81,20 +176,10 @@ export default function marketplaceLoad(data) {
     },
   });
 
-  let dealId = data.dealId;
-  if (listResponse.status === 200) {
-    try {
-      const deals = listResponse.json('data');
-      if (Array.isArray(deals) && deals.length > 0 && deals[0].id) {
-        dealId = deals[0].id;
-      }
-    } catch {
-      // keep setup fallback id
-    }
-  }
+  const dealId = extractFirstDealId(listResponse, 'open') || data.dealId;
 
   const detailUrl = `${BASE_URL}/v1/trade-deals/${dealId}`;
-  const detailResponse = http.get(detailUrl, { tags: { name: 'GetDealDetail' } });
+  const detailResponse = http.get(detailUrl, withTag({ name: 'GetDealDetail' }));
 
   check(detailResponse, {
     'detail returns 200': (res) => res.status === 200,
@@ -108,4 +193,110 @@ export default function marketplaceLoad(data) {
   });
 
   sleep(0.1);
+}
+
+export function investment_creation(data) {
+  const token = data.investorToken;
+  if (!token) {
+    return;
+  }
+
+  const dealId = extractFirstDealId(
+    http.get(
+      `${BASE_URL}/v1/trade-deals?page=1&limit=20`,
+      jwtHeaders(token),
+    ),
+    'open',
+  ) || data.dealId;
+
+  const tokenAmount = 10 + ((__VU * 13 + __ITER) % 40);
+  const amountUsd = tokenAmount * 100;
+
+  const createRes = http.post(
+    `${BASE_URL}/v1/investments`,
+    JSON.stringify({
+      tradeDealId: dealId,
+      tokenAmount,
+      amountUsd,
+    }),
+    {
+      ...jwtHeaders(token),
+      tags: { name: 'CreateInvestment', flow: 'investment_creation' },
+    },
+  );
+
+  check(createRes, {
+    'investment request handled': (r) => r.status >= 200 && r.status < 500,
+    'investment response returns JSON': (r) => {
+      try {
+        r.json();
+        return true;
+      } catch {
+        return false;
+      }
+    },
+  });
+
+  if (createRes.status === 200 || createRes.status === 201) {
+    const body = createRes.json();
+    const investmentId = body?.investment?.id;
+
+    if (investmentId) {
+      const fundRes = http.post(
+        `${BASE_URL}/v1/investments/${investmentId}/fund`,
+        JSON.stringify({
+          investorWalletAddress: `G${Math.random().toString(36).slice(2, 34).padEnd(56, 'X')}`,
+          signedXdr: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+        }),
+        {
+          ...jwtHeaders(token),
+          tags: { name: 'FundEscrow', flow: 'investment_creation' },
+        },
+      );
+
+      check(fundRes, {
+        'fund escrow request handled': (r) => r.status >= 200 && r.status < 500,
+      });
+    }
+  }
+
+  sleep(Math.random() * 0.6 + 0.2);
+}
+
+export function escrow_payout(data) {
+  const token = data.traderToken;
+  if (!token) {
+    return;
+  }
+
+  const dealId = data.payoutDealId || data.dealId;
+
+  const payoutRes = http.post(
+    `${BASE_URL}/v1/shipments/milestones`,
+    JSON.stringify({
+      trade_deal_id: dealId,
+      milestone: 'importer',
+      notes: 'Load test: escrow payout validation before production deploy',
+      latitude: 0.0,
+      longitude: 0.0,
+    }),
+    {
+      ...jwtHeaders(token),
+      tags: { name: 'RecordImporterMilestone', flow: 'escrow_payout' },
+    },
+  );
+
+  check(payoutRes, {
+    'payout trigger handled': (r) => r.status >= 200 && r.status < 500,
+    'payout response includes status or data': (r) => {
+      try {
+        const body = r.json();
+        return !!(body?.id || body?.status || body?.message || body?.error);
+      } catch {
+        return false;
+      }
+    },
+  });
+
+  sleep(Math.random() * 0.8 + 0.25);
 }

@@ -2,7 +2,11 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { PinoLogger } from 'nestjs-pino';
 import axios from 'axios';
-import { FxRateService, FX_RATES_CACHE_KEY } from './fx-rate.service';
+import {
+  FxRateService,
+  FX_RATES_CACHE_KEY,
+  SUPPORTED_CURRENCIES,
+} from './fx-rate.service';
 import { RedisClientType } from 'redis';
 
 jest.mock('axios');

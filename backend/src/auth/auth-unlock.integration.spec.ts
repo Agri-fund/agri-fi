@@ -115,6 +115,8 @@ describe('Auth - Account Lockout & Unlock (Integration)', () => {
     await app.init();
 
     jwtService = module.get<JwtService>(JwtService);
+    notificationsService =
+      module.get<NotificationsService>(NotificationsService);
   });
 
   afterAll(async () => {

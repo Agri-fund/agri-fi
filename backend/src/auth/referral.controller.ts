@@ -24,8 +24,7 @@ interface AuthRequest extends Request {
 
 @ApiTags('referrals')
 @ApiBearerAuth('jwt')
-@Version('1')
-@Controller('users/me/referrals')
+@Controller({ path: 'users/me/referrals', version: '1' })
 export class ReferralController {
   constructor(private readonly referralService: ReferralService) {}
 

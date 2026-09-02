@@ -1,0 +1,972 @@
+[96mscripts/batch-seed.ts[0m:[93m217[0m:[93m17[0m - [91merror[0m[90m TS2345: [0mArgument of type '{ tradeDealId: string; investorId: string; tokenAmount: number; amountUsd: number; stellarTxId: any; complianceData: { taxId: string; sourceOfFunds: string; }; status: "pending"; }[]' is not assignable to parameter of type '_QueryDeepPartialEntity<Investment> | _QueryDeepPartialEntity<Investment>[]'.
+  Type '{ tradeDealId: string; investorId: string; tokenAmount: number; amountUsd: number; stellarTxId: any; complianceData: { taxId: string; sourceOfFunds: string; }; status: "pending"; }[]' is not assignable to type '_QueryDeepPartialEntity<Investment>[]'.
+    Type '{ tradeDealId: string; investorId: string; tokenAmount: number; amountUsd: number; stellarTxId: any; complianceData: { taxId: string; sourceOfFunds: string; }; status: "pending"; }' is not assignable to type '_QueryDeepPartialEntity<Investment>'.
+      Types of property 'status' are incompatible.
+        Type '"pending"' is not assignable to type '(() => string) | _QueryDeepPartialEntity<InvestmentStatus>'.
+
+[7m217[0m         .values(chunk)
+[7m   [0m [91m                ~~~~~[0m
+[96mscripts/seed.ts[0m:[93m132[0m:[93m45[0m - [91merror[0m[90m TS2769: [0mNo overload matches this call.
+  Overload 1 of 3, '(entityLikeArray: DeepPartial<Investment>[]): Investment[]', gave the following error.
+    Object literal may only specify known properties, and 'tradeDealId' does not exist in type 'DeepPartial<Investment>[]'.
+  Overload 2 of 3, '(entityLike: DeepPartial<Investment>): Investment', gave the following error.
+    Type '"pending"' is not assignable to type 'InvestmentStatus'.
+
+[7m132[0m     const investment = investmentRepository.create({
+[7m   [0m [91m                                            ~~~~~~[0m
+
+  [96msrc/investments/entities/investment.entity.ts[0m:[93m95[0m:[93m3[0m
+    [7m95[0m   status: InvestmentStatus;
+    [7m  [0m [96m  ~~~~~~[0m
+    The expected type comes from property 'status' which is declared here on type 'DeepPartial<Investment>'
+[96msrc/auth/admin.controller.ts[0m:[93m209[0m:[93m29[0m - [91merror[0m[90m TS2339: [0mProperty 'listUsers' does not exist on type 'AuthService'.
+
+[7m209[0m     return this.authService.listUsers(parseInt(page), parseInt(limit));
+[7m   [0m [91m                            ~~~~~~~~~[0m
+[96msrc/auth/admin.controller.ts[0m:[93m291[0m:[93m44[0m - [91merror[0m[90m TS2339: [0mProperty 'freezeAsset' does not exist on type 'StellarService'.
+
+[7m291[0m     const txId = await this.stellarService.freezeAsset(
+[7m   [0m [91m                                           ~~~~~~~~~~~[0m
+[96msrc/auth/admin.controller.ts[0m:[93m401[0m:[93m28[0m - [91merror[0m[90m TS2769: [0mNo overload matches this call.
+  Overload 1 of 3, '(entityLikeArray: DeepPartial<AdminAction>[]): AdminAction[]', gave the following error.
+    Object literal may only specify known properties, and 'adminId' does not exist in type 'DeepPartial<AdminAction>[]'.
+  Overload 2 of 3, '(entityLike: DeepPartial<AdminAction>): AdminAction', gave the following error.
+    Type '"approve_security_block"' is not assignable to type '"approve_kyc" | "approve_corporate_kyc" | "update_user_role" | "freeze_asset" | "verify_document" | "reject_document"'.
+
+[7m401[0m       this.adminActionRepo.create({
+[7m   [0m [91m                           ~~~~~~[0m
+
+  [96msrc/database/entities/admin-action.entity.ts[0m:[93m28[0m:[93m3[0m
+    [7m28[0m   action: AdminActionType;
+    [7m  [0m [96m  ~~~~~~[0m
+    The expected type comes from property 'action' which is declared here on type 'DeepPartial<AdminAction>'
+[96msrc/auth/auth.controller.ts[0m:[93m360[0m:[93m29[0m - [91merror[0m[90m TS2339: [0mProperty 'generateSep10Challenge' does not exist on type 'AuthService'.
+
+[7m360[0m     return this.authService.generateSep10Challenge(query.wallet);
+[7m   [0m [91m                            ~~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/auth/auth.controller.ts[0m:[93m379[0m:[93m29[0m - [91merror[0m[90m TS2339: [0mProperty 'validateSep10Response' does not exist on type 'AuthService'.
+
+[7m379[0m     return this.authService.validateSep10Response(dto.signedXdr);
+[7m   [0m [91m                            ~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/auth/auth.module.ts[0m:[93m51[0m:[93m5[0m - [91merror[0m[90m TS2304: [0mCannot find name 'EmailSequenceModule'.
+
+[7m51[0m     EmailSequenceModule,
+[7m  [0m [91m    ~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/auth/auth.module.ts[0m:[93m57[0m:[93m7[0m - [91merror[0m[90m TS2322: [0mType '(config: ConfigService) => { secret: string; signOptions: { expiresIn: string; }; }' is not assignable to type '(...args: any[]) => JwtModuleOptions | Promise<JwtModuleOptions>'.
+  Type '{ secret: string; signOptions: { expiresIn: string; }; }' is not assignable to type 'JwtModuleOptions | Promise<JwtModuleOptions>'.
+    Type '{ secret: string; signOptions: { expiresIn: string; }; }' is not assignable to type 'JwtModuleOptions'.
+      The types of 'signOptions.expiresIn' are incompatible between these types.
+        Type 'string' is not assignable to type 'number | StringValue'.
+
+[7m57[0m       useFactory: (config: ConfigService) => ({
+[7m  [0m [91m      ~~~~~~~~~~[0m
+
+  [96mnode_modules/@nestjs/jwt/dist/interfaces/jwt-module-options.interface.d.ts[0m:[93m24[0m:[93m5[0m
+    [7m24[0m     useFactory?: (...args: any[]) => Promise<JwtModuleOptions> | JwtModuleOptions;
+    [7m  [0m [96m    ~~~~~~~~~~[0m
+    The expected type comes from property 'useFactory' which is declared here on type 'JwtModuleAsyncOptions'
+[96msrc/auth/auth.service.ts[0m:[93m143[0m:[93m16[0m - [91merror[0m[90m TS2339: [0mProperty 'notificationsService' does not exist on type 'AuthService'.
+
+[7m143[0m     await this.notificationsService.sendEmail(
+[7m   [0m [91m               ~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m283[0m:[93m36[0m - [91merror[0m[90m TS2769: [0mNo overload matches this call.
+  Overload 1 of 3, '(payload: string, options?: Omit<JwtSignOptions, keyof SignOptions>): string', gave the following error.
+    Argument of type '{ typ: string; sub: string; email: string; role: string; tokenVersion?: number; jti?: string; familyId?: string; iat?: number; exp?: number; }' is not assignable to parameter of type 'string'.
+  Overload 2 of 3, '(payload: Buffer<ArrayBufferLike>, options?: JwtSignOptions): string', gave the following error.
+    Object literal may only specify known properties, and 'typ' does not exist in type 'Buffer<ArrayBufferLike>'.
+  Overload 3 of 3, '(payload: { typ: string; sub: string; email: string; role: string; tokenVersion?: number; jti?: string; familyId?: string; iat?: number; exp?: number; }, options?: JwtSignOptions): string', gave the following error.
+    Type 'string' is not assignable to type 'number | StringValue'.
+
+[7m283[0m       accessToken: this.jwtService.sign(
+[7m   [0m [91m                                   ~~~~[0m
+
+  [96mnode_modules/@types/jsonwebtoken/index.d.ts[0m:[93m43[0m:[93m5[0m
+    [7m43[0m     expiresIn?: StringValue | number;
+    [7m  [0m [96m    ~~~~~~~~~[0m
+    The expected type comes from property 'expiresIn' which is declared here on type 'JwtSignOptions'
+[96msrc/auth/auth.service.ts[0m:[93m287[0m:[93m37[0m - [91merror[0m[90m TS2769: [0mNo overload matches this call.
+  Overload 1 of 3, '(payload: string, options?: Omit<JwtSignOptions, keyof SignOptions>): string', gave the following error.
+    Argument of type '{ typ: string; jti: `${string}-${string}-${string}-${string}-${string}`; familyId: string; sub: string; email: string; role: string; tokenVersion?: number; iat?: number; exp?: number; }' is not assignable to parameter of type 'string'.
+  Overload 2 of 3, '(payload: Buffer<ArrayBufferLike>, options?: JwtSignOptions): string', gave the following error.
+    Object literal may only specify known properties, and 'typ' does not exist in type 'Buffer<ArrayBufferLike>'.
+  Overload 3 of 3, '(payload: { typ: string; jti: `${string}-${string}-${string}-${string}-${string}`; familyId: string; sub: string; email: string; role: string; tokenVersion?: number; iat?: number; exp?: number; }, options?: JwtSignOptions): string', gave the following error.
+    Type 'string' is not assignable to type 'number | StringValue'.
+
+[7m287[0m       refreshToken: this.jwtService.sign(
+[7m   [0m [91m                                    ~~~~[0m
+
+  [96mnode_modules/@types/jsonwebtoken/index.d.ts[0m:[93m43[0m:[93m5[0m
+    [7m43[0m     expiresIn?: StringValue | number;
+    [7m  [0m [96m    ~~~~~~~~~[0m
+    The expected type comes from property 'expiresIn' which is declared here on type 'JwtSignOptions'
+[96msrc/auth/auth.service.ts[0m:[93m404[0m:[93m20[0m - [91merror[0m[90m TS2339: [0mProperty 'notificationsService' does not exist on type 'AuthService'.
+
+[7m404[0m         await this.notificationsService.sendEmail(
+[7m   [0m [91m                   ~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m653[0m:[93m9[0m - [91merror[0m[90m TS2393: [0mDuplicate function implementation.
+
+[7m653[0m   async logout(userId: string, token?: string): Promise<{ message: string }> {
+[7m   [0m [91m        ~~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m913[0m:[93m12[0m - [91merror[0m[90m TS2339: [0mProperty 'kycDraft' does not exist on type 'User'.
+
+[7m913[0m       user.kycDraft = null;
+[7m   [0m [91m           ~~~~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m935[0m:[93m26[0m - [91merror[0m[90m TS2339: [0mProperty 'kycDraft' does not exist on type 'User'.
+
+[7m935[0m     return { draft: user.kycDraft ?? null };
+[7m   [0m [91m                         ~~~~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m944[0m:[93m10[0m - [91merror[0m[90m TS2339: [0mProperty 'kycDraft' does not exist on type 'User'.
+
+[7m944[0m     user.kycDraft = draft;
+[7m   [0m [91m         ~~~~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m946[0m:[93m26[0m - [91merror[0m[90m TS2339: [0mProperty 'kycDraft' does not exist on type 'User'.
+
+[7m946[0m     return { draft: user.kycDraft };
+[7m   [0m [91m                         ~~~~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1254[0m:[93m9[0m - [91merror[0m[90m TS2393: [0mDuplicate function implementation.
+
+[7m1254[0m   async logout(userId: string): Promise<{ message: string }> {
+[7m    [0m [91m        ~~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1286[0m:[93m7[0m - [91merror[0m[90m TS2353: [0mObject literal may only specify known properties, and 'accessToken' does not exist in type '{ message: string; }'.
+
+[7m1286[0m       accessToken: this.jwtService.sign(
+[7m    [0m [91m      ~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1291[0m:[93m55[0m - [91merror[0m[90m TS18004: [0mNo value exists in scope for the shorthand property 'familyId'. Either declare one or provide an initializer.
+
+[7m1291[0m         { ...base, typ: 'refresh', jti: randomUUID(), familyId },
+[7m    [0m [91m                                                      ~~~~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1296[0m:[93m15[0m - [91merror[0m[90m TS2695: [0mLeft side of comma operator is unused and has no side effects.
+
+[7m1296[0m         code: 'INVALID_UNLOCK_TOKEN',
+[7m    [0m [91m              ~~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1297[0m:[93m9[0m - [91merror[0m[90m TS2552: [0mCannot find name 'message'. Did you mean 'onmessage'?
+
+[7m1297[0m         message: 'Invalid unlock token.',
+[7m    [0m [91m        ~~~~~~~[0m
+
+  [96mnode_modules/typescript/lib/lib.dom.d.ts[0m:[93m39081[0m:[93m13[0m
+    [7m39081[0m declare var onmessage: ((this: Window, ev: MessageEvent) => any) | null;
+    [7m     [0m [96m            ~~~~~~~~~[0m
+    'onmessage' is declared here.
+[96msrc/auth/auth.service.ts[0m:[93m1297[0m:[93m16[0m - [91merror[0m[90m TS1005: [0m';' expected.
+
+[7m1297[0m         message: 'Invalid unlock token.',
+[7m    [0m [91m               ~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1297[0m:[93m18[0m - [91merror[0m[90m TS2695: [0mLeft side of comma operator is unused and has no side effects.
+
+[7m1297[0m         message: 'Invalid unlock token.',
+[7m    [0m [91m                 ~~~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1298[0m:[93m7[0m - [91merror[0m[90m TS1109: [0mExpression expected.
+
+[7m1298[0m       });
+[7m    [0m [91m      ~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1298[0m:[93m8[0m - [91merror[0m[90m TS1068: [0mUnexpected token. A constructor, method, accessor, or property was expected.
+
+[7m1298[0m       });
+[7m    [0m [91m       ~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1301[0m:[93m20[0m - [91merror[0m[90m TS2304: [0mCannot find name 'payload'.
+
+[7m1301[0m     const userId = payload.sub;
+[7m    [0m [91m                   ~~~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1302[0m:[93m11[0m - [91merror[0m[90m TS2451: [0mCannot redeclare block-scoped variable 'user'.
+
+[7m1302[0m     const user = await this.userRepo.findOne({ where: { id: userId } });
+[7m    [0m [91m          ~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1302[0m:[93m24[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m1302[0m     const user = await this.userRepo.findOne({ where: { id: userId } });
+[7m    [0m [91m                       ~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1311[0m:[93m11[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m1311[0m     await this.userRepo.save(user);
+[7m    [0m [91m          ~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1314[0m:[93m9[0m - [91merror[0m[90m TS2304: [0mCannot find name 'meta'.
+
+[7m1314[0m     if (meta?.ip) {
+[7m    [0m [91m        ~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1315[0m:[93m33[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m1315[0m       const deviceFingerprint = this.computeDeviceFingerprint(
+[7m    [0m [91m                                ~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1316[0m:[93m9[0m - [91merror[0m[90m TS2304: [0mCannot find name 'meta'.
+
+[7m1316[0m         meta.userAgent,
+[7m    [0m [91m        ~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1317[0m:[93m9[0m - [91merror[0m[90m TS2304: [0mCannot find name 'meta'.
+
+[7m1317[0m         meta.acceptLanguage,
+[7m    [0m [91m        ~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1319[0m:[93m27[0m - [91merror[0m[90m TS2304: [0mCannot find name 'meta'.
+
+[7m1319[0m       const countryCode = meta.country
+[7m    [0m [91m                          ~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1320[0m:[93m11[0m - [91merror[0m[90m TS2304: [0mCannot find name 'meta'.
+
+[7m1320[0m         ? meta.country.toUpperCase().slice(0, 2)
+[7m    [0m [91m          ~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1323[0m:[93m13[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m1323[0m       await this.loginLogRepo.save(
+[7m    [0m [91m            ~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1324[0m:[93m9[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m1324[0m         this.loginLogRepo.create({
+[7m    [0m [91m        ~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1326[0m:[93m22[0m - [91merror[0m[90m TS2304: [0mCannot find name 'meta'.
+
+[7m1326[0m           ipAddress: meta.ip ?? 'unknown',
+[7m    [0m [91m                     ~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1327[0m:[93m40[0m - [91merror[0m[90m TS2304: [0mCannot find name 'meta'.
+
+[7m1327[0m           userAgent: `unlock_attempt|${meta.userAgent ?? 'unknown'}`,
+[7m    [0m [91m                                       ~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1328[0m:[93m20[0m - [91merror[0m[90m TS2304: [0mCannot find name 'meta'.
+
+[7m1328[0m           country: meta.country ?? null,
+[7m    [0m [91m                   ~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1340[0m:[93m3[0m - [91merror[0m[90m TS1128: [0mDeclaration or statement expected.
+
+[7m1340[0m   }
+[7m    [0m [91m  ~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1344[0m:[93m3[0m - [91merror[0m[90m TS1434: [0mUnexpected keyword or identifier.
+
+[7m1344[0m   async listUsers(
+[7m    [0m [91m  ~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1344[0m:[93m3[0m - [91merror[0m[90m TS2304: [0mCannot find name 'async'.
+
+[7m1344[0m   async listUsers(
+[7m    [0m [91m  ~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1344[0m:[93m9[0m - [91merror[0m[90m TS2304: [0mCannot find name 'listUsers'.
+
+[7m1344[0m   async listUsers(
+[7m    [0m [91m        ~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1345[0m:[93m5[0m - [91merror[0m[90m TS2304: [0mCannot find name 'page'.
+
+[7m1345[0m     page = 1,
+[7m    [0m [91m    ~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1346[0m:[93m5[0m - [91merror[0m[90m TS2304: [0mCannot find name 'limit'.
+
+[7m1346[0m     limit = 100,
+[7m    [0m [91m    ~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1347[0m:[93m4[0m - [91merror[0m[90m TS1005: [0m';' expected.
+
+[7m1347[0m   ): Promise<{ users: Partial<User>[]; total: number }> {
+[7m    [0m [91m   ~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1347[0m:[93m6[0m - [91merror[0m[90m TS2365: [0mOperator '<' cannot be applied to types 'PromiseConstructor' and '{ users: boolean; total: any; }'.
+
+[7m1347[0m   ): Promise<{ users: Partial<User>[]; total: number }> {
+[7m    [0m [91m     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1347[0m:[93m6[0m - [91merror[0m[90m TS2365: [0mOperator '>' cannot be applied to types 'boolean' and '{ const: any; return: { users: any; total: any; }; }'.
+
+[7m1347[0m   ): Promise<{ users: Partial<User>[]; total: number }> {
+[7m    [0m [91m     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[7m1348[0m     const [users, total] = await this.userRepo.findAndCount({
+[7m    [0m [91m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[7m ...[0m 
+[7m1364[0m     return { users, total };
+[7m    [0m [91m~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[7m1365[0m   }
+[7m    [0m [91m~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1347[0m:[93m23[0m - [91merror[0m[90m TS2693: [0m'Partial' only refers to a type, but is being used as a value here.
+
+[7m1347[0m   ): Promise<{ users: Partial<User>[]; total: number }> {
+[7m    [0m [91m                      ~~~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1347[0m:[93m23[0m - [91merror[0m[90m TS2365: [0mOperator '>' cannot be applied to types 'boolean' and 'undefined[]'.
+
+[7m1347[0m   ): Promise<{ users: Partial<User>[]; total: number }> {
+[7m    [0m [91m                      ~~~~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1347[0m:[93m38[0m - [91merror[0m[90m TS1005: [0m',' expected.
+
+[7m1347[0m   ): Promise<{ users: Partial<User>[]; total: number }> {
+[7m    [0m [91m                                     ~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1347[0m:[93m47[0m - [91merror[0m[90m TS2693: [0m'number' only refers to a type, but is being used as a value here.
+
+[7m1347[0m   ): Promise<{ users: Partial<User>[]; total: number }> {
+[7m    [0m [91m                                              ~~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1348[0m:[93m11[0m - [91merror[0m[90m TS1005: [0m':' expected.
+
+[7m1348[0m     const [users, total] = await this.userRepo.findAndCount({
+[7m    [0m [91m          ~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1348[0m:[93m12[0m - [91merror[0m[90m TS2304: [0mCannot find name 'users'.
+
+[7m1348[0m     const [users, total] = await this.userRepo.findAndCount({
+[7m    [0m [91m           ~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1348[0m:[93m19[0m - [91merror[0m[90m TS2304: [0mCannot find name 'total'.
+
+[7m1348[0m     const [users, total] = await this.userRepo.findAndCount({
+[7m    [0m [91m                  ~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1348[0m:[93m34[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m1348[0m     const [users, total] = await this.userRepo.findAndCount({
+[7m    [0m [91m                                 ~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1350[0m:[93m14[0m - [91merror[0m[90m TS2304: [0mCannot find name 'page'.
+
+[7m1350[0m       skip: (page - 1) * limit,
+[7m    [0m [91m             ~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1350[0m:[93m26[0m - [91merror[0m[90m TS2304: [0mCannot find name 'limit'.
+
+[7m1350[0m       skip: (page - 1) * limit,
+[7m    [0m [91m                         ~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1351[0m:[93m13[0m - [91merror[0m[90m TS2304: [0mCannot find name 'limit'.
+
+[7m1351[0m       take: limit,
+[7m    [0m [91m            ~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1363[0m:[93m7[0m - [91merror[0m[90m TS1005: [0m',' expected.
+
+[7m1363[0m     });
+[7m    [0m [91m      ~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1364[0m:[93m12[0m - [91merror[0m[90m TS1005: [0m':' expected.
+
+[7m1364[0m     return { users, total };
+[7m    [0m [91m           ~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1364[0m:[93m14[0m - [91merror[0m[90m TS18004: [0mNo value exists in scope for the shorthand property 'users'. Either declare one or provide an initializer.
+
+[7m1364[0m     return { users, total };
+[7m    [0m [91m             ~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1364[0m:[93m21[0m - [91merror[0m[90m TS18004: [0mNo value exists in scope for the shorthand property 'total'. Either declare one or provide an initializer.
+
+[7m1364[0m     return { users, total };
+[7m    [0m [91m                    ~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1364[0m:[93m28[0m - [91merror[0m[90m TS1005: [0m',' expected.
+
+[7m1364[0m     return { users, total };
+[7m    [0m [91m                           ~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1371[0m:[93m3[0m - [91merror[0m[90m TS1434: [0mUnexpected keyword or identifier.
+
+[7m1371[0m   async generateSep10Challenge(
+[7m    [0m [91m  ~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1371[0m:[93m3[0m - [91merror[0m[90m TS2304: [0mCannot find name 'async'.
+
+[7m1371[0m   async generateSep10Challenge(
+[7m    [0m [91m  ~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1371[0m:[93m9[0m - [91merror[0m[90m TS2304: [0mCannot find name 'generateSep10Challenge'.
+
+[7m1371[0m   async generateSep10Challenge(
+[7m    [0m [91m        ~~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1372[0m:[93m5[0m - [91merror[0m[90m TS2448: [0mBlock-scoped variable 'clientPublicKey' used before its declaration.
+
+[7m1372[0m     clientPublicKey: string,
+[7m    [0m [91m    ~~~~~~~~~~~~~~~[0m
+
+  [96msrc/auth/auth.service.ts[0m:[93m1460[0m:[93m11[0m
+    [7m1460[0m     const clientPublicKey = (manageDataOp as any).source;
+    [7m    [0m [96m          ~~~~~~~~~~~~~~~[0m
+    'clientPublicKey' is declared here.
+[96msrc/auth/auth.service.ts[0m:[93m1372[0m:[93m20[0m - [91merror[0m[90m TS1005: [0m',' expected.
+
+[7m1372[0m     clientPublicKey: string,
+[7m    [0m [91m                   ~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1372[0m:[93m22[0m - [91merror[0m[90m TS2693: [0m'string' only refers to a type, but is being used as a value here.
+
+[7m1372[0m     clientPublicKey: string,
+[7m    [0m [91m                     ~~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1373[0m:[93m4[0m - [91merror[0m[90m TS1005: [0m';' expected.
+
+[7m1373[0m   ): Promise<{ transactionXdr: string; networkPassphrase: string }> {
+[7m    [0m [91m   ~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1373[0m:[93m6[0m - [91merror[0m[90m TS2365: [0mOperator '<' cannot be applied to types 'PromiseConstructor' and '{ transactionXdr: any; networkPassphrase: any; }'.
+
+[7m1373[0m   ): Promise<{ transactionXdr: string; networkPassphrase: string }> {
+[7m    [0m [91m     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1373[0m:[93m6[0m - [91merror[0m[90m TS2365: [0mOperator '>' cannot be applied to types 'boolean' and '{ if(: any, clientPublicKey: any): any; }'.
+
+[7m1373[0m   ): Promise<{ transactionXdr: string; networkPassphrase: string }> {
+[7m    [0m [91m     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[7m1374[0m     if (!clientPublicKey || !clientPublicKey.startsWith('G')) {
+[7m    [0m [91m~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1373[0m:[93m32[0m - [91merror[0m[90m TS2693: [0m'string' only refers to a type, but is being used as a value here.
+
+[7m1373[0m   ): Promise<{ transactionXdr: string; networkPassphrase: string }> {
+[7m    [0m [91m                               ~~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1373[0m:[93m38[0m - [91merror[0m[90m TS1005: [0m',' expected.
+
+[7m1373[0m   ): Promise<{ transactionXdr: string; networkPassphrase: string }> {
+[7m    [0m [91m                                     ~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1373[0m:[93m59[0m - [91merror[0m[90m TS2693: [0m'string' only refers to a type, but is being used as a value here.
+
+[7m1373[0m   ): Promise<{ transactionXdr: string; networkPassphrase: string }> {
+[7m    [0m [91m                                                          ~~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1374[0m:[93m9[0m - [91merror[0m[90m TS1003: [0mIdentifier expected.
+
+[7m1374[0m     if (!clientPublicKey || !clientPublicKey.startsWith('G')) {
+[7m    [0m [91m        ~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1374[0m:[93m26[0m - [91merror[0m[90m TS1005: [0m',' expected.
+
+[7m1374[0m     if (!clientPublicKey || !clientPublicKey.startsWith('G')) {
+[7m    [0m [91m                         ~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1374[0m:[93m30[0m - [91merror[0m[90m TS2448: [0mBlock-scoped variable 'clientPublicKey' used before its declaration.
+
+[7m1374[0m     if (!clientPublicKey || !clientPublicKey.startsWith('G')) {
+[7m    [0m [91m                             ~~~~~~~~~~~~~~~[0m
+
+  [96msrc/auth/auth.service.ts[0m:[93m1460[0m:[93m11[0m
+    [7m1460[0m     const clientPublicKey = (manageDataOp as any).source;
+    [7m    [0m [96m          ~~~~~~~~~~~~~~~[0m
+    'clientPublicKey' is declared here.
+[96msrc/auth/auth.service.ts[0m:[93m1374[0m:[93m61[0m - [91merror[0m[90m TS1005: [0m';' expected.
+
+[7m1374[0m     if (!clientPublicKey || !clientPublicKey.startsWith('G')) {
+[7m    [0m [91m                                                            ~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1379[0m:[93m30[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m1379[0m     const manageDataKey = `${this.sep10Domain} SEP-10 Web Auth`;
+[7m    [0m [91m                             ~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1386[0m:[93m26[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m1386[0m         accountId: () => this.sep10SigningKeypair.publicKey(),
+[7m    [0m [91m                         ~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1390[0m:[93m28[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m1390[0m         networkPassphrase: this.networkPassphrase,
+[7m    [0m [91m                           ~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1397[0m:[93m19[0m - [91merror[0m[90m TS2448: [0mBlock-scoped variable 'clientPublicKey' used before its declaration.
+
+[7m1397[0m           source: clientPublicKey,
+[7m    [0m [91m                  ~~~~~~~~~~~~~~~[0m
+
+  [96msrc/auth/auth.service.ts[0m:[93m1460[0m:[93m11[0m
+    [7m1460[0m     const clientPublicKey = (manageDataOp as any).source;
+    [7m    [0m [96m          ~~~~~~~~~~~~~~~[0m
+    'clientPublicKey' is declared here.
+[96msrc/auth/auth.service.ts[0m:[93m1404[0m:[93m13[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m1404[0m     tx.sign(this.sep10SigningKeypair);
+[7m    [0m [91m            ~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1407[0m:[93m5[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m1407[0m     this.challenges.set(clientPublicKey, { nonce, expiresAt: expiry });
+[7m    [0m [91m    ~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1407[0m:[93m25[0m - [91merror[0m[90m TS2448: [0mBlock-scoped variable 'clientPublicKey' used before its declaration.
+
+[7m1407[0m     this.challenges.set(clientPublicKey, { nonce, expiresAt: expiry });
+[7m    [0m [91m                        ~~~~~~~~~~~~~~~[0m
+
+  [96msrc/auth/auth.service.ts[0m:[93m1460[0m:[93m11[0m
+    [7m1460[0m     const clientPublicKey = (manageDataOp as any).source;
+    [7m    [0m [96m          ~~~~~~~~~~~~~~~[0m
+    'clientPublicKey' is declared here.
+[96msrc/auth/auth.service.ts[0m:[93m1411[0m:[93m26[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m1411[0m       networkPassphrase: this.networkPassphrase,
+[7m    [0m [91m                         ~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1413[0m:[93m3[0m - [91merror[0m[90m TS1128: [0mDeclaration or statement expected.
+
+[7m1413[0m   }
+[7m    [0m [91m  ~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1418[0m:[93m3[0m - [91merror[0m[90m TS1434: [0mUnexpected keyword or identifier.
+
+[7m1418[0m   async validateSep10Response(
+[7m    [0m [91m  ~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1418[0m:[93m3[0m - [91merror[0m[90m TS2304: [0mCannot find name 'async'.
+
+[7m1418[0m   async validateSep10Response(
+[7m    [0m [91m  ~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1418[0m:[93m9[0m - [91merror[0m[90m TS2304: [0mCannot find name 'validateSep10Response'.
+
+[7m1418[0m   async validateSep10Response(
+[7m    [0m [91m        ~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1419[0m:[93m5[0m - [91merror[0m[90m TS2304: [0mCannot find name 'signedXdr'.
+
+[7m1419[0m     signedXdr: string,
+[7m    [0m [91m    ~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1419[0m:[93m14[0m - [91merror[0m[90m TS1005: [0m',' expected.
+
+[7m1419[0m     signedXdr: string,
+[7m    [0m [91m             ~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1419[0m:[93m16[0m - [91merror[0m[90m TS2693: [0m'string' only refers to a type, but is being used as a value here.
+
+[7m1419[0m     signedXdr: string,
+[7m    [0m [91m               ~~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1420[0m:[93m4[0m - [91merror[0m[90m TS1005: [0m';' expected.
+
+[7m1420[0m   ): Promise<{ accessToken: string; refreshToken: string; publicKey: string }> {
+[7m    [0m [91m   ~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1420[0m:[93m6[0m - [91merror[0m[90m TS2365: [0mOperator '<' cannot be applied to types 'PromiseConstructor' and '{ accessToken: any; refreshToken: any; publicKey: any; }'.
+
+[7m1420[0m   ): Promise<{ accessToken: string; refreshToken: string; publicKey: string }> {
+[7m    [0m [91m     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1420[0m:[93m6[0m - [91merror[0m[90m TS2365: [0mOperator '>' cannot be applied to types 'boolean' and '{ let: any; tx: typeof Transaction; try: { tx: Transaction<Memo<MemoType>, Operation[]>; }; catch: { throw: UnauthorizedException; }; const: number; if(tx: any): any; "": any; }'.
+
+[7m1420[0m   ): Promise<{ accessToken: string; refreshToken: string; publicKey: string }> {
+[7m    [0m [91m     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[7m1421[0m     let tx: Transaction;
+[7m    [0m [91m~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[7m ...[0m 
+[7m1428[0m     const now = Math.floor(Date.now() / 1000);
+[7m    [0m [91m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[7m1429[0m     if (tx.timeBounds) {
+[7m    [0m [91m~~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1420[0m:[93m29[0m - [91merror[0m[90m TS2693: [0m'string' only refers to a type, but is being used as a value here.
+
+[7m1420[0m   ): Promise<{ accessToken: string; refreshToken: string; publicKey: string }> {
+[7m    [0m [91m                            ~~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1420[0m:[93m35[0m - [91merror[0m[90m TS1005: [0m',' expected.
+
+[7m1420[0m   ): Promise<{ accessToken: string; refreshToken: string; publicKey: string }> {
+[7m    [0m [91m                                  ~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1420[0m:[93m51[0m - [91merror[0m[90m TS2693: [0m'string' only refers to a type, but is being used as a value here.
+
+[7m1420[0m   ): Promise<{ accessToken: string; refreshToken: string; publicKey: string }> {
+[7m    [0m [91m                                                  ~~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1420[0m:[93m57[0m - [91merror[0m[90m TS1005: [0m',' expected.
+
+[7m1420[0m   ): Promise<{ accessToken: string; refreshToken: string; publicKey: string }> {
+[7m    [0m [91m                                                        ~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1420[0m:[93m70[0m - [91merror[0m[90m TS2693: [0m'string' only refers to a type, but is being used as a value here.
+
+[7m1420[0m   ): Promise<{ accessToken: string; refreshToken: string; publicKey: string }> {
+[7m    [0m [91m                                                                     ~~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1421[0m:[93m5[0m - [91merror[0m[90m TS18004: [0mNo value exists in scope for the shorthand property 'let'. Either declare one or provide an initializer.
+
+[7m1421[0m     let tx: Transaction;
+[7m    [0m [91m    ~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1421[0m:[93m9[0m - [91merror[0m[90m TS1005: [0m',' expected.
+
+[7m1421[0m     let tx: Transaction;
+[7m    [0m [91m        ~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1421[0m:[93m24[0m - [91merror[0m[90m TS1005: [0m',' expected.
+
+[7m1421[0m     let tx: Transaction;
+[7m    [0m [91m                       ~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1422[0m:[93m9[0m - [91merror[0m[90m TS1005: [0m':' expected.
+
+[7m1422[0m     try {
+[7m    [0m [91m        ~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1423[0m:[93m28[0m - [91merror[0m[90m TS2304: [0mCannot find name 'signedXdr'.
+
+[7m1423[0m       tx = new Transaction(signedXdr, this.networkPassphrase);
+[7m    [0m [91m                           ~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1423[0m:[93m39[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m1423[0m       tx = new Transaction(signedXdr, this.networkPassphrase);
+[7m    [0m [91m                                      ~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1423[0m:[93m62[0m - [91merror[0m[90m TS1005: [0m',' expected.
+
+[7m1423[0m       tx = new Transaction(signedXdr, this.networkPassphrase);
+[7m    [0m [91m                                                             ~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1424[0m:[93m7[0m - [91merror[0m[90m TS1005: [0m',' expected.
+
+[7m1424[0m     } catch {
+[7m    [0m [91m      ~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1424[0m:[93m13[0m - [91merror[0m[90m TS1005: [0m':' expected.
+
+[7m1424[0m     } catch {
+[7m    [0m [91m            ~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1425[0m:[93m13[0m - [91merror[0m[90m TS1005: [0m':' expected.
+
+[7m1425[0m       throw new UnauthorizedException('Invalid SEP-10 response XDR');
+[7m    [0m [91m            ~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1425[0m:[93m69[0m - [91merror[0m[90m TS1005: [0m',' expected.
+
+[7m1425[0m       throw new UnauthorizedException('Invalid SEP-10 response XDR');
+[7m    [0m [91m                                                                    ~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1428[0m:[93m5[0m - [91merror[0m[90m TS1005: [0m',' expected.
+
+[7m1428[0m     const now = Math.floor(Date.now() / 1000);
+[7m    [0m [91m    ~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1428[0m:[93m11[0m - [91merror[0m[90m TS1005: [0m':' expected.
+
+[7m1428[0m     const now = Math.floor(Date.now() / 1000);
+[7m    [0m [91m          ~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1428[0m:[93m11[0m - [91merror[0m[90m TS2588: [0mCannot assign to 'now' because it is a constant.
+
+[7m1428[0m     const now = Math.floor(Date.now() / 1000);
+[7m    [0m [91m          ~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1428[0m:[93m46[0m - [91merror[0m[90m TS1005: [0m',' expected.
+
+[7m1428[0m     const now = Math.floor(Date.now() / 1000);
+[7m    [0m [91m                                             ~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1429[0m:[93m11[0m - [91merror[0m[90m TS1005: [0m',' expected.
+
+[7m1429[0m     if (tx.timeBounds) {
+[7m    [0m [91m          ~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1429[0m:[93m22[0m - [91merror[0m[90m TS1005: [0m',' expected.
+
+[7m1429[0m     if (tx.timeBounds) {
+[7m    [0m [91m                     ~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1429[0m:[93m24[0m - [91merror[0m[90m TS1136: [0mProperty assignment expected.
+
+[7m1429[0m     if (tx.timeBounds) {
+[7m    [0m [91m                       ~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1438[0m:[93m25[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m1438[0m         const keypair = this.sep10SigningKeypair;
+[7m    [0m [91m                        ~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1487[0m:[93m5[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m1487[0m     this.challenges.delete(clientPublicKey);
+[7m    [0m [91m    ~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1490[0m:[93m9[0m - [91merror[0m[90m TS2451: [0mCannot redeclare block-scoped variable 'user'.
+
+[7m1490[0m     let user = await this.userRepo.findOne({
+[7m    [0m [91m        ~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1490[0m:[93m22[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m1490[0m     let user = await this.userRepo.findOne({
+[7m    [0m [91m                     ~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1495[0m:[93m7[0m - [91merror[0m[90m TS2588: [0mCannot assign to 'user' because it is a constant.
+
+[7m1495[0m       user = this.userRepo.create({
+[7m    [0m [91m      ~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1495[0m:[93m14[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m1495[0m       user = this.userRepo.create({
+[7m    [0m [91m             ~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1503[0m:[93m7[0m - [91merror[0m[90m TS2588: [0mCannot assign to 'user' because it is a constant.
+
+[7m1503[0m       user = await this.userRepo.save(user);
+[7m    [0m [91m      ~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1503[0m:[93m20[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m1503[0m       user = await this.userRepo.save(user);
+[7m    [0m [91m                   ~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1514[0m:[93m25[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m1514[0m     const accessToken = this.jwtService.sign(
+[7m    [0m [91m                        ~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1516[0m:[93m20[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m1516[0m       { expiresIn: this.configService.get<string>('JWT_ACCESS_EXPIRES_IN') ?? this.configService.get<string>('JWT_EXPIRES_IN', '7d') } as any,
+[7m    [0m [91m                   ~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1516[0m:[93m79[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m1516[0m       { expiresIn: this.configService.get<string>('JWT_ACCESS_EXPIRES_IN') ?? this.configService.get<string>('JWT_EXPIRES_IN', '7d') } as any,
+[7m    [0m [91m                                                                              ~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1518[0m:[93m26[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m1518[0m     const refreshToken = this.jwtService.sign(
+[7m    [0m [91m                         ~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1524[0m:[93m3[0m - [91merror[0m[90m TS1128: [0mDeclaration or statement expected.
+
+[7m1524[0m   }
+[7m    [0m [91m  ~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1525[0m:[93m1[0m - [91merror[0m[90m TS1128: [0mDeclaration or statement expected.
+
+[7m1525[0m }
+[7m    [0m [91m~[0m
+[96msrc/auth/security-threat.service.ts[0m:[93m80[0m:[93m5[0m - [91merror[0m[90m TS2322: [0mType 'Promise<RedisClientType>' is not assignable to type 'RedisClientType'.
+  Type 'Promise<RedisClientType>' is missing the following properties from type 'RedisClient<{ json: { ARRAPPEND: { readonly IS_READ_ONLY: false; readonly parseCommand: (this: void, parser: CommandParser, key: RedisArgument, path: RedisArgument, json: RedisJSON, ...jsons: RedisJSON[]) => void; readonly transformReply: () => NumberReply<...> | ArrayReply<...>; }; ... 44 more ...; type: { ...; }; ...': #private, _self, clientSideCache, options, and 86 more.
+
+[7m80[0m     this.redisClient = this.redisConfig.createClient();
+[7m  [0m [91m    ~~~~~~~~~~~~~~~~[0m
+[96msrc/auth/security-threat.service.ts[0m:[93m516[0m:[93m5[0m - [91merror[0m[90m TS2322: [0mType 'Promise<SecurityIpBlock[]>' is not assignable to type 'Promise<SecurityIpBlock>'.
+  Type 'SecurityIpBlock[]' is missing the following properties from type 'SecurityIpBlock': id, type, cidr, reason, and 5 more.
+
+[7m516[0m     return this.blockRepo.save(this.blockRepo.create(data as any));
+[7m   [0m [91m    ~~~~~~[0m
+[96msrc/auth/token-blocklist.service.ts[0m:[93m18[0m:[93m5[0m - [91merror[0m[90m TS2322: [0mType 'Promise<RedisClientType>' is not assignable to type 'RedisClientType'.
+  Type 'Promise<RedisClientType>' is missing the following properties from type 'RedisClient<{ json: { ARRAPPEND: { readonly IS_READ_ONLY: false; readonly parseCommand: (this: void, parser: CommandParser, key: RedisArgument, path: RedisArgument, json: RedisJSON, ...jsons: RedisJSON[]) => void; readonly transformReply: () => NumberReply<...> | ArrayReply<...>; }; ... 44 more ...; type: { ...; }; ...': #private, _self, clientSideCache, options, and 86 more.
+
+[7m18[0m     this.redisClient = this.redisConfig.createClient();
+[7m  [0m [91m    ~~~~~~~~~~~~~~~~[0m
+[96msrc/compliance/compliance-report.service.ts[0m:[93m158[0m:[93m16[0m - [91merror[0m[90m TS2322: [0mType '"confirmed"' is not assignable to type 'InvestmentStatus | FindOperator<InvestmentStatus>'.
+
+[7m158[0m       where: { status: 'confirmed', createdAt: Between(start, end) as any },
+[7m   [0m [91m               ~~~~~~[0m
+[96msrc/compliance/compliance-report.service.ts[0m:[93m169[0m:[93m54[0m - [91merror[0m[90m TS2551: [0mProperty 'amount_usd' does not exist on type 'Investment'. Did you mean 'amountUsd'?
+
+[7m169[0m         (volumeByCountry[country] ?? 0) + Number(inv.amount_usd ?? 0);
+[7m   [0m [91m                                                     ~~~~~~~~~~[0m
+
+  [96msrc/investments/entities/investment.entity.ts[0m:[93m68[0m:[93m3[0m
+    [7m68[0m   amountUsd: number;
+    [7m  [0m [96m  ~~~~~~~~~[0m
+    'amountUsd' is declared here.
+[96msrc/compliance/compliance-report.service.ts[0m:[93m170[0m:[93m33[0m - [91merror[0m[90m TS2551: [0mProperty 'amount_usd' does not exist on type 'Investment'. Did you mean 'amountUsd'?
+
+[7m170[0m       totalVolume += Number(inv.amount_usd ?? 0);
+[7m   [0m [91m                                ~~~~~~~~~~[0m
+
+  [96msrc/investments/entities/investment.entity.ts[0m:[93m68[0m:[93m3[0m
+    [7m68[0m   amountUsd: number;
+    [7m  [0m [96m  ~~~~~~~~~[0m
+    'amountUsd' is declared here.
+[96msrc/compliance/compliance-report.service.ts[0m:[93m174[0m:[93m37[0m - [91merror[0m[90m TS2353: [0mObject literal may only specify known properties, and 'updatedAt' does not exist in type 'FindOptionsWhere<TradeDeal> | FindOptionsWhere<TradeDeal>[]'.
+
+[7m174[0m       where: { status: 'completed', updatedAt: Between(start, end) as any },
+[7m   [0m [91m                                    ~~~~~~~~~[0m
+
+  [96mnode_modules/typeorm/find-options/FindOneOptions.d.ts[0m:[93m23[0m:[93m5[0m
+    [7m23[0m     where?: FindOptionsWhere<Entity>[] | FindOptionsWhere<Entity>;
+    [7m  [0m [96m    ~~~~~[0m
+    The expected type comes from property 'where' which is declared here on type 'FindManyOptions<TradeDeal>'
+[96msrc/config/redis-cache.store.ts[0m:[93m47[0m:[93m25[0m - [91merror[0m[90m TS2345: [0mArgument of type 'string | {}' is not assignable to parameter of type 'string'.
+  Type '{}' is not assignable to type 'string'.
+
+[7m47[0m       return JSON.parse(raw) as T;
+[7m  [0m [91m                        ~~~[0m
+[96msrc/config/redis-cache.store.ts[0m:[93m91[0m:[93m27[0m - [91merror[0m[90m TS2345: [0mArgument of type 'string | {}' is not assignable to parameter of type 'string'.
+  Type '{}' is not assignable to type 'string'.
+
+[7m91[0m         return JSON.parse(v);
+[7m  [0m [91m                          ~[0m
+[96msrc/database/database.config.ts[0m:[93m55[0m:[93m16[0m - [91merror[0m[90m TS2304: [0mCannot find name 'isProduction'.
+
+[7m55[0m       logging: isProduction ? ['error'] : 'all',
+[7m  [0m [91m               ~~~~~~~~~~~~[0m
+[96msrc/database/database.config.ts[0m:[93m62[0m:[93m11[0m - [91merror[0m[90m TS2304: [0mCannot find name 'isProduction'.
+
+[7m62[0m           isProduction ? 50 : 10,
+[7m  [0m [91m          ~~~~~~~~~~~~[0m
+[96msrc/database/database.config.ts[0m:[93m64[0m:[93m59[0m - [91merror[0m[90m TS2304: [0mCannot find name 'isProduction'.
+
+[7m64[0m         min: this.config.get<number>('DATABASE_POOL_MIN', isProduction ? 5 : 2),
+[7m  [0m [91m                                                          ~~~~~~~~~~~~[0m
+[96msrc/database/entities/fee-configuration.entity.ts[0m:[93m26[0m:[93m8[0m - [91merror[0m[90m TS2769: [0mNo overload matches this call.
+  The last overload gave the following error.
+    Argument of type 'string[]' is not assignable to parameter of type 'string'.
+
+[7m26[0m @Index(['dealType', 'investorTier', 'feeType', 'effectiveFrom'], {
+[7m  [0m [91m       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+
+  [96mnode_modules/typeorm/decorator/Index.d.ts[0m:[93m47[0m:[93m25[0m
+    [7m47[0m export declare function Index(name: string, fields: (object?: any) => any[] | {
+    [7m  [0m [96m                        ~~~~~[0m
+    The last overload is declared here.
+[96msrc/database/entities/fee-configuration.entity.ts[0m:[93m29[0m:[93m8[0m - [91merror[0m[90m TS2769: [0mNo overload matches this call.
+  The last overload gave the following error.
+    Argument of type 'string[]' is not assignable to parameter of type 'string'.
+
+[7m29[0m @Index(['dealType'], { name: 'IDX_fee_config_deal_type' })
+[7m  [0m [91m       ~~~~~~~~~~~~[0m
+
+  [96mnode_modules/typeorm/decorator/Index.d.ts[0m:[93m47[0m:[93m25[0m
+    [7m47[0m export declare function Index(name: string, fields: (object?: any) => any[] | {
+    [7m  [0m [96m                        ~~~~~[0m
+    The last overload is declared here.
+[96msrc/database/entities/fee-configuration.entity.ts[0m:[93m30[0m:[93m8[0m - [91merror[0m[90m TS2769: [0mNo overload matches this call.
+  The last overload gave the following error.
+    Argument of type 'string[]' is not assignable to parameter of type 'string'.
+
+[7m30[0m @Index(['investorTier'], { name: 'IDX_fee_config_investor_tier' })
+[7m  [0m [91m       ~~~~~~~~~~~~~~~~[0m
+
+  [96mnode_modules/typeorm/decorator/Index.d.ts[0m:[93m47[0m:[93m25[0m
+    [7m47[0m export declare function Index(name: string, fields: (object?: any) => any[] | {
+    [7m  [0m [96m                        ~~~~~[0m
+    The last overload is declared here.
+[96msrc/database/entities/fee-configuration.entity.ts[0m:[93m31[0m:[93m8[0m - [91merror[0m[90m TS2769: [0mNo overload matches this call.
+  The last overload gave the following error.
+    Argument of type 'string[]' is not assignable to parameter of type 'string'.
+
+[7m31[0m @Index(['feeType'], { name: 'IDX_fee_config_fee_type' })
+[7m  [0m [91m       ~~~~~~~~~~~[0m
+
+  [96mnode_modules/typeorm/decorator/Index.d.ts[0m:[93m47[0m:[93m25[0m
+    [7m47[0m export declare function Index(name: string, fields: (object?: any) => any[] | {
+    [7m  [0m [96m                        ~~~~~[0m
+    The last overload is declared here.
+[96msrc/database/entities/fee-configuration.entity.ts[0m:[93m32[0m:[93m8[0m - [91merror[0m[90m TS2769: [0mNo overload matches this call.
+  The last overload gave the following error.
+    Argument of type 'string[]' is not assignable to parameter of type 'string'.
+
+[7m32[0m @Index(['effectiveFrom', 'effectiveTo'], {
+[7m  [0m [91m       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+
+  [96mnode_modules/typeorm/decorator/Index.d.ts[0m:[93m47[0m:[93m25[0m
+    [7m47[0m export declare function Index(name: string, fields: (object?: any) => any[] | {
+    [7m  [0m [96m                        ~~~~~[0m
+    The last overload is declared here.
+[96msrc/escrow/escrow.consumer.ts[0m:[93m168[0m:[93m47[0m - [91merror[0m[90m TS2304: [0mCannot find name 'context'.
+
+[7m168[0m     const parsed = this.parsePayload(payload, context);
+[7m   [0m [91m                                              ~~~~~~~[0m
+[96msrc/escrow/escrow.main.ts[0m:[93m31[0m:[93m7[0m - [91merror[0m[90m TS2353: [0mObject literal may only specify known properties, and 'noAck' does not exist in type '(NestApplicationContextOptions & RmqOptions) | (NestApplicationContextOptions & CustomStrategy)'.
+
+[7m31[0m       noAck: false,
+[7m  [0m [91m      ~~~~~[0m
+[96msrc/escrow/escrow.main.ts[0m:[93m33[0m:[93m3[0m - [91merror[0m[90m TS1135: [0mArgument expression expected.
+
+[7m33[0m   });
+[7m  [0m [91m  ~[0m
+[96msrc/escrow/escrow.main.ts[0m:[93m33[0m:[93m4[0m - [91merror[0m[90m TS1128: [0mDeclaration or statement expected.
+
+[7m33[0m   });
+[7m  [0m [91m   ~[0m
+[96msrc/escrow/escrow.main.ts[0m:[93m35[0m:[93m9[0m - [91merror[0m[90m TS2304: [0mCannot find name 'app'.
+
+[7m35[0m   await app.startAllMicroservices();
+[7m  [0m [91m        ~~~[0m
+[96msrc/escrow/escrow.main.ts[0m:[93m41[0m:[93m1[0m - [91merror[0m[90m TS1128: [0mDeclaration or statement expected.
+
+[7m41[0m }
+[7m  [0m [91m~[0m
+[96msrc/escrow/escrow.service.ts[0m:[93m164[0m:[93m11[0m - [91merror[0m[90m TS2345: [0mArgument of type 'Promise<string>' is not assignable to parameter of type 'string'.
+
+[7m164[0m           escrowSecret,
+[7m   [0m [91m          ~~~~~~~~~~~~[0m
+
+  [96msrc/escrow/escrow.service.ts[0m:[93m164[0m:[93m11[0m
+    [7m164[0m           escrowSecret,
+    [7m   [0m [96m          ~~~~~~~~~~~~[0m
+    Did you forget to use 'await'?
+[96msrc/investments/fee-configuration.controller.ts[0m:[93m26[0m:[93m28[0m - [91merror[0m[90m TS2307: [0mCannot find module '../auth/guards/admin.guard' or its corresponding type declarations.
+
+[7m26[0m import { AdminGuard } from '../auth/guards/admin.guard';
+[7m  [0m [91m                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/investments/fee-configuration.service.ts[0m:[93m112[0m:[93m12[0m - [91merror[0m[90m TS2554: [0mExpected 4 arguments, but got 3.
+
+[7m112[0m     return toPaginatedResult(qb, pagination.skip, pagination.take);
+[7m   [0m [91m           ~~~~~~~~~~~~~~~~~[0m
+
+  [96msrc/common/pagination.ts[0m:[93m37[0m:[93m3[0m
+    [7m37[0m   limit: number,
+    [7m  [0m [96m  ~~~~~~~~~~~~~[0m
+    An argument for 'limit' was not provided.
+[96msrc/investments/fee-configuration.service.ts[0m:[93m112[0m:[93m45[0m - [91merror[0m[90m TS2339: [0mProperty 'skip' does not exist on type 'PaginationQuery'.
+
+[7m112[0m     return toPaginatedResult(qb, pagination.skip, pagination.take);
+[7m   [0m [91m                                            ~~~~[0m
+[96msrc/investments/fee-configuration.service.ts[0m:[93m112[0m:[93m62[0m - [91merror[0m[90m TS2339: [0mProperty 'take' does not exist on type 'PaginationQuery'.
+
+[7m112[0m     return toPaginatedResult(qb, pagination.skip, pagination.take);
+[7m   [0m [91m                                                             ~~~~[0m
+[96msrc/investments/fee-configuration.service.ts[0m:[93m179[0m:[93m9[0m - [91merror[0m[90m TS2322: [0mType '{ _type: string; value: Date; }' is not assignable to type 'Date | FindOperator<Date>'.
+  Type '{ _type: string; value: Date; }' is missing the following properties from type 'FindOperator<Date>': "@instanceof", _value, _objectLiteralParameters, _useParameter, and 9 more.
+
+[7m179[0m         effectiveFrom: { _type: 'lte', value: date },
+[7m   [0m [91m        ~~~~~~~~~~~~~[0m
+[96msrc/investments/fee-configuration.service.ts[0m:[93m180[0m:[93m9[0m - [91merror[0m[90m TS2322: [0mType '{ _type: string; value: Date; }' is not assignable to type 'Date | FindOperator<Date>'.
+  Type '{ _type: string; value: Date; }' is missing the following properties from type 'FindOperator<Date>': "@instanceof", _value, _objectLiteralParameters, _useParameter, and 9 more.
+
+[7m180[0m         effectiveTo: { _type: 'gt', value: date },
+[7m   [0m [91m        ~~~~~~~~~~~[0m
+[96msrc/investments/investments.service.ts[0m:[93m370[0m:[93m10[0m - [91merror[0m[90m TS2339: [0mProperty 'referralService' does not exist on type 'InvestmentsService'.
+
+[7m370[0m     this.referralService?.triggerReward(investorId)?.catch(() => {});
+[7m   [0m [91m         ~~~~~~~~~~~~~~~[0m
+[96msrc/investments/investments.service.ts[0m:[93m510[0m:[93m9[0m - [91merror[0m[90m TS2345: [0mArgument of type 'QueryRunner' is not assignable to parameter of type 'EntityManager'.
+  Type 'QueryRunner' is missing the following properties from type 'EntityManager': "@instanceof", repositories, treeRepositories, plainObjectToEntityTransformer, and 48 more.
+
+[7m510[0m         this.dataSource.createQueryRunner(),
+[7m   [0m [91m        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/investments/investments.service.ts[0m:[93m555[0m:[93m9[0m - [91merror[0m[90m TS2345: [0mArgument of type 'QueryRunner' is not assignable to parameter of type 'EntityManager'.
+  Type 'QueryRunner' is missing the following properties from type 'EntityManager': "@instanceof", repositories, treeRepositories, plainObjectToEntityTransformer, and 48 more.
+
+[7m555[0m         this.dataSource.createQueryRunner(),
+[7m   [0m [91m        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/investments/receipt.service.ts[0m:[93m194[0m:[93m23[0m - [91merror[0m[90m TS2351: [0mThis expression is not constructable.
+  Type '{ default: PDFDocument; version: number; compress: boolean; info: DocumentInfo; options: PDFDocumentOptions; page: PDFPage; x: number; ... 126 more ...; endOutline(): void; }' has no construct signatures.
+
+[7m194[0m       const doc = new PDFDocument({ margin: 50, size: 'A4' });
+[7m   [0m [91m                      ~~~~~~~~~~~[0m
+
+  [96msrc/investments/receipt.service.ts[0m:[93m18[0m:[93m1[0m
+    [7m18[0m import * as PDFDocument from 'pdfkit';
+    [7m  [0m [96m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+    Type originates at this import. A namespace-style import cannot be called or constructed, and will cause a failure at runtime. Consider using a default import or import require here instead.
+[96msrc/investments/receipt.service.ts[0m:[93m204[0m:[93m11[0m - [91merror[0m[90m TS2352: [0mConversion of type 'TradeDeal' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'TradeDeal'.
+
+[7m204[0m         ((deal as Record<string, unknown>)?.['commodity'] as string) ?? 'N/A';
+[7m   [0m [91m          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/investments/tax-report.service.ts[0m:[93m52[0m:[93m35[0m - [91merror[0m[90m TS2345: [0mArgument of type 'number | "0"' is not assignable to parameter of type 'string'.
+  Type 'number' is not assignable to type 'string'.
+
+[7m52[0m       const invested = parseFloat(inv.amountUsd ?? '0');
+[7m  [0m [91m                                  ~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/investments/tax-report.service.ts[0m:[93m54[0m:[93m11[0m - [91merror[0m[90m TS2352: [0mConversion of type 'Investment' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'Investment'.
+
+[7m54[0m         ((inv as Record<string, unknown>)['returnAmountUsd'] as string) ?? '0',
+[7m  [0m [91m          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/investments/tax-report.service.ts[0m:[93m57[0m:[93m11[0m - [91merror[0m[90m TS2352: [0mConversion of type 'Investment' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'Investment'.
+
+[7m57[0m         ((inv as Record<string, unknown>)['feesUsd'] as string) ?? '0',
+[7m  [0m [91m          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/notifications/notification-preferences.controller.ts[0m:[93m18[0m:[93m22[0m - [91merror[0m[90m TS2307: [0mCannot find module '../../auth/entities/user.entity' or its corresponding type declarations.
+
+[7m18[0m import { User } from '../../auth/entities/user.entity';
+[7m  [0m [91m                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/notifications/notifications.gateway.ts[0m:[93m32[0m:[93m44[0m - [91merror[0m[90m TS2304: [0mCannot find name 'NotificationsService'.
+
+[7m32[0m     private readonly notificationsService: NotificationsService,
+[7m  [0m [91m                                           ~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/queue/queue-alert.service.ts[0m:[93m37[0m:[93m17[0m - [91merror[0m[90m TS2339: [0mProperty 'setContext' does not exist on type 'Logger'.
+
+[7m37[0m     this.logger.setContext(QueueAlertService.name);
+[7m  [0m [91m                ~~~~~~~~~~[0m
+[96msrc/queue/queue.processor.ts[0m:[93m357[0m:[93m50[0m - [91merror[0m[90m TS2339: [0mProperty 'submitTransaction' does not exist on type 'StellarService'.
+
+[7m357[0m         const result = await this.stellarService.submitTransaction(
+[7m   [0m [91m                                                 ~~~~~~~~~~~~~~~~~[0m
+[96msrc/queue/queue.service.ts[0m:[93m182[0m:[93m7[0m - [91merror[0m[90m TS2345: [0mArgument of type 'Omit<DealPublishPayload, "correlationId"> & BasePayload' is not assignable to parameter of type 'Record<string, unknown>'.
+  Index signature for type 'string' is missing in type 'Omit<DealPublishPayload, "correlationId"> & BasePayload'.
+
+[7m182[0m       enrichedPayload,
+[7m   [0m [91m      ~~~~~~~~~~~~~~~[0m
+[96msrc/queue/queue.service.ts[0m:[93m197[0m:[93m7[0m - [91merror[0m[90m TS2345: [0mArgument of type '{ tradeDealId: string; } & BasePayload' is not assignable to parameter of type 'Record<string, unknown>'.
+  Index signature for type 'string' is missing in type '{ tradeDealId: string; } & BasePayload'.
+
+[7m197[0m       payload,
+[7m   [0m [91m      ~~~~~~~[0m
+[96msrc/queue/queue.service.ts[0m:[93m212[0m:[93m7[0m - [91merror[0m[90m TS2345: [0mArgument of type '{ tradeDealId: string; } & BasePayload' is not assignable to parameter of type 'Record<string, unknown>'.
+  Index signature for type 'string' is missing in type '{ tradeDealId: string; } & BasePayload'.
+
+[7m212[0m       payload,
+[7m   [0m [91m      ~~~~~~~[0m
+[96msrc/queue/queue.service.ts[0m:[93m227[0m:[93m7[0m - [91merror[0m[90m TS2345: [0mArgument of type 'Omit<InvestmentFundPayload, "correlationId"> & BasePayload' is not assignable to parameter of type 'Record<string, unknown>'.
+  Index signature for type 'string' is missing in type 'Omit<InvestmentFundPayload, "correlationId"> & BasePayload'.
+
+[7m227[0m       enrichedPayload,
+[7m   [0m [91m      ~~~~~~~~~~~~~~~[0m
+[96msrc/queue/queue.service.ts[0m:[93m249[0m:[93m7[0m - [91merror[0m[90m TS2345: [0mArgument of type 'Omit<DealFundedPayload, "correlationId"> & BasePayload' is not assignable to parameter of type 'Record<string, unknown>'.
+  Index signature for type 'string' is missing in type 'Omit<DealFundedPayload, "correlationId"> & BasePayload'.
+
+[7m249[0m       enrichedPayload,
+[7m   [0m [91m      ~~~~~~~~~~~~~~~[0m
+[96msrc/settlement/settlement.service.ts[0m:[93m60[0m:[93m19[0m - [91merror[0m[90m TS2339: [0mProperty 'info' does not exist on type 'Logger'.
+
+[7m60[0m       this.logger.info(
+[7m  [0m [91m                  ~~~~[0m
+[96msrc/settlement/settlement.service.ts[0m:[93m116[0m:[93m19[0m - [91merror[0m[90m TS2339: [0mProperty 'info' does not exist on type 'Logger'.
+
+[7m116[0m       this.logger.info(
+[7m   [0m [91m                  ~~~~[0m
+[96msrc/shipments/shipments.service.ts[0m:[93m102[0m:[93m9[0m - [91merror[0m[90m TS2322: [0mType 'Promise<string>' is not assignable to type 'string'.
+
+[7m102[0m         signerSecret = this.stellarService.decryptSecret(deal.escrowSecretKey);
+[7m   [0m [91m        ~~~~~~~~~~~~[0m
+[96msrc/soroban/soroban-event-indexer.service.ts[0m:[93m189[0m:[93m21[0m - [91merror[0m[90m TS2769: [0mNo overload matches this call.
+  Overload 1 of 2, '(timeout: string | number | Timeout): void', gave the following error.
+    Argument of type 'Timer' is not assignable to parameter of type 'string | number | Timeout'.
+      Type 'Timer' is missing the following properties from type 'Timeout': close, _onTimeout, [Symbol.dispose]
+  Overload 2 of 2, '(id: number): void', gave the following error.
+    Argument of type 'Timer' is not assignable to parameter of type 'number'.
+
+[7m189[0m       clearInterval(this.pollingInterval);
+[7m   [0m [91m                    ~~~~~~~~~~~~~~~~~~~~[0m
+
+[96msrc/soroban/soroban-rent.service.ts[0m:[93m42[0m:[93m10[0m - [91merror[0m[90m TS2339: [0mProperty 'rpcUrl' does not exist on type 'SorobanRentService'.
+
+[7m42[0m     this.rpcUrl = this.config.get<string>('SOROBAN_RPC_URL', '');
+[7m  [0m [91m         ~~~~~~[0m
+[96msrc/soroban/soroban-rent.service.ts[0m:[93m50[0m:[93m15[0m - [91merror[0m[90m TS2339: [0mProperty 'rpcUrl' does not exist on type 'SorobanRentService'.
+
+[7m50[0m     if (!this.rpcUrl) {
+[7m  [0m [91m              ~~~~~~[0m
+[96msrc/soroban/soroban-rent.service.ts[0m:[93m51[0m:[93m12[0m - [91merror[0m[90m TS2339: [0mProperty 'logger' does not exist on type 'SorobanRentService'.
+
+[7m51[0m       this.logger.warn(
+[7m  [0m [91m           ~~~~~~[0m
+[96msrc/soroban/soroban-rent.service.ts[0m:[93m55[0m:[93m12[0m - [91merror[0m[90m TS2339: [0mProperty 'logger' does not exist on type 'SorobanRentService'.
+
+[7m55[0m       this.logger.log(
+[7m  [0m [91m           ~~~~~~[0m
+[96msrc/soroban/soroban-rent.service.ts[0m:[93m56[0m:[93m99[0m - [91merror[0m[90m TS2339: [0mProperty 'rpcUrl' does not exist on type 'SorobanRentService'.
+
+[7m56[0m         `SorobanRentService initialized with threshold ${this.warnThreshold} ledgers. RPC: ${this.rpcUrl}`,
+[7m  [0m [91m                                                                                                  ~~~~~~[0m
+[96msrc/soroban/soroban-rent.service.ts[0m:[93m73[0m:[93m15[0m - [91merror[0m[90m TS2339: [0mProperty 'rpcUrl' does not exist on type 'SorobanRentService'.
+
+[7m73[0m     if (!this.rpcUrl) return;
+[7m  [0m [91m              ~~~~~~[0m
+[96msrc/soroban/soroban-rent.service.ts[0m:[93m75[0m:[93m10[0m - [91merror[0m[90m TS2339: [0mProperty 'logger' does not exist on type 'SorobanRentService'.
+
+[7m75[0m     this.logger.log('Starting scheduled Soroban contract TTL extension run…');
+[7m  [0m [91m         ~~~~~~[0m
+[96msrc/soroban/soroban-rent.service.ts[0m:[93m79[0m:[93m12[0m - [91merror[0m[90m TS2339: [0mProperty 'logger' does not exist on type 'SorobanRentService'.
+
+[7m79[0m       this.logFound 853 error(s).
+

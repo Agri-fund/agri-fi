@@ -11,6 +11,7 @@ import {
 import {
   ApiTags,
   ApiOperation,
+  ApiResponse,
   ApiBearerAuth,
   ApiQuery,
 } from '@nestjs/swagger';
@@ -20,8 +21,7 @@ import { NotificationsService } from './notifications.service';
 @ApiTags('notifications')
 @ApiBearerAuth('jwt')
 @UseGuards(AuthGuard('jwt'))
-@Version('1')
-@Controller('notifications')
+@Controller({ path: 'notifications', version: '1' })
 export class NotificationsController {
   constructor(private readonly notificationsService: NotificationsService) {}
 

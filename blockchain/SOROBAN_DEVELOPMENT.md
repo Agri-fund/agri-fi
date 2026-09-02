@@ -470,6 +470,30 @@ For issues or questions:
 
 ---
 
+## Changelog
+
+### 2026-08-29 — Soroban Smart Contract Enhancements
+
+#### Issue #714 — Integration Tests for Project Factory Contracts
+- Added comprehensive integration tests in `blockchain/contracts/project_factory/src/test.rs`
+- 12 tests covering initialization, campaign registration, authorization, and edge cases
+- Verifies factory contract deploys and registers child campaign contracts with correct configuration parameters
+
+#### Issue #716 — Optimize Storage Collections in Rust
+- Replaced `Vec<Address>` with `Map<Address, i128>` in the escrow contract for O(1) investor lookups
+- Optimized `distribute_revenue` in `farm_campaign` to iterate directly over the Map, removing intermediate Vec allocations
+- Gas savings: eliminates unnecessary linear scans during milestone settlement and revenue distribution
+
+#### Issue #715 — Third-Party Dispute Resolution
+- Added `arbitrator` field to `Config` struct in `farm_campaign` contract
+- `raise_dispute(caller, milestone_index)` — admin or farmer can flag a milestone dispute
+- `resolve_dispute(arbitrator, milestone_index, approve)` — arbitrator approves or denies disputed milestones
+- `update_arbitrator(admin, new_arbitrator)` — admin can rotate the arbitrator address
+- Dispute flag blocks milestone payouts until arbitrator resolves; payout routing follows arbitrator decision
+- New error variants: `DisputeActive` (15) and `NoDispute`
+
+---
+
 **Status**: Development environment integration complete (Issue #346)  
-**Last Updated**: 2026-06-28  
+**Last Updated**: 2026-08-29  
 **Maintainer**: Blockchain Team

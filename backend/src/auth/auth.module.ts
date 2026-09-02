@@ -28,6 +28,8 @@ import { MfaGuard } from './guards/mfa.guard';
 import { EscrowModule } from '../escrow/escrow.module';
 import { SettlementModule } from '../settlement/settlement.module';
 import { DocumentsModule } from '../documents/documents.module';
+import { AuditModule } from '../audit/audit.module';
+import { EmailSequenceModule } from '../email-sequence/email-sequence.module';
 
 @Module({
   imports: [
@@ -102,6 +104,7 @@ export class AuthModule {}
     PassportModule,
     EscrowModule,
     EmailSequenceModule,
+    AuditModule,
     SettlementModule,
     DocumentsModule,
     JwtModule.registerAsync({
@@ -117,6 +120,7 @@ export class AuthModule {}
   providers: [
     AuthService,
     JwtStrategy,
+    GoogleStrategy,
     KycGuard,
     RolesGuard,
     MfaGuard,

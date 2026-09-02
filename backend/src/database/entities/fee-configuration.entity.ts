@@ -23,13 +23,13 @@ export enum InvestorTier {
 }
 
 @Entity('fee_configurations')
-@Index(['dealType', 'investorTier', 'feeType', 'effectiveFrom'], {
+@Index(['dealType', 'investorTier', 'feeType', 'effectiveFrom'] as any, {
   name: 'IDX_fee_config_unique',
 })
-@Index(['dealType'], { name: 'IDX_fee_config_deal_type' })
-@Index(['investorTier'], { name: 'IDX_fee_config_investor_tier' })
-@Index(['feeType'], { name: 'IDX_fee_config_fee_type' })
-@Index(['effectiveFrom', 'effectiveTo'], {
+@Index(['dealType'] as any, { name: 'IDX_fee_config_deal_type' })
+@Index(['investorTier'] as any, { name: 'IDX_fee_config_investor_tier' })
+@Index(['feeType'] as any, { name: 'IDX_fee_config_fee_type' })
+@Index(['effectiveFrom', 'effectiveTo'] as any, {
   name: 'IDX_fee_config_effective',
 })
 @Check(`rate_percent >= 0 AND rate_percent <= 100`)

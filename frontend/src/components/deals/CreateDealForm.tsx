@@ -19,10 +19,14 @@ type Step = 0 | 1 | 2 | 3 | 4 | 5;
 type RiskRating = 'Low' | 'Medium' | 'High';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const DRAFT_STORAGE_KEY = 'createDealForm.draft';
 
-export const CreateDealForm: React.FC<CreateDealFormProps> = ({ onSuccess, onCancel }) => {
-  const t = useTranslations('deals');
-  const tc = useTranslations('common');
+interface PhotoItem {
+  file: File;
+  previewUrl: string;
+  width: number;
+  height: number;
+}
 
 interface DocumentItem {
   key: string;
@@ -152,7 +156,7 @@ function asNumber(raw: string): number {
 export function CreateDealForm({ onSuccess, onCancel }: CreateDealFormProps) {
   const t = useTranslations('deals');
   const tc = useTranslations('common');
-  const { toast } = useToast();
+  const { toast, promise } = useToast();
 
   const [step, setStep] = useState<Step>(0);
   const [draft, setDraft] = useState<DealDraft>({
@@ -181,6 +185,11 @@ export function CreateDealForm({ onSuccess, onCancel }: CreateDealFormProps) {
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const hasHydrated = useRef(false);
+
+  const requiredDocs = useMemo(
+    () => COMMODITY_DOCS[draft.commodity.toLowerCase()] ?? DEFAULT_DOCS,
+    [draft.commodity],
+  );
 
   // #891 — co-investment: optional co-farmer invitations created with the deal
   const [coFarmers, setCoFarmers] = useState<CoFarmerRow[]>([]);
@@ -294,7 +303,11 @@ export function CreateDealForm({ onSuccess, onCancel }: CreateDealFormProps) {
 
       if (!nextErrors.title) {
         try {
-          const matches = await getOpenDeals(1, 20, { q: draft.title.trim() });
+          // getOpenDeals has no server-side title/query filter, so this only
+          // catches duplicates within the first page of open deals — a
+          // best-effort client-side nudge. The backend is the actual source
+          // of truth for uniqueness.
+          const matches = await getOpenDeals(1, 20);
           const duplicate = matches.data.some((deal) => (deal.title ?? '').trim().toLowerCase() === draft.title.trim().toLowerCase());
           if (duplicate) nextErrors.title = t('validation.duplicateTitle');
         } catch {
@@ -331,7 +344,7 @@ export function CreateDealForm({ onSuccess, onCancel }: CreateDealFormProps) {
         const errorData = await response.json();
         throw new Error(errorData.message || 'Failed to create deal');
       }
-    }
+    });
 
     if (currentStep === 3) {
       const missingDoc = requiredDocs.find((doc) => !documents.find((entry) => entry.key === doc.key)?.file);
@@ -381,6 +394,60 @@ export function CreateDealForm({ onSuccess, onCancel }: CreateDealFormProps) {
 
     setSubmitting(true);
     try {
+      // Reconstructed from the pre-merge implementation (commit 050d14a),
+      // which a bad merge (29d25e8) had split apart: creationPromise was
+      // left defined inside validateStep — a different function scope,
+      // never valid — while its only use stayed here in submit.
+      const payload = {
+        title: draft.title.trim(),
+        commodity: draft.commodity.trim(),
+        country: draft.country.trim(),
+        region: draft.region.trim() || undefined,
+        short_description: draft.short_description.trim(),
+        long_description: draft.long_description.trim(),
+        quantity: draft.quantity,
+        quantity_unit: draft.quantity_unit,
+        total_value: draft.total_value,
+        min_investment_lot: draft.min_investment_lot,
+        expected_roi: draft.expected_roi,
+        duration_days: draft.duration_days,
+        risk_rating: draft.risk_rating,
+        farm_location: draft.farm_location.trim(),
+        farm_latitude: draft.farm_latitude ? Number(draft.farm_latitude) : undefined,
+        farm_longitude: draft.farm_longitude ? Number(draft.farm_longitude) : undefined,
+        farm_photos: photos.map((photo) => ({
+          name: photo.file.name,
+          size: photo.file.size,
+          type: photo.file.type,
+          width: photo.width,
+          height: photo.height,
+        })),
+        supporting_documents: documents
+          .filter((doc) => doc.file)
+          .map((doc) => ({
+            name: doc.file?.name ?? doc.label,
+            type: doc.file?.type ?? 'application/octet-stream',
+            category: doc.key,
+          })),
+        logistics_plan: logisticsPlan,
+        delivery_date: new Date(Date.now() + Math.max(30, draft.duration_days) * 24 * 60 * 60 * 1000)
+          .toISOString()
+          .slice(0, 10),
+      };
+      const creationPromise = fetch('/api/trade-deals', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      }).then(async (response) => {
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.message || 'Failed to create deal');
+        }
+        return response.json();
+      });
+
       const deal = await promise(creationPromise, {
         loading: tc('processing'),
         success: tc('success'),
@@ -410,7 +477,6 @@ export function CreateDealForm({ onSuccess, onCancel }: CreateDealFormProps) {
         }
       }
 
-      reset();
       setCoFarmers([]);
       try {
         localStorage.removeItem(DRAFT_STORAGE_KEY);
@@ -721,83 +787,36 @@ export function CreateDealForm({ onSuccess, onCancel }: CreateDealFormProps) {
   );
 }
 
-        {/* #891 — Co-investment: invite co-farmers onto this deal */}
-        <div className="space-y-3 pt-4 border-t border-gray-100">
-          <div>
-            <h3 className="text-sm font-bold text-gray-800">{t('coFarmers.title')}</h3>
-            <p className="text-xs text-gray-500 mt-0.5">{t('coFarmers.description')}</p>
-          </div>
+function Field({
+  label,
+  children,
+  error,
+  optional,
+  className,
+}: {
+  label: string;
+  children: ReactNode;
+  error?: string;
+  optional?: boolean;
+  className?: string;
+}) {
+  return (
+    <label className={`space-y-2 ${className ?? ''}`}>
+      <div className="flex items-center gap-2">
+        <span className="text-sm font-semibold text-slate-700">{label}</span>
+        {optional && <span className="text-xs text-slate-400">(optional)</span>}
+      </div>
+      {children}
+      {error && <p className="text-xs text-red-600">{error}</p>}
+    </label>
+  );
+}
 
-          {coFarmers.map((row, index) => (
-            <div key={index} className="grid grid-cols-[1fr_100px_auto] gap-2 items-start">
-              <div className="flex flex-col">
-                <label htmlFor={`co-farmer-email-${index}`} className="sr-only">
-                  {t('coFarmers.emailLabel')}
-                </label>
-                <input
-                  id={`co-farmer-email-${index}`}
-                  type="email"
-                  value={row.email}
-                  onChange={(e) => updateCoFarmerRow(index, { email: e.target.value })}
-                  placeholder="farmer@example.com"
-                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
-                />
-              </div>
-              <div className="flex flex-col">
-                <label htmlFor={`co-farmer-portion-${index}`} className="sr-only">
-                  {t('coFarmers.portionLabel')}
-                </label>
-                <input
-                  id={`co-farmer-portion-${index}`}
-                  type="number"
-                  min="1"
-                  max="100"
-                  value={row.portionPercent}
-                  onChange={(e) => updateCoFarmerRow(index, { portionPercent: e.target.value })}
-                  placeholder="%"
-                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
-                />
-              </div>
-              <button
-                type="button"
-                onClick={() => removeCoFarmerRow(index)}
-                className="px-3 py-2 text-sm text-red-600 hover:text-red-800 font-semibold"
-              >
-                {t('coFarmers.remove')}
-              </button>
-            </div>
-          ))}
-
-          {coFarmerError && (
-            <span className="text-red-500 text-xs font-medium block">{t(`coFarmers.${coFarmerError}`)}</span>
-          )}
-
-          <button
-            type="button"
-            onClick={addCoFarmerRow}
-            className="text-sm text-green-700 hover:text-green-900 font-semibold"
-          >
-            + {t('coFarmers.add')}
-          </button>
-        </div>
-
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="w-full bg-green-600 text-white font-bold py-3 px-4 rounded-md hover:bg-green-700 disabled:bg-green-300 transition-colors shadow-sm mt-6"
-        >
-          {isSubmitting ? t('creating') : t('createButton')}
-        </button>
-        {onCancel && (
-          <button
-            type="button"
-            onClick={onCancel}
-            className="w-full bg-gray-100 text-gray-700 font-bold py-3 px-4 rounded-md hover:bg-gray-200 transition-colors mt-2"
-          >
-            {t('cancel')}
-          </button>
-        )}
-      </form>
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl bg-slate-50 p-3">
+      <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">{label}</p>
+      <p className="mt-1 font-bold text-slate-900">{value}</p>
     </div>
   );
 }

@@ -31,7 +31,7 @@ export class StellarArchiverService {
       try {
         const keypair = Keypair.fromSecret(platformSecret);
         this.platformAccountId = keypair.publicKey();
-      } catch {
+      } catch (err) {
         this.logger.warn(
           'Failed to parse STELLAR_PLATFORM_SECRET for archiver',
         );

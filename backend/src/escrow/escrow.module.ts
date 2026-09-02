@@ -11,6 +11,7 @@ import { User } from '../auth/entities/user.entity';
 import { StellarModule } from '../stellar/stellar.module';
 import { QueueModule } from '../queue/queue.module';
 import { FailedPaymentsService } from './failed-payments.service';
+import { EscrowDlqService } from './escrow-dlq.service';
 
 @Module({
   imports: [
@@ -26,7 +27,7 @@ import { FailedPaymentsService } from './failed-payments.service';
     EscrowDlqModule,
   ],
   controllers: [EscrowConsumer],
-  providers: [EscrowService, FailedPaymentsService],
-  exports: [EscrowService, FailedPaymentsService],
+  providers: [EscrowService, FailedPaymentsService, EscrowDlqService],
+  exports: [EscrowService, FailedPaymentsService, EscrowDlqService],
 })
 export class EscrowModule {}

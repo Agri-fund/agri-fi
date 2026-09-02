@@ -5,11 +5,15 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
+  workflow_dispatch: {}
 
 jobs:
   backend:
-    name: Backend — lint, build, test
+    name: Backend — lint, build, test (Node.js ${{ matrix.node-version }})
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [20, 22]
 
     services:
       postgres:
@@ -44,6 +48,8 @@ jobs:
       STELLAR_HORIZON_URL: https://horizon-testnet.stellar.org
       STELLAR_PLATFORM_SECRET: ${{ secrets.STELLAR_PLATFORM_SECRET_TESTNET }}
       STELLAR_INTEGRATION_TESTS: ${{ secrets.STELLAR_PLATFORM_SECRET_TESTNET != '' && 'true' || 'false' }}
+      SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       ENCRYPTION_KEY: ci-test-encryption-key-32chars!!
       RABBITMQ_URL: amqp://localhost:5672
       NOTIFICATIONS_ENABLED: "false"
@@ -63,7 +69,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: ${{ matrix.node-version }}
           cache: npm
           cache-dependency-path: backend/package-lock.json
 

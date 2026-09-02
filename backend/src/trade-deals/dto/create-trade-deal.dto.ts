@@ -178,6 +178,25 @@ export class CreateTradeDealDto {
   delivery_date: string;
 
   @IsOptional()
+  @IsDateString()
+  @ApiPropertyOptional({
+    description: 'Funding deadline; defaults to delivery_date',
+    example: '2024-06-01T23:59:59Z',
+  })
+  funding_deadline?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @ApiPropertyOptional({
+    description:
+      'Minimum amount that must be funded by the funding deadline; defaults to total_value',
+    example: 25000,
+  })
+  minimum_funding_target?: number;
+
+  @IsOptional()
   @Type(() => Number)
   @IsNumber()
   @Min(0)

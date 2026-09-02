@@ -16,7 +16,13 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Keypair, Horizon } from '@stellar/stellar-sdk';
+import {
+  Keypair,
+  Horizon,
+  Operation,
+  TransactionBuilder,
+  BASE_FEE,
+} from '@stellar/stellar-sdk';
 import { StellarMonitorService } from './stellar-monitor.service';
 import { StellarService } from './stellar.service';
 import { AccountMergeRecovery } from './entities/account-merge-recovery.entity';
@@ -190,6 +196,14 @@ describe('Stellar Account Merge Recovery Integration', () => {
 
       // Verify releaseEscrowWithMergeRecovery properly retries
       // Mock implementation would call releaseEscrow with replacement accounts
+
+      const mockInvestorShares = [
+        {
+          walletAddress: destinationKeypair.publicKey(),
+          tokenAmount: 1,
+          totalTokens: 1,
+        },
+      ];
 
       // In real test, would call releaseEscrowWithMergeRecovery
       // For now, verify it exists and is callable

@@ -239,6 +239,7 @@ async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
     : `${API_VERSION}${path}`;
   const res = await fetch(`${API_BASE}${versionedPath}`, {
     ...init,
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       ...authHeaders(),
@@ -335,6 +336,14 @@ export const apiClient = {
   // GET /users/me/deals
   async getTraderDeals(): Promise<Deal[]> {
     return apiFetch<Deal[]>("/users/me/deals?role=trader");
+  },
+
+  // PATCH /investments/:id/cancel
+  async cancelInvestment(investmentId: string, reason?: string): Promise<Investment> {
+    return apiFetch<Investment>(`/investments/${investmentId}/cancel`, {
+      method: "PATCH",
+      body: JSON.stringify(reason ? { reason } : {}),
+    });
   },
 
   // GET /investments/my-investments

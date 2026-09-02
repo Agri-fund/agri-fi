@@ -1,3 +1,5 @@
+import { createHash } from 'crypto';
+
 const BASE58_ALPHABET =
   '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
 
