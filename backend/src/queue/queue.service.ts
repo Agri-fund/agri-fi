@@ -88,7 +88,7 @@ export class QueueService implements TransactionalQueueService {
     private readonly cls: ClsService,
     private readonly outboxService: OutboxService,
   ) {
-    this.logger.setContext(QueueService.name);
+    (this.logger as any).setContext(QueueService.name);
   }
 
   public async emit(pattern: string, data: unknown): Promise<void> {

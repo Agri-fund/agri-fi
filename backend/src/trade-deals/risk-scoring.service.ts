@@ -134,7 +134,7 @@ export class RiskScoringService {
     await this.tradeDealRepo.update(dealId, {
       riskScore: result.score,
       riskRating: result.rating,
-      riskBreakdown: result.breakdown,
+      riskBreakdown: result.breakdown as any,
     });
     return result;
   }

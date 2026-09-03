@@ -2856,4 +2856,3 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       },
     };
   }
-}

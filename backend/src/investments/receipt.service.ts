@@ -15,7 +15,7 @@ import {
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
-import * as PDFDocument from 'pdfkit';
+import PDFDocument from 'pdfkit';
 import { Investment } from './entities/investment.entity';
 
 /** Pre-signed URL validity window: 15 minutes */

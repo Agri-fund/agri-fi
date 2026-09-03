@@ -18,7 +18,7 @@ export class OutboxService {
     @InjectMetric('outbox_publish_errors_total')
     private readonly publishErrorsCounter: Counter<string>,
   ) {
-    this.logger.setContext(OutboxService.name);
+    (this.logger as any).setContext(OutboxService.name);
   }
 
   /**

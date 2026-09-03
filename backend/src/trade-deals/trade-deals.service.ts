@@ -186,7 +186,7 @@ export class TradeDealsService {
       issuerPublicKey: null,
       issuerSecretKey: null,
       stellarAssetTxId: null,
-    });
+    } as any);
 
     const savedDeal = await this.tradeDealRepo.save(tradeDeal);
 

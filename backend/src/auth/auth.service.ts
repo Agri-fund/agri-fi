@@ -1669,11 +1669,11 @@ export class AuthService {
     const txHash = tx.hash();
     const clientVerified = tx.signatures.some((sig) => {
       try {
-        const hint = sig.hint.toString('hex');
+        const hint = Buffer.from(sig.hint as any).toString('hex');
         const clientKeypair = Keypair.fromPublicKey(clientPublicKey);
-        const clientHint = clientKeypair.signatureHint().toString('hex');
+        const clientHint = Buffer.from(clientKeypair.signatureHint() as any).toString('hex');
         if (hint !== clientHint) return false;
-        return clientKeypair.verify(txHash, sig.signature);
+        return clientKeypair.verify(txHash, Buffer.from(sig.signature as any));
       } catch {
         return false;
       }

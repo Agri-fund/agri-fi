@@ -43,7 +43,7 @@ export class EscrowService {
     private readonly dataSource: DataSource,
     private readonly logger: PinoLogger,
   ) {
-    this.logger.setContext(EscrowService.name);
+    (this.logger as any).setContext(EscrowService.name);
   }
 
   /**

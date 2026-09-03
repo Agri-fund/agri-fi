@@ -233,7 +233,8 @@ export class TradeDeal {
     nullable: true,
     enum: ['Low', 'Medium', 'High'],
   })
-  riskRating: 'Low' | 'Medium' | 'High' | null;
+  // `riskRating` was consolidated later in the file with the full enum
+  // and larger varchar length. Keep a single declaration below.
 
   @Column({ name: 'farm_location', nullable: true })
   @ApiProperty({
