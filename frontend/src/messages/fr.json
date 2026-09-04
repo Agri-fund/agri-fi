@@ -480,5 +480,14 @@
       "finish": "Commencer"
     },
     "restart": "Redémarrer la Visite"
+  },
+  "validation": {
+    "required": "{field} est requis",
+    "emailInvalid": "L'adresse e-mail n'est pas valide",
+    "passwordTooShort": "Le mot de passe doit comporter au moins 8 caractères",
+    "passwordMismatch": "Les mots de passe ne correspondent pas",
+    "amountMin": "Le montant doit être d'au moins {min}",
+    "amountMax": "Le montant ne peut pas dépasser {max}",
+    "fieldInvalid": "{field} n'est pas valide"
   }
 }

@@ -5,12 +5,15 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api';
 import { useToast } from '@/components/ui/ToastProvider';
+import { FormField } from '@/components/ui/FormField';
 
 const DEMOS = [
   { label: '👨‍🌾 Farmer',   email: 'farmer@agri-fi.demo',   color: 'hover:border-emerald-400 hover:bg-emerald-50' },
   { label: '💼 Investor', email: 'investor@agri-fi.demo', color: 'hover:border-blue-400 hover:bg-blue-50' },
   { label: '🤝 Trader',   email: 'trader@agri-fi.demo',   color: 'hover:border-violet-400 hover:bg-violet-50' },
 ];
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function LoginPage() {
   const router = useRouter();
@@ -20,6 +23,13 @@ export default function LoginPage() {
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Per-field validation state
+  const [touched, setTouched] = useState({ email: false, password: false });
+  const [errors, setErrors] = useState<{ email: string | undefined; password: string | undefined }>({
+    email: undefined,
+    password: undefined,
+  });
 
   // Redirect already-logged-in users, clear stale data if role is missing
   useEffect(() => {
@@ -41,8 +51,51 @@ export default function LoginPage() {
     }
   }, [router]);
 
+  /** Validate a single field and return its error (or undefined). */
+  function validateField(field: 'email' | 'password', val: string): string | undefined {
+    if (field === 'email') {
+      if (!val.trim()) return 'Email is required';
+      if (!EMAIL_REGEX.test(val)) return 'Email address is not valid';
+    }
+    if (field === 'password') {
+      if (!val) return 'Password is required';
+    }
+    return undefined;
+  }
+
+  const handleEmailBlur = () => {
+    setTouched(t => ({ ...t, email: true }));
+    setErrors(e => ({ ...e, email: validateField('email', email) }));
+  };
+
+  const handlePasswordBlur = () => {
+    setTouched(t => ({ ...t, password: true }));
+    setErrors(e => ({ ...e, password: validateField('password', password) }));
+  };
+
+  /** Focus first invalid field by id after state updates. */
+  function focusFirstInvalid(emailErr: string | undefined, passwordErr: string | undefined) {
+    const fieldId = emailErr ? 'login-email' : passwordErr ? 'login-password' : null;
+    if (fieldId) {
+      (document.getElementById(fieldId) as HTMLElement | null)?.focus();
+    }
+  }
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Run all validations and mark all fields as touched
+    const emailErr = validateField('email', email);
+    const passwordErr = validateField('password', password);
+    setErrors({ email: emailErr, password: passwordErr });
+    setTouched({ email: true, password: true });
+
+    if (emailErr || passwordErr) {
+      // Use setTimeout to allow React to flush state before focusing
+      setTimeout(() => focusFirstInvalid(emailErr, passwordErr), 0);
+      return;
+    }
+
     setLoading(true); setError(null);
     try {
       const result = await apiClient.login(email, password);
@@ -155,7 +208,7 @@ export default function LoginPage() {
               <p className="text-slate-500 mt-2">Sign in to your AgriFi account</p>
             </div>
 
-            {/* Error */}
+            {/* Server-level error */}
             {error && (
               <div className="alert-error mb-5">
                 <span className="text-base leading-none">⚠</span>
@@ -164,28 +217,59 @@ export default function LoginPage() {
             )}
 
             {/* Form */}
-            <form onSubmit={handleLogin} className="space-y-4">
-              <div>
-                <label className="label">Email address</label>
-                <input className="input" type="email" required autoComplete="email"
-                  placeholder="you@example.com" value={email}
-                  onChange={e => setEmail(e.target.value)} />
-              </div>
+            <form onSubmit={handleLogin} className="space-y-4" noValidate>
+              {/* Email */}
+              <FormField
+                id="login-email"
+                label="Email address"
+                type="email"
+                autoComplete="email"
+                placeholder="you@example.com"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                onBlur={handleEmailBlur}
+                error={errors.email}
+                touched={touched.email}
+                required
+              />
 
+              {/* Password — custom wrapper to keep the show/hide toggle */}
               <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="label mb-0">Password</label>
-                </div>
-                <div className="relative">
-                  <input className="input pr-11" type={showPw ? 'text' : 'password'}
-                    required autoComplete="current-password"
-                    placeholder="••••••••" value={password}
-                    onChange={e => setPassword(e.target.value)} />
-                  <button type="button" tabIndex={-1}
-                    onClick={() => setShowPw(v => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors text-sm">
-                    {showPw ? '🙈' : '👁'}
-                  </button>
+                <div className="space-y-1">
+                  <label htmlFor="login-password" className="label">
+                    Password
+                    <span className="text-red-500 ml-0.5" aria-hidden="true"> *</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      id="login-password"
+                      type={showPw ? 'text' : 'password'}
+                      autoComplete="current-password"
+                      placeholder="••••••••"
+                      value={password}
+                      onChange={e => setPassword(e.target.value)}
+                      onBlur={handlePasswordBlur}
+                      required
+                      aria-invalid={touched.password && !!errors.password ? true : undefined}
+                      aria-describedby={touched.password && errors.password ? 'login-password-error' : undefined}
+                      className={[
+                        'input pr-11',
+                        touched.password && errors.password ? 'border-red-500' : '',
+                        touched.password && !errors.password && password ? 'border-green-500' : '',
+                      ].filter(Boolean).join(' ')}
+                    />
+                    <button type="button" tabIndex={-1}
+                      onClick={() => setShowPw(v => !v)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors text-sm">
+                      {showPw ? '🙈' : '👁'}
+                    </button>
+                  </div>
+                  {touched.password && errors.password && (
+                    <p id="login-password-error" role="alert" className="text-xs text-red-600 flex items-center gap-1 mt-0.5">
+                      <span aria-hidden="true">⚠</span>
+                      {errors.password}
+                    </p>
+                  )}
                 </div>
               </div>
 

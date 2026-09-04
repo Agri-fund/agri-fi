@@ -455,5 +455,14 @@
       "finish": "Get Started"
     },
     "restart": "Restart Tour"
+  },
+  "validation": {
+    "required": "{field} is required",
+    "emailInvalid": "Email address is not valid",
+    "passwordTooShort": "Password must be at least 8 characters",
+    "passwordMismatch": "Passwords do not match",
+    "amountMin": "Amount must be at least {min}",
+    "amountMax": "Amount cannot exceed {max}",
+    "fieldInvalid": "{field} is not valid"
   }
 }

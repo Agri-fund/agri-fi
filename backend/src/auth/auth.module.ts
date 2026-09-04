@@ -5,12 +5,17 @@ import { PassportModule } from '@nestjs/passport';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthController } from './auth.controller';
 import { AdminController } from './admin.controller';
+import { AccreditationController } from './accreditation.controller';
 import { AuthService } from './auth.service';
+import { AccreditationService } from './accreditation.service';
+import { AnnualCapService } from './annual-cap.service';
 import { JwtStrategy } from './jwt.strategy';
 import { User } from './entities/user.entity';
 import { KycSubmission } from './entities/kyc-submission.entity';
 import { ReferralCode } from './entities/referral-code.entity';
 import { Referral } from './entities/referral.entity';
+import { AnnualInvestmentCap } from './entities/annual-investment-cap.entity';
+import { AccreditationReview } from './entities/accreditation-review.entity';
 import { KycGuard } from './kyc.guard';
 import { RolesGuard } from './roles.guard';
 import { QueueModule } from '../queue/queue.module';
@@ -43,6 +48,8 @@ import { EmailSequenceModule } from '../email-sequence/email-sequence.module';
       LoginLog,
       AdminAction,
       SecurityIpBlock,
+      AnnualInvestmentCap,
+      AccreditationReview,
     ]),
     ConfigModule,
     QueueModule,
@@ -62,9 +69,11 @@ import { EmailSequenceModule } from '../email-sequence/email-sequence.module';
       }),
     }),
   ],
-  controllers: [AuthController, AdminController],
+  controllers: [AuthController, AdminController, AccreditationController],
   providers: [
     AuthService,
+    AccreditationService,
+    AnnualCapService,
     JwtStrategy,
     KycGuard,
     RolesGuard,
@@ -77,6 +86,8 @@ import { EmailSequenceModule } from '../email-sequence/email-sequence.module';
   ],
   exports: [
     AuthService,
+    AccreditationService,
+    AnnualCapService,
     JwtModule,
     TypeOrmModule,
     KycGuard,

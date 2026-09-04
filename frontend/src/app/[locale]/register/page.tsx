@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import zxcvbn from 'zxcvbn';
 import { apiClient } from '@/lib/api';
 import { useToast } from '@/components/ui/ToastProvider';
+import { FormField } from '@/components/ui/FormField';
 
 const ROLES = [
   { value: 'farmer',        emoji: '👨‍🌾', label: 'Farmer',   desc: 'List crops & raise funding',   color: 'border-emerald-400 bg-emerald-50 ring-emerald-400' },
@@ -15,6 +16,9 @@ const ROLES = [
 ];
 
 const STEPS = ['Choose role', 'Your details', 'Done'];
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+type DetailsField = 'name' | 'email' | 'password' | 'country';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -25,6 +29,14 @@ export default function RegisterPage() {
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Per-field validation state for step 2
+  const [touched, setTouched] = useState<Record<DetailsField, boolean>>({
+    name: false, email: false, password: false, country: false,
+  });
+  const [errors, setErrors] = useState<Record<DetailsField, string | undefined>>({
+    name: undefined, email: undefined, password: undefined, country: undefined,
+  });
 
   useEffect(() => {
     const ref = searchParams.get('ref');
@@ -38,8 +50,62 @@ export default function RegisterPage() {
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm(f => ({ ...f, [k]: e.target.value }));
 
+  /** Validate a single details field and return its error (or undefined). */
+  function validateField(field: DetailsField, val: string): string | undefined {
+    switch (field) {
+      case 'name':
+        return val.trim() ? undefined : 'Full name is required';
+      case 'email':
+        if (!val.trim()) return 'Email is required';
+        if (!EMAIL_REGEX.test(val)) return 'Email address is not valid';
+        return undefined;
+      case 'password':
+        if (!val) return 'Password is required';
+        if (val.length < 8) return 'Password must be at least 8 characters';
+        return undefined;
+      case 'country':
+        return val.trim() ? undefined : 'Country is required';
+      default:
+        return undefined;
+    }
+  }
+
+  const handleBlur = (field: DetailsField) => () => {
+    setTouched(t => ({ ...t, [field]: true }));
+    setErrors(e => ({ ...e, [field]: validateField(field, form[field]) }));
+  };
+
+  /** Focus first invalid field by DOM id. */
+  function focusFirstInvalid(errs: Record<DetailsField, string | undefined>) {
+    const order: DetailsField[] = ['name', 'email', 'password', 'country'];
+    const firstInvalid = order.find(f => errs[f]);
+    if (firstInvalid) {
+      (document.getElementById(`register-${firstInvalid}`) as HTMLElement | null)?.focus();
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Validate all step-2 fields
+    const fields: DetailsField[] = ['name', 'email', 'password', 'country'];
+    const newErrors = fields.reduce((acc, f) => {
+      acc[f] = validateField(f, form[f]);
+      return acc;
+    }, {} as Record<DetailsField, string | undefined>);
+    const newTouched = fields.reduce((acc, f) => {
+      acc[f] = true;
+      return acc;
+    }, {} as Record<DetailsField, boolean>);
+
+    setErrors(newErrors);
+    setTouched(newTouched);
+
+    if (fields.some(f => newErrors[f])) {
+      setTimeout(() => focusFirstInvalid(newErrors), 0);
+      return;
+    }
+
     setLoading(true); setError(null);
     try {
       const { referralCode, ...rest } = form;
@@ -177,7 +243,7 @@ export default function RegisterPage() {
 
             {/* Step 1: Details */}
             {step === 1 && (
-              <form onSubmit={handleSubmit} className="space-y-4">
+              <form onSubmit={handleSubmit} className="space-y-4" noValidate>
                 {/* Selected role pill */}
                 <div className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl border border-slate-200">
                   <span className="text-xl">{ROLES.find(r => r.value === form.role)?.emoji}</span>
@@ -186,30 +252,69 @@ export default function RegisterPage() {
                     className="ml-auto text-xs text-brand-600 font-semibold hover:underline">Change</button>
                 </div>
 
-                <div>
-                  <label className="label">Full name</label>
-                  <input className="input" type="text" required placeholder="Amara Diallo"
-                    value={form.name} onChange={set('name')} />
-                </div>
+                <FormField
+                  id="register-name"
+                  label="Full name"
+                  type="text"
+                  placeholder="Amara Diallo"
+                  value={form.name}
+                  onChange={set('name')}
+                  onBlur={handleBlur('name')}
+                  error={errors.name}
+                  touched={touched.name}
+                  required
+                />
 
-                <div>
-                  <label className="label">Email address</label>
-                  <input className="input" type="email" required placeholder="you@example.com"
-                    value={form.email} onChange={set('email')} />
-                </div>
+                <FormField
+                  id="register-email"
+                  label="Email address"
+                  type="email"
+                  placeholder="you@example.com"
+                  value={form.email}
+                  onChange={set('email')}
+                  onBlur={handleBlur('email')}
+                  error={errors.email}
+                  touched={touched.email}
+                  required
+                />
 
-                <div>
-                  <label className="label">Password</label>
+                {/* Password — custom wrapper for the strength meter and toggle */}
+                <div className="space-y-1">
+                  <label htmlFor="register-password" className="label">
+                    Password
+                    <span className="text-red-500 ml-0.5" aria-hidden="true"> *</span>
+                  </label>
                   <div className="relative">
-                    <input className="input pr-11" type={showPw ? 'text' : 'password'}
-                      required minLength={8} placeholder="Min. 8 characters"
-                      value={form.password} onChange={set('password')} />
+                    <input
+                      id="register-password"
+                      type={showPw ? 'text' : 'password'}
+                      placeholder="Min. 8 characters"
+                      value={form.password}
+                      onChange={set('password')}
+                      onBlur={handleBlur('password')}
+                      required
+                      minLength={8}
+                      aria-invalid={touched.password && !!errors.password ? true : undefined}
+                      aria-describedby={touched.password && errors.password ? 'register-password-error' : undefined}
+                      className={[
+                        'input pr-11',
+                        touched.password && errors.password ? 'border-red-500' : '',
+                        touched.password && !errors.password && form.password ? 'border-green-500' : '',
+                      ].filter(Boolean).join(' ')}
+                    />
                     <button type="button" tabIndex={-1}
                       onClick={() => setShowPw(v => !v)}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-sm">
                       {showPw ? '🙈' : '👁'}
                     </button>
                   </div>
+                  {touched.password && errors.password && (
+                    <p id="register-password-error" role="alert" className="text-xs text-red-600 flex items-center gap-1 mt-0.5">
+                      <span aria-hidden="true">⚠</span>
+                      {errors.password}
+                    </p>
+                  )}
+                  {/* Password strength meter */}
                   {form.password.length > 0 && (() => {
                     const score = zxcvbn(form.password).score;
                     const colors = ['bg-red-400', 'bg-red-400', 'bg-yellow-400', 'bg-blue-500', 'bg-green-500'];
@@ -227,11 +332,18 @@ export default function RegisterPage() {
                   })()}
                 </div>
 
-                <div>
-                  <label className="label">Country</label>
-                  <input className="input" type="text" required placeholder="Nigeria"
-                    value={form.country} onChange={set('country')} />
-                </div>
+                <FormField
+                  id="register-country"
+                  label="Country"
+                  type="text"
+                  placeholder="Nigeria"
+                  value={form.country}
+                  onChange={set('country')}
+                  onBlur={handleBlur('country')}
+                  error={errors.country}
+                  touched={touched.country}
+                  required
+                />
 
                 <div>
                   <label className="label">Referral Code <span className="text-slate-400 font-normal">(optional)</span></label>

@@ -1,6 +1,7 @@
-import { Module, Global } from '@nestjs/common';
+import { Module, Global, forwardRef } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { makeCounterProvider } from '@willsoto/nestjs-prometheus';
 import { StellarService, SEQUENCE_REDIS_CLIENT } from './stellar.service';
 import { StellarController } from './stellar.controller';
 import { Sep12Controller } from './sep12.controller';
@@ -15,10 +16,12 @@ import { RedisConfig } from '../config/redis.config';
 import { StellarHistory } from './entities/stellar-history.entity';
 import { StellarArchiverService } from './stellar-archiver.service';
 import { StellarMonitorService } from './stellar-monitor.service';
+import { UnrecognisedPayment } from './entities/unrecognised-payment.entity';
 import { KmsService } from '../kms/kms.service';
 import { User } from '../auth/entities/user.entity';
 import { KycSubmission } from '../auth/entities/kyc-submission.entity';
 import { PricesController } from './prices.controller';
+import { InvestmentsModule } from '../investments/investments.module';
 
 const redisClientFactory = {
   provide: PRICE_REDIS_CLIENT,
@@ -54,7 +57,11 @@ const sequenceRedisClientFactory = {
       Sep24Transaction,
       User,
       KycSubmission,
+      UnrecognisedPayment,
     ]),
+    // Use forwardRef to break the circular dependency:
+    //   StellarModule (Global) ← InvestmentsModule → StellarModule
+    forwardRef(() => InvestmentsModule),
   ],
   controllers: [
     StellarController,
@@ -75,8 +82,16 @@ const sequenceRedisClientFactory = {
     fxRedisClientFactory,
     sequenceRedisClientFactory,
     KmsService,
-    StellarArchiverService,
-    StellarMonitorService,
+    // ── Prometheus counters for payment streaming (Issue #905) ──────────────
+    makeCounterProvider({
+      name: 'stellar_payments_received_total',
+      help: 'Total Stellar payments received on platform escrow account',
+      labelNames: ['asset'],
+    }),
+    makeCounterProvider({
+      name: 'stellar_payments_unmatched_total',
+      help: 'Total Stellar payments that could not be matched to an investment',
+    }),
   ],
   exports: [
     StellarService,

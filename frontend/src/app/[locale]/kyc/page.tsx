@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { apiClient, getStoredToken } from '@/lib/api';
 import { useToast } from '@/components/ui/ToastProvider';
 import { Dropzone, DropzoneFile } from '@/components/ui/Dropzone';
+import { FormField } from '@/components/ui/FormField';
 import { useTranslations } from 'next-intl';
 
 type Step = 0 | 1 | 2 | 3 | 4;
@@ -163,6 +164,20 @@ export default function KycPage() {
     }
 
     if (!isHydrated.current) return;
+
+    // Validate business fields before submitting
+    if (mode === 'business') {
+      const companyNameErr = companyName.trim() ? undefined : 'Company name is required';
+      const registrationNumberErr = registrationNumber.trim() ? undefined : 'Registration number is required';
+      setBusinessErrors({ companyName: companyNameErr, registrationNumber: registrationNumberErr });
+      setBusinessTouched({ companyName: true, registrationNumber: true });
+      if (companyNameErr || registrationNumberErr) {
+        setLoading(false);
+        const focusId = companyNameErr ? 'kyc-company-name' : 'kyc-registration-number';
+        setTimeout(() => (document.getElementById(focusId) as HTMLElement | null)?.focus(), 0);
+        return;
+      }
+    }
 
     try {
       await fetch('/api/auth/kyc/draft', {
