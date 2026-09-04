@@ -73,4 +73,3 @@ export function decodeCursor(cursor: string): string {
     return cursor;
   }
 }
-

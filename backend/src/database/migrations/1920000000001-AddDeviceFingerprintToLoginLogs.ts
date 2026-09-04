@@ -24,8 +24,12 @@ export class AddDeviceFingerprintToLoginLogs1920000000001 implements MigrationIn
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`DROP INDEX IF EXISTS "IDX_login_logs_country_code"`);
-    await queryRunner.query(`DROP INDEX IF EXISTS "IDX_login_logs_device_fingerprint"`);
+    await queryRunner.query(
+      `DROP INDEX IF EXISTS "IDX_login_logs_country_code"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX IF EXISTS "IDX_login_logs_device_fingerprint"`,
+    );
     await queryRunner.query(`
       ALTER TABLE "login_logs"
       DROP COLUMN IF EXISTS "country_code",

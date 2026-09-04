@@ -25,7 +25,10 @@ export class ReferralCode {
 
   @Column({ unique: true, length: 8 })
   @Index()
-  @ApiProperty({ description: 'Unique 8-character alphanumeric referral code', example: 'ABC12345' })
+  @ApiProperty({
+    description: 'Unique 8-character alphanumeric referral code',
+    example: 'ABC12345',
+  })
   code: string;
 
   @CreateDateColumn({ name: 'created_at' })

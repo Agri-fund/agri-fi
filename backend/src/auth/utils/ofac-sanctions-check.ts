@@ -85,20 +85,24 @@ export class OfacSanctionsCheckService {
     } catch (error) {
       if (axios.isAxiosError(error)) {
         const axiosError = error as AxiosError;
-        
+
         // If the API returns 404, the address is not found in sanctions lists
         if (axiosError.response?.status === 404) {
           return false;
         }
 
         // If the API returns 401/403, there's an authentication issue
-        if (axiosError.response?.status === 401 || axiosError.response?.status === 403) {
+        if (
+          axiosError.response?.status === 401 ||
+          axiosError.response?.status === 403
+        ) {
           console.error('OFAC API authentication failed:', axiosError.message);
           // In production, you might want to fail closed and reject the address
           // For now, we'll throw an error
           throw new BadRequestException({
             code: 'SANCTIONS_CHECK_FAILED',
-            message: 'Unable to verify address sanctions status due to API authentication error',
+            message:
+              'Unable to verify address sanctions status due to API authentication error',
           });
         }
 
@@ -110,7 +114,7 @@ export class OfacSanctionsCheckService {
             message: 'Unable to verify address sanctions status',
           });
         }
-        
+
         // In development, allow the operation but log a warning
         console.warn(
           'OFAC check failed in development mode. Allowing operation.',

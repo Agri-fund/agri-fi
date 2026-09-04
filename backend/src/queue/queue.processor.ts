@@ -8,7 +8,7 @@ import { StellarService } from '../stellar/stellar.service';
 import { SorobanService } from '../soroban/soroban.service';
 import { TradeDealsService } from '../trade-deals/trade-deals.service';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
-import { Investment } from '../investments/entities/investment.entity';
+import { Investment, InvestmentStatus } from '../investments/entities/investment.entity';
 import { User } from '../auth/entities/user.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import {
@@ -114,6 +114,14 @@ export class QueueProcessor implements OnApplicationShutdown {
     }
   }
 
+  private truncate(value: string, max = 500): string {
+    return value.length <= max ? value : `${value.slice(0, max)}…`;
+  }
+
+  private correlationIdFromMessage(msg: any): string | undefined {
+    return msg?.properties?.correlationId;
+  }
+
   private unwrap<T>(
     encrypted: string,
     pattern: string,
@@ -124,7 +132,12 @@ export class QueueProcessor implements OnApplicationShutdown {
       return decryptPayload<T>(encrypted);
     } catch (err: any) {
       this.logger.error(
-        { event: pattern, error: err.message },
+        {
+          event: pattern,
+          error: err.message,
+          correlationId: this.correlationIdFromMessage(msg),
+          rawMessage: this.truncate(String(encrypted ?? '')),
+        },
         `${pattern} decryption failed — routing to DLQ`,
       );
       // Undecryptable payloads can never succeed on retry — send straight to DLQ.
@@ -330,6 +343,23 @@ export class QueueProcessor implements OnApplicationShutdown {
       return;
     }
 
+    // #788 — the investor may have cancelled during the cooling-off window
+    // between when this job was enqueued and now. Refuse to submit a real
+    // on-chain transfer for an investment that is no longer PENDING, rather
+    // than blindly overwriting whatever status a cancel (or any other path)
+    // already set.
+    const current = await this.investmentRepo.findOne({
+      where: { id: data.investmentId },
+    });
+    if (!current || current.status !== InvestmentStatus.PENDING) {
+      this.logger.info(
+        { investmentId: data.investmentId, status: current?.status },
+        'investment.fund skipped — investment is no longer pending (likely cancelled)',
+      );
+      channel.ack(originalMsg);
+      return;
+    }
+
     this.logger.info(
       { investmentId: data.investmentId },
       `Processing investment.fund for investment ${data.investmentId}`,
@@ -518,8 +548,7 @@ export class QueueProcessor implements OnApplicationShutdown {
     // Derive a stable idempotency key: prefer an explicit messageId on the
     // payload; fall back to userId+type for notification events.
     const businessId =
-      data.messageId ??
-      `${data.userId ?? 'unknown'}-${data.type ?? 'unknown'}`;
+      data.messageId ?? `${data.userId ?? 'unknown'}-${data.type ?? 'unknown'}`;
     const idemKey = IdempotencyService.buildKey(
       'email.notification',
       businessId,
@@ -608,7 +637,8 @@ export class QueueProcessor implements OnApplicationShutdown {
       data.userName ??
       details.farmerName ??
       details.investorName ??
-      (user?.fullName ?? deriveNameFromEmail(user?.email ?? data.email ?? ''));
+      user?.fullName ??
+      deriveNameFromEmail(user?.email ?? data.email ?? '');
 
     const vars: Record<string, unknown> = {
       userName: displayName,
@@ -633,6 +663,10 @@ export class QueueProcessor implements OnApplicationShutdown {
       portionPercent: details.portionPercent ?? data.portionPercent ?? '',
       reason: details.reason ?? data.reason ?? '',
       kycUrl: `${this.config.get<string>('APP_BASE_URL', 'http://localhost:3001')}/dashboard/kyc`,
+      // #808 — PDF receipt download link in payment confirmation emails.
+      // Populated when the receipt has already been generated and the S3
+      // pre-signed URL has been embedded in the notification payload.
+      receiptUrl: data.receiptUrl ?? details.receiptUrl ?? undefined,
       ...details,
     };
 
@@ -678,7 +712,7 @@ export class QueueProcessor implements OnApplicationShutdown {
       };
     }
     if (data.type === 'deal_completed') {
-      let subject = `Deal Completed: ${data.dealDetails?.commodity}`;
+      const subject = `Deal Completed: ${data.dealDetails?.commodity}`;
       let text = `The deal you participated in (${data.dealDetails?.commodity}) has been completed.`;
       let html = `<h3>Deal Completed</h3><p>The deal you participated in (<strong>${data.dealDetails?.commodity}</strong>) has been completed.</p>`;
 
@@ -847,9 +881,13 @@ export class QueueProcessor implements OnApplicationShutdown {
     );
     if (!usdcContractId) return;
 
-    const deadlineTs = Math.floor(new Date(deal.deliveryDate).getTime() / 1000);
+    const deadlineTs = Math.floor(
+      new Date(deal.fundingDeadline ?? deal.deliveryDate).getTime() / 1000,
+    );
     const fundingTargetStroops = BigInt(
-      Math.round(Number(deal.totalValue) * 1e7),
+      Math.round(
+        Number(deal.minimumFundingTarget ?? deal.totalValue) * 1e7,
+      ),
     );
 
     const txHash = await this.sorobanService.initializeCampaign(

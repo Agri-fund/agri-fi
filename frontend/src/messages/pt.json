@@ -191,6 +191,50 @@
       "connectWallet": "Conectar sua carteira na navegação superior"
     }
   },
+  "wallet": {
+    "title": "Conectar carteira Stellar",
+    "subtitle": "Escolha um provedor de carteira",
+    "description": "Sua chave privada nunca sai da sua carteira. O Agri-Fi só vê sua chave pública.",
+    "connectButton": "Conectar carteira",
+    "connecting": "Conectando…",
+    "connected": "Conectado",
+    "disconnect": "Desconectar",
+    "freighter": {
+      "name": "Freighter",
+      "type": "Extensão do navegador"
+    },
+    "albedo": {
+      "name": "Albedo",
+      "type": "Assinante web — sem instalação"
+    },
+    "walletConnect": {
+      "name": "WalletConnect",
+      "type": "Conectar via QR code ou link direto"
+    },
+    "detected": "Detectado",
+    "install": "Instalar",
+    "alwaysAvailable": "Sempre disponível",
+    "openDialog": "Abrir caixa de conexão da carteira",
+    "closeDialog": "Fechar caixa de conexão da carteira",
+    "error": "Erro ao conectar carteira",
+    "errorConnect": "Falha ao conectar carteira",
+    "errorLink": "Falha ao vincular carteira",
+    "pleaseTryAgain": "Por favor, tente novamente",
+    "onboarding": {
+      "title": "Conecte sua carteira",
+      "subtitle": "Escolha uma carteira Stellar para começar",
+      "comingSoon": "Em breve",
+      "termsNote": "Ao conectar, você concorda com nossos Termos de Serviço. Suas chaves ficam na sua carteira.",
+      "networkMismatch": "Rede incorreta: sua carteira está em {detected} mas este aplicativo requer {expected}. Troque a rede na sua carteira.",
+      "freighterGuide": {
+        "title": "Como instalar o Freighter",
+        "step1": "Acesse freighter.app e clique em Instalar",
+        "step2": "Adicione a extensão ao seu navegador",
+        "step3": "Crie ou importe uma conta Stellar",
+        "cta": "Instalar Freighter →"
+      }
+    }
+  },
   "deals": {
     "coFarmers": {
       "title": "Coagricultores",
@@ -206,6 +250,11 @@
     },
     "createTitle": "Criar Novo Negócio Comercial",
     "draftRestored": "Rascunho restaurado de {time}",
+    "wizardBadge": "Assistente de anúncio",
+    "createSubtitle": "Crie um anúncio completo e pronto para investidores com etapas guiadas, validação inteligente e auto-salvamento do rascunho.",
+    "saving": "Salvando rascunho...",
+    "saved": "Rascunho salvo",
+    "stepLabel": "Etapa {current} de {total}",
     "commodity": "Nome da Mercadoria",
     "quantity": "Quantidade",
     "unit": "Unidade",
@@ -217,9 +266,57 @@
     "createButton": "Criar Negócio",
     "creating": "Criando...",
     "cancel": "Cancelar",
+    "back": "Voltar",
+    "next": "Próximo",
+    "submitForReview": "Enviar para revisão",
+    "submitSuccess": "Negócio enviado para revisão administrativa.",
+    "roiWarningHigh": "Este ROI está invulgarmente alto. Verifique as suposições antes de enviar.",
+    "roiWarningNormal": "O ROI parece dentro de uma faixa normal.",
+    "photoHelper": "Envie de 1 a 10 fotos. Cada imagem deve ter pelo menos 500px de largura.",
+    "docHelper": "Envie os documentos exigidos para sua categoria de mercadoria antes de enviar.",
     "tokenInfo": "Isso criará {count} tokens a ${price} cada.",
     "raised": "{amount} arrecadados",
     "remainingOf": "{remaining} restantes de {total}",
+    "fields": {
+      "title": "Título do negócio",
+      "commodity": "Mercadoria",
+      "country": "País",
+      "region": "Região",
+      "shortDescription": "Descrição curta",
+      "quantity": "Quantidade",
+      "unit": "Unidade",
+      "totalValue": "Meta financeira",
+      "minInvestment": "Lote mínimo de investimento",
+      "expectedRoi": "ROI esperado (%)",
+      "duration": "Duração (dias)",
+      "risk": "Classificação de risco",
+      "roiWarning": "Aviso de ROI",
+      "longDescription": "História e impacto",
+      "farmLocation": "Localização da fazenda",
+      "mapPoint": "Coordenadas",
+      "farmPhotos": "Fotos da fazenda",
+      "extraDocs": "Documentos de apoio",
+      "milestone": "Marco",
+      "timeline": "Cronograma",
+      "owner": "Responsável"
+    },
+    "steps": {
+      "1": { "eyebrow": "Básicos", "title": "Detalhes do negócio" },
+      "2": { "eyebrow": "Números", "title": "Financeiro" },
+      "3": { "eyebrow": "Narrativa", "title": "História e impacto" },
+      "4": { "eyebrow": "Provas", "title": "Documentos" },
+      "5": { "eyebrow": "Plano", "title": "Plano logístico" },
+      "6": { "eyebrow": "Revisão", "title": "Revisar e enviar" }
+    },
+    "preview": {
+      "card": "Prévia do cartão",
+      "detailPage": "Prévia da página de detalhe",
+      "map": "Local no mapa",
+      "documents": "Documentos enviados",
+      "placeholderTitle": "Seu título",
+      "placeholderCommodity": "Mercadoria",
+      "placeholderSummary": "Resumo curto da fazenda e da oportunidade."
+    },
     "validation": {
       "commodityRequired": "Nome da mercadoria é obrigatório",
       "quantityMin": "A quantidade deve ser pelo menos 1",
@@ -227,8 +324,71 @@
       "tokenPriceFixed": "O preço do token deve ser exatamente 100",
       "deliveryDateRequired": "Data de entrega é obrigatória",
       "deliveryDateFuture": "A data de término deve ser no futuro",
-      "invalidId": "ID inválido"
+      "invalidId": "ID inválido",
+      "titleRequired": "O título é obrigatório",
+      "countryRequired": "O país é obrigatório",
+      "shortDescriptionRequired": "A descrição curta é obrigatória",
+      "duplicateTitle": "Já existe um negócio com este título.",
+      "minInvestmentLot": "O lote mínimo de investimento deve ser maior que 0",
+      "expectedRoiMin": "O ROI esperado deve ser maior que 0",
+      "durationRequired": "A duração é obrigatória",
+      "riskRequired": "A classificação de risco é obrigatória",
+      "longDescriptionRequired": "A história e o impacto são obrigatórios",
+      "farmLocationRequired": "A localização da fazenda é obrigatória",
+      "photoMin": "Envie pelo menos uma foto da fazenda.",
+      "photoMax": "Você pode enviar no máximo 10 fotos.",
+      "photoWidth": "As fotos devem ter pelo menos 500px de largura.",
+      "mapRequired": "Adicione latitude e longitude da fazenda.",
+      "documentRequired": "{name} é obrigatório para esta mercadoria.",
+      "logisticsRequired": "Complete todos os marcos logísticos.",
+      "submitFailed": "Falha ao enviar o negócio."
     }
+  },
+  "kyc": {
+    "badge": "Assistente de verificação KYC",
+    "title": "Complete sua verificação",
+    "subtitle": "Salve o progresso conforme avança e retome depois do rascunho.",
+    "restored": "Rascunho restaurado de {time}",
+    "stepLabel": "Etapa {current} de {total}",
+    "fields": {
+      "fullName": "Nome legal completo",
+      "dateOfBirth": "Data de nascimento",
+      "nationality": "Nacionalidade",
+      "address": "Endereço residencial",
+      "idFront": "Frente do documento",
+      "idBack": "Verso do documento",
+      "proofOfAddress": "Comprovante de residência",
+      "selfie": "Selfie com o documento"
+    },
+    "hints": {
+      "documents": "Aceita PDF, JPEG e PNG. Máx. 10MB.",
+      "proof": "Use uma conta recente de serviços ou extrato bancário.",
+      "selfie": "Certifique-se de que seu rosto e documento estejam visíveis."
+    },
+    "errors": {
+      "fullName": "O nome completo é obrigatório",
+      "dateOfBirth": "A data de nascimento é obrigatória",
+      "dateOfBirthPast": "A data de nascimento deve estar no passado",
+      "nationality": "A nacionalidade é obrigatória",
+      "address": "O endereço residencial é obrigatório",
+      "frontRequired": "A frente do documento é obrigatória",
+      "backRequired": "O verso do documento é obrigatório",
+      "proofRequired": "O comprovante de residência é obrigatório",
+      "selfieRequired": "A selfie com o documento é obrigatória",
+      "photoWidth": "As imagens devem ter pelo menos 500px de largura",
+      "submitFailed": "Falha ao enviar o KYC"
+    },
+    "review": {
+      "personal": "Informações pessoais",
+      "files": "Arquivos enviados",
+      "pending": "Aguardando envio"
+    },
+    "exit": "Sair do assistente",
+    "back": "Voltar",
+    "next": "Próximo",
+    "submit": "Enviar para revisão",
+    "submitting": "Enviando...",
+    "submitted": "KYC enviado para revisão."
   },
   "common": {
     "loading": "Carregando...",
@@ -262,6 +422,71 @@
     "status": "Status",
     "reward": "Recompensa",
     "date": "Data"
+  },
+  "farmerProfile": {
+    "nav": {
+      "marketplace": "Mercado"
+    },
+    "hero": {
+      "title": "Agricultor de {country}",
+      "avatarAlt": "Avatar do agricultor de {country}",
+      "memberSince": "Membro desde {date}"
+    },
+    "verification": {
+      "heading": "Verificação e Emblemas",
+      "kycLabel": "Status KYC: {status}",
+      "walletConnected": "Carteira conectada",
+      "dealsCount": "{count, plural, one {# negócio concluído} other {# negócios concluídos}}",
+      "kyc": {
+        "verified": "KYC Verificado",
+        "pending": "KYC Pendente",
+        "rejected": "KYC Rejeitado",
+        "expired": "KYC Expirado"
+      }
+    },
+    "reputation": {
+      "heading": "Pontuação de Reputação",
+      "gaugeAriaLabel": "Pontuação de reputação: {score} de 100",
+      "tooltip": "Baseado no histórico de negócios e pagamentos",
+      "excellent": "Excelente",
+      "good": "Bom",
+      "fair": "Regular",
+      "poor": "Precisa melhorar",
+      "creditScore": "Pontuação de Crédito",
+      "onTimeRate": "Pagamento em dia",
+      "creditTier": {}
+    },
+    "creditTier": {
+      "excellent": "Excelente",
+      "good": "Bom",
+      "fair": "Regular"
+    },
+    "activeDeals": {
+      "heading": "Negócios Ativos",
+      "none": "Sem negócios ativos no momento.",
+      "activeDeal": "Negócio Ativo",
+      "statusActive": "Ativo",
+      "viewOnMarketplace": "Ver no mercado",
+      "browseLink": "Explorar mercado",
+      "cardAriaLabel": "Negócio ativo nº {number}"
+    },
+    "completedDeals": {
+      "heading": "Negócios Concluídos",
+      "tableCaption": "Lista de negócios comerciais concluídos",
+      "colDeal": "Negócio",
+      "colStatus": "Status",
+      "colRepayment": "Taxa de pagamento",
+      "none": "Nenhum negócio concluído ainda.",
+      "dealLabel": "Negócio nº {number}",
+      "statusCompleted": "Concluído"
+    },
+    "stats": {
+      "heading": "Resumo",
+      "dealsCompleted": "Negócios concluídos",
+      "activeDeals": "Negócios ativos",
+      "memberSince": "Membro desde",
+      "country": "País"
+    }
   },
   "format": {
     "currency": "{value, number, currency}",

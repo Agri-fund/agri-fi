@@ -6,6 +6,7 @@ import {
   ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { Investment, InvestmentStatus } from './entities/investment.entity';
@@ -41,6 +42,11 @@ export interface CreateInvestmentResult {
 
 const STELLAR_TX_HASH_PATTERN = /^[a-f0-9]{64}$/i;
 const TRAVEL_RULE_THRESHOLD_USD = 1000;
+// #788 — default cooling-off window during which a PENDING investment can be
+// self-cancelled by the investor, before funds are committed to escrow.
+// Configurable via INVESTMENT_COOLING_OFF_HOURS for jurisdictions with a
+// different regulatory minimum.
+const DEFAULT_COOLING_OFF_HOURS = 48;
 
 // #902 — Tier ordering for accreditation gate checks
 const TIER_ORDER: Record<AccreditationTier, number> = {
@@ -80,7 +86,18 @@ export class InvestmentsService {
     private readonly annualCapService: AnnualCapService,
     @Optional() private readonly emailSequenceService: EmailSequenceService,
     @Optional() private readonly eventStore?: InvestmentEventStore,
+    @Optional() private readonly configService?: ConfigService,
   ) {}
+
+  private coolingOffHours(): number {
+    const configured = this.configService?.get<string>(
+      'INVESTMENT_COOLING_OFF_HOURS',
+    );
+    const parsed = configured !== undefined ? Number(configured) : NaN;
+    return Number.isFinite(parsed) && parsed > 0
+      ? parsed
+      : DEFAULT_COOLING_OFF_HOURS;
+  }
 
   async createInvestment(
     investorId: string,
@@ -498,6 +515,86 @@ export class InvestmentsService {
       { reason },
       actorId,
     );
+  }
+
+  /**
+   * Investor self-service soft-cancel within the cooling-off window (#788).
+   *
+   * Only allowed while the investment is still PENDING — that's the window
+   * before `fundEscrow`/`confirmInvestment` has moved any real funds
+   * on-chain (see those methods' own PENDING-only guards), so there is
+   * nothing to reverse on the escrow side for the common case: no signed
+   * XDR has been submitted yet, so no on-chain transfer to unwind.
+   *
+   * The one real race this closes: `fundEscrow`'s async path (signed XDR
+   * queued for submission) leaves the investment PENDING until the queued
+   * job confirms it — so a naive check-then-update could still cancel an
+   * investment whose on-chain payment is already in flight. The atomic
+   * conditional update below (`WHERE id = ? AND status = 'pending'`) means
+   * cancel can only ever "win" if nothing else has already moved the status
+   * off PENDING; if the funding job wins the race instead, this method
+   * reports the investment as no longer cancellable rather than silently
+   * cancelling a position that just got funded. See the matching guard
+   * added to the queue processor (queue.processor.ts's investment.fund
+   * handler) that skips submitting the on-chain transfer if the investment
+   * was cancelled before the job ran.
+   */
+  async requestCoolingOffCancel(
+    investorId: string,
+    investmentId: string,
+    reason?: string,
+  ): Promise<Investment> {
+    const investment = await this.investmentRepo.findOne({
+      where: { id: investmentId },
+    });
+    if (!investment) {
+      throw new NotFoundException('Investment not found.');
+    }
+    if (investment.investorId !== investorId) {
+      throw new ForbiddenException('You do not own this investment.');
+    }
+    if (investment.status !== InvestmentStatus.PENDING) {
+      throw new UnprocessableEntityException({
+        code: 'NOT_CANCELLABLE',
+        message:
+          'Only pending investments can be cancelled. This investment has ' +
+          `already moved to "${investment.status}".`,
+      });
+    }
+
+    const deadline = new Date(investment.createdAt);
+    deadline.setHours(deadline.getHours() + this.coolingOffHours());
+    if (new Date() > deadline) {
+      throw new UnprocessableEntityException({
+        code: 'COOLING_OFF_EXPIRED',
+        message: `The ${this.coolingOffHours()}-hour cooling-off window for this investment has passed.`,
+      });
+    }
+
+    const result = await this.investmentRepo.update(
+      { id: investmentId, status: InvestmentStatus.PENDING },
+      { status: InvestmentStatus.CANCELLED },
+    );
+    if (!result.affected) {
+      // Lost the race with fundEscrow's queued confirmation between the
+      // check above and this update — the investment is no longer PENDING.
+      throw new UnprocessableEntityException({
+        code: 'NOT_CANCELLABLE',
+        message:
+          'This investment started funding just now and can no longer be cancelled.',
+      });
+    }
+
+    await this.eventStore?.append(
+      investmentId,
+      'InvestmentCancelledByUser',
+      { reason, withinCoolingOff: true },
+      investorId,
+    );
+
+    return (await this.investmentRepo.findOne({
+      where: { id: investmentId },
+    }))!;
   }
 
   async refundInvestment(

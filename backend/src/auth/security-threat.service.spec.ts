@@ -99,7 +99,10 @@ describe('SecurityThreatService (#898)', () => {
       service = await makeService({
         SECURITY_BAD_IP_RANGES: '203.0.113.0/24,198.51.100.0/16',
       });
-      const verdict = await service.checkLogin('user@example.com', '203.0.113.9');
+      const verdict = await service.checkLogin(
+        'user@example.com',
+        '203.0.113.9',
+      );
       expect(verdict.action).toBe('blocked');
       expect(verdict.reasons).toContain('bad_ip_range');
     });
@@ -113,35 +116,49 @@ describe('SecurityThreatService (#898)', () => {
     });
 
     it('blocks IPs inside an approved /16 subnet block', async () => {
-      service = await makeService({}, {
-        sMembers: jest.fn().mockResolvedValue(['198.51.100.0/16']),
-      });
-      const verdict = await service.checkLogin('user@example.com', '198.51.100.7');
+      service = await makeService(
+        {},
+        {
+          sMembers: jest.fn().mockResolvedValue(['198.51.100.0/16']),
+        },
+      );
+      const verdict = await service.checkLogin(
+        'user@example.com',
+        '198.51.100.7',
+      );
       expect(verdict.action).toBe('blocked');
       expect(verdict.reasons).toContain('subnet_blocked');
     });
 
     it('blocks when the global per-email rate limit is active', async () => {
-      service = await makeService({}, {
-        exists: jest
-          .fn()
-          .mockImplementation((key: string) =>
-            Promise.resolve(key === 'sec:ratelimit:victim@example.com' ? 1 : 0),
-          ),
-      });
+      service = await makeService(
+        {},
+        {
+          exists: jest
+            .fn()
+            .mockImplementation((key: string) =>
+              Promise.resolve(
+                key === 'sec:ratelimit:victim@example.com' ? 1 : 0,
+              ),
+            ),
+        },
+      );
       const verdict = await service.checkLogin('VICTIM@example.com', '1.2.3.4');
       expect(verdict.action).toBe('blocked');
       expect(verdict.reasons).toContain('email_rate_limited');
     });
 
     it('demands CAPTCHA when flagged for this email', async () => {
-      service = await makeService({}, {
-        exists: jest
-          .fn()
-          .mockImplementation((key: string) =>
-            Promise.resolve(key.startsWith('sec:captcha:') ? 1 : 0),
-          ),
-      });
+      service = await makeService(
+        {},
+        {
+          exists: jest
+            .fn()
+            .mockImplementation((key: string) =>
+              Promise.resolve(key.startsWith('sec:captcha:') ? 1 : 0),
+            ),
+        },
+      );
       const verdict = await service.checkLogin('victim@example.com', '1.2.3.4');
       expect(verdict.action).toBe('captcha');
       expect(verdict.captchaRequired).toBe(true);
@@ -152,19 +169,28 @@ describe('SecurityThreatService (#898)', () => {
     it.each([9, 10])(
       'does not escalate at %j distinct IPs (at/below threshold)',
       async (count) => {
-        service = await makeService({}, {
-          sCard: jest.fn().mockResolvedValue(count),
-        });
-        await service.recordFailedLogin('victim@example.com', `10.0.0.${count}`);
+        service = await makeService(
+          {},
+          {
+            sCard: jest.fn().mockResolvedValue(count),
+          },
+        );
+        await service.recordFailedLogin(
+          'victim@example.com',
+          `10.0.0.${count}`,
+        );
         expect(redis.setEx).not.toHaveBeenCalled();
         expect(blockRepo.save).not.toHaveBeenCalled();
       },
     );
 
     it('escalates at more than 10 distinct IPs: rate limit + CAPTCHA + alert', async () => {
-      service = await makeService({}, {
-        sCard: jest.fn().mockResolvedValue(11),
-      });
+      service = await makeService(
+        {},
+        {
+          sCard: jest.fn().mockResolvedValue(11),
+        },
+      );
       await service.recordFailedLogin('victim@example.com', '10.0.0.11');
 
       expect(redis.setEx).toHaveBeenCalledWith(
@@ -216,9 +242,12 @@ describe('SecurityThreatService (#898)', () => {
     const subnetKey = 'sec:fail:subnet:203.0.113.0/16';
 
     it('does not propose a block below 50 failures in 10 minutes', async () => {
-      service = await makeService({}, {
-        incr: jest.fn().mockResolvedValue(49),
-      });
+      service = await makeService(
+        {},
+        {
+          incr: jest.fn().mockResolvedValue(49),
+        },
+      );
       await service.recordFailedLogin('a@example.com', ip);
       expect(blockRepo.save).not.toHaveBeenCalled();
       expect(queueService.emit).not.toHaveBeenCalledWith(
@@ -228,9 +257,12 @@ describe('SecurityThreatService (#898)', () => {
     });
 
     it('proposes a pending subnet block exactly at 50 failures', async () => {
-      service = await makeService({}, {
-        incr: jest.fn().mockResolvedValue(50),
-      });
+      service = await makeService(
+        {},
+        {
+          incr: jest.fn().mockResolvedValue(50),
+        },
+      );
       await service.recordFailedLogin('a@example.com', ip);
 
       expect(blockRepo.save).toHaveBeenCalledWith(
@@ -250,10 +282,16 @@ describe('SecurityThreatService (#898)', () => {
     });
 
     it('never proposes a duplicate block for an already-known subnet', async () => {
-      blockRepo.findOne.mockResolvedValue({ id: 'existing', type: 'subnet_pending' });
-      service = await makeService({}, {
-        incr: jest.fn().mockResolvedValue(77),
+      blockRepo.findOne.mockResolvedValue({
+        id: 'existing',
+        type: 'subnet_pending',
       });
+      service = await makeService(
+        {},
+        {
+          incr: jest.fn().mockResolvedValue(77),
+        },
+      );
       await service.recordFailedLogin('a@example.com', ip);
       expect(blockRepo.save).not.toHaveBeenCalled();
     });
@@ -261,9 +299,12 @@ describe('SecurityThreatService (#898)', () => {
 
   describe('recordFailedLogin — geo anomaly signal', () => {
     it('requires CAPTCHA beyond 3 distinct countries within the hour', async () => {
-      service = await makeService({}, {
-        sCard: jest.fn().mockResolvedValue(4),
-      });
+      service = await makeService(
+        {},
+        {
+          sCard: jest.fn().mockResolvedValue(4),
+        },
+      );
       await service.recordFailedLogin('traveler@example.com', '1.2.3.4', 'BR');
 
       expect(redis.setEx).toHaveBeenCalledWith(
@@ -280,9 +321,12 @@ describe('SecurityThreatService (#898)', () => {
     });
 
     it('ignores up to 3 distinct countries', async () => {
-      service = await makeService({}, {
-        sCard: jest.fn().mockResolvedValue(3),
-      });
+      service = await makeService(
+        {},
+        {
+          sCard: jest.fn().mockResolvedValue(3),
+        },
+      );
       await service.recordFailedLogin('traveler@example.com', '1.2.3.4', 'KE');
       expect(redis.setEx).not.toHaveBeenCalled();
     });
@@ -302,7 +346,9 @@ describe('SecurityThreatService (#898)', () => {
         .mockResolvedValue({ json: async () => ({ success: true }) } as any);
       await expect(service.verifyCaptcha('good-token')).resolves.toBe(true);
 
-      fetchMock.mockResolvedValue({ json: async () => ({ success: false }) } as any);
+      fetchMock.mockResolvedValue({
+        json: async () => ({ success: false }),
+      } as any);
       await expect(service.verifyCaptcha('bad-token')).resolves.toBe(false);
 
       const [url] = fetchMock.mock.calls[0];
@@ -359,7 +405,10 @@ describe('SecurityThreatService (#898)', () => {
       });
 
       await service.liftBlock('b4');
-      expect(redis.sRem).toHaveBeenCalledWith('sec:deny:subnets', '203.0.113.0/16');
+      expect(redis.sRem).toHaveBeenCalledWith(
+        'sec:deny:subnets',
+        '203.0.113.0/16',
+      );
     });
   });
 });

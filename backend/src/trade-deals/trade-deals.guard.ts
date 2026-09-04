@@ -17,10 +17,10 @@ import { TradeDeal } from './entities/trade-deal.entity';
 
 export interface TradeDealAccessRequest {
   user?: User;
-  params?: { 
-    id?: string; 
-    trade_deal_id?: string; 
-    tradeDealId?: string 
+  params?: {
+    id?: string;
+    trade_deal_id?: string;
+    tradeDealId?: string;
   };
   tradeDealAccess?: {
     isOwner: boolean;
@@ -40,10 +40,8 @@ export class TradeDealsGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest<TradeDealAccessRequest>();
-    const id = 
-      req.params?.id || 
-      req.params?.trade_deal_id || 
-      req.params?.tradeDealId;
+    const id =
+      req.params?.id || req.params?.trade_deal_id || req.params?.tradeDealId;
 
     if (!id) {
       throw new BadRequestException('Trade deal ID is required');

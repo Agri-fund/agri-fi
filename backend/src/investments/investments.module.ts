@@ -19,6 +19,9 @@ import { FeeCalculatorService } from './fee-calculator.service';
 import { InvestmentEventStore } from './investment-event-store.service';
 import { MarketplaceSettlementService } from './marketplace-settlement.service';
 import { MarketplaceSettlementController } from './marketplace-settlement.controller';
+import { TaxReportService } from './tax-report.service';
+import { ReceiptService } from './receipt.service';
+import { AuditModule } from '../audit/audit.module';
 
 @Module({
   imports: [
@@ -34,6 +37,7 @@ import { MarketplaceSettlementController } from './marketplace-settlement.contro
     QueueModule,
     ReferralModule,
     AuthModule,
+    AuditModule,
   ],
   controllers: [
     InvestmentsController,
@@ -47,6 +51,8 @@ import { MarketplaceSettlementController } from './marketplace-settlement.contro
     FeeConfigurationService,
     CurrencyConverterService,
     MarketplaceSettlementService,
+    TaxReportService,
+    ReceiptService,
   ],
   exports: [
     InvestmentsService,

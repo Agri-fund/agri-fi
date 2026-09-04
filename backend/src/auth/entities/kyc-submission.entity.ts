@@ -10,7 +10,8 @@ import { Exclude } from 'class-transformer';
 import { User } from './user.entity';
 import { encryptionTransformer } from '../../common/encryption.transformer';
 
-export type KycSubmissionStatus = 'pending_review' | 'approved' | 'rejected' | 'expired';
+export type KycSubmissionStatus =
+  'pending_review' | 'approved' | 'rejected' | 'expired';
 
 @Entity('kyc_submissions')
 export class KycSubmission {
@@ -27,20 +28,34 @@ export class KycSubmission {
   @Column({ name: 'government_id_url', nullable: true })
   governmentIdUrl: string;
 
+  @Column({ name: 'identity_document_back_url', nullable: true })
+  identityDocumentBackUrl: string;
+
   @Column({ name: 'proof_of_address_url', nullable: true })
   proofOfAddressUrl: string;
+
+  @Column({ name: 'selfie_url', nullable: true })
+  selfieUrl: string;
 
   @Column({ name: 'is_corporate', default: false })
   isCorporate: boolean;
 
   /** Company / business name — stored encrypted (PII) */
   @Exclude()
-  @Column({ name: 'company_name', nullable: true, transformer: encryptionTransformer })
+  @Column({
+    name: 'company_name',
+    nullable: true,
+    transformer: encryptionTransformer,
+  })
   companyName: string;
 
   /** Company registration number — stored encrypted (PII) */
   @Exclude()
-  @Column({ name: 'registration_number', nullable: true, transformer: encryptionTransformer })
+  @Column({
+    name: 'registration_number',
+    nullable: true,
+    transformer: encryptionTransformer,
+  })
   registrationNumber: string;
 
   @Column({ name: 'business_license_url', nullable: true })

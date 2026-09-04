@@ -146,6 +146,50 @@
       "connectWallet": "Connecter votre portefeuille dans la navigation supérieure"
     }
   },
+  "wallet": {
+    "title": "Connecter le portefeuille Stellar",
+    "subtitle": "Choisissez un fournisseur de portefeuille",
+    "description": "Votre clé privée ne quitte jamais votre portefeuille. Agri-Fi ne voit que votre clé publique.",
+    "connectButton": "Connecter le portefeuille",
+    "connecting": "Connexion…",
+    "connected": "Connecté",
+    "disconnect": "Déconnecter",
+    "freighter": {
+      "name": "Freighter",
+      "type": "Extension de navigateur"
+    },
+    "albedo": {
+      "name": "Albedo",
+      "type": "Signataire web — aucune installation requise"
+    },
+    "walletConnect": {
+      "name": "WalletConnect",
+      "type": "Se connecter via QR code ou lien direct"
+    },
+    "detected": "Détecté",
+    "install": "Installer",
+    "alwaysAvailable": "Toujours disponible",
+    "openDialog": "Ouvrir la boîte de connexion du portefeuille",
+    "closeDialog": "Fermer la boîte de connexion du portefeuille",
+    "error": "Erreur de connexion du portefeuille",
+    "errorConnect": "Échec de la connexion du portefeuille",
+    "errorLink": "Échec de la liaison du portefeuille",
+    "pleaseTryAgain": "Veuillez réessayer",
+    "onboarding": {
+      "title": "Connectez votre portefeuille",
+      "subtitle": "Choisissez un portefeuille Stellar pour commencer",
+      "comingSoon": "Bientôt disponible",
+      "termsNote": "En vous connectant, vous acceptez nos conditions d'utilisation. Vos clés restent dans votre portefeuille.",
+      "networkMismatch": "Réseau incorrect : votre portefeuille est sur {detected} mais cette application nécessite {expected}. Veuillez changer de réseau dans votre portefeuille.",
+      "freighterGuide": {
+        "title": "Comment installer Freighter",
+        "step1": "Visitez freighter.app et cliquez sur Installer",
+        "step2": "Ajoutez l'extension à votre navigateur",
+        "step3": "Créez ou importez un compte Stellar",
+        "cta": "Installer Freighter →"
+      }
+    }
+  },
   "deals": {
     "coFarmers": {
       "title": "Co-agriculteurs",
@@ -161,6 +205,11 @@
     },
     "createTitle": "Créer un nouveau contrat commercial",
     "draftRestored": "Brouillon restauré depuis {time}",
+    "wizardBadge": "Assistant de création d'offre",
+    "createSubtitle": "Construisez une annonce complète et prête pour les investisseurs avec des étapes guidées, une validation intelligente et l'enregistrement automatique du brouillon.",
+    "saving": "Enregistrement du brouillon...",
+    "saved": "Brouillon enregistré",
+    "stepLabel": "Étape {current} sur {total}",
     "commodity": "Nom de la marchandise",
     "quantity": "Quantité",
     "unit": "Unité",
@@ -172,9 +221,57 @@
     "createButton": "Créer le contrat",
     "creating": "Création...",
     "cancel": "Annuler",
+    "back": "Retour",
+    "next": "Suivant",
+    "submitForReview": "Envoyer pour examen",
+    "submitSuccess": "Offre envoyée pour validation admin.",
+    "roiWarningHigh": "Ce ROI semble inhabituellement élevé. Vérifiez vos hypothèses avant de soumettre.",
+    "roiWarningNormal": "Le ROI semble dans une plage normale.",
+    "photoHelper": "Téléchargez 1 à 10 photos. Chaque image doit mesurer au moins 500px de large.",
+    "docHelper": "Téléchargez les documents requis pour votre catégorie de marchandise avant l'envoi.",
     "tokenInfo": "Cela créera {count} jetons à {price} $ chacun.",
     "raised": "{amount} levés",
     "remainingOf": "{remaining} restants sur {total}",
+    "fields": {
+      "title": "Titre de l'offre",
+      "commodity": "Marchandise",
+      "country": "Pays",
+      "region": "Région",
+      "shortDescription": "Description courte",
+      "quantity": "Quantité",
+      "unit": "Unité",
+      "totalValue": "Montant cible",
+      "minInvestment": "Lot d'investissement minimum",
+      "expectedRoi": "ROI attendu (%)",
+      "duration": "Durée (jours)",
+      "risk": "Niveau de risque",
+      "roiWarning": "Alerte ROI",
+      "longDescription": "Histoire et impact",
+      "farmLocation": "Localisation de la ferme",
+      "mapPoint": "Coordonnées",
+      "farmPhotos": "Photos de la ferme",
+      "extraDocs": "Documents complémentaires",
+      "milestone": "Étape",
+      "timeline": "Calendrier",
+      "owner": "Responsable"
+    },
+    "steps": {
+      "1": { "eyebrow": "Bases", "title": "Informations de base" },
+      "2": { "eyebrow": "Chiffres", "title": "Finances" },
+      "3": { "eyebrow": "Narratif", "title": "Histoire et impact" },
+      "4": { "eyebrow": "Preuves", "title": "Documents" },
+      "5": { "eyebrow": "Plan", "title": "Plan logistique" },
+      "6": { "eyebrow": "Examen", "title": "Vérifier et envoyer" }
+    },
+    "preview": {
+      "card": "Aperçu de la carte",
+      "detailPage": "Aperçu de la page de détail",
+      "map": "Position sur la carte",
+      "documents": "Documents téléversés",
+      "placeholderTitle": "Titre de votre offre",
+      "placeholderCommodity": "Marchandise",
+      "placeholderSummary": "Résumé court de la ferme et de l'opportunité."
+    },
     "validation": {
       "commodityRequired": "Le nom de la marchandise est requis",
       "quantityMin": "La quantité doit être d'au moins 1",
@@ -182,8 +279,71 @@
       "tokenPriceFixed": "Le prix du jeton doit être exactement de 100",
       "deliveryDateRequired": "La date de livraison est requise",
       "deliveryDateFuture": "La date de fin doit être dans le futur",
-      "invalidId": "ID invalide"
+      "invalidId": "ID invalide",
+      "titleRequired": "Le titre est requis",
+      "countryRequired": "Le pays est requis",
+      "shortDescriptionRequired": "La description courte est requise",
+      "duplicateTitle": "Une offre avec ce titre existe déjà.",
+      "minInvestmentLot": "Le lot d'investissement minimum doit être supérieur à 0",
+      "expectedRoiMin": "Le ROI attendu doit être supérieur à 0",
+      "durationRequired": "La durée est requise",
+      "riskRequired": "Le niveau de risque est requis",
+      "longDescriptionRequired": "L'histoire et l'impact sont requis",
+      "farmLocationRequired": "La localisation de la ferme est requise",
+      "photoMin": "Téléchargez au moins une photo de la ferme.",
+      "photoMax": "Vous pouvez télécharger au maximum 10 photos.",
+      "photoWidth": "Les photos doivent mesurer au moins 500px de large.",
+      "mapRequired": "Ajoutez la latitude et la longitude de la ferme.",
+      "documentRequired": "{name} est requis pour cette marchandise.",
+      "logisticsRequired": "Complétez toutes les étapes logistiques.",
+      "submitFailed": "Échec de l'envoi de l'offre."
     }
+  },
+  "kyc": {
+    "badge": "Assistant de vérification KYC",
+    "title": "Complétez votre vérification",
+    "subtitle": "Enregistrez votre progression et reprenez à tout moment depuis le brouillon.",
+    "restored": "Brouillon restauré depuis {time}",
+    "stepLabel": "Étape {current} sur {total}",
+    "fields": {
+      "fullName": "Nom légal complet",
+      "dateOfBirth": "Date de naissance",
+      "nationality": "Nationalité",
+      "address": "Adresse résidentielle",
+      "idFront": "Recto de la pièce d'identité",
+      "idBack": "Verso de la pièce d'identité",
+      "proofOfAddress": "Justificatif de domicile",
+      "selfie": "Selfie avec document"
+    },
+    "hints": {
+      "documents": "Accepte PDF, JPEG et PNG. Taille max 10 Mo.",
+      "proof": "Utilisez une facture récente ou un relevé bancaire.",
+      "selfie": "Assurez-vous que votre visage et le document soient clairement visibles."
+    },
+    "errors": {
+      "fullName": "Le nom complet est requis",
+      "dateOfBirth": "La date de naissance est requise",
+      "dateOfBirthPast": "La date de naissance doit être dans le passé",
+      "nationality": "La nationalité est requise",
+      "address": "L'adresse résidentielle est requise",
+      "frontRequired": "Le recto de la pièce d'identité est requis",
+      "backRequired": "Le verso de la pièce d'identité est requis",
+      "proofRequired": "Le justificatif de domicile est requis",
+      "selfieRequired": "Le selfie avec document est requis",
+      "photoWidth": "Les images doivent mesurer au moins 500px de large",
+      "submitFailed": "Échec de l'envoi du KYC"
+    },
+    "review": {
+      "personal": "Informations personnelles",
+      "files": "Fichiers téléversés",
+      "pending": "En attente de téléversement"
+    },
+    "exit": "Quitter l'assistant",
+    "back": "Retour",
+    "next": "Suivant",
+    "submit": "Envoyer pour examen",
+    "submitting": "Envoi...",
+    "submitted": "KYC envoyé pour examen."
   },
   "common": {
     "loading": "Chargement...",
@@ -217,6 +377,71 @@
     "status": "Statut",
     "reward": "Récompense",
     "date": "Date"
+  },
+  "farmerProfile": {
+    "nav": {
+      "marketplace": "Marché"
+    },
+    "hero": {
+      "title": "Agriculteur de {country}",
+      "avatarAlt": "Avatar de l'agriculteur de {country}",
+      "memberSince": "Membre depuis {date}"
+    },
+    "verification": {
+      "heading": "Vérification et Badges",
+      "kycLabel": "Statut KYC : {status}",
+      "walletConnected": "Portefeuille connecté",
+      "dealsCount": "{count, plural, one {# contrat complété} other {# contrats complétés}}",
+      "kyc": {
+        "verified": "KYC Vérifié",
+        "pending": "KYC En attente",
+        "rejected": "KYC Rejeté",
+        "expired": "KYC Expiré"
+      }
+    },
+    "reputation": {
+      "heading": "Score de Réputation",
+      "gaugeAriaLabel": "Score de réputation : {score} sur 100",
+      "tooltip": "Basé sur l'historique des contrats et des paiements",
+      "excellent": "Excellent",
+      "good": "Bon",
+      "fair": "Correct",
+      "poor": "À améliorer",
+      "creditScore": "Score de Crédit",
+      "onTimeRate": "Remboursement à temps",
+      "creditTier": {}
+    },
+    "creditTier": {
+      "excellent": "Excellent",
+      "good": "Bon",
+      "fair": "Correct"
+    },
+    "activeDeals": {
+      "heading": "Contrats Actifs",
+      "none": "Aucun contrat actif pour le moment.",
+      "activeDeal": "Contrat Actif",
+      "statusActive": "Actif",
+      "viewOnMarketplace": "Voir sur le marché",
+      "browseLink": "Parcourir le marché",
+      "cardAriaLabel": "Contrat actif n°{number}"
+    },
+    "completedDeals": {
+      "heading": "Contrats Complétés",
+      "tableCaption": "Liste des contrats commerciaux complétés",
+      "colDeal": "Contrat",
+      "colStatus": "Statut",
+      "colRepayment": "Taux de remboursement",
+      "none": "Aucun contrat complété pour l'instant.",
+      "dealLabel": "Contrat n°{number}",
+      "statusCompleted": "Complété"
+    },
+    "stats": {
+      "heading": "Résumé",
+      "dealsCompleted": "Contrats complétés",
+      "activeDeals": "Contrats actifs",
+      "memberSince": "Membre depuis",
+      "country": "Pays"
+    }
   },
   "format": {
     "currency": "{value, number, currency}",

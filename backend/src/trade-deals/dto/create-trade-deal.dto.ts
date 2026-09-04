@@ -2,6 +2,7 @@ import {
   IsDateString,
   IsIn,
   IsNotEmpty,
+  IsArray,
   IsNumber,
   IsOptional,
   IsString,
@@ -15,8 +16,42 @@ import { Type } from 'class-transformer';
 export class CreateTradeDealDto {
   @IsString()
   @IsNotEmpty()
+  @ApiProperty({
+    example: 'Cocoa for Coastal Cooperatives',
+    description: 'Listing title',
+  })
+  title: string;
+
+  @IsString()
+  @IsNotEmpty()
   @ApiProperty({ example: 'Cocoa', description: 'Commodity name' })
   commodity: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @ApiProperty({ example: 'Ghana', description: 'Country of origin' })
+  country: string;
+
+  @IsOptional()
+  @IsString()
+  @ApiPropertyOptional({ example: 'Ashanti', description: 'Region or state' })
+  region?: string;
+
+  @IsOptional()
+  @IsString()
+  @ApiPropertyOptional({
+    example: 'High quality fermented beans from smallholder farms.',
+    description: 'Short listing summary',
+  })
+  short_description?: string;
+
+  @IsOptional()
+  @IsString()
+  @ApiPropertyOptional({
+    example: 'A farmer-led cooperative...',
+    description: 'Long-form story and impact description',
+  })
+  long_description?: string;
 
   @Type(() => Number)
   @IsNumber()
@@ -48,6 +83,76 @@ export class CreateTradeDealDto {
   total_value: number;
 
   @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  @ApiPropertyOptional({
+    example: 24.5,
+    description: 'Expected annual ROI percentage',
+  })
+  expected_roi?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  @ApiPropertyOptional({
+    example: 180,
+    description: 'Expected duration in days',
+  })
+  duration_days?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  @ApiPropertyOptional({
+    example: 250,
+    description: 'Minimum investment lot',
+  })
+  min_investment_lot?: number;
+
+  @IsOptional()
+  @IsIn(['Low', 'Medium', 'High'])
+  @ApiPropertyOptional({
+    enum: ['Low', 'Medium', 'High'],
+    description: 'Risk rating',
+  })
+  risk_rating?: 'Low' | 'Medium' | 'High';
+
+  @IsOptional()
+  @IsString()
+  @ApiPropertyOptional({
+    example: 'Opposite Kuto market, Abeokuta',
+    description: 'Farm location text',
+  })
+  farm_location?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @ApiPropertyOptional({ example: 7.123456, description: 'Farm latitude' })
+  farm_latitude?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @ApiPropertyOptional({ example: 3.123456, description: 'Farm longitude' })
+  farm_longitude?: number;
+
+  @IsOptional()
+  @IsArray()
+  @ApiPropertyOptional({ description: 'Farm photo metadata entries' })
+  farm_photos?: Array<Record<string, unknown>>;
+
+  @IsOptional()
+  @IsArray()
+  @ApiPropertyOptional({ description: 'Supporting document metadata entries' })
+  supporting_documents?: Array<Record<string, unknown>>;
+
+  @IsOptional()
+  @IsArray()
+  @ApiPropertyOptional({ description: 'Shipment milestone plan template' })
+  logistics_plan?: Array<Record<string, unknown>>;
+
+  @IsOptional()
   @IsUUID()
   @ApiPropertyOptional({
     example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
@@ -73,6 +178,25 @@ export class CreateTradeDealDto {
   delivery_date: string;
 
   @IsOptional()
+  @IsDateString()
+  @ApiPropertyOptional({
+    description: 'Funding deadline; defaults to delivery_date',
+    example: '2024-06-01T23:59:59Z',
+  })
+  funding_deadline?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @ApiPropertyOptional({
+    description:
+      'Minimum amount that must be funded by the funding deadline; defaults to total_value',
+    example: 25000,
+  })
+  minimum_funding_target?: number;
+
+  @IsOptional()
   @Type(() => Number)
   @IsNumber()
   @Min(0)
@@ -90,7 +214,8 @@ export class CreateTradeDealDto {
   @ApiPropertyOptional({
     example: 10,
     minimum: 0,
-    description: 'Investment increment above the minimum in USD (#835, default 1)',
+    description:
+      'Investment increment above the minimum in USD (#835, default 1)',
   })
   lot_step?: number;
 }

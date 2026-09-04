@@ -9,7 +9,8 @@ import {
   Sep24TxStatus,
 } from './entities/sep24-transaction.entity';
 
-const STELLAR_ACCOUNT = 'GCEZWKCA5VLDNRLN3RPRJMRZOX3Z6G5CHCGWKX2ZVBFGCNX5J3MHAQX';
+const STELLAR_ACCOUNT =
+  'GCEZWKCA5VLDNRLN3RPRJMRZOX3Z6G5CHCGWKX2ZVBFGCNX5J3MHAQX';
 
 describe('Sep24Service', () => {
   let service: Sep24Service;
@@ -180,7 +181,10 @@ describe('Sep24Service', () => {
       } as Sep24Transaction);
 
       await expect(
-        service.getTransaction('abc123', 'GOTHERACCOUNT123456789012345678901234'),
+        service.getTransaction(
+          'abc123',
+          'GOTHERACCOUNT123456789012345678901234',
+        ),
       ).rejects.toThrow('does not belong');
     });
   });

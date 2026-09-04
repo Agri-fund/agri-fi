@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
@@ -69,11 +73,13 @@ export class DealDeploymentService {
       });
     }
 
-    const targetStroops = BigInt(Math.round(Number(deal.totalValue) * 1e7));
+    const targetStroops = BigInt(
+      Math.round(Number(deal.minimumFundingTarget ?? deal.totalValue) * 1e7),
+    );
     const durationLedgers = Math.max(
       1,
       Math.ceil(
-        (new Date(deal.deliveryDate).getTime() - Date.now()) /
+        (new Date(deal.fundingDeadline ?? deal.deliveryDate).getTime() - Date.now()) /
           DealDeploymentService.LEDGER_DURATION_MS,
       ),
     );

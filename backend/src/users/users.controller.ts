@@ -1,10 +1,13 @@
 import {
   Controller,
   Get,
+  Patch,
   Delete,
   UseGuards,
   Request,
+  Body,
   Query,
+  Param,
   BadRequestException,
   ForbiddenException,
   Res,
@@ -18,10 +21,14 @@ import {
   ApiOperation,
   ApiResponse,
   ApiBearerAuth,
+  ApiParam,
 } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { UsersService } from './users.service';
 import { TradeDealsService } from '../trade-deals/trade-deals.service';
+import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { UpdateOnboardingProgressDto } from './dto/update-onboarding-progress.dto';
 import { User } from '../auth/entities/user.entity';
 
 interface AuthRequest extends Request {
@@ -49,10 +56,12 @@ export class UsersController {
   async getCurrentUser(@Request() req: AuthRequest) {
     return this.usersService.getProfile(req.user.id);
   }
-
   @Delete('me')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Delete the authenticated user account (GDPR Right to be Forgotten)' })
+  @ApiOperation({
+    summary:
+      'Delete the authenticated user account (GDPR Right to be Forgotten)',
+  })
   @ApiResponse({
     status: 204,
     description: 'Account deleted successfully',
@@ -125,8 +134,13 @@ export class UsersController {
   }
 
   @Get('me/activity')
-  @ApiOperation({ summary: "Get the authenticated user's chronological activity log" })
-  @ApiResponse({ status: 200, description: 'List of activity events, newest first' })
+  @ApiOperation({
+    summary: "Get the authenticated user's chronological activity log",
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'List of activity events, newest first',
+  })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async getActivityLog(
     @Request() req: AuthRequest,
@@ -149,5 +163,23 @@ export class UsersController {
     const { id } = req.user;
     const userData = await this.usersService.exportUserData(id);
     res.json(userData);
+  }
+
+  @Get('admin/gdpr-erasure-queue')
+  @ApiOperation({ summary: 'View pending GDPR erasure queue (Admin only)' })
+  @ApiResponse({
+    status: 200,
+    description: 'List of users pending GDPR erasure',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - Admin access required',
+  })
+  async getPendingErasureQueue(@Request() req: AuthRequest) {
+    if (req.user.role !== 'admin') {
+      throw new ForbiddenException('Admin access required');
+    }
+    return this.usersService.getPendingErasureQueue();
   }
 }

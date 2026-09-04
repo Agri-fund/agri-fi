@@ -46,7 +46,15 @@ function DealCoverImage({ deal }: { deal: Deal }) {
   );
 }
 
-export default function DealCard({ deal }: { deal: Deal }) {
+export default function DealCard({
+  deal,
+  selected = false,
+  onToggleCompare,
+}: {
+  deal: Deal;
+  selected?: boolean;
+  onToggleCompare?: () => void;
+}) {
   const pct = deal.total_value > 0
     ? Math.min((Number(deal.total_invested) / Number(deal.total_value)) * 100, 100) : 0;
   const tokensLeft = Math.max(0, Number(deal.token_count) - Math.floor(Number(deal.total_invested) / 100));
@@ -54,8 +62,9 @@ export default function DealCard({ deal }: { deal: Deal }) {
   const daysLeft = Math.max(0, Math.ceil((new Date(deal.delivery_date).getTime() - Date.now()) / 86400000));
 
   return (
-    <Link href={`/marketplace/${deal.id}`}
-      className="card-interactive flex flex-col overflow-hidden group">
+    <div className="relative">
+      <Link href={`/marketplace/${deal.id}`}
+        className={`card-interactive flex flex-col overflow-hidden group ${selected ? 'ring-2 ring-brand-500 ring-offset-2' : ''}`}>
       <DealCoverImage deal={deal} />
 
       {/* Top accent bar */}
@@ -125,6 +134,22 @@ export default function DealCard({ deal }: { deal: Deal }) {
           View Deal →
         </div>
       </div>
-    </Link>
+      </Link>
+      {onToggleCompare && (
+        <button
+          type="button"
+          onClick={onToggleCompare}
+          aria-pressed={selected}
+          aria-label={`${selected ? 'Remove' : 'Add'} ${deal.commodity} ${selected ? 'from' : 'to'} comparison`}
+          className={`absolute right-3 top-3 z-10 rounded-lg border px-2.5 py-1.5 text-xs font-semibold shadow-sm transition-colors ${
+            selected
+              ? 'border-brand-600 bg-brand-600 text-white'
+              : 'border-slate-200 bg-white/95 text-slate-700 hover:border-brand-400 hover:text-brand-700'
+          }`}
+        >
+          {selected ? 'Selected' : 'Compare'}
+        </button>
+      )}
+    </div>
   );
 }

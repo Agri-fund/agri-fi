@@ -47,7 +47,16 @@ describe('NotificationsService', () => {
           NotificationsService,
           { provide: ConfigService, useValue: configService },
           { provide: PinoLogger, useValue: logger },
-          { provide: getRepositoryToken(NotificationEntity), useValue: { find: jest.fn(), count: jest.fn(), create: jest.fn(), save: jest.fn(), update: jest.fn() } },
+          {
+            provide: getRepositoryToken(NotificationEntity),
+            useValue: {
+              find: jest.fn(),
+              count: jest.fn(),
+              create: jest.fn(),
+              save: jest.fn(),
+              update: jest.fn(),
+            },
+          },
         ],
       }).compile();
 
@@ -128,7 +137,16 @@ describe('NotificationsService', () => {
           NotificationsService,
           { provide: ConfigService, useValue: configService },
           { provide: PinoLogger, useValue: logger },
-          { provide: getRepositoryToken(NotificationEntity), useValue: { find: jest.fn(), count: jest.fn(), create: jest.fn(), save: jest.fn(), update: jest.fn() } },
+          {
+            provide: getRepositoryToken(NotificationEntity),
+            useValue: {
+              find: jest.fn(),
+              count: jest.fn(),
+              create: jest.fn(),
+              save: jest.fn(),
+              update: jest.fn(),
+            },
+          },
         ],
       }).compile();
 

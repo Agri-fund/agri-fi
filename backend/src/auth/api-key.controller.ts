@@ -10,7 +10,12 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { ApiKeyService, GeneratedApiKeyResponse } from './api-key.service';
 import { ApiKey, ApiKeyScope } from './entities/api-key.entity';
 
@@ -26,8 +31,13 @@ export class ApiKeyController {
   constructor(private readonly apiKeyService: ApiKeyService) {}
 
   @Post()
-  @ApiOperation({ summary: 'Create new API key for M2M communication (raw key returned once)' })
-  async createKey(@Req() req: any, @Body() dto: CreateApiKeyDto): Promise<GeneratedApiKeyResponse> {
+  @ApiOperation({
+    summary: 'Create new API key for M2M communication (raw key returned once)',
+  })
+  async createKey(
+    @Req() req: any,
+    @Body() dto: CreateApiKeyDto,
+  ): Promise<GeneratedApiKeyResponse> {
     const ownerId = req.user?.id || 'm2m-admin-uuid';
     return await this.apiKeyService.createApiKey(
       ownerId,

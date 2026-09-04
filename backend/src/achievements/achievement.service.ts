@@ -7,7 +7,10 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Achievement, BadgeType } from './entities/achievement.entity';
-import { Investment, InvestmentStatus } from '../investments/entities/investment.entity';
+import {
+  Investment,
+  InvestmentStatus,
+} from '../investments/entities/investment.entity';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
 import { User } from '../auth/entities/user.entity';
 
@@ -41,7 +44,10 @@ export class AchievementService {
     });
   }
 
-  async checkAndAward(userId: string, event: AchievementEvent): Promise<Achievement[]> {
+  async checkAndAward(
+    userId: string,
+    event: AchievementEvent,
+  ): Promise<Achievement[]> {
     const newlyAwarded: Achievement[] = [];
 
     if (event.type === 'investment_confirmed') {
@@ -62,7 +68,9 @@ export class AchievementService {
         .createQueryBuilder('inv')
         .select('DISTINCT inv.tradeDealId')
         .where('inv.investorId = :userId', { userId })
-        .andWhere('inv.status = :status', { status: InvestmentStatus.CONFIRMED })
+        .andWhere('inv.status = :status', {
+          status: InvestmentStatus.CONFIRMED,
+        })
         .getRawMany();
 
       if (uniqueDeals.length >= 5) {
@@ -74,7 +82,8 @@ export class AchievementService {
 
       // 3. Early Bird (invest within 24h of deal opening)
       if (event.tradeDealId && event.investmentDate && event.dealOpenDate) {
-        const diffMs = event.investmentDate.getTime() - event.dealOpenDate.getTime();
+        const diffMs =
+          event.investmentDate.getTime() - event.dealOpenDate.getTime();
         const hours = diffMs / (1000 * 60 * 60);
         if (hours <= 24) {
           const badge = await this.awardBadge(userId, 'early_bird', {
@@ -157,7 +166,9 @@ export class AchievementService {
     reason: string,
   ): Promise<Achievement> {
     if (!reason || reason.trim().length === 0) {
-      throw new BadRequestException('A valid reason is required for admin badge granting.');
+      throw new BadRequestException(
+        'A valid reason is required for admin badge granting.',
+      );
     }
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) {
@@ -183,7 +194,9 @@ export class AchievementService {
     reason: string,
   ): Promise<void> {
     if (!reason || reason.trim().length === 0) {
-      throw new BadRequestException('A valid reason is required for admin badge revocation.');
+      throw new BadRequestException(
+        'A valid reason is required for admin badge revocation.',
+      );
     }
     const badge = await this.achievementRepo.findOne({
       where: { userId, badgeType },

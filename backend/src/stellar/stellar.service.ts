@@ -49,6 +49,14 @@ const TX_STATUS_CACHE_TTL_SECONDS = 3600;
 /** Redis key prefix for cached transaction status lookups. */
 const TX_STATUS_CACHE_PREFIX = 'stellar:tx:';
 
+/**
+ * Maximum validity window (in seconds) for all constructed Stellar transactions.
+ * Transactions not submitted within this window will be rejected by the network
+ * with tx_too_late, preventing mempool hangs during fee spikes.
+ * #681 — enforce timebounds on all TransactionBuilder calls.
+ */
+export const TIMEBOUNDS_SECONDS = 300; // 5 minutes
+
 export interface InvestorShare {
   walletAddress: string;
   tokenAmount: number;
@@ -260,15 +268,13 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       networkPassphrase: this.networkPassphrase,
     })
       .addOperation(setOptionsOp)
-      .setTimeout(30)
+      .setTimeout(TIMEBOUNDS_SECONDS)
       .build();
 
     // Sign with platform key
     tx.sign(this.platformKeypair);
+    await this.submitWithRetrySigned(tx, [this.platformKeypair]);
 
-    await this.submitWithRetry(tx);
-
-    // Add second signer in a separate transaction
     const updatedPlatformAccount =
       await this.server.loadAccount(platformPublicKey);
 
@@ -284,12 +290,11 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       networkPassphrase: this.networkPassphrase,
     })
       .addOperation(secondSignerOp)
-      .setTimeout(30)
+      .setTimeout(TIMEBOUNDS_SECONDS)
       .build();
 
     secondTx.sign(this.platformKeypair);
-
-    await this.submitWithRetry(secondTx);
+    await this.submitWithRetrySigned(secondTx, [this.platformKeypair]);
 
     this.logger.info(
       {
@@ -616,11 +621,11 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         }),
       )
       .addMemo(Memo.text(`escrow:${tradeDealId.slice(0, 20)}`))
-      .setTimeout(30)
+      .setTimeout(TIMEBOUNDS_SECONDS)
       .build();
 
     tx.sign(this.platformKeypair);
-    await this.submitWithRetry(tx);
+    await this.submitWithRetrySigned(tx, [this.platformKeypair]);
 
     // Establish USDC trustline on the escrow account (skip if USDC issuer not configured)
     if (!this.usdcAsset.isNative()) {
@@ -636,11 +641,11 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
             asset: this.usdcAsset,
           }),
         )
-        .setTimeout(30)
+        .setTimeout(TIMEBOUNDS_SECONDS)
         .build();
 
       trustlineTx.sign(escrowKeypair);
-      await this.submitWithRetry(trustlineTx);
+      await this.submitWithRetrySigned(trustlineTx, [escrowKeypair]);
     }
 
     this.logger.info(
@@ -690,11 +695,11 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         }),
       )
       .addMemo(Memo.text('acct-merge-recovery'))
-      .setTimeout(30)
+      .setTimeout(TIMEBOUNDS_SECONDS)
       .build();
 
     tx.sign(this.platformKeypair);
-    await this.submitWithRetry(tx);
+    await this.submitWithRetrySigned(tx, [this.platformKeypair]);
 
     // Establish USDC trustline immediately
     if (!this.usdcAsset.isNative()) {
@@ -710,11 +715,11 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
             asset: this.usdcAsset,
           }),
         )
-        .setTimeout(30)
+        .setTimeout(TIMEBOUNDS_SECONDS)
         .build();
 
       trustlineTx.sign(replacementKeypair);
-      await this.submitWithRetry(trustlineTx);
+      await this.submitWithRetrySigned(trustlineTx, [replacementKeypair]);
 
       this.logger.info(
         {
@@ -770,11 +775,11 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
           setFlags: 10 as any,
         }),
       )
-      .setTimeout(30)
+      .setTimeout(TIMEBOUNDS_SECONDS)
       .build();
 
     fundIssuerTx.sign(this.platformKeypair, issuerKeypair);
-    await this.submitWithRetry(fundIssuerTx);
+    await this.submitWithRetrySigned(fundIssuerTx, [this.platformKeypair, issuerKeypair]);
 
     const tradeAsset = createAsset(assetCode, issuerKeypair.publicKey());
 
@@ -792,11 +797,11 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
           limit: tokenCount.toString(),
         }),
       )
-      .setTimeout(30)
+      .setTimeout(TIMEBOUNDS_SECONDS)
       .build();
 
     trustlineTx.sign(escrowKeypair);
-    await this.submitWithRetry(trustlineTx);
+    await this.submitWithRetrySigned(trustlineTx, [escrowKeypair]);
 
     // Issuer mints tokens to escrow account
     const issuerAccount = await this.server.loadAccount(
@@ -814,11 +819,11 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
           amount: tokenCount.toString(),
         }),
       )
-      .setTimeout(30)
+      .setTimeout(TIMEBOUNDS_SECONDS)
       .build();
 
     mintTx.sign(issuerKeypair);
-    const mintResult = await this.submitWithRetry(mintTx);
+    const mintResult = await this.submitWithRetrySigned(mintTx, [issuerKeypair]);
 
     const txId = (mintResult as any).hash as string;
     this.logger.info(
@@ -874,7 +879,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
           amount: amountUSD,
         }),
       )
-      .setTimeout(30)
+      .setTimeout(TIMEBOUNDS_SECONDS)
       .build();
 
     // Note: in production the investor signs this via their wallet (Freighter/Albedo)
@@ -923,12 +928,12 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
           amount: tokenAmount.toFixed(7),
         }),
       )
-      .setTimeout(30)
+      .setTimeout(TIMEBOUNDS_SECONDS)
       .build();
 
     tx.sign(escrowKeypair);
 
-    const result = await this.submitWithRetry(tx);
+    const result = await this.submitWithRetrySigned(tx, [escrowKeypair]);
     const txId = (result as any).hash as string;
     this.logger.info(
       {
@@ -1178,7 +1183,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
               );
             }
 
-            return txBuilder.setTimeout(30).build();
+            return txBuilder.setTimeout(TIMEBOUNDS_SECONDS).build();
           },
           escrowKeypair,
         );
@@ -1246,11 +1251,11 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         }),
       )
       .addMemo(Memo.hash(docHashHex))
-      .setTimeout(30)
+      .setTimeout(TIMEBOUNDS_SECONDS)
       .build();
 
     tx.sign(signerKeypair);
-    const result = await this.submitWithRetry(tx);
+    const result = await this.submitWithRetrySigned(tx, [signerKeypair]);
 
     const txId = (result as any).hash as string;
     return txId;
@@ -1335,11 +1340,11 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       }),
     );
 
-    const tx = txBuilder.setTimeout(30).build();
+    const tx = txBuilder.setTimeout(TIMEBOUNDS_SECONDS).build();
     tx.sign(keypair);
 
     try {
-      const result = await this.submitWithRetry(tx);
+      const result = await this.submitWithRetrySigned(tx, [keypair]);
       const txId = (result as any).hash as string;
       this.logger.info(
         { publicKey, destination, txId },
@@ -1390,11 +1395,11 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         }),
       )
       .addMemo(stellarMemo)
-      .setTimeout(30)
+      .setTimeout(TIMEBOUNDS_SECONDS)
       .build();
 
     tx.sign(signerKeypair);
-    const result = await this.submitWithRetry(tx);
+    const result = await this.submitWithRetrySigned(tx, [signerKeypair]);
     return (result as any).hash as string;
   }
 
@@ -1630,7 +1635,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       .addMemo(
         Memo.text(investmentMemo || `invest:${assetCode}:${tokenAmount}`),
       )
-      .setTimeout(300);
+      .setTimeout(TIMEBOUNDS_SECONDS);
 
     this.addComplianceDataOperations(txBuilder, complianceData);
 
@@ -1753,7 +1758,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         }),
       )
       .addMemo(Memo.text(`path:${assetCode}:${tokenAmount}`))
-      .setTimeout(300);
+      .setTimeout(TIMEBOUNDS_SECONDS);
 
     this.addComplianceDataOperations(txBuilder, complianceData);
 
@@ -1876,7 +1881,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
 
     // Build a single memo summarising the bulk (max 28 bytes)
     txBuilder.addMemo(Memo.text(`bulk:${investments.length}deals`));
-    txBuilder.setTimeout(300); // 5 minutes for wallet signing
+    txBuilder.setTimeout(TIMEBOUNDS_SECONDS); // 5 minutes for wallet signing
 
     const tx = txBuilder.build();
 
@@ -1946,7 +1951,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         }),
       )
       .addMemo(Memo.text(`sell:${tradeTokenCode}`))
-      .setTimeout(300)
+      .setTimeout(TIMEBOUNDS_SECONDS)
       .build();
 
     this.logger.info(
@@ -2095,21 +2100,176 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Emits structured transaction log entries for all Stellar transaction attempts (#803).
+   */
+  public logStructuredTx(params: {
+    correlationId?: string;
+    txHash?: string;
+    operation: string;
+    durationMs: number;
+    status: 'success' | 'failed' | 'timeout' | 'error';
+    error?: string;
+  }): void {
+    const correlationId =
+      params.correlationId ||
+      createHash('sha256')
+        .update(`${Date.now()}-${Math.random()}`)
+        .digest('hex')
+        .substring(0, 16);
+
+    const logData = {
+      correlationId,
+      txHash: params.txHash || 'N/A',
+      operation: params.operation,
+      durationMs: params.durationMs,
+      status: params.status,
+      error: params.error,
+    };
+
+    if (params.status === 'success') {
+      this.logger.info(logData, `Stellar transaction [${params.operation}] succeeded`);
+    } else {
+      this.logger.error(logData, `Stellar transaction [${params.operation}] failed`);
+    }
+  }
+
+  /**
+   * Checks whether a Horizon submission error is tx_too_late (expired timebound).
+   * #681 — expired transactions must be rebuilt with fresh timebounds and re-submitted.
+   */
+  private isTxTooLateError(err: any): boolean {
+    const resultCodes = err?.response?.data?.extras?.result_codes;
+    if (resultCodes?.transaction === 'tx_too_late') return true;
+    if (typeof err?.message === 'string' && err.message.includes('tx_too_late')) return true;
+    return false;
+  }
+
+  /**
+   * Rebuilds an expired transaction with fresh timebounds and the same operations,
+   * fee, and memo. Requires loading the latest account sequence from Horizon.
+   * Used when tx_too_late is returned to avoid indefinite mempool hangs (#681).
+   */
+  private async rebuildWithFreshTimebounds(tx: any): Promise<any> {
+    const sourceKey = tx.source;
+    const freshAccount = await this.server.loadAccount(sourceKey);
+
+    const builder = new TransactionBuilder(freshAccount, {
+      fee: tx.fee,
+      networkPassphrase: this.networkPassphrase,
+    });
+
+    for (const op of tx.operations) {
+      builder.addOperation(op);
+    }
+
+    if (tx.memo && tx.memo.type !== 'none') {
+      builder.addMemo(tx.memo);
+    }
+
+    return builder.setTimeout(TIMEBOUNDS_SECONDS).build();
+  }
+
+  /**
    * Submits a transaction with exponential backoff retry and random jitter for transient Horizon errors.
    * Formula: base_delay * 2^attempt + random_jitter.
    * Retries on HTTP 429, 503, 504, and network timeout errors.
+   * On tx_too_late (expired timebound), throws immediately — callers that hold the
+   * signing keys should use submitWithRetrySigned instead (#681).
    */
-  private async submitWithRetry(tx: any): Promise<any> {
+  private async submitWithRetry(tx: any, operationName = 'submitTransaction', correlationId?: string): Promise<any> {
     const RETRYABLE = new Set([429, 503, 504]);
     const MAX_RETRIES = 3;
+    const startTime = Date.now();
+    const txHash = typeof tx?.hash === 'function' ? tx.hash().toString('hex') : tx?.hash;
 
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
-        return await this.server.submitTransaction(tx);
+        const result = await this.server.submitTransaction(tx);
+        const durationMs = Date.now() - startTime;
+        this.logStructuredTx({
+          correlationId,
+          txHash: result?.hash || txHash,
+          operation: operationName,
+          durationMs,
+          status: 'success',
+        });
+        return result;
       } catch (err: any) {
         const status: number | undefined = err?.response?.status;
         const isTimeout =
           err?.code === 'ECONNABORTED' || err?.message?.includes('timeout');
+
+        // tx_too_late: timebound expired — surface immediately as a named error
+        if (this.isTxTooLateError(err)) {
+          this.logger.warn(
+            { sourceKey: tx.source },
+            'tx_too_late: transaction timebound expired (#681). Use submitWithRetrySigned for auto-rebuild.',
+          );
+          throw err;
+        }
+
+        const isRetryable =
+          (status !== undefined && RETRYABLE.has(status)) || isTimeout;
+
+        if (!isRetryable || attempt === MAX_RETRIES) {
+          throw err;
+        }
+
+        const baseDelayMs = 1000;
+        const randomJitter = Math.floor(Math.random() * 500);
+        const delayMs = baseDelayMs * Math.pow(2, attempt) + randomJitter;
+        this.logger.warn(
+          { attempt, status, delayMs, jitter: randomJitter },
+          `Transient Horizon error (${status ?? 'timeout'}); retrying with exponential backoff and jitter in ${delayMs}ms`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+  }
+
+  /**
+   * Submits a transaction with both fee-bump and tx_too_late retry handling.
+   * Signs the rebuilt transaction with the provided signer keypair(s).
+   * Used for backend-controlled transactions where the signing key is known (#681).
+   */
+  private async submitWithRetrySigned(
+    tx: any,
+    signers: Keypair[],
+  ): Promise<any> {
+    const RETRYABLE = new Set([429, 503, 504]);
+    const MAX_RETRIES = 3;
+    let currentTx = tx;
+
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        return await this.server.submitTransaction(currentTx);
+      } catch (err: any) {
+        const status: number | undefined = err?.response?.status;
+        const isTimeout =
+          err?.code === 'ECONNABORTED' || err?.message?.includes('timeout');
+        const isTooLate = this.isTxTooLateError(err);
+
+        // tx_too_late: rebuild with fresh timebounds and re-sign (#681)
+        if (isTooLate && attempt < MAX_RETRIES) {
+          this.logger.warn(
+            { attempt, sourceKey: currentTx.source },
+            'tx_too_late detected — rebuilding and re-signing with fresh timebounds (#681)',
+          );
+          try {
+            currentTx = await this.rebuildWithFreshTimebounds(currentTx);
+            for (const signer of signers) {
+              currentTx.sign(signer);
+            }
+          } catch (rebuildErr: any) {
+            this.logger.error(
+              { rebuildErr: rebuildErr.message },
+              'Failed to rebuild expired transaction',
+            );
+            throw err;
+          }
+          continue;
+        }
+
         const isRetryable =
           (status !== undefined && RETRYABLE.has(status)) || isTimeout;
 
@@ -2147,28 +2307,49 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
   private async submitWithFeeBumpRetry(
     buildTx: (fee: string) => Promise<any>,
     signer: Keypair,
+    operationName = 'submitWithFeeBumpRetry',
+    correlationId?: string,
   ): Promise<any> {
     const maxFee = this.config.get<string>('STELLAR_MAX_FEE', '10000');
     const maxFeeNum = parseInt(maxFee, 10);
     let currentFee = parseInt(BASE_FEE, 10);
     const MAX_ATTEMPTS = 4;
+    const startTime = Date.now();
 
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
       const tx = await buildTx(currentFee.toString());
       tx.sign(signer);
+      const txHash = typeof tx?.hash === 'function' ? tx.hash().toString('hex') : tx?.hash;
 
       try {
         const result = await this.server.submitTransaction(tx);
+        const durationMs = Date.now() - startTime;
+        this.logStructuredTx({
+          correlationId,
+          txHash: result?.hash || txHash,
+          operation: operationName,
+          durationMs,
+          status: 'success',
+        });
         return result;
       } catch (err: any) {
         if (this.isInsufficientFeeError(err) && currentFee < maxFeeNum) {
           currentFee = Math.min(currentFee * 2, maxFeeNum);
           this.logger.warn(
-            { attempt, newFee: currentFee, maxFee: maxFeeNum },
+            { attempt, newFee: currentFee, maxFee: maxFeeNum, correlationId, txHash },
             `tx_insufficient_fee detected — retrying with higher fee (${currentFee} stroops)`,
           );
           continue;
         }
+        const durationMs = Date.now() - startTime;
+        this.logStructuredTx({
+          correlationId,
+          txHash,
+          operation: operationName,
+          durationMs,
+          status: 'failed',
+          error: err?.message,
+        });
         throw err;
       }
     }
@@ -2353,11 +2534,11 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
           flags: { authorized: !freeze },
         }),
       )
-      .setTimeout(30)
+      .setTimeout(TIMEBOUNDS_SECONDS)
       .build();
 
     tx.sign(issuerKeypair);
-    const result = await this.submitWithRetry(tx);
+    const result = await this.submitWithRetrySigned(tx, [issuerKeypair]);
     const txId = (result as any).hash as string;
 
     this.logger.info(
@@ -2420,11 +2601,11 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         }),
       )
       .addMemo(Memo.text(`cleanup:${assetCode}`))
-      .setTimeout(30)
+      .setTimeout(TIMEBOUNDS_SECONDS)
       .build();
 
     tx.sign(investorKeypair);
-    const result = await this.submitWithRetry(tx);
+    const result = await this.submitWithRetrySigned(tx, [investorKeypair]);
     const txId = (result as any).hash as string;
 
     this.logger.info(
@@ -2539,7 +2720,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       tx.sign(sourceKeypair);
 
       try {
-        const result = await this.submitWithRetry(tx);
+        const result = await this.submitWithRetrySigned(tx, [sourceKeypair]);
         const txHash = (result as any).hash as string;
         txHashes.push(txHash);
 
@@ -2614,11 +2795,11 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
-    const tx = txBuilder.setTimeout(300).build();
+    const tx = txBuilder.setTimeout(TIMEBOUNDS_SECONDS).build();
     tx.sign(issuerKeypair);
 
     try {
-      await this.submitWithRetry(tx);
+      await this.submitWithRetrySigned(tx, [issuerKeypair]);
       this.logger.info(
         { assetCode, issuerPublicKey, holdersCount: holders.length },
         'Tokens clawed back successfully',

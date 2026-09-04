@@ -7,7 +7,9 @@ import { useTranslations } from "next-intl";
 import { apiClient, Deal, User, MILESTONE_LABELS } from "../../../../lib/api";
 import DashboardLayout from "../../../../components/DashboardLayout";
 import StatCard from "../../../../components/StatCard";
+import OnboardingChecklist from "../../../../components/OnboardingChecklist";
 import { useToast } from "../../../../components/ui/ToastProvider";
+import { usePushNotifications } from "../../../../hooks/usePushNotifications";
 import dynamic from "next/dynamic";
 
 // CreateDealForm pulls in react-hook-form + zod validation + heavy form logic.
@@ -40,11 +42,19 @@ export default function FarmerDashboard() {
   const { toast } = useToast();
   const [user, setUser] = useState<User | null>(null);
 
-  // Request push notification permission once the user is authenticated
-  usePushNotifications(!!user);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [showChecklist, setShowChecklist] = useState(true);
+
+  // Restore dismissed state from localStorage on mount
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      if (localStorage.getItem("onboarding_dismissed") === "true") {
+        setShowChecklist(false);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -107,6 +117,19 @@ export default function FarmerDashboard() {
           <StatCard label={t("stats.totalValue")} value={`$${totalValue.toLocaleString()}`} icon="💰" color="bg-amber-50" />
           <StatCard label={t("stats.funded")} value={`${fundingPct}%`} icon="✅" color="bg-violet-50" trend={`$${totalFunded.toLocaleString()} raised`} trendUp={totalFunded > 0} />
         </div>
+
+        {/* Onboarding checklist */}
+        {showChecklist && user && (
+          <div className="mt-4">
+            <OnboardingChecklist
+              userId={user.id}
+              onDismiss={() => {
+                localStorage.setItem("onboarding_dismissed", "true");
+                setShowChecklist(false);
+              }}
+            />
+          </div>
+        )}
 
         {/* KYC notice */}
         {user.kycStatus !== "verified" && (

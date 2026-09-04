@@ -92,7 +92,9 @@ export class CreateArchiveTables1910000000000 implements MigrationInterface {
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`DROP TABLE IF EXISTS "shipment_milestones_archive"`);
+    await queryRunner.query(
+      `DROP TABLE IF EXISTS "shipment_milestones_archive"`,
+    );
     await queryRunner.query(`DROP TABLE IF EXISTS "investments_archive"`);
     await queryRunner.query(`DROP TABLE IF EXISTS "trade_deals_archive"`);
   }

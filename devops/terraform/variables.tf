@@ -134,3 +134,25 @@ variable "single_nat_gateway" {
   type        = bool
   default     = true
 }
+
+# ---------------------------------------------------------------------------
+# Redis ElastiCache variables
+# ---------------------------------------------------------------------------
+
+variable "redis_node_type" {
+  description = "ElastiCache node type for Redis."
+  type        = string
+  default     = "cache.t3.micro"
+}
+
+variable "redis_engine_version" {
+  description = "Redis engine version."
+  type        = string
+  default     = "7.1"
+}
+
+variable "redis_num_replicas" {
+  description = "Number of read replicas (total nodes = redis_num_replicas + 1 primary)."
+  type        = number
+  default     = 1
+}

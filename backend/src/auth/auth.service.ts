@@ -15,7 +15,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import * as argon2 from 'argon2';
-import { randomBytes, createHash } from 'crypto';
+import { randomBytes, createHash, randomUUID } from 'crypto';
 import crypto from 'crypto';
 import {
   Keypair,
@@ -34,6 +34,7 @@ import { SubmitKycDto } from './dto/submit-kyc.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { QueueService } from '../queue/queue.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { AuditService } from '../audit/audit.service';
 import { JwtPayload } from './jwt.strategy';
 import { sanitizeRedirectUrl } from './utils/redirect-sanitizer';
 import { OfacSanctionsCheckService } from './utils/ofac-sanctions-check';
@@ -56,11 +57,20 @@ export interface LoginMeta {
   acceptLanguage?: string;
 }
 
+export interface GoogleIdentity {
+  subject: string;
+  email: string;
+  emailVerified: boolean;
+}
+
 @Injectable()
 export class AuthService {
   private readonly sep10SigningKeypair: Keypair;
   private readonly networkPassphrase: string;
-  private readonly challenges: Map<string, { nonce: string; expiresAt: number }>;
+  private readonly challenges: Map<
+    string,
+    { nonce: string; expiresAt: number }
+  >;
   private readonly sep10Domain: string;
 
   constructor(
@@ -78,19 +88,28 @@ export class AuthService {
     private readonly tokenBlocklistService: TokenBlocklistService,
     private readonly securityThreat: SecurityThreatService,
     @Optional() private readonly emailSequenceService: EmailSequenceService,
+    @Optional() private readonly auditService: AuditService,
   ) {
-    const network = this.configService.get<string>('STELLAR_NETWORK', 'testnet');
+    const network = this.configService.get<string>(
+      'STELLAR_NETWORK',
+      'testnet',
+    );
     this.networkPassphrase =
       network === 'mainnet' ? Networks.PUBLIC : Networks.TESTNET;
 
-    const sep10Secret = this.configService.get<string>('SEP10_SIGNING_SECRET', '');
+    const sep10Secret = this.configService.get<string>(
+      'SEP10_SIGNING_SECRET',
+      '',
+    );
     this.sep10SigningKeypair = sep10Secret
       ? Keypair.fromSecret(sep10Secret)
       : Keypair.random();
 
     this.challenges = new Map();
-    this.sep10Domain =
-      this.configService.get<string>('SEP10_DOMAIN', 'agri-fi.com');
+    this.sep10Domain = this.configService.get<string>(
+      'SEP10_DOMAIN',
+      'agri-fi.com',
+    );
   }
 
   // ── helpers ────────────────────────────────────────────────────────────────
@@ -103,7 +122,10 @@ export class AuthService {
     return argon2.hash(password, { type: argon2.argon2id });
   }
 
-  private async verifyPassword(hash: string, password: string): Promise<boolean> {
+  private async verifyPassword(
+    hash: string,
+    password: string,
+  ): Promise<boolean> {
     if (this.isBcryptHash(hash)) {
       return bcrypt.compare(password, hash);
     }
@@ -115,10 +137,16 @@ export class AuthService {
   }
 
   private appBaseUrl(): string {
-    return this.configService.get<string>('APP_BASE_URL', 'http://localhost:3001');
+    return this.configService.get<string>(
+      'APP_BASE_URL',
+      'http://localhost:3001',
+    );
   }
 
-  private async sendVerificationEmail(email: string, token: string): Promise<void> {
+  private async sendVerificationEmail(
+    email: string,
+    token: string,
+  ): Promise<void> {
     const link = `${this.appBaseUrl()}/auth/verify-email?token=${token}`;
     await this.notificationsService.sendEmail(
       email,
@@ -130,9 +158,7 @@ export class AuthService {
 
   // ── register ───────────────────────────────────────────────────────────────
 
-  async register(
-    dto: RegisterDto,
-  ): Promise<{
+  async register(dto: RegisterDto): Promise<{
     id: string;
     email: string;
     role: string;
@@ -181,10 +207,12 @@ export class AuthService {
     // Schedule the investor onboarding drip email sequence for new investors.
     // Fire-and-forget — a scheduling failure must not block registration.
     if (saved.role === 'investor' && this.emailSequenceService) {
-      this.emailSequenceService.scheduleForUser(saved.id, saved.createdAt).catch((err) => {
-        // Non-fatal: log and continue
-        console.error('[AuthService] Failed to schedule drip sequence', err);
-      });
+      this.emailSequenceService
+        .scheduleForUser(saved.id, saved.createdAt)
+        .catch((err) => {
+          // Non-fatal: log and continue
+          console.error('[AuthService] Failed to schedule drip sequence', err);
+        });
     }
 
     const safeRedirect = sanitizeRedirectUrl(dto.redirect);
@@ -228,10 +256,30 @@ export class AuthService {
     return this.configService.get<string>('JWT_REFRESH_EXPIRES_IN', '7d');
   }
 
-  private issueTokenPair(user: User): {
-    accessToken: string;
-    refreshToken: string;
-  } {
+  /** Parses a JWT-style duration ('15m', '7d', '3600s', or a bare number of seconds). */
+  private durationToSeconds(value: string): number {
+    const match = /^(\d+)\s*(s|m|h|d)?$/i.exec(value.trim());
+    if (!match) return 0;
+    const amount = parseInt(match[1], 10);
+    const unit = (match[2] ?? 's').toLowerCase();
+    const multipliers: Record<string, number> = {
+      s: 1,
+      m: 60,
+      h: 3600,
+      d: 86400,
+    };
+    return amount * multipliers[unit];
+  }
+
+  /**
+   * Issues a fresh access/refresh token pair. Every refresh token gets a new
+   * unique jti; `familyId` is preserved across a rotation chain (or started
+   * fresh on login) so replay of a rotated-out token can be detected (#786).
+   */
+  private issueTokenPair(
+    user: User,
+    familyId: string = randomUUID(),
+  ): { accessToken: string; refreshToken: string } {
     const base: JwtPayload = {
       sub: user.id,
       email: user.email,
@@ -245,7 +293,8 @@ export class AuthService {
         { expiresIn: this.accessTokenExpiresIn() },
       ),
       refreshToken: this.jwtService.sign(
-        { ...base, typ: 'refresh' },
+        { ...base, typ: 'refresh', jti: randomUUID(), familyId },
+        // Sliding expiry: every rotation is granted a full fresh TTL.
         { expiresIn: this.refreshTokenExpiresIn() },
       ),
     };
@@ -355,13 +404,20 @@ export class AuthService {
         user.failedLoginAttempts = 0;
         await this.userRepo.save(user);
 
-        // Send lockout notification email
+        // Generate unlock token and send lockout notification email
+        const unlockToken = this.generateUnlockToken(user.id);
+        const unlockUrl = `${this.appBaseUrl()}/auth/unlock/${unlockToken}`;
         const unlockAt = user.lockoutUntil.toUTCString();
+
         await this.notificationsService.sendEmail(
           user.email,
           'Your Agri-Fi account has been locked',
-          `Your account has been temporarily locked due to 5 consecutive failed login attempts. It will unlock at ${unlockAt}.`,
-          `<p>Your account has been temporarily locked due to 5 consecutive failed login attempts.</p><p>It will unlock automatically at <strong>${unlockAt}</strong>.</p><p>If this wasn't you, please reset your password immediately.</p>`,
+          `Your account has been temporarily locked due to 5 consecutive failed login attempts. Unlock your account: ${unlockUrl}. This link expires in 15 minutes.`,
+          `<p>Your account has been temporarily locked due to 5 consecutive failed login attempts.</p>
+           <p>You can unlock your account immediately using the link below:</p>
+           <p><a href="${unlockUrl}" style="background-color: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Unlock My Account</a></p>
+           <p><small>This link expires in 15 minutes. After that, your account will unlock automatically at <strong>${unlockAt}</strong>.</small></p>
+           <p>If this wasn't you, please <a href="${this.appBaseUrl()}/auth/change-password">reset your password</a> immediately.</p>`,
         );
 
         throw new UnauthorizedException(
@@ -381,6 +437,26 @@ export class AuthService {
       user.passwordHash = await this.hashPassword(dto.password);
     }
 
+    // ── #806: enforce MFA enrollment for admin / company_admin roles ─────────
+    // Admin accounts must have MFA configured before they can receive tokens.
+    // Return a 403 with a machine-readable code so the frontend can redirect
+    // the user to the MFA setup flow rather than showing a generic error.
+    if (
+      (user.role === 'admin' || user.role === 'company_admin') &&
+      !user.isMfaEnabled
+    ) {
+      // Persist the enrollment-required flag so the migration/guard can read it
+      user.mfaEnrollmentRequired = true;
+      await this.userRepo.save(user);
+
+      throw new ForbiddenException({
+        code: 'MFA_ENROLLMENT_REQUIRED',
+        requiresMfaEnrollment: true,
+        userId: user.id,
+        message: 'MFA setup required for admin accounts',
+      });
+    }
+
     await this.userRepo.save(user);
 
     // ── #898/#897: audit log + localized new-device security alert ──────────
@@ -398,6 +474,60 @@ export class AuthService {
       ...tokens,
       redirect: safeRedirect || undefined,
     };
+  }
+
+  async loginWithGoogle(identity: GoogleIdentity): Promise<{
+    accessToken: string;
+    refreshToken: string;
+  }> {
+    if (!identity.emailVerified) {
+      throw new UnauthorizedException(
+        'Your Google email address must be verified before signing in.',
+      );
+    }
+
+    let user = await this.userRepo.findOne({
+      where: { googleSubject: identity.subject },
+    });
+
+    if (user && user.role !== 'investor') {
+      throw new ForbiddenException(
+        'Google sign-in is available for investor accounts only.',
+      );
+    }
+
+    if (!user) {
+      user = await this.userRepo.findOne({ where: { email: identity.email } });
+      if (user && user.role !== 'investor') {
+        throw new ForbiddenException(
+          'Google sign-in is available for investor accounts only.',
+        );
+      }
+    }
+
+    if (!user) {
+      user = this.userRepo.create({
+        email: identity.email,
+        googleSubject: identity.subject,
+        passwordHash: await this.hashPassword(randomBytes(32).toString('hex')),
+        role: 'investor',
+        country: 'UN',
+        kycStatus: 'pending',
+        isEmailVerified: true,
+      });
+    } else if (!user.googleSubject) {
+      user.googleSubject = identity.subject;
+    } else if (user.googleSubject !== identity.subject) {
+      throw new UnauthorizedException(
+        'This email is already linked to a different Google account.',
+      );
+    }
+
+    user.failedLoginAttempts = 0;
+    user.lockoutUntil = null;
+    user.isEmailVerified = true;
+    await this.userRepo.save(user);
+    return this.issueTokenPair(user);
   }
 
   /** Persists a LoginLog row and alerts the user about unrecognized devices. */
@@ -483,7 +613,9 @@ export class AuthService {
     return { message: 'All sessions have been revoked. Please log in again.' };
   }
 
-  private async findUserByRevokeToken(revokeToken: string): Promise<string | null> {
+  private async findUserByRevokeToken(
+    revokeToken: string,
+  ): Promise<string | null> {
     try {
       const log = await this.loginLogRepo
         .createQueryBuilder('log')
@@ -497,7 +629,9 @@ export class AuthService {
           'latest',
           'latest.user_id = log.user_id',
         )
-        .where(`log.user_agent LIKE :token`, { token: `%revoke:${revokeToken}%` })
+        .where(`log.user_agent LIKE :token`, {
+          token: `%revoke:${revokeToken}%`,
+        })
         .getOne();
       return log?.userId ?? null;
     } catch {
@@ -535,29 +669,76 @@ export class AuthService {
       throw new UnauthorizedException('Token no longer valid.');
     }
 
-    return this.issueTokenPair(user);
+    const { jti, familyId } = payload;
+
+    if (
+      familyId &&
+      (await this.tokenBlocklistService.isTokenFamilyRevoked(familyId))
+    ) {
+      throw new UnauthorizedException('Token no longer valid.');
+    }
+
+    if (jti) {
+      const alreadyRotated =
+        await this.tokenBlocklistService.isRefreshTokenRotated(jti);
+
+      if (alreadyRotated) {
+        // A refresh token that was already rotated out is being replayed —
+        // the token family may be compromised. Shut it down and force the
+        // user to re-authenticate on every device (#786).
+        if (familyId) {
+          await this.tokenBlocklistService.revokeTokenFamily(
+            familyId,
+            this.durationToSeconds(this.refreshTokenExpiresIn()),
+          );
+        }
+        user.tokenVersion = (user.tokenVersion ?? 0) + 1;
+        await this.userRepo.save(user);
+        throw new UnauthorizedException(
+          'Refresh token reuse detected. All sessions have been revoked.',
+        );
+      }
+
+      const remainingSeconds =
+        (payload.exp ?? 0) - Math.floor(Date.now() / 1000);
+      await this.tokenBlocklistService.markRefreshTokenRotated(
+        jti,
+        Math.max(remainingSeconds, 1),
+      );
+    }
+
+    return this.issueTokenPair(user, familyId);
   }
 
   // ── logout & token revocation ──────────────────────────────────────────────
 
+  /**
+   * Logout a user. If a raw token string is provided it will be blocklisted
+   * until its natural expiry. In all cases the user's `tokenVersion` is
+   * incremented to immediately invalidate existing sessions.
+   */
   async logout(userId: string, token?: string): Promise<{ message: string }> {
+    // If a token string is provided, try to blocklist it until expiry.
     if (token) {
       try {
         const decoded: any = this.jwtService.decode(token);
         if (decoded && typeof decoded.exp === 'number') {
           const remainingSeconds = decoded.exp - Math.floor(Date.now() / 1000);
           if (remainingSeconds > 0) {
-            await this.tokenBlocklistService.blocklistToken(
-              token,
-              remainingSeconds,
-            );
+            await this.tokenBlocklistService.blocklistToken(token, remainingSeconds);
           }
         }
       } catch {
-        // decode error ignored
+        // ignore decode errors — still proceed to invalidate sessions
       }
     }
-    return { message: 'Logged out successfully' };
+
+    // Bump tokenVersion so all issued JWTs become invalid immediately.
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found.');
+    user.tokenVersion = (user.tokenVersion ?? 0) + 1;
+    await this.userRepo.save(user);
+    return { message: 'Logged out successfully.' };
   }
 
   // ── MFA ───────────────────────────────────────────────────────────────────
@@ -565,9 +746,12 @@ export class AuthService {
   private static readonly MFA_MAX_ATTEMPTS = 5;
   private static readonly MFA_LOCKOUT_MS = 10 * 60 * 1000; // 10 minutes
 
-  async setupMfa(
-    userId: string,
-  ): Promise<{ secret: string; otpauthUrl: string; qrCodeUrl: string; backupCodes: string[] }> {
+  async setupMfa(userId: string): Promise<{
+    secret: string;
+    otpauthUrl: string;
+    qrCodeUrl: string;
+    backupCodes: string[];
+  }> {
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found.');
 
@@ -643,7 +827,10 @@ export class AuthService {
     }
 
     // Verify password
-    const passwordValid = await this.verifyPassword(password, user.passwordHash);
+    const passwordValid = await this.verifyPassword(
+      user.passwordHash,
+      password,
+    );
     if (!passwordValid) {
       throw new BadRequestException('Invalid password.');
     }
@@ -664,10 +851,7 @@ export class AuthService {
     return { success: true, message: 'MFA disabled successfully.' };
   }
 
-  async verifyMfa(
-    userId: string,
-    token: string,
-  ): Promise<{ valid: boolean }> {
+  async verifyMfa(userId: string, token: string): Promise<{ valid: boolean }> {
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found.');
 
@@ -689,7 +873,10 @@ export class AuthService {
     // If TOTP fails, try backup codes
     if (!isValid && user.mfaBackupCodes?.length) {
       for (let i = 0; i < user.mfaBackupCodes.length; i++) {
-        const codeMatch = await bcrypt.compare(token.trim(), user.mfaBackupCodes[i]);
+        const codeMatch = await bcrypt.compare(
+          token.trim(),
+          user.mfaBackupCodes[i],
+        );
         if (codeMatch) {
           isValid = true;
           // Remove used backup code (single-use)
@@ -725,13 +912,6 @@ export class AuthService {
     }
   }
 
-  private async verifyPassword(password: string, hash: string): Promise<boolean> {
-    if (this.isBcryptHash(hash)) {
-      return bcrypt.compare(password, hash);
-    }
-    return argon2.verify(hash, password);
-  }
-
   // ── wallet ─────────────────────────────────────────────────────────────────
 
   async linkWallet(
@@ -742,9 +922,8 @@ export class AuthService {
     if (!user) throw new NotFoundException('User not found.');
 
     // Check if the wallet address is sanctioned
-    const isSanctioned = await this.ofacSanctionsCheck.isAddressSanctioned(
-      walletAddress,
-    );
+    const isSanctioned =
+      await this.ofacSanctionsCheck.isAddressSanctioned(walletAddress);
     if (isSanctioned) {
       throw new BadRequestException({
         code: 'SANCTIONED_ADDRESS',
@@ -775,13 +954,17 @@ export class AuthService {
     const submission = this.kycRepo.create({
       userId,
       governmentIdUrl: dto.governmentIdUrl,
+      identityDocumentBackUrl: dto.identityDocumentBackUrl,
       proofOfAddressUrl: dto.proofOfAddressUrl,
+      selfieUrl: dto.selfieUrl,
       isCorporate: dto.isCorporate ?? false,
       companyName: dto.companyName,
       registrationNumber: dto.registrationNumber,
       businessLicenseUrl: dto.businessLicenseUrl,
       articlesOfIncorporationUrl: dto.articlesOfIncorporationUrl,
-      documentExpiresAt: dto.documentExpiresAt ? new Date(dto.documentExpiresAt) : null,
+      documentExpiresAt: dto.documentExpiresAt
+        ? new Date(dto.documentExpiresAt)
+        : null,
       status: automatedApproval ? 'approved' : 'pending_review',
     });
 
@@ -798,6 +981,7 @@ export class AuthService {
 
     if (automatedApproval) {
       user.kycStatus = 'verified';
+      user.kycDraft = null;
       await this.userRepo.save(user);
       console.log(
         `KYC auto-verified for user ${user.email} (Method: ${dto.isCorporate ? 'Automated Corporate' : 'System Config'}).`,
@@ -812,6 +996,25 @@ export class AuthService {
     }
 
     return { kycStatus: user.kycStatus };
+  }
+
+  async getKycDraft(
+    userId: string,
+  ): Promise<{ draft: Record<string, unknown> | null }> {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found.');
+    return { draft: user.kycDraft ?? null };
+  }
+
+  async saveKycDraft(
+    userId: string,
+    draft: Record<string, unknown>,
+  ): Promise<{ draft: Record<string, unknown> | null }> {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found.');
+    user.kycDraft = draft;
+    await this.userRepo.save(user);
+    return { draft: user.kycDraft };
   }
 
   private asRecord(value: unknown): Record<string, unknown> | null {
@@ -833,7 +1036,9 @@ export class AuthService {
     return null;
   }
 
-  private mapProviderKycStatus(payload: Record<string, unknown>): User['kycStatus'] | null {
+  private mapProviderKycStatus(
+    payload: Record<string, unknown>,
+  ): User['kycStatus'] | null {
     const rootStatus = this.pickFirstString(payload, [
       'status',
       'reviewStatus',
@@ -852,7 +1057,9 @@ export class AuthService {
     }
 
     if (
-      ['approved', 'verified', 'green', 'completed', 'success'].includes(normalized)
+      ['approved', 'verified', 'green', 'completed', 'success'].includes(
+        normalized,
+      )
     ) {
       return 'verified';
     }
@@ -864,7 +1071,9 @@ export class AuthService {
     }
 
     if (
-      ['pending', 'yellow', 'processing', 'queued', 'on_hold'].includes(normalized)
+      ['pending', 'yellow', 'processing', 'queued', 'on_hold'].includes(
+        normalized,
+      )
     ) {
       return 'pending';
     }
@@ -888,15 +1097,22 @@ export class AuthService {
 
     const applicant = this.asRecord(payload.applicant);
     if (applicant) {
-      return this.pickFirstString(applicant, ['externalUserId', 'userId', 'email']);
+      return this.pickFirstString(applicant, [
+        'externalUserId',
+        'userId',
+        'email',
+      ]);
     }
 
     return null;
   }
 
-  async handleKycWebhook(
-    payload: Record<string, unknown>,
-  ): Promise<{ received: true; updated: boolean; userId?: string; kycStatus?: User['kycStatus'] }> {
+  async handleKycWebhook(payload: Record<string, unknown>): Promise<{
+    received: true;
+    updated: boolean;
+    userId?: string;
+    kycStatus?: User['kycStatus'];
+  }> {
     const userReference = this.extractKycWebhookUserReference(payload);
     if (!userReference) {
       return { received: true, updated: false };
@@ -988,7 +1204,11 @@ export class AuthService {
     return { kycStatus: user.kycStatus };
   }
 
-  async approveKyc(userId: string, adminId: string, reason?: string): Promise<{ kycStatus: string }> {
+  async approveKyc(
+    userId: string,
+    adminId: string,
+    reason?: string,
+  ): Promise<{ kycStatus: string }> {
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found.');
 
@@ -1081,7 +1301,10 @@ export class AuthService {
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found.');
 
-    const valid = await this.verifyPassword(user.passwordHash, dto.currentPassword);
+    const valid = await this.verifyPassword(
+      user.passwordHash,
+      dto.currentPassword,
+    );
     if (!valid) throw new BadRequestException('Current password is incorrect.');
 
     if (dto.currentPassword === dto.newPassword) {
@@ -1094,16 +1317,227 @@ export class AuthService {
     user.tokenVersion = (user.tokenVersion ?? 0) + 1;
     await this.userRepo.save(user);
 
-    return { message: 'Password updated. All active sessions have been invalidated.' };
+    return {
+      message: 'Password updated. All active sessions have been invalidated.',
+    };
   }
 
-  async logout(userId: string): Promise<{ message: string }> {
+
+
+  // ── account unlock ────────────────────────────────────────────────────────
+
+  /**
+   * Generates a signed JWT unlock token with 15-minute expiry.
+   * Token contains userId and is used in the unlock link sent via email.
+   */
+  private generateUnlockToken(userId: string): string {
+    return this.jwtService.sign(
+      { sub: userId, typ: 'account_unlock' },
+      { expiresIn: '15m' } as any,
+    );
+  }
+
+  /**
+   * Validates an unlock token and resets the account lockout.
+   * Logs the unlock attempt to login_logs table.
+   */
+  async unlockAccount(
+    token: string,
+    meta?: LoginMeta,
+  ): Promise<{ message: string }> {
+    let payload: any;
+    try {
+      payload = this.jwtService.verify(token) as any;
+    } catch (err) {
+      throw new BadRequestException({ code: 'INVALID_UNLOCK_TOKEN', message: 'Invalid unlock token.' });
+    }
+
+    if (!payload || payload.typ !== 'account_unlock' || !payload.sub) {
+      throw new BadRequestException({ code: 'INVALID_UNLOCK_TOKEN', message: 'Invalid unlock token.' });
+    }
+
+    const userId = payload.sub as string;
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found.');
 
-    user.tokenVersion = (user.tokenVersion ?? 0) + 1;
+    const wasLocked = !!(user.lockoutUntil && user.lockoutUntil > new Date());
+    user.lockoutUntil = null;
+    user.failedLoginAttempts = 0;
     await this.userRepo.save(user);
-    return { message: 'Logged out successfully.' };
+
+    // Log unlock attempt to login_logs with metadata
+    if (meta?.ip) {
+      const deviceFingerprint = this.computeDeviceFingerprint(meta.userAgent, meta.acceptLanguage);
+      const countryCode = meta.country ? meta.country.toUpperCase().slice(0, 2) : null;
+      await this.loginLogRepo.save(
+        this.loginLogRepo.create({
+          userId: user.id,
+          ipAddress: meta.ip ?? 'unknown',
+          userAgent: `unlock_attempt|${meta.userAgent ?? 'unknown'}`,
+          country: meta.country ?? null,
+          countryCode,
+          deviceFingerprint,
+        }),
+      );
+    }
+
+    return {
+      message: wasLocked ? 'Account has been unlocked successfully. You can now log in.' : 'Account unlock token validated.',
+    };
+  }
+
+  // ── bulk KYC (#800) ────────────────────────────────────────────────────────
+
+  /**
+   * Approve or reject multiple KYC submissions in a single request.
+   *
+   * For each userId:
+   *  - Updates the most recent `pending_review` submission to the new status.
+   *  - Updates the user's `kycStatus` on the user record.
+   *  - Writes an individual entry to `system_audit_logs`.
+   *  - Enqueues an email notification for the affected user.
+   *
+   * Entries that cannot be found (or have no pending submission) are recorded
+   * in the `failures` array in the response and do NOT abort the whole batch.
+   */
+  async bulkApproveOrRejectKyc(params: {
+    userIds: string[];
+    action: 'approve' | 'reject';
+    reason?: string;
+    adminId: string;
+    adminRole?: string;
+  }): Promise<{
+    processed: Array<{ userId: string; kycStatus: string }>;
+    failures: Array<{ userId: string; reason: string }>;
+  }> {
+    const { userIds, action, reason, adminId, adminRole } = params;
+
+    if (action === 'reject' && !reason?.trim()) {
+      throw new BadRequestException(
+        'A reason is required when rejecting KYC submissions.',
+      );
+    }
+
+    const processed: Array<{ userId: string; kycStatus: string }> = [];
+    const failures: Array<{ userId: string; reason: string }> = [];
+
+    for (const userId of userIds) {
+      try {
+        const user = await this.userRepo.findOne({ where: { id: userId } });
+        if (!user) {
+          failures.push({ userId, reason: 'User not found.' });
+          continue;
+        }
+
+        const submission = await this.kycRepo.findOne({
+          where: { userId, status: 'pending_review' },
+          order: { createdAt: 'DESC' },
+        });
+        if (!submission) {
+          failures.push({
+            userId,
+            reason: 'No pending KYC submission found for this user.',
+          });
+          continue;
+        }
+
+        if (action === 'approve') {
+          submission.status = 'approved';
+          await this.kycRepo.save(submission);
+
+          if (submission.isCorporate) {
+            user.isCompany = true;
+            user.companyDetails = {
+              companyName: submission.companyName ?? undefined,
+              registrationNumber: submission.registrationNumber ?? undefined,
+              articlesOfIncorporationUrl:
+                submission.articlesOfIncorporationUrl ?? undefined,
+            };
+          }
+
+          user.kycStatus = 'verified';
+          await this.userRepo.save(user);
+
+          await this.adminActionRepo.save(
+            this.adminActionRepo.create({
+              adminId,
+              targetUserId: user.id,
+              action: 'approve_kyc',
+              payload: { submissionId: submission.id, bulk: true },
+              reason: reason ?? null,
+            }),
+          );
+
+          // Write individual audit log entry
+          await this.auditService?.logEvent({
+            actorId: adminId,
+            actorRole: adminRole ?? 'admin',
+            route: 'PATCH /admin/kyc/bulk',
+            statusCode: 200,
+            requestDetails: {
+              action: 'approve',
+              userId,
+              submissionId: submission.id,
+              reason: reason ?? null,
+            },
+          });
+
+          this.queueService.emit('email.notification', {
+            type: 'kyc_verified',
+            email: user.email,
+            userId: user.id,
+          });
+
+          processed.push({ userId, kycStatus: user.kycStatus });
+        } else {
+          submission.status = 'rejected';
+          await this.kycRepo.save(submission);
+
+          user.kycStatus = 'rejected';
+          await this.userRepo.save(user);
+
+          await this.adminActionRepo.save(
+            this.adminActionRepo.create({
+              adminId,
+              targetUserId: user.id,
+              action: 'reject_kyc',
+              payload: { submissionId: submission.id, bulk: true },
+              reason: reason ?? null,
+            }),
+          );
+
+          // Write individual audit log entry
+          await this.auditService?.logEvent({
+            actorId: adminId,
+            actorRole: adminRole ?? 'admin',
+            route: 'PATCH /admin/kyc/bulk',
+            statusCode: 200,
+            requestDetails: {
+              action: 'reject',
+              userId,
+              submissionId: submission.id,
+              reason,
+            },
+          });
+
+          this.queueService.emit('email.notification', {
+            type: 'kyc_rejected',
+            email: user.email,
+            userId: user.id,
+            reason,
+          });
+
+          processed.push({ userId, kycStatus: user.kycStatus });
+        }
+      } catch (err: any) {
+        failures.push({
+          userId,
+          reason: err?.message ?? 'Unknown error.',
+        });
+      }
+    }
+
+    return { processed, failures };
   }
 
   // ── list users ─────────────────────────────────────────────────────────────
@@ -1139,9 +1573,7 @@ export class AuthService {
     clientPublicKey: string,
   ): Promise<{ transactionXdr: string; networkPassphrase: string }> {
     if (!clientPublicKey || !clientPublicKey.startsWith('G')) {
-      throw new BadRequestException(
-        'Invalid Stellar public key',
-      );
+      throw new BadRequestException('Invalid Stellar public key');
     }
 
     const nonce = crypto.randomBytes(32).toString('hex');
@@ -1150,7 +1582,10 @@ export class AuthService {
     const expiry = now + 300; // 5 minutes
 
     const tx = new TransactionBuilder(
-      { sequence: '0', accountId: () => this.sep10SigningKeypair.publicKey() } as any,
+      {
+        sequence: '0',
+        accountId: () => this.sep10SigningKeypair.publicKey(),
+      } as any,
       {
         fee: BASE_FEE,
         networkPassphrase: this.networkPassphrase,
@@ -1236,9 +1671,7 @@ export class AuthService {
       try {
         const hint = sig.hint.toString('hex');
         const clientKeypair = Keypair.fromPublicKey(clientPublicKey);
-        const clientHint = clientKeypair
-          .signatureHint()
-          .toString('hex');
+        const clientHint = clientKeypair.signatureHint().toString('hex');
         if (hint !== clientHint) return false;
         return clientKeypair.verify(txHash, sig.signature);
       } catch {
@@ -1281,15 +1714,11 @@ export class AuthService {
 
     const accessToken = this.jwtService.sign(
       { ...base, typ: 'access' },
-      {
-        expiresIn:
-          this.configService.get<string>('JWT_ACCESS_EXPIRES_IN') ??
-          this.configService.get<string>('JWT_EXPIRES_IN', '7d'),
-      },
+      { expiresIn: this.configService.get<string>('JWT_ACCESS_EXPIRES_IN') ?? this.configService.get<string>('JWT_EXPIRES_IN', '7d') } as any,
     );
     const refreshToken = this.jwtService.sign(
       { ...base, typ: 'refresh' },
-      { expiresIn: '7d' },
+      { expiresIn: '7d' } as any,
     );
 
     return { accessToken, refreshToken, publicKey: clientPublicKey };

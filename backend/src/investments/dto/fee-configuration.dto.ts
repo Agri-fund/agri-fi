@@ -10,7 +10,10 @@ import {
   IsBoolean,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { FeeType, InvestorTier } from '../../database/entities/fee-configuration.entity';
+import {
+  FeeType,
+  InvestorTier,
+} from '../../database/entities/fee-configuration.entity';
 
 export class CreateFeeConfigurationDto {
   @ApiProperty({

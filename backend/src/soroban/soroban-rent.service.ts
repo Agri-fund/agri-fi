@@ -31,10 +31,7 @@ const DEFAULT_EXTEND_TO_LEDGERS = 535_680;
 
 @Injectable()
 export class SorobanRentService implements OnModuleInit {
-  private readonly logger = new Logger(SorobanRentService.name);
-  private readonly rpcUrl: string;
-  /** Contract IDs that are known to be currently archived (pending restore). */
-  private readonly archivedContracts = new Set<string>();
+  private readonly warnThreshold: number;
 
   constructor(
     private readonly config: ConfigService,
@@ -43,6 +40,10 @@ export class SorobanRentService implements OnModuleInit {
     private readonly tradeDealRepo: Repository<TradeDeal>,
   ) {
     this.rpcUrl = this.config.get<string>('SOROBAN_RPC_URL', '');
+    this.warnThreshold = this.config.get<number>(
+      'RENT_TOP_UP_LEDGERS_THRESHOLD',
+      DEFAULT_WARN_TTL_LEDGERS,
+    );
   }
 
   onModuleInit(): void {
@@ -52,7 +53,7 @@ export class SorobanRentService implements OnModuleInit {
       );
     } else {
       this.logger.log(
-        `SorobanRentService initialized. RPC: ${this.rpcUrl}`,
+        `SorobanRentService initialized with threshold ${this.warnThreshold} ledgers. RPC: ${this.rpcUrl}`,
       );
     }
   }
@@ -75,13 +76,13 @@ export class SorobanRentService implements OnModuleInit {
 
     const contractIds = await this.fetchActiveContractIds();
     if (contractIds.length === 0) {
-      this.logger.log('No active Soroban contracts found — skipping rent bump.');
+      this.logger.log(
+        'No active Soroban contracts found — skipping rent bump.',
+      );
       return;
     }
 
-    this.logger.log(
-      `Found ${contractIds.length} active contract(s) to check.`,
-    );
+    this.logger.log(`Found ${contractIds.length} active contract(s) to check.`);
 
     let extended = 0;
     let failed = 0;
@@ -93,7 +94,7 @@ export class SorobanRentService implements OnModuleInit {
       } catch (err: any) {
         failed++;
         this.logger.error(
-          `Failed to extend TTL for contract ${contractId}: ${err.message}`,
+          `[ALERT_PRIORITY_HIGH] Failed to extend TTL for contract ${contractId}: ${err.message}`,
         );
       }
     }
@@ -122,7 +123,9 @@ export class SorobanRentService implements OnModuleInit {
       try {
         await this.restoreAndExtend(contractId);
         this.archivedContracts.delete(contractId);
-        this.logger.log(`Successfully restored archived contract ${contractId}.`);
+        this.logger.log(
+          `Successfully restored archived contract ${contractId}.`,
+        );
       } catch (err: any) {
         this.logger.error(
           `Recovery failed for archived contract ${contractId}: ${err.message}`,
@@ -139,7 +142,10 @@ export class SorobanRentService implements OnModuleInit {
    * is flagged as near-expiry from an external monitor.
    */
   async bumpContractRent(contractId: string): Promise<string> {
-    return this.soroban.extendContractTtl(contractId, DEFAULT_EXTEND_TO_LEDGERS);
+    return this.soroban.extendContractTtl(
+      contractId,
+      DEFAULT_EXTEND_TO_LEDGERS,
+    );
   }
 
   /**
@@ -147,7 +153,9 @@ export class SorobanRentService implements OnModuleInit {
    * Called when the platform detects that escrow payouts are failing
    * due to an archived contract state.
    */
-  async recoverContract(contractId: string): Promise<{ restoreHash: string; extendHash: string }> {
+  async recoverContract(
+    contractId: string,
+  ): Promise<{ restoreHash: string; extendHash: string }> {
     return this.restoreAndExtend(contractId);
   }
 
@@ -191,7 +199,9 @@ export class SorobanRentService implements OnModuleInit {
     contractId: string,
   ): Promise<{ restoreHash: string; extendHash: string }> {
     const restoreHash = await this.soroban.restoreArchivedContract(contractId);
-    this.logger.log(`Restored archived contract ${contractId}. tx: ${restoreHash}`);
+    this.logger.log(
+      `Restored archived contract ${contractId}. tx: ${restoreHash}`,
+    );
 
     const extendHash = await this.soroban.extendContractTtl(
       contractId,

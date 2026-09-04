@@ -13,7 +13,9 @@ export class ArchivalCronService {
    */
   @Cron('0 2 * * 0', { timeZone: 'UTC' })
   async handleWeeklyArchival(): Promise<void> {
-    this.logger.log('Starting scheduled weekly archival job (Sunday 02:00 UTC)...');
+    this.logger.log(
+      'Starting scheduled weekly archival job (Sunday 02:00 UTC)...',
+    );
     try {
       const archiveResult = await this.archivalService.copyToArchive(2);
       this.logger.log(`Archival completed: ${JSON.stringify(archiveResult)}`);
@@ -22,13 +24,21 @@ export class ArchivalCronService {
       this.logger.log(`Validation completed: ${JSON.stringify(validation)}`);
 
       if (validation.valid) {
-        const hardDeletedCount = await this.archivalService.hardDeleteValidatedArchives(30);
-        this.logger.log(`Hard delete completed: ${hardDeletedCount} records purged.`);
+        const hardDeletedCount =
+          await this.archivalService.hardDeleteValidatedArchives(30);
+        this.logger.log(
+          `Hard delete completed: ${hardDeletedCount} records purged.`,
+        );
       } else {
-        this.logger.warn('Archive validation failed during cron execution. Skipping hard delete.');
+        this.logger.warn(
+          'Archive validation failed during cron execution. Skipping hard delete.',
+        );
       }
     } catch (err) {
-      this.logger.error(`Error during weekly archival cron job: ${(err as Error).message}`, (err as Error).stack);
+      this.logger.error(
+        `Error during weekly archival cron job: ${(err as Error).message}`,
+        (err as Error).stack,
+      );
     }
   }
 }

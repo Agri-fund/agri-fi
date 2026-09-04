@@ -35,4 +35,13 @@ EXPLAIN (ANALYZE, BUFFERS)
 SELECT * FROM payment_distributions 
 WHERE trade_deal_id = '00000000-0000-0000-0000-000000000000'::uuid;
 
+-- 6. Verify dashboard queries use partial indexes
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT * FROM trade_deals 
+WHERE status = 'open';
+
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT * FROM investments 
+WHERE status = 'active';
+
 -- Expected output should show "Index Scan" or "Index Only Scan" instead of "Seq Scan"

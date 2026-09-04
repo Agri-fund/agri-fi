@@ -2,9 +2,11 @@ import {
   Controller,
   Post,
   Get,
+  Patch,
   Param,
   Body,
   UseGuards,
+  UseInterceptors,
   Request,
   HttpCode,
   HttpStatus,
@@ -40,6 +42,9 @@ import { PaginatedResult } from '../common/pagination';
 import { TradeDealsGuard } from '../trade-deals/trade-deals.guard';
 import { IdempotencyService } from '../queue/idempotency.service';
 import { InvestmentEventStore } from './investment-event-store.service';
+import { ReceiptService } from './receipt.service';
+import { CancelInvestmentDto } from './dto/cancel-investment.dto';
+import { AuditInterceptor } from '../audit/audit.interceptor';
 
 @ApiTags('investments')
 @ApiBearerAuth('jwt')
@@ -52,6 +57,7 @@ export class InvestmentsController {
     private readonly idempotency: IdempotencyService,
     private readonly eventStore: InvestmentEventStore,
     private readonly taxReportService: TaxReportService,
+    private readonly receiptService: ReceiptService,
   ) {}
 
   @Post()
@@ -106,7 +112,10 @@ export class InvestmentsController {
     @Headers('x-idempotency-key') idempotencyKey?: string,
   ) {
     if (idempotencyKey) {
-      const key = IdempotencyService.buildKey('investment.create', idempotencyKey);
+      const key = IdempotencyService.buildKey(
+        'investment.create',
+        idempotencyKey,
+      );
       const lease = await this.idempotency.acquireLease(key, 300);
       if (!lease.acquired) {
         throw new ConflictException('Duplicate investment request detected.');
@@ -243,6 +252,45 @@ export class InvestmentsController {
       page: page ? parseInt(page, 10) : undefined,
       limit: limit ? parseInt(limit, 10) : undefined,
     });
+  }
+
+  /**
+   * Issue #788 — investor-initiated soft-cancel within the regulatory
+   * cooling-off window (default 48h, configurable via
+   * INVESTMENT_COOLING_OFF_HOURS), while the investment is still PENDING
+   * (i.e. before any funds have moved on-chain via fundEscrow).
+   */
+  @Patch(':id/cancel')
+  @UseInterceptors(AuditInterceptor)
+  @ApiOperation({
+    summary:
+      'Cancel a pending investment within the cooling-off window (investor only, #788)',
+  })
+  @ApiParam({ name: 'id', description: 'Investment UUID' })
+  @ApiResponse({ status: 200, description: 'Investment cancelled' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden — investor role required and must own the investment',
+  })
+  @ApiResponse({ status: 404, description: 'Investment not found' })
+  @ApiResponse({
+    status: 422,
+    description:
+      'Investment is no longer pending, or the cooling-off window has passed',
+  })
+  @UseGuards(RolesGuard)
+  @Roles('investor')
+  async cancelInvestment(
+    @Request() req: { user: { id: string } },
+    @Param('id') id: string,
+    @Body() dto: CancelInvestmentDto,
+  ) {
+    return this.investmentsService.requestCoolingOffCancel(
+      req.user.id,
+      id,
+      dto.reason,
+    );
   }
 
   /**
@@ -388,9 +436,16 @@ export class InvestmentsController {
    * Issue #850 — Investor tax report export (CSV and PDF).
    */
   @Get('tax-report')
-  @ApiOperation({ summary: 'Export investor tax report for a financial year (#850)' })
+  @ApiOperation({
+    summary: 'Export investor tax report for a financial year (#850)',
+  })
   @ApiQuery({ name: 'year', required: true, example: 2025 })
-  @ApiQuery({ name: 'format', required: false, enum: ['csv', 'pdf'], example: 'csv' })
+  @ApiQuery({
+    name: 'format',
+    required: false,
+    enum: ['csv', 'pdf'],
+    example: 'csv',
+  })
   @ApiResponse({ status: 200, description: 'Tax report file download' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @UseGuards(KycGuard, RolesGuard)
@@ -400,19 +455,28 @@ export class InvestmentsController {
     @Query() query: TaxReportQueryDto,
     @Res() res: Response,
   ) {
-    const report = await this.taxReportService.buildReportData(req.user.id, query.year);
+    const report = await this.taxReportService.buildReportData(
+      req.user.id,
+      query.year,
+    );
     const format = query.format ?? TaxReportFormat.CSV;
 
     if (format === TaxReportFormat.CSV) {
       const csv = this.taxReportService.toCsv(report);
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-      res.setHeader('Content-Disposition', `attachment; filename="tax-report-${query.year}.csv"`);
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="tax-report-${query.year}.csv"`,
+      );
       return res.send('﻿' + csv); // BOM for Excel compatibility
     }
 
     // PDF: placeholder — integrate pdfkit in production
     res.setHeader('Content-Type', 'application/json');
-    return res.json({ message: 'PDF generation queued — you will receive an email when ready.', year: query.year });
+    return res.json({
+      message: 'PDF generation queued — you will receive an email when ready.',
+      year: query.year,
+    });
   }
 
   @Get('buy-orders/:tokenCode/:tokenIssuer')
@@ -440,9 +504,51 @@ export class InvestmentsController {
     );
   }
 
+  /**
+   * Issue #808 — PDF payment receipt for investors.
+   * Generates (or returns a cached) pre-signed S3 URL to the PDF receipt.
+   */
+  @Get(':id/receipt')
+  @ApiOperation({
+    summary:
+      'Get a pre-signed S3 URL for the PDF payment receipt (investor only, #808)',
+  })
+  @ApiParam({ name: 'id', description: 'Investment UUID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Pre-signed receipt URL valid for 15 minutes',
+    schema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'Pre-signed S3 URL' },
+        expiresAt: {
+          type: 'string',
+          format: 'date-time',
+          description: 'URL expiry timestamp (ISO 8601)',
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({
+    status: 403,
+    description:
+      'Forbidden – investor role required and must own the investment',
+  })
+  @ApiResponse({ status: 404, description: 'Investment not found' })
+  @UseGuards(RolesGuard)
+  @Roles('investor')
+  async getReceipt(
+    @Request() req: { user: { id: string } },
+    @Param('id') id: string,
+  ): Promise<{ url: string; expiresAt: string }> {
+    return this.receiptService.generateReceipt(id, req.user.id);
+  }
+
   @Get(':id/events')
   @ApiOperation({
-    summary: 'Get event log history for an investment (admin or investment owner)',
+    summary:
+      'Get event log history for an investment (admin or investment owner)',
   })
   @ApiParam({ name: 'id', description: 'Investment UUID' })
   @ApiResponse({ status: 200, description: 'List of investment events' })

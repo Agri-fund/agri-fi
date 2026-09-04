@@ -33,6 +33,14 @@ export default function LoginPage() {
 
   // Redirect already-logged-in users, clear stale data if role is missing
   useEffect(() => {
+    const oauthSuccess = new URLSearchParams(window.location.search).get('oauth') === 'success';
+    if (oauthSuccess) {
+      apiClient.getMe()
+        .then(profile => router.replace(`/dashboard/${profile.role}`))
+        .catch(() => setError('Google sign-in could not be completed. Please try again.'));
+      return;
+    }
+
     const user = apiClient.getCurrentUser();
     if (!user) return;
     if (user.role) {
@@ -90,11 +98,43 @@ export default function LoginPage() {
 
     setLoading(true); setError(null);
     try {
-      await apiClient.login(email, password);
+      const result = await apiClient.login(email, password);
+
+      // #806 — Admin accounts without MFA configured receive a 403 with
+      // code MFA_ENROLLMENT_REQUIRED.  Redirect them to the MFA setup flow
+      // instead of showing a generic error so they can complete enrollment.
+      const body = result as any;
+      if (
+        body?.code === 'MFA_ENROLLMENT_REQUIRED' ||
+        body?.requiresMfaEnrollment === true
+      ) {
+        toast('MFA setup required. Please configure your authenticator app.', 'info');
+        router.push('/settings?tab=security&mfa=enroll');
+        return;
+      }
+
       const profile = await apiClient.getMe();
       toast('Welcome back! 👋', 'success');
       router.push(`/dashboard/${profile.role}`);
     } catch (err: any) {
+      // #806 — The backend throws 403 ForbiddenException for MFA enrollment.
+      // Catch it here so admin users are redirected instead of seeing an error.
+      const code =
+        err?.response?.data?.code ??
+        err?.data?.code ??
+        err?.code ??
+        '';
+      const requiresMfa =
+        err?.response?.data?.requiresMfaEnrollment ??
+        err?.data?.requiresMfaEnrollment ??
+        false;
+
+      if (code === 'MFA_ENROLLMENT_REQUIRED' || requiresMfa) {
+        toast('MFA setup required for your account. Redirecting to security settings…', 'info');
+        router.push('/settings?tab=security&mfa=enroll');
+        return;
+      }
+
       const msg = err?.response?.data?.message ?? err?.message ?? '';
       if (msg.toLowerCase().includes('unavailable') || msg.toLowerCase().includes('unreachable')) {
         setError('Backend is not running. Start the backend server and try again.');
@@ -246,6 +286,19 @@ export default function LoginPage() {
                 ) : 'Sign in →'}
               </button>
             </form>
+
+            <div className="relative my-6">
+              <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-200" /></div>
+              <div className="relative flex justify-center"><span className="bg-white px-3 text-xs text-slate-400">or</span></div>
+            </div>
+
+            <a
+              href="http://localhost:3001/v1/auth/google"
+              className="w-full py-3 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
+            >
+              <span className="font-bold text-base">G</span>
+              Continue with Google
+            </a>
 
             {/* Demo accounts */}
             <div className="mt-7 pt-6 border-t border-slate-100">

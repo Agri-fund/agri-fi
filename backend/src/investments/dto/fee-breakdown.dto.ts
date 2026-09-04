@@ -42,7 +42,8 @@ export class FeeBreakdownDto {
   @ApiProperty({
     type: FeeLineItemDto,
     nullable: true,
-    description: 'Investor entry fee (charged to investor, reduces net investment)',
+    description:
+      'Investor entry fee (charged to investor, reduces net investment)',
     example: {
       type: 'investor_entry',
       description: 'Investor entry fee (retail)',

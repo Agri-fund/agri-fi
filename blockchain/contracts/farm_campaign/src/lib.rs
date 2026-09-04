@@ -282,6 +282,28 @@ impl FarmCampaignContract {
         Ok(())
     }
 
+    pub fn refund_by_admin(env: Env, admin: Address, investor: Address) -> Result<(), Error> {
+        admin.require_auth();
+        let config: Config = env.storage().instance().get(&DataKey::Config)
+            .ok_or(Error::NotInitialized)?;
+        if admin != config.admin { return Err(Error::Unauthorized); }
+        let state: State = env.storage().instance().get(&DataKey::State)
+            .ok_or(Error::NotInitialized)?;
+        if state.status != CampaignStatus::Failed { return Err(Error::RefundNotAllowed); }
+
+        let mut investments: Map<Address, i128> = env.storage().instance()
+            .get(&DataKey::Investments).unwrap_or_else(|| Map::new(&env));
+        let amount = investments.get(investor.clone()).unwrap_or(0);
+        if amount <= 0 { return Err(Error::InsufficientFunds); }
+        investments.set(investor.clone(), 0);
+        env.storage().instance().set(&DataKey::Investments, &investments);
+
+        let usdc = token::Client::new(&env, &config.usdc_token);
+        usdc.transfer(&env.current_contract_address(), &investor, &amount);
+        env.events().publish((symbol_short!("refund"), investor), amount);
+        Ok(())
+    }
+
     pub fn pause(env: Env, admin: Address) -> Result<(), Error> {
         admin.require_auth();
         let config: Config = env.storage().instance().get(&DataKey::Config)

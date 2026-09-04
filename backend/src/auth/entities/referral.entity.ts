@@ -39,7 +39,13 @@ export class Referral {
   })
   status: ReferralStatus;
 
-  @Column({ name: 'reward_amount', type: 'decimal', precision: 10, scale: 2, default: 0 })
+  @Column({
+    name: 'reward_amount',
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    default: 0,
+  })
   @ApiProperty({ description: 'Reward amount credited', example: 5.0 })
   rewardAmount: number;
 

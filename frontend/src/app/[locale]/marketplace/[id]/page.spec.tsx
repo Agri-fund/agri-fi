@@ -1,7 +1,7 @@
 import { generateMetadata } from './page';
 
-jest.mock('@/lib/api', () => ({
-  getDealById: jest.fn(),
+vi.mock('@/lib/api', () => ({
+  getDealById: vi.fn(),
 }));
 
 import { getDealById } from '@/lib/api';

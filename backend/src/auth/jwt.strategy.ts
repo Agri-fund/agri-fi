@@ -14,6 +14,12 @@ export interface JwtPayload {
   role: string;
   tokenVersion?: number;
   typ?: 'access' | 'refresh';
+  /** Unique id for this refresh token — used to detect rotation replay. */
+  jti?: string;
+  /** Id shared by every refresh token in a rotation chain. */
+  familyId?: string;
+  iat?: number;
+  exp?: number;
 }
 
 @Injectable()
@@ -33,7 +39,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
   async validate(req: Request, payload: JwtPayload): Promise<User> {
     const rawToken = ExtractJwt.fromAuthHeaderAsBearerToken()(req);
-    if (rawToken && (await this.tokenBlocklistService.isBlocklisted(rawToken))) {
+    if (
+      rawToken &&
+      (await this.tokenBlocklistService.isBlocklisted(rawToken))
+    ) {
       throw new UnauthorizedException('Token has been revoked.');
     }
 
@@ -50,4 +59,3 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     return user;
   }
 }
-

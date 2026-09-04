@@ -52,6 +52,8 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
   const { toast, promise } = useToast();
   const { isConnected, publicKey, signTransaction } = useWallet();
   const txProgress = useTransactionProgress();
+  const { formatCurrency } = useCurrencyFormat();
+  const { formatNumber } = useNumberFormat();
   const [tokenQuantity, setTokenQuantity] = useState<number | ''>(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -280,9 +282,6 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
       </div>
     );
   }
-
-  const { formatCurrency } = useCurrencyFormat();
-  const { formatNumber } = useNumberFormat();
 
   if (success) {
     return (
