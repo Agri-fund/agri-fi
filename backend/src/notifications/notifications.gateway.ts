@@ -4,14 +4,11 @@ import {
   OnGatewayConnection,
   OnGatewayDisconnect,
   OnGatewayInit,
-  SubscribeMessage,
   WebSocketGateway,
   WebSocketServer,
-  MessageBody,
-  ConnectedSocket,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { WsJwtGuard, WS_AUTH_ERROR_CODE } from './ws-jwt.guard';
+import { WsJwtGuard } from './ws-jwt.guard';
 
 @WebSocketGateway({
   cors: { origin: true, credentials: true },

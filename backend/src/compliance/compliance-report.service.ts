@@ -14,7 +14,7 @@
  *  - Metadata persisted to compliance_reports DB table
  */
 
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between, DataSource } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
@@ -322,7 +322,7 @@ export class ComplianceReportService {
 
     for (const [label, value] of rows) {
       if (y < 80) {
-        const extra = doc.addPage([612, 792]);
+        doc.addPage([612, 792]);
         y = 762;
       }
       if (!label && !value) {

@@ -68,7 +68,7 @@ export class KmsService {
     let parsed: { iv: string; ciphertext: string; encryptedKey: string };
     try {
       parsed = JSON.parse(payload);
-    } catch (e) {
+    } catch {
       this.logger.error('Invalid encrypted payload format');
       throw new Error('Invalid encrypted payload format');
     }

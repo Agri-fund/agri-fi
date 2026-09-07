@@ -7,7 +7,6 @@ import { Document } from '../trade-deals/entities/document.entity';
 import { SorobanService } from '../soroban/soroban.service';
 import { StellarService } from '../stellar/stellar.service';
 import { NotificationsService } from '../notifications/notifications.service';
-import { nativeToScVal } from '@stellar/stellar-sdk';
 
 export type SettlementStatus =
   'pending' | 'settling' | 'settled' | 'settlement_failed';

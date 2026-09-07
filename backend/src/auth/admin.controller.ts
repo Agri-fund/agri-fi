@@ -211,7 +211,7 @@ export class AdminController {
     // Trigger automatic on-chain settlement for harvest documents (#899)
     try {
       await this.documentsService.onDocumentApproved(document);
-    } catch (err: any) {
+    } catch {
       // Settlement failure is tracked on the deal; don't block document approval response
     }
 

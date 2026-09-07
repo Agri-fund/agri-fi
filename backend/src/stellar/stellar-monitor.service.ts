@@ -61,7 +61,7 @@ export class StellarMonitorService {
       try {
         const keypair = Keypair.fromSecret(platformSecret);
         this.platformAccountId = keypair.publicKey();
-      } catch (err) {
+      } catch {
         this.logger.warn('Failed to parse STELLAR_PLATFORM_SECRET for monitor');
       }
     }

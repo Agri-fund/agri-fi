@@ -32,7 +32,6 @@ import { AccountMergeRecovery } from './entities/account-merge-recovery.entity';
  * This test validates the complete recovery flow on testnet.
  */
 describe('Stellar Account Merge Recovery Integration', () => {
-  let service: StellarMonitorService;
   let stellarService: StellarService;
   let mergeRecoveryRepo: Repository<AccountMergeRecovery>;
   let server: Horizon.Server;
@@ -41,7 +40,6 @@ describe('Stellar Account Merge Recovery Integration', () => {
   // Test accounts (created during test)
   let originalKeypair: Keypair;
   let destinationKeypair: Keypair;
-  let platformKeypair: Keypair;
 
   beforeAll(async () => {
     if (process.env.SKIP_INTEGRATION_TESTS) {
@@ -73,7 +71,6 @@ describe('Stellar Account Merge Recovery Integration', () => {
       providers: [StellarService, StellarMonitorService, ConfigService],
     }).compile();
 
-    service = module.get<StellarMonitorService>(StellarMonitorService);
     stellarService = module.get<StellarService>(StellarService);
     mergeRecoveryRepo = module.get<Repository<AccountMergeRecovery>>(
       getRepositoryToken(AccountMergeRecovery),
@@ -90,9 +87,6 @@ describe('Stellar Account Merge Recovery Integration', () => {
     // Create test keypairs
     originalKeypair = Keypair.random();
     destinationKeypair = Keypair.random();
-    platformKeypair = Keypair.fromSecret(
-      configService.get('STELLAR_PLATFORM_SECRET', ''),
-    );
 
     console.log('Integration test setup complete');
   });

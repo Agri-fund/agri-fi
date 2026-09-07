@@ -118,7 +118,6 @@ export class RedisConfig {
 
     return createClient({
       url: secureUrl,
-      ...(authToken ? { password: authToken } : {}),
       socket:
         tlsEnabled && Object.keys(tlsConfig).length > 0
           ? { tls: tlsConfig as any }

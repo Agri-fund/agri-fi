@@ -1,6 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Gauge } from 'prom-client';
 import { DealHealthMonitorService } from './deal-health-monitor.service';
 import { TradeDeal } from './entities/trade-deal.entity';
 import { DealHealthAlert } from './entities/deal-health-alert.entity';

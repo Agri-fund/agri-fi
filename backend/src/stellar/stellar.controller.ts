@@ -9,7 +9,6 @@ import {
   HttpStatus,
   Req,
   HttpException,
-  Version,
 } from '@nestjs/common';
 import {
   ApiTags,

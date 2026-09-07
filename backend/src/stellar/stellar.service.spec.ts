@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { StellarService, InvestorShare } from './stellar.service';
 import { PinoLogger } from 'nestjs-pino';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { TransactionLog, TxStatus } from './entities/transaction-log.entity';
+import { TransactionLog } from './entities/transaction-log.entity';
 import { KmsService } from '../kms/kms.service';
 import {
   Keypair,
@@ -805,7 +805,7 @@ describe('StellarService', () => {
     it('should handle batching for large investor lists', async () => {
       const investorShares: InvestorShare[] = Array.from(
         { length: 150 },
-        (_, i) => ({
+        (_, _i) => ({
           walletAddress: Keypair.random().publicKey(),
           tokenAmount: 1,
           totalTokens: 150,

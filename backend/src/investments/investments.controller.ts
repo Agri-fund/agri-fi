@@ -11,7 +11,6 @@ import {
   HttpCode,
   HttpStatus,
   Query,
-  Version,
   Headers,
   ConflictException,
   ForbiddenException,

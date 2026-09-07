@@ -3,8 +3,6 @@ import {
   calculateBackoffWithJitter,
   getDeliveryAttempt,
   isTransientQueueError,
-  DEFAULT_BASE_DELAY_MS,
-  DEFAULT_MAX_JITTER_MS,
 } from './retry-policy';
 
 describe('RetryPolicy - Exponential Backoff with Jitter', () => {

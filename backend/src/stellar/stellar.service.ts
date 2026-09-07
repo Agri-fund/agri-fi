@@ -48,15 +48,6 @@ const SEQUENCE_CACHE_TTL = 5; // seconds
 const TX_STATUS_CACHE_TTL_SECONDS = 3600;
 /** Redis key prefix for cached transaction status lookups. */
 const TX_STATUS_CACHE_PREFIX = 'stellar:tx:';
-
-/**
- * Maximum validity window (in seconds) for all constructed Stellar transactions.
- * Transactions not submitted within this window will be rejected by the network
- * with tx_too_late, preventing mempool hangs during fee spikes.
- * #681 — enforce timebounds on all TransactionBuilder calls.
- */
-export const TIMEBOUNDS_SECONDS = 300; // 5 minutes
-
 export interface InvestorShare {
   walletAddress: string;
   tokenAmount: number;
@@ -123,7 +114,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
 
     this.horizonClient = new HorizonFailoverClient(horizonUrls, this.logger, {
       timeout: 30000,
-    } as Horizon.Server.Options);
+    });
     this.networkPassphrase =
       network === 'mainnet' ? Networks.PUBLIC : Networks.TESTNET;
 
@@ -779,7 +770,10 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       .build();
 
     fundIssuerTx.sign(this.platformKeypair, issuerKeypair);
-    await this.submitWithRetrySigned(fundIssuerTx, [this.platformKeypair, issuerKeypair]);
+    await this.submitWithRetrySigned(fundIssuerTx, [
+      this.platformKeypair,
+      issuerKeypair,
+    ]);
 
     const tradeAsset = createAsset(assetCode, issuerKeypair.publicKey());
 
@@ -823,7 +817,9 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       .build();
 
     mintTx.sign(issuerKeypair);
-    const mintResult = await this.submitWithRetrySigned(mintTx, [issuerKeypair]);
+    const mintResult = await this.submitWithRetrySigned(mintTx, [
+      issuerKeypair,
+    ]);
 
     const txId = (mintResult as any).hash as string;
     this.logger.info(
@@ -1178,7 +1174,9 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
                 Operation.payment({
                   destination: platformWallet,
                   asset: this.usdcAsset,
-                  amount: new BigNumber(platformStroops).dividedBy(1e7).toFixed(7),
+                  amount: new BigNumber(platformStroops)
+                    .dividedBy(1e7)
+                    .toFixed(7),
                 }),
               );
             }
@@ -2127,9 +2125,15 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     };
 
     if (params.status === 'success') {
-      this.logger.info(logData, `Stellar transaction [${params.operation}] succeeded`);
+      this.logger.info(
+        logData,
+        `Stellar transaction [${params.operation}] succeeded`,
+      );
     } else {
-      this.logger.error(logData, `Stellar transaction [${params.operation}] failed`);
+      this.logger.error(
+        logData,
+        `Stellar transaction [${params.operation}] failed`,
+      );
     }
   }
 
@@ -2140,7 +2144,8 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
   private isTxTooLateError(err: any): boolean {
     const resultCodes = err?.response?.data?.extras?.result_codes;
     if (resultCodes?.transaction === 'tx_too_late') return true;
-    if (typeof err?.message === 'string' && err.message.includes('tx_too_late')) return true;
+    if (typeof err?.message === 'string' && err.message.includes('tx_too_late'))
+      return true;
     return false;
   }
 
@@ -2176,11 +2181,16 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
    * On tx_too_late (expired timebound), throws immediately — callers that hold the
    * signing keys should use submitWithRetrySigned instead (#681).
    */
-  private async submitWithRetry(tx: any, operationName = 'submitTransaction', correlationId?: string): Promise<any> {
+  private async submitWithRetry(
+    tx: any,
+    operationName = 'submitTransaction',
+    correlationId?: string,
+  ): Promise<any> {
     const RETRYABLE = new Set([429, 503, 504]);
     const MAX_RETRIES = 3;
     const startTime = Date.now();
-    const txHash = typeof tx?.hash === 'function' ? tx.hash().toString('hex') : tx?.hash;
+    const txHash =
+      typeof tx?.hash === 'function' ? tx.hash().toString('hex') : tx?.hash;
 
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
@@ -2295,7 +2305,11 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
   private isInsufficientFeeError(err: any): boolean {
     const resultCodes = err?.response?.data?.extras?.result_codes;
     if (resultCodes?.transaction === 'tx_insufficient_fee') return true;
-    if (typeof err?.message === 'string' && err.message.includes('tx_insufficient_fee')) return true;
+    if (
+      typeof err?.message === 'string' &&
+      err.message.includes('tx_insufficient_fee')
+    )
+      return true;
     return false;
   }
 
@@ -2319,7 +2333,8 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
       const tx = await buildTx(currentFee.toString());
       tx.sign(signer);
-      const txHash = typeof tx?.hash === 'function' ? tx.hash().toString('hex') : tx?.hash;
+      const txHash =
+        typeof tx?.hash === 'function' ? tx.hash().toString('hex') : tx?.hash;
 
       try {
         const result = await this.server.submitTransaction(tx);
@@ -2336,7 +2351,13 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         if (this.isInsufficientFeeError(err) && currentFee < maxFeeNum) {
           currentFee = Math.min(currentFee * 2, maxFeeNum);
           this.logger.warn(
-            { attempt, newFee: currentFee, maxFee: maxFeeNum, correlationId, txHash },
+            {
+              attempt,
+              newFee: currentFee,
+              maxFee: maxFeeNum,
+              correlationId,
+              txHash,
+            },
             `tx_insufficient_fee detected — retrying with higher fee (${currentFee} stroops)`,
           );
           continue;

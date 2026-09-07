@@ -162,10 +162,16 @@ function anonymiseSQLLine(line: string): string {
     () => generateTestnetAddress(),
   );
 
-  // Wipe KYC encrypted columns (set to NULL if they contain encrypted data)
-  if (result.includes('kyc_submissions') || result.includes('encrypted_')) {
+  // Wipe KYC encrypted columns (set to NULL if they contain encrypted data).
+  // The INSERT header and its data rows arrive on separate lines, so also
+  // detect long opaque quoted tokens (e.g. JWT/base64 blobs) on the row lines.
+  if (
+    result.includes('kyc_submissions') ||
+    result.includes('encrypted_') ||
+    /'[A-Za-z0-9+/=.]{20,}'/.test(result)
+  ) {
     result = result.replace(
-      /'([A-Za-z0-9+/=]{20,})'/g,
+      /'([A-Za-z0-9+/=.]{20,})'/g,
       'NULL',
     );
   }
