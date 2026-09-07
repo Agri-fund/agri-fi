@@ -57,7 +57,7 @@ export class ComplianceReportService {
     private readonly logger: PinoLogger,
     private readonly dataSource: DataSource,
   ) {
-    this.logger.setContext(ComplianceReportService.name);
+    (this.logger as any).setContext(ComplianceReportService.name);
     this.bucket = this.config.get<string>('AWS_S3_BUCKET', '');
     this.s3 = new S3Client({
       region: this.config.get<string>('AWS_REGION', 'us-east-1'),

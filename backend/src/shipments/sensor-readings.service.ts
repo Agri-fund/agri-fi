@@ -47,7 +47,7 @@ export class SensorReadingsService {
     @InjectRepository(TradeDeal)
     private readonly tradeDealRepo: Repository<TradeDeal>,
   ) {
-    this.logger.setContext(SensorReadingsService.name);
+    (this.logger as any).setContext(SensorReadingsService.name);
   }
 
   async ingestBatch(

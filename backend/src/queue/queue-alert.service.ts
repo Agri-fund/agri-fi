@@ -34,7 +34,7 @@ export class QueueAlertService {
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
   ) {
-    this.logger.setContext(QueueAlertService.name);
+    (this.logger as any).setContext(QueueAlertService.name);
   }
 
   /**

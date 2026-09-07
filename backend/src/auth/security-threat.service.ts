@@ -61,7 +61,7 @@ export class SecurityThreatService implements OnModuleInit, OnModuleDestroy {
     private readonly queueService: QueueService,
     private readonly logger: PinoLogger,
   ) {
-    this.logger.setContext(SecurityThreatService.name);
+    (this.logger as any).setContext(SecurityThreatService.name);
     this.distinctIpsThreshold = Number(
       config.get<number>('SECURITY_DISTINCT_IPS_THRESHOLD', 10),
     );

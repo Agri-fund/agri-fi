@@ -17,7 +17,7 @@ export class CurrencyConverterService {
     private readonly fxRateService: FxRateService,
     private readonly logger: PinoLogger,
   ) {
-    this.logger.setContext(CurrencyConverterService.name);
+    (this.logger as any).setContext(CurrencyConverterService.name);
   }
 
   /**

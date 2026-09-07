@@ -47,7 +47,7 @@ export class EmailSequenceService {
     private readonly logger: PinoLogger,
     private readonly config: ConfigService,
   ) {
-    this.logger.setContext(EmailSequenceService.name);
+    (this.logger as any).setContext(EmailSequenceService.name);
   }
 
   // ── Public API ──────────────────────────────────────────────────────────────

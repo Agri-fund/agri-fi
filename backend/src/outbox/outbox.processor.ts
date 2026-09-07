@@ -24,7 +24,7 @@ export class OutboxProcessor implements OnModuleInit, OnModuleDestroy {
     private readonly config: ConfigService,
     private readonly logger: PinoLogger,
   ) {
-    this.logger.setContext(OutboxProcessor.name);
+    (this.logger as any).setContext(OutboxProcessor.name);
   }
 
   onModuleInit(): void {

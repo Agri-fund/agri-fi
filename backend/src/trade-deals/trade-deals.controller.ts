@@ -58,6 +58,7 @@ export class TradeDealsController {
     private readonly tradeDealsService: TradeDealsService,
     private readonly dealCoFarmersService: DealCoFarmersService,
     private readonly dealDeploymentService: DealDeploymentService,
+    private readonly activityFeedService: ActivityFeedService,
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
   ) {}
 
@@ -114,7 +115,7 @@ export class TradeDealsController {
     await this.dealCoFarmersService.assertAllCoFarmersVerified(id);
 
     const deal = await this.tradeDealsService.publishDeal(id, req.user.id);
-    await this.cacheManager.stores[0].reset();
+    await (this.cacheManager.stores[0] as any).reset();
     return deal;
   }
 
@@ -145,7 +146,7 @@ export class TradeDealsController {
     @Request() req: AuthRequest,
   ): Promise<TradeDeal> {
     const deal = await this.dealDeploymentService.approveDeal(id, req.user.id);
-    await this.cacheManager.stores[0].reset();
+    await (this.cacheManager.stores[0] as any).reset();
     return deal;
   }
 
@@ -341,7 +342,7 @@ export class TradeDealsController {
     const deal = await this.tradeDealsService.cancelDeal(id, req.user.id);
     // Invalidate the marketplace listing cache so cancelled deals disappear
     // from the active-deals list immediately (#743).
-    await this.cacheManager.stores[0].reset();
+    await (this.cacheManager.stores[0] as any).reset();
     return deal;
   }
 

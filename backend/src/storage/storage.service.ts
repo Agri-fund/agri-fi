@@ -240,7 +240,7 @@ export class StorageService {
         }),
       );
 
-      this.logger.info(
+      this.logger.log(
         `Initiated ${tier} restore for Glacier document ${s3Key}. Will be available in ${
           tier === 'Instant'
             ? 'milliseconds'
@@ -252,7 +252,7 @@ export class StorageService {
     } catch (err: any) {
       // 409 Conflict = restore already in progress
       if (err.name === 'ConflictException') {
-        this.logger.info(`Restore already in progress for ${s3Key}`);
+        this.logger.log(`Restore already in progress for ${s3Key}`);
         return;
       }
       throw err;

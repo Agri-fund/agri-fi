@@ -38,7 +38,7 @@ export class ShipmentsService {
     private readonly config: ConfigService,
     private readonly dataSource: DataSource,
   ) {
-    this.logger.setContext(ShipmentsService.name);
+    (this.logger as any).setContext(ShipmentsService.name);
   }
 
   async recordMilestone(
