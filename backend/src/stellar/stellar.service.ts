@@ -43,6 +43,7 @@ import { HorizonFailoverClient } from './horizon-failover';
 
 export const SEQUENCE_REDIS_CLIENT = 'SEQUENCE_REDIS_CLIENT';
 const SEQUENCE_CACHE_TTL = 5; // seconds
+export const TIMEBOUNDS_SECONDS = 300;
 
 /** TTL for terminal transaction statuses (success / failed) in Redis — 1 hour. */
 const TX_STATUS_CACHE_TTL_SECONDS = 3600;
@@ -112,9 +113,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       .filter(Boolean);
     const network = config.get<string>('STELLAR_NETWORK', 'testnet');
 
-    this.horizonClient = new HorizonFailoverClient(horizonUrls, this.logger, {
-      timeout: 30000,
-    });
+    this.horizonClient = new HorizonFailoverClient(horizonUrls, this.logger, {});
     this.networkPassphrase =
       network === 'mainnet' ? Networks.PUBLIC : Networks.TESTNET;
 
@@ -198,6 +197,19 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     return this.platformKeypair.publicKey();
   }
 
+  private getTransactionTimebounds(
+    maxSeconds = TIMEBOUNDS_SECONDS,
+  ): { minTime: number; maxTime: number } {
+    const now = Math.floor(Date.now() / 1000);
+    return { minTime: 0, maxTime: now + maxSeconds };
+  }
+
+  private getTxSubmissionFee(existingFee?: string | number): string {
+    const baseFee = parseInt(BASE_FEE, 10);
+    const currentFee = parseInt(String(existingFee ?? baseFee), 10) || baseFee;
+    return Math.max(currentFee + baseFee, baseFee).toString();
+  }
+
   /**
    * Configures multi-signature authorization for the platform fee wallet.
    * Sets up 3 total signers (platform key + 2 additional signers) with a 2-of-3 threshold.
@@ -257,9 +269,9 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     const tx = new TransactionBuilder(platformAccount, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
+      timebounds: this.getTransactionTimebounds(),
     })
       .addOperation(setOptionsOp)
-      .setTimeout(TIMEBOUNDS_SECONDS)
       .build();
 
     // Sign with platform key
@@ -279,9 +291,9 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     const secondTx = new TransactionBuilder(updatedPlatformAccount, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
+      timebounds: this.getTransactionTimebounds(),
     })
       .addOperation(secondSignerOp)
-      .setTimeout(TIMEBOUNDS_SECONDS)
       .build();
 
     secondTx.sign(this.platformKeypair);
@@ -604,6 +616,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     const tx = new TransactionBuilder(platformAccount, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
+      timebounds: this.getTransactionTimebounds(),
     })
       .addOperation(
         Operation.createAccount({
@@ -612,7 +625,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         }),
       )
       .addMemo(Memo.text(`escrow:${tradeDealId.slice(0, 20)}`))
-      .setTimeout(TIMEBOUNDS_SECONDS)
+      
       .build();
 
     tx.sign(this.platformKeypair);
@@ -626,13 +639,14 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       const trustlineTx = new TransactionBuilder(escrowAccount, {
         fee: BASE_FEE,
         networkPassphrase: this.networkPassphrase,
+        timebounds: this.getTransactionTimebounds(),
       })
         .addOperation(
           Operation.changeTrust({
             asset: this.usdcAsset,
           }),
         )
-        .setTimeout(TIMEBOUNDS_SECONDS)
+        
         .build();
 
       trustlineTx.sign(escrowKeypair);
@@ -678,6 +692,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     const tx = new TransactionBuilder(platformAccount, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
+      timebounds: this.getTransactionTimebounds(),
     })
       .addOperation(
         Operation.createAccount({
@@ -686,7 +701,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         }),
       )
       .addMemo(Memo.text('acct-merge-recovery'))
-      .setTimeout(TIMEBOUNDS_SECONDS)
+      
       .build();
 
     tx.sign(this.platformKeypair);
@@ -700,13 +715,14 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       const trustlineTx = new TransactionBuilder(replacementAccount, {
         fee: BASE_FEE,
         networkPassphrase: this.networkPassphrase,
+        timebounds: this.getTransactionTimebounds(),
       })
         .addOperation(
           Operation.changeTrust({
             asset: this.usdcAsset,
           }),
         )
-        .setTimeout(TIMEBOUNDS_SECONDS)
+        
         .build();
 
       trustlineTx.sign(replacementKeypair);
@@ -752,6 +768,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     const fundIssuerTx = new TransactionBuilder(platformAccount, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
+      timebounds: this.getTransactionTimebounds(),
     })
       .addOperation(
         Operation.createAccount({
@@ -766,7 +783,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
           setFlags: 10 as any,
         }),
       )
-      .setTimeout(TIMEBOUNDS_SECONDS)
+      
       .build();
 
     fundIssuerTx.sign(this.platformKeypair, issuerKeypair);
@@ -784,6 +801,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     const trustlineTx = new TransactionBuilder(escrowAccount, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
+      timebounds: this.getTransactionTimebounds(),
     })
       .addOperation(
         Operation.changeTrust({
@@ -791,7 +809,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
           limit: tokenCount.toString(),
         }),
       )
-      .setTimeout(TIMEBOUNDS_SECONDS)
+      
       .build();
 
     trustlineTx.sign(escrowKeypair);
@@ -805,6 +823,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     const mintTx = new TransactionBuilder(issuerAccount, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
+      timebounds: this.getTransactionTimebounds(),
     })
       .addOperation(
         Operation.payment({
@@ -813,7 +832,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
           amount: tokenCount.toString(),
         }),
       )
-      .setTimeout(TIMEBOUNDS_SECONDS)
+      
       .build();
 
     mintTx.sign(issuerKeypair);
@@ -867,6 +886,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     const tx = new TransactionBuilder(investorAccount, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
+      timebounds: this.getTransactionTimebounds(),
     })
       .addOperation(
         Operation.payment({
@@ -875,7 +895,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
           amount: amountUSD,
         }),
       )
-      .setTimeout(TIMEBOUNDS_SECONDS)
+      
       .build();
 
     // Note: in production the investor signs this via their wallet (Freighter/Albedo)
@@ -916,6 +936,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     const tx = new TransactionBuilder(escrowAccount, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
+      timebounds: this.getTransactionTimebounds(),
     })
       .addOperation(
         Operation.payment({
@@ -924,7 +945,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
           amount: tokenAmount.toFixed(7),
         }),
       )
-      .setTimeout(TIMEBOUNDS_SECONDS)
+      
       .build();
 
     tx.sign(escrowKeypair);
@@ -1122,6 +1143,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
             const txBuilder = new TransactionBuilder(batchAccount, {
               fee,
               networkPassphrase: this.networkPassphrase,
+              timebounds: this.getTransactionTimebounds(),
             });
 
             capturedBatch.forEach((share, localIdx) => {
@@ -1181,7 +1203,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
               );
             }
 
-            return txBuilder.setTimeout(TIMEBOUNDS_SECONDS).build();
+            return txBuilder.build();
           },
           escrowKeypair,
         );
@@ -1240,6 +1262,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     const tx = new TransactionBuilder(account, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
+      timebounds: this.getTransactionTimebounds(),
     })
       .addOperation(
         Operation.payment({
@@ -1249,7 +1272,6 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         }),
       )
       .addMemo(Memo.hash(docHashHex))
-      .setTimeout(TIMEBOUNDS_SECONDS)
       .build();
 
     tx.sign(signerKeypair);
@@ -1310,6 +1332,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     const txBuilder = new TransactionBuilder(account, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
+      timebounds: this.getTransactionTimebounds(),
     });
 
     for (const balance of account.balances) {
@@ -1338,7 +1361,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       }),
     );
 
-    const tx = txBuilder.setTimeout(TIMEBOUNDS_SECONDS).build();
+    const tx = txBuilder.build();
     tx.sign(keypair);
 
     try {
@@ -1384,6 +1407,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     const tx = new TransactionBuilder(account, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
+      timebounds: this.getTransactionTimebounds(),
     })
       .addOperation(
         Operation.payment({
@@ -1393,7 +1417,6 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         }),
       )
       .addMemo(stellarMemo)
-      .setTimeout(TIMEBOUNDS_SECONDS)
       .build();
 
     tx.sign(signerKeypair);
@@ -1616,6 +1639,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     const txBuilder = new TransactionBuilder(investorAccount, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
+      timebounds: this.getTransactionTimebounds(),
     });
 
     if (needsTrustline) {
@@ -1633,7 +1657,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       .addMemo(
         Memo.text(investmentMemo || `invest:${assetCode}:${tokenAmount}`),
       )
-      .setTimeout(TIMEBOUNDS_SECONDS);
+      ;
 
     this.addComplianceDataOperations(txBuilder, complianceData);
 
@@ -1738,6 +1762,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     const txBuilder = new TransactionBuilder(investorAccount, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
+      timebounds: this.getTransactionTimebounds(),
     });
 
     if (needsTrustline) {
@@ -1756,7 +1781,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         }),
       )
       .addMemo(Memo.text(`path:${assetCode}:${tokenAmount}`))
-      .setTimeout(TIMEBOUNDS_SECONDS);
+      ;
 
     this.addComplianceDataOperations(txBuilder, complianceData);
 
@@ -1858,6 +1883,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     const txBuilder = new TransactionBuilder(investorAccount, {
       fee: totalFee,
       networkPassphrase: this.networkPassphrase,
+      timebounds: this.getTransactionTimebounds(),
     });
 
     // Add trustline operations first
@@ -1879,7 +1905,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
 
     // Build a single memo summarising the bulk (max 28 bytes)
     txBuilder.addMemo(Memo.text(`bulk:${investments.length}deals`));
-    txBuilder.setTimeout(TIMEBOUNDS_SECONDS); // 5 minutes for wallet signing
+    txBuilder; // 5 minutes for wallet signing
 
     const tx = txBuilder.build();
 
@@ -1938,6 +1964,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     const tx = new TransactionBuilder(sellerAccount, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
+      timebounds: this.getTransactionTimebounds(),
     })
       .addOperation(
         Operation.manageSellOffer({
@@ -1949,7 +1976,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         }),
       )
       .addMemo(Memo.text(`sell:${tradeTokenCode}`))
-      .setTimeout(TIMEBOUNDS_SECONDS)
+      
       .build();
 
     this.logger.info(
@@ -2155,15 +2182,21 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
    * Used when tx_too_late is returned to avoid indefinite mempool hangs (#681).
    */
   private async rebuildWithFreshTimebounds(tx: any): Promise<any> {
-    const sourceKey = tx.source;
+    const sourceKey = typeof tx.source === 'string' ? tx.source : tx._source;
     const freshAccount = await this.server.loadAccount(sourceKey);
 
     const builder = new TransactionBuilder(freshAccount, {
-      fee: tx.fee,
+      fee: this.getTxSubmissionFee(tx.fee),
       networkPassphrase: this.networkPassphrase,
+      timebounds: this.getTransactionTimebounds(),
     });
 
-    for (const op of tx.operations) {
+    const xdrOperations =
+      tx?.toEnvelope?.()?._value?._attributes?.tx?._attributes?.operations ??
+      tx?.operations ??
+      [];
+
+    for (const op of xdrOperations) {
       builder.addOperation(op);
     }
 
@@ -2171,7 +2204,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       builder.addMemo(tx.memo);
     }
 
-    return builder.setTimeout(TIMEBOUNDS_SECONDS).build();
+    return builder.build();
   }
 
   /**
@@ -2547,6 +2580,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     const tx = new TransactionBuilder(issuerAccount, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
+      timebounds: this.getTransactionTimebounds(),
     })
       .addOperation(
         Operation.setTrustLineFlags({
@@ -2555,7 +2589,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
           flags: { authorized: !freeze },
         }),
       )
-      .setTimeout(TIMEBOUNDS_SECONDS)
+      
       .build();
 
     tx.sign(issuerKeypair);
@@ -2614,6 +2648,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     const tx = new TransactionBuilder(investorAccount, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
+      timebounds: this.getTransactionTimebounds(),
     })
       .addOperation(
         Operation.changeTrust({
@@ -2622,7 +2657,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         }),
       )
       .addMemo(Memo.text(`cleanup:${assetCode}`))
-      .setTimeout(TIMEBOUNDS_SECONDS)
+      
       .build();
 
     tx.sign(investorKeypair);
@@ -2716,6 +2751,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       const txBuilder = new TransactionBuilder(account, {
         fee,
         networkPassphrase: this.networkPassphrase,
+        timebounds: this.getTransactionTimebounds(timeout),
       });
 
       // Add all operations for this chunk
@@ -2734,8 +2770,6 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         const batchMemo = generateBatchMemo(chunkIndex, totalChunks, 'chunk');
         txBuilder.addMemo(Memo.text(batchMemo));
       }
-
-      txBuilder.setTimeout(timeout);
 
       const tx = txBuilder.build();
       tx.sign(sourceKeypair);
@@ -2802,6 +2836,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     const txBuilder = new TransactionBuilder(issuerAccount, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
+      timebounds: this.getTransactionTimebounds(),
     });
 
     for (const holder of holders) {
@@ -2816,7 +2851,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
-    const tx = txBuilder.setTimeout(TIMEBOUNDS_SECONDS).build();
+    const tx = txBuilder.build();
     tx.sign(issuerKeypair);
 
     try {
@@ -2877,3 +2912,4 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       },
     };
   }
+}

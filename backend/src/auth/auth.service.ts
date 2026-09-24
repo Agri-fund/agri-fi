@@ -1590,6 +1590,10 @@ export class AuthService {
       {
         fee: BASE_FEE,
         networkPassphrase: this.networkPassphrase,
+        timebounds: {
+          minTime: 0,
+          maxTime: now + 300,
+        },
       },
     )
       .addOperation(
@@ -1600,7 +1604,6 @@ export class AuthService {
         }),
       )
       .addMemo(Memo.text('SEP-10 Auth'))
-      .setTimeout(300)
       .build();
 
     tx.sign(this.sep10SigningKeypair);
