@@ -31,6 +31,8 @@ pub enum Error {
     AlreadyDistributed   = 14,
     DisputeActive        = 15,
     NoDispute            = 16,
+    InvalidBps           = 17,
+    ReleaseCapExceeded   = 18,
 }
 
 #[contracttype]
@@ -55,6 +57,7 @@ pub struct Config {
     pub deadline: u64,
     pub platform_fee_bps: u32,
     pub milestone_count: u32,
+    pub partial_release_cap_bps: u32,
     pub project_name: String,
     pub commodity: String,
 }
@@ -77,6 +80,7 @@ pub struct State {
     pub status: CampaignStatus,
     pub total_raised: i128,
     pub milestones_released: u32,
+    pub partial_release_total_bps: u32,
 }
 
 #[contract]
@@ -95,6 +99,7 @@ impl FarmCampaignContract {
         deadline: u64,
         platform_fee_bps: u32,
         milestone_count: u32,
+        partial_release_cap_bps: u32,
         project_name: String,
         commodity: String,
     ) -> Result<(), Error> {
@@ -104,14 +109,19 @@ impl FarmCampaignContract {
         if funding_target <= 0 {
             return Err(Error::InvalidAmount);
         }
+        if partial_release_cap_bps == 0 || partial_release_cap_bps > 10_000 {
+            return Err(Error::InvalidBps);
+        }
         let config = Config {
             admin, farmer, arbitrator, usdc_token, funding_target, deadline,
-            platform_fee_bps, milestone_count, project_name, commodity,
+            platform_fee_bps, milestone_count, partial_release_cap_bps,
+            project_name, commodity,
         };
         let state = State {
             status: CampaignStatus::Open,
             total_raised: 0,
             milestones_released: 0,
+            partial_release_total_bps: 0,
         };
         env.storage().instance().set(&DataKey::Config, &config);
         env.storage().instance().set(&DataKey::State, &state);
@@ -171,6 +181,87 @@ impl FarmCampaignContract {
         state.status = CampaignStatus::Active;
         env.storage().instance().set(&DataKey::State, &state);
         env.events().publish((symbol_short!("status_changed"), symbol_short!("active")), ());
+        Ok(())
+    }
+
+    fn is_partial_release_authorized(caller: &Address, config: &Config) -> bool {
+        caller == &config.admin || caller == &config.farmer
+    }
+
+    fn checked_partial_release_amount(
+        total_raised: i128,
+        amount_bps: u32,
+        cap_bps: u32,
+        released_bps: u32,
+    ) -> Result<i128, Error> {
+        if amount_bps == 0 || amount_bps > cap_bps {
+            return Err(Error::InvalidBps);
+        }
+        let next_total = released_bps
+            .checked_add(amount_bps)
+            .ok_or(Error::ReleaseCapExceeded)?;
+        if next_total > cap_bps {
+            return Err(Error::ReleaseCapExceeded);
+        }
+
+        let total_raised_i128 = total_raised;
+        let bps_i128 = i128::try_from(amount_bps).map_err(|_| Error::InvalidBps)?;
+        let release_total = total_raised_i128
+            .checked_mul(bps_i128)
+            .ok_or(Error::InvalidAmount)?
+            .checked_div(10_000)
+            .ok_or(Error::InvalidAmount)?;
+        Ok(release_total)
+    }
+
+    pub fn partial_release_milestone(
+        env: Env,
+        caller: Address,
+        amount_bps: u32,
+    ) -> Result<(), Error> {
+        caller.require_auth();
+
+        let config: Config = env.storage().instance().get(&DataKey::Config)
+            .ok_or(Error::NotInitialized)?;
+        if !Self::is_partial_release_authorized(&caller, &config) {
+            return Err(Error::Unauthorized);
+        }
+
+        let mut state: State = env.storage().instance().get(&DataKey::State)
+            .ok_or(Error::NotInitialized)?;
+
+        if state.status != CampaignStatus::Active {
+            return Err(Error::NotFunded);
+        }
+
+        let release_amount = Self::checked_partial_release_amount(
+            state.total_raised,
+            amount_bps,
+            config.partial_release_cap_bps,
+            state.partial_release_total_bps,
+        )?;
+
+        if release_amount <= 0 {
+            return Err(Error::InvalidAmount);
+        }
+
+        let usdc = token::Client::new(&env, &config.usdc_token);
+        state.partial_release_total_bps = state
+            .partial_release_total_bps
+            .checked_add(amount_bps)
+            .ok_or(Error::ReleaseCapExceeded)?;
+        env.storage().instance().set(&DataKey::State, &state);
+
+        usdc.transfer(
+            &env.current_contract_address(),
+            &config.farmer,
+            &release_amount,
+        );
+
+        env.events().publish(
+            (symbol_short!("partial_release"),),
+            (amount_bps, release_amount),
+        );
         Ok(())
     }
 
@@ -452,5 +543,94 @@ impl FarmCampaignContract {
 
     pub fn get_arbitrator(env: Env) -> Result<Address, Error> {
         env.storage().instance().get(&DataKey::Arbitrator).ok_or(Error::NotInitialized)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn partial_release_amount_respects_cumulative_cap() {
+        let total_raised = 100_000_i128;
+        let first = FarmCampaignContract::checked_partial_release_amount(
+            total_raised,
+            2_500,
+            9_800,
+            0,
+        )
+        .unwrap();
+        assert_eq!(first, 2_500);
+
+        let second = FarmCampaignContract::checked_partial_release_amount(
+            total_raised,
+            5_000,
+            9_800,
+            2_500,
+        )
+        .unwrap();
+        assert_eq!(second, 5_000);
+
+        let cumulative = 2_500u32 + 5_000u32;
+        assert!(cumulative <= 9_800);
+    }
+
+    #[test]
+    fn partial_release_amount_reverts_if_cumulative_total_exceeds_cap() {
+        let err = FarmCampaignContract::checked_partial_release_amount(
+            100_000,
+            7_000,
+            9_800,
+            3_500,
+        )
+        .unwrap_err();
+        assert_eq!(err, Error::ReleaseCapExceeded);
+    }
+
+    #[test]
+    fn partial_release_amount_reverts_if_bps_are_invalid() {
+        let err = FarmCampaignContract::checked_partial_release_amount(
+            100_000,
+            0,
+            9_800,
+            0,
+        )
+        .unwrap_err();
+        assert_eq!(err, Error::InvalidBps);
+
+        let err = FarmCampaignContract::checked_partial_release_amount(
+            100_000,
+            10_001,
+            9_800,
+            0,
+        )
+        .unwrap_err();
+        assert_eq!(err, Error::InvalidBps);
+    }
+
+    #[test]
+    fn partial_release_authorization_requires_admin_or_farmer() {
+        let env = Env::default();
+        let admin = Address::generate(&env);
+        let farmer = Address::generate(&env);
+        let investor = Address::generate(&env);
+
+        let config = Config {
+            admin: admin.clone(),
+            farmer: farmer.clone(),
+            arbitrator: Address::generate(&env),
+            usdc_token: Address::generate(&env),
+            funding_target: 100_000,
+            deadline: 0,
+            platform_fee_bps: 200,
+            milestone_count: 3,
+            partial_release_cap_bps: 9_800,
+            project_name: String::from_str(&env, "demo"),
+            commodity: String::from_str(&env, "maize"),
+        };
+
+        assert!(FarmCampaignContract::is_partial_release_authorized(&admin, &config));
+        assert!(FarmCampaignContract::is_partial_release_authorized(&farmer, &config));
+        assert!(!FarmCampaignContract::is_partial_release_authorized(&investor, &config));
     }
 }

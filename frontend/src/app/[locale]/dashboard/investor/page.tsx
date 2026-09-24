@@ -10,6 +10,9 @@ import StatCard from '../../../../components/StatCard';
 import { InvestmentCertificate } from '../../../../components/InvestmentCertificate';
 import { AnchorWidget } from '../../../../components/AnchorWidget';
 import PortfolioChart from '../../../../components/dashboard/PortfolioChart';
+import ReferralDashboard, {
+  ReferralAnalytics,
+} from '../../../../components/ReferralDashboard';
 
 const INV_STATUS: Record<string, string> = {
   confirmed: 'badge-green', pending: 'badge-yellow', failed: 'badge-red', refunded: 'badge-gray',
@@ -26,6 +29,8 @@ export default function InvestorDashboard() {
   const { data, loading, isOffline } = useDashboardData();
   const [filter, setFilter] = useState<'all' | 'confirmed' | 'pending'>('all');
   const [tab, setTab] = useState<Tab>('portfolio');
+  const [referralData, setReferralData] = useState<ReferralAnalytics | null>(null);
+  const [referralLoading, setReferralLoading] = useState(true);
 
   const user = data?.user ?? null;
   const investments: Investment[] = data?.investments ?? [];
@@ -37,6 +42,27 @@ export default function InvestorDashboard() {
       router.push('/login');
     }
   }, [router]);
+
+  useEffect(() => {
+    let active = true;
+
+    (async () => {
+      try {
+        const res = await fetch('/api/referrals/analytics');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (active) setReferralData(data);
+      } catch {
+        // Ignore analytics fetch errors and let the dashboard keep rendering.
+      } finally {
+        if (active) setReferralLoading(false);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // Once we know who the user is (from cache or a fresh fetch), make sure
   // they're on the dashboard for their actual role.
@@ -133,6 +159,8 @@ export default function InvestorDashboard() {
             trend={totalInvested > 0 ? `${((totalExpected / totalInvested - 1) * 100).toFixed(1)}% ROI` : undefined}
             trendUp={totalExpected > totalInvested} />
         </div>
+
+        <ReferralDashboard data={referralData} loading={referralLoading} />
 
         {/* Tabs */}
         <div className="flex gap-1 bg-slate-100 rounded-xl p-1 w-fit">

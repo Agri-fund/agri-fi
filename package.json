@@ -1,4 +1,9 @@
 {
+  "name": "agri-fi",
+  "private": true,
+  "scripts": {
+    "check:alert-map": "node scripts/check-alert-map.mjs"
+  },
   "dependencies": {
     "@nestjs/axios": "^4.0.1"
   }

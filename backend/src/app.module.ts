@@ -26,6 +26,7 @@ import { TerminusModule } from '@nestjs/terminus';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { SorobanModule } from './soroban/soroban.module';
 import { MetricsModule } from './metrics/metrics.module';
+import { ReferralsModule } from './referrals/referrals.module';
 import { validateEnvironment } from './config/env.validation';
 import { ScheduleModule } from '@nestjs/schedule';
 import { APP_FILTER } from '@nestjs/core';
@@ -87,6 +88,7 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
     TerminusModule,
     SorobanModule,
     MetricsModule,
+    ReferralsModule,
   ],
   providers: [
     {
