@@ -38,9 +38,31 @@ const MILESTONE_TYPES: ShipmentMilestone['milestone'][] = [
   'farm', 'warehouse', 'port', 'importer',
 ];
 
+function assertSeedAllowed(): void {
+  const isProduction =
+    process.env.NODE_ENV === 'production' ||
+    process.env.APP_ENV === 'production';
+  const hasForceFlag =
+    process.argv.includes('--force') || process.argv.includes('-f');
+  const hasConfirmEnv = process.env.CONFIRM_PROD_SEED === 'true';
+
+  if (isProduction && (!hasForceFlag || !hasConfirmEnv)) {
+    console.error(
+      '⛔️ CRITICAL SAFETY ERROR: Database batch seeding is prohibited in PRODUCTION environments.\n' +
+        'To force-run seeding against production data (DESTRUCTIVE), you must provide both:\n' +
+        '  1. The --force CLI flag\n' +
+        '  2. Environment variable CONFIRM_PROD_SEED=true\n' +
+        'Example: CONFIRM_PROD_SEED=true npm run db:seed:batch -- --force',
+    );
+    process.exit(1);
+  }
+}
+
 async function seed(): Promise<void> {
+  assertSeedAllowed();
   const startTime = Date.now();
   console.log('🌱 Starting batch database seed…');
+
 
   await AppDataSource.initialize();
   console.log('✅ Database connection established');

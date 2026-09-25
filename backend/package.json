@@ -29,8 +29,10 @@
     "db:seed": "ts-node scripts/seed.ts",
     "db:seed:batch": "ts-node -r tsconfig-paths/register scripts/batch-seed.ts",
     "queue:retry-dlq": "ts-node scripts/retry-dlq.ts",
-    "check:env": "node scripts/check-env-coverage.js"
+    "check:env": "node scripts/check-env-coverage.js",
+    "check:seed-safety": "bash scripts/verify-seed-safety.sh"
   },
+
   "dependencies": {
     "@apollo/server": "^4.11.0",
     "@as-integrations/express5": "^1.0.0",

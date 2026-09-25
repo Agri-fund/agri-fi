@@ -18,16 +18,18 @@ RUN npm ci --omit=dev
 # ---- Runner: minimal image carrying only prod deps + build artifacts ----
 FROM node:20-alpine@sha256:1b247886434392a35a4a847306af035a2c96a9730f88335c15e344b5b19f4e6e AS runner
 ENV NODE_ENV=production
+ENV PORT=3001
 WORKDIR /app
 USER node
 COPY --chown=node:node package*.json ./
 COPY --from=deps --chown=node:node /app/node_modules ./node_modules
 COPY --from=builder --chown=node:node /app/dist ./dist
 
-EXPOSE 3000
+EXPOSE 3001
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD ["/bin/sh", "-c", "wget -q --spider http://127.0.0.1:3000/health || exit 1"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+  CMD ["/bin/sh", "-c", "wget -q --spider http://127.0.0.1:3001/v1/health || exit 1"]
 
 # nest build (no explicit rootDir) emits the entry at dist/src/main.js.
 CMD ["node", "dist/src/main.js"]
+
