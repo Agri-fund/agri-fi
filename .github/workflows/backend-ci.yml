@@ -94,6 +94,10 @@ jobs:
         run: npm run lint -- --max-warnings=0
         working-directory: backend
 
+      - name: Verify .env.example coverage
+        run: npm run check:env
+        working-directory: backend
+
       - name: Build
         run: npm run build
         working-directory: backend
