@@ -1,8 +1,24 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
-import { ServiceUnavailableException } from '@nestjs/common';
+import { ConflictException, ServiceUnavailableException } from '@nestjs/common';
 import { StorageService } from './storage.service';
 import axios from 'axios';
+import { createHash } from 'crypto';
+
+const BASE58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+function cidV0For(data: Buffer): string {
+  const digest = Buffer.concat([
+    Buffer.from([0x12, 0x20]),
+    createHash('sha256').update(data).digest(),
+  ]);
+  let value = BigInt(`0x${digest.toString('hex')}`);
+  let encoded = '';
+  while (value > 0n) {
+    encoded = BASE58[Number(value % 58n)] + encoded;
+    value /= 58n;
+  }
+  return `${'1'.repeat(digest.findIndex((byte) => byte !== 0))}${encoded}`;
+}
 
 jest.mock('axios');
 const mockedAxios = axios as jest.Mocked<typeof axios>;
@@ -123,6 +139,32 @@ describe('StorageService', () => {
       const url = await service.getUrl('uploads/some-uuid');
       expect(url).toBe(
         'https://test-bucket.s3.us-east-1.amazonaws.com/uploads/some-uuid',
+      );
+    });
+  });
+
+  describe('fetchAndVerifyIpfsDocument', () => {
+    it('returns the document when the gateway bytes match the stored CID', async () => {
+      const cid = cidV0For(file);
+      mockedAxios.get.mockResolvedValue({ data: file });
+
+      await expect(service.fetchAndVerifyIpfsDocument(cid)).resolves.toEqual(
+        file,
+      );
+      expect(mockedAxios.get).toHaveBeenCalledWith(
+        `https://api.web3.storage/ipfs/${cid}`,
+        expect.objectContaining({ responseType: 'arraybuffer' }),
+      );
+    });
+
+    it('rejects gateway bytes that do not match the stored CID', async () => {
+      const cid = cidV0For(file);
+      mockedAxios.get.mockResolvedValue({
+        data: Buffer.from('tampered content'),
+      });
+
+      await expect(service.fetchAndVerifyIpfsDocument(cid)).rejects.toThrow(
+        ConflictException,
       );
     });
   });

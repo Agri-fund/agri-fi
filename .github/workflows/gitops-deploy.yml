@@ -1,0 +1,48 @@
+name: GitOps Image Tag Bump & Deploy
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+
+jobs:
+  build-and-bump:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set Image Tag
+        id: vars
+        run: echo "SHA_SHORT=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Update Kubernetes Manifests (Backend)
+        run: |
+          sed -i 's|image: ghcr.io/agri-fund/agri-fi-backend:.*|image: ghcr.io/agri-fund/agri-fi-backend:${{ steps.vars.outputs.SHA_SHORT }}|g' devops/k8s/backend/deployment.yaml || true
+
+      - name: Update Kubernetes Manifests (Frontend)
+        run: |
+          sed -i 's|image: ghcr.io/agri-fund/agri-fi-frontend:.*|image: ghcr.io/agri-fund/agri-fi-frontend:${{ steps.vars.outputs.SHA_SHORT }}|g' devops/k8s/frontend/deployment.yaml || true
+
+      - name: Commit and Push Image Tag Bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add devops/k8s/
+          if ! git diff-index --quiet HEAD; then
+            git commit -m "chore(gitops): bump deployment image tag to ${{ steps.vars.outputs.SHA_SHORT }}"
+            git push origin main
+          fi
+
+      - name: Notify Slack Sync Status
+        if: always()
+        uses: rtCamp/action-slack-notify@v2
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          SLACK_TITLE: "ArgoCD GitOps Deployment - ${{ steps.vars.outputs.SHA_SHORT }}"
+          SLACK_MESSAGE: "Image tags updated in repository. ArgoCD sync initiated."

@@ -21,7 +21,7 @@ import { ConfirmDeliveryDto } from './dto/confirm-delivery.dto';
 @ApiTags('soroban')
 @ApiBearerAuth()
 @UseGuards(AuthGuard('jwt'), RolesGuard)
-@Controller('soroban')
+@Controller({ version: '1', path: 'soroban' })
 export class SorobanController {
   constructor(private readonly sorobanService: SorobanService) {}
 
@@ -130,9 +130,7 @@ export class SorobanController {
   @UseGuards(AuthGuard('jwt'), RolesGuard, MfaGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Admin: process buyer refund with MFA protection' })
-  async refund(
-    @Body() dto: { contractId: string; orderId: string },
-  ) {
+  async refund(@Body() dto: { contractId: string; orderId: string }) {
     const txHash = await this.sorobanService.refundMarketplaceBuyer(
       dto.contractId,
       dto.orderId,
@@ -144,7 +142,9 @@ export class SorobanController {
   @Roles('admin')
   @UseGuards(AuthGuard('jwt'), RolesGuard, MfaGuard)
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Admin: refund buyer (dispute resolution) with MFA' })
+  @ApiOperation({
+    summary: 'Admin: refund buyer (dispute resolution) with MFA',
+  })
   async refundBuyer(
     @Param('contractId') contractId: string,
     @Body() dto: ConfirmDeliveryDto,

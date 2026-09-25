@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ExecutionContext } from '@nestjs/common';
 import { TradeDealsController } from './trade-deals.controller';
 import { TradeDealsService } from './trade-deals.service';
+import { DealDeploymentService } from './deal-deployment.service';
 import { OptionalJwtGuard } from '../auth/optional-jwt.guard';
 import { TradeDealsGuard } from './trade-deals.guard';
 
@@ -20,7 +21,13 @@ describe('TradeDealsController (public access)', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [TradeDealsController],
-      providers: [{ provide: TradeDealsService, useValue: mockService }],
+      providers: [
+        { provide: TradeDealsService, useValue: mockService },
+        {
+          provide: DealDeploymentService,
+          useValue: { approveDeal: jest.fn() },
+        },
+      ],
     })
       // Override OptionalJwtGuard to simulate unauthenticated request (user = null)
       .overrideGuard(OptionalJwtGuard)
@@ -59,7 +66,13 @@ describe('TradeDealsController (public access)', () => {
     it('returns deal with authenticated user (guard passes user through)', async () => {
       const module: TestingModule = await Test.createTestingModule({
         controllers: [TradeDealsController],
-        providers: [{ provide: TradeDealsService, useValue: mockService }],
+        providers: [
+          { provide: TradeDealsService, useValue: mockService },
+          {
+            provide: DealDeploymentService,
+            useValue: { approveDeal: jest.fn() },
+          },
+        ],
       })
         .overrideGuard(OptionalJwtGuard)
         .useValue({

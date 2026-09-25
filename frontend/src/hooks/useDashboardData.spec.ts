@@ -2,11 +2,11 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { useDashboardData } from './useDashboardData';
 import { apiClient } from '../lib/api';
 
-jest.mock('../lib/api', () => ({
+vi.mock('../lib/api', () => ({
   apiClient: {
-    getCurrentUser: jest.fn(),
-    refreshCurrentUser: jest.fn(),
-    getInvestorInvestments: jest.fn(),
+    getCurrentUser: vi.fn(),
+    refreshCurrentUser: vi.fn(),
+    getInvestorInvestments: vi.fn(),
   },
 }));
 

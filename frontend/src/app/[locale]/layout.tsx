@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "../globals.css";
 import * as Sentry from "@sentry/nextjs";
 import { ToastProvider } from "@/components/ui/ToastProvider";
+import OfflineBanner from "@/components/OfflineBanner";
 import { NextIntlClientProvider } from 'next-intl';
 import { getMessages } from 'next-intl/server';
 
@@ -23,6 +24,7 @@ export default async function RootLayout({
     <html lang={locale}>
       <body>
         <NextIntlClientProvider messages={messages}>
+          <OfflineBanner />
           <Sentry.ErrorBoundary
             fallback={({ error, resetError }) => (
               <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">

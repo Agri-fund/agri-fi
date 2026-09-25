@@ -10,7 +10,9 @@ const mockHttpService = () => ({
 });
 
 const mockConfig = (overrides: Record<string, string> = {}) => ({
-  get: jest.fn((key: string, defaultVal?: string) => overrides[key] ?? defaultVal),
+  get: jest.fn(
+    (key: string, defaultVal?: string) => overrides[key] ?? defaultVal,
+  ),
 });
 
 describe('IpfsGatewayMonitorService', () => {

@@ -57,14 +57,11 @@ console.log(`   Network:  ${NETWORK}`);
 console.log(`   RPC:      ${SOROBAN_RPC}`);
 console.log(`   Platform: ${platformKeypair.publicKey()}\n`);
 
-// ── Helper: upload + deploy a contract ───────────────────────────────────────
-async function deployContract(name, wasmPath) {
-  console.log(`📦 Deploying ${name}...`);
+// ── Helper: upload a contract WASM and return its hash ───────────────────────
+async function uploadWasm(name, wasmPath) {
   const wasm = readFileSync(wasmPath);
-
   const account = await server.getAccount(platformKeypair.publicKey());
 
-  // Upload WASM
   const uploadTx = new TransactionBuilder(account, {
     fee: '1000000',
     networkPassphrase,
@@ -90,6 +87,13 @@ async function deployContract(name, wasmPath) {
     : null;
 
   if (!wasmHash) throw new Error(`Could not get wasm hash for ${name}`);
+  return wasmHash;
+}
+
+// ── Helper: upload + deploy a contract ───────────────────────────────────────
+async function deployContract(name, wasmPath) {
+  console.log(`📦 Deploying ${name}...`);
+  const wasmHash = await uploadWasm(name, wasmPath);
 
   // Deploy contract instance
   const account2 = await server.getAccount(platformKeypair.publicKey());
@@ -204,6 +208,19 @@ try {
     new Address(adminAddress).toScVal(),
   ]);
   console.log('   ✅ ProjectFactory initialized');
+
+  // 2b. Register the FarmCampaign WASM hash so the factory can deploy
+  //     campaign contracts on admin approval (#830)
+  console.log('🔧 Registering FarmCampaign WASM with ProjectFactory...');
+  const campaignWasmHash = await uploadWasm(
+    'FarmCampaign',
+    `${WASM_DIR}/farm_campaign.wasm`,
+  );
+  await invokeContract(factoryId, 'set_campaign_wasm_hash', [
+    new Address(adminAddress).toScVal(),
+    nativeToScVal(campaignWasmHash, { type: 'bytes' }),
+  ]);
+  console.log('   ✅ FarmCampaign WASM hash registered');
 
   // 3. Deploy MarketplaceSettlement
   const settlementId = await deployContract(

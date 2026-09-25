@@ -42,9 +42,9 @@ function fundingPercent(deal: Deal): number {
 
 function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="flex items-start justify-between gap-4 py-3 border-b border-border last:border-0">
-      <span className="text-sm font-medium text-muted-foreground whitespace-nowrap">{label}</span>
-      <span className="text-sm font-semibold text-foreground text-right">{value}</span>
+    <div className="flex flex-col gap-1 py-3 border-b border-border last:border-0 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+      <span className="text-sm font-medium text-muted-foreground sm:whitespace-nowrap">{label}</span>
+      <span className="text-sm font-semibold text-foreground text-left break-words sm:text-right">{value}</span>
     </div>
   );
 }
@@ -55,7 +55,7 @@ function DocumentRow({ doc }: { doc: DealDocument }) {
       href={doc.storage_url}
       target="_blank"
       rel="noopener noreferrer"
-      className="flex items-center gap-3 p-3 rounded-xl border border-border bg-surface hover:bg-primary-muted transition-colors group"
+      className="flex min-w-0 items-center gap-3 p-3 rounded-xl border border-border bg-surface hover:bg-primary-muted transition-colors group"
     >
       {/* File icon */}
       <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
@@ -68,7 +68,7 @@ function DocumentRow({ doc }: { doc: DealDocument }) {
         <p className="text-sm font-semibold text-foreground truncate capitalize group-hover:text-primary transition-colors">
           {doc.doc_type.replace(/_/g, ' ')}
         </p>
-        <p className="text-xs text-muted-foreground mt-0.5">
+        <p className="text-xs text-muted-foreground mt-0.5 truncate">
           Uploaded {formatDate(doc.created_at)}
         </p>
       </div>
@@ -85,7 +85,7 @@ function DealDetailsSkeleton() {
   return (
     <div className="space-y-6 animate-pulse" aria-busy="true" aria-label="Loading deal details">
       <div className="h-8 w-64 skeleton rounded" />
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 gap-6 pb-40 lg:grid-cols-3 lg:pb-0">
         <div className="lg:col-span-2 card p-6 space-y-4">
           {[120, 80, 100, 90].map((w, i) => (
             <div key={i} className={`h-4 skeleton rounded`} style={{ width: `${w}%` }} />
@@ -176,7 +176,7 @@ export default function DealDetails({ dealId }: DealDetailsProps) {
         <StatusBadge status={deal.status} />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 gap-6 pb-40 lg:grid-cols-3 lg:pb-0">
         {/* ── Left: Deal Info ─────────────────────────────────────────────── */}
         <div className="lg:col-span-2 space-y-6">
 
@@ -269,7 +269,7 @@ export default function DealDetails({ dealId }: DealDetailsProps) {
                     <p className="text-sm font-semibold text-foreground capitalize">
                       {m.milestone}
                     </p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
+                    <p className="text-xs text-muted-foreground mt-0.5 truncate">
                       {formatDate(m.recorded_at)}
                     </p>
                     {m.notes && (
@@ -283,13 +283,13 @@ export default function DealDetails({ dealId }: DealDetailsProps) {
         </div>
 
         {/* ── Right: Investment panel ──────────────────────────────────────── */}
-        <aside className="space-y-4" aria-label="Investment panel">
-          <div className="card p-6 space-y-4 sticky top-24">
+        <aside className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-surface p-3 shadow-2xl lg:static lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none" aria-label="Investment panel">
+          <div className="card p-4 space-y-4 lg:sticky lg:top-24 lg:p-6">
             <h2 className="text-base font-semibold text-foreground">Funding Progress</h2>
 
             {/* Progress bar */}
             <div>
-              <div className="flex justify-between text-xs font-medium text-muted-foreground mb-1.5">
+              <div className="flex flex-wrap justify-between gap-2 text-xs font-medium text-muted-foreground mb-1.5">
                 <span>{formatCurrency(deal.total_invested)} raised</span>
                 <span>{pct}%</span>
               </div>
@@ -335,7 +335,7 @@ export default function DealDetails({ dealId }: DealDetailsProps) {
             <button
               onClick={() => setShowInvestModal(true)}
               disabled={!canInvest}
-              className="btn btn-md w-full bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50"
+              className="btn btn-md min-h-11 w-full bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50"
               aria-label={canInvest ? `Invest in ${deal.commodity}` : 'Investment not available'}
             >
               {canInvest ? 'Invest Now' : deal.status === 'funded' ? 'Fully Funded' : 'Unavailable'}

@@ -10,8 +10,6 @@ export class AddUserSoftDelete1766000000000 implements MigrationInterface {
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(
-      `ALTER TABLE "users" DROP COLUMN "deleted_at"`,
-    );
+    await queryRunner.query(`ALTER TABLE "users" DROP COLUMN "deleted_at"`);
   }
 }

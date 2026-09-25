@@ -1,0 +1,60 @@
+{
+  "welcome": {
+    "subject": "Bienvenido a Agri-Fi"
+  },
+  "kyc-approved": {
+    "subject": "Su verificación KYC ha sido aprobada"
+  },
+  "kyc-rejected": {
+    "subject": "Su verificación KYC no fue aprobada"
+  },
+  "investment-confirmed": {
+    "subject": "Inversión confirmada"
+  },
+  "payment-distributed": {
+    "subject": "Pago distribuido"
+  },
+  "deal-funded": {
+    "subject": "Acuerdo totalmente financiado"
+  },
+  "deal-expired": {
+    "subject": "Acuerdo expirado"
+  },
+  "password-reset": {
+    "subject": "Restablezca su contraseña"
+  },
+  "account-lockout": {
+    "subject": "Su cuenta ha sido bloqueada"
+  },
+  "security-alert": {
+    "subject": "Alerta de seguridad: inicio de sesión desde nuevo dispositivo"
+  },
+  "deal-digest": {
+    "subject": "Su resumen semanal de acuerdos",
+    "sections": {
+      "deals": "Progreso de financiación",
+      "milestones": "Próximos hitos esta semana",
+      "documents": "Documentos pendientes de envío",
+      "actions": "Acciones pendientes",
+      "unsubscribe": "Darse de baja de estos correos"
+    }
+  },
+  "co-farmer-invitation": {
+    "subject": "Ha sido invitado a co-gestionar un acuerdo"
+  },
+  "drip-welcome": {
+    "subject": "Bienvenido a Agri-Fi — Comience su camino de inversión"
+  },
+  "drip-how-it-works": {
+    "subject": "Cómo funciona Agri-Fi: 5 pasos sencillos"
+  },
+  "drip-featured-deal": {
+    "subject": "Los acuerdos destacados de esta semana en Agri-Fi"
+  },
+  "drip-risk-returns": {
+    "subject": "Entender el riesgo y los rendimientos en Agri-Fi"
+  },
+  "drip-last-chance": {
+    "subject": "Complete su primera inversión — los acuerdos se llenan rápido"
+  }
+}

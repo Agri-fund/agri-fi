@@ -25,7 +25,7 @@ export class QueueTopologyService implements OnModuleInit {
     private readonly config: ConfigService,
     private readonly logger: PinoLogger,
   ) {
-    this.logger.setContext(QueueTopologyService.name);
+    (this.logger as any).setContext(QueueTopologyService.name);
   }
 
   async onModuleInit(): Promise<void> {

@@ -15,8 +15,10 @@ export class StellarWalletGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<Request>();
 
     const account = request.headers['x-stellar-account'] as string | undefined;
-    const signatureB64 = request.headers['x-stellar-signature'] as string | undefined;
-    const timestamp = request.headers['x-stellar-timestamp'] as string | undefined;
+    const signatureB64 = request.headers['x-stellar-signature'] as
+      string | undefined;
+    const timestamp = request.headers['x-stellar-timestamp'] as
+      string | undefined;
 
     if (!account || !signatureB64 || !timestamp) {
       throw new UnauthorizedException({
@@ -27,10 +29,14 @@ export class StellarWalletGuard implements CanActivate {
     }
 
     const ts = Number(timestamp);
-    if (Number.isNaN(ts) || Math.abs(Date.now() - ts) > MAX_TIMESTAMP_DRIFT_MS) {
+    if (
+      Number.isNaN(ts) ||
+      Math.abs(Date.now() - ts) > MAX_TIMESTAMP_DRIFT_MS
+    ) {
       throw new UnauthorizedException({
         code: 'STELLAR_AUTH_REPLAY',
-        message: 'Timestamp is missing, invalid, or outside the 5-minute replay window.',
+        message:
+          'Timestamp is missing, invalid, or outside the 5-minute replay window.',
       });
     }
 

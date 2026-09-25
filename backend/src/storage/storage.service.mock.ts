@@ -28,6 +28,12 @@ export class StorageServiceMock {
     return this.getMockUrl(hash);
   }
 
+  async fetchAndVerifyIpfsDocument(hash: string): Promise<Buffer> {
+    const upload = this.uploads.get(hash);
+    if (!upload) throw new Error(`Mock document not found: ${hash}`);
+    return Buffer.from(upload.file);
+  }
+
   private getMockUrl(hash: string): string {
     return `https://mock-storage.local/ipfs/${hash}`;
   }

@@ -1,0 +1,6 @@
+# Accepted vulnerability exceptions for Trivy scans.
+# Each entry must include a justification and expiry date (YYYY-MM-DD).
+# Format: CVE-ID  # justification — expires YYYY-MM-DD
+
+# Example (remove when no longer needed):
+# CVE-2024-12345  # upstream fix pending in node:20-alpine — expires 2026-12-31

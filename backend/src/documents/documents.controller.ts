@@ -7,6 +7,7 @@ import {
   Body,
   Request,
   BadRequestException,
+  Version,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { createHash } from 'crypto';
@@ -23,6 +24,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { AuthGuard } from '@nestjs/passport';
 import { DocumentsService } from './documents.service';
 import { ClamScanService } from './clam-scan.service';
+import { UploadChunkDto, UploadCompleteDto } from './dto/upload-chunk.dto';
 import { User } from '../auth/entities/user.entity';
 
 interface AuthRequest extends Request {
@@ -45,12 +47,42 @@ const ALLOWED_MIME_TYPES: ReadonlySet<string> = new Set([
  * Covers common script, executable, and web-exploit extensions.
  */
 const BLOCKED_EXTENSIONS: ReadonlySet<string> = new Set([
-  '.exe', '.bat', '.cmd', '.sh', '.ps1', '.psm1', '.vbs', '.vbe',
-  '.js',  '.jsx', '.ts',  '.tsx', '.mjs', '.cjs',
-  '.php', '.asp', '.aspx', '.jsp', '.py', '.rb', '.pl', '.lua',
-  '.dll', '.so',  '.dylib', '.elf',
-  '.svg', '.xml', '.html', '.htm', '.xhtml',
-  '.zip', '.tar', '.gz',  '.7z',  '.rar',
+  '.exe',
+  '.bat',
+  '.cmd',
+  '.sh',
+  '.ps1',
+  '.psm1',
+  '.vbs',
+  '.vbe',
+  '.js',
+  '.jsx',
+  '.ts',
+  '.tsx',
+  '.mjs',
+  '.cjs',
+  '.php',
+  '.asp',
+  '.aspx',
+  '.jsp',
+  '.py',
+  '.rb',
+  '.pl',
+  '.lua',
+  '.dll',
+  '.so',
+  '.dylib',
+  '.elf',
+  '.svg',
+  '.xml',
+  '.html',
+  '.htm',
+  '.xhtml',
+  '.zip',
+  '.tar',
+  '.gz',
+  '.7z',
+  '.rar',
 ]);
 
 /**
@@ -68,24 +100,26 @@ const MAX_FILENAME_LENGTH = 255;
  */
 function sanitizeFilename(raw: string): string {
   return raw
-    .replace(/\.\.[/\\]/g, '')   // strip directory traversal
-    .replace(/\0/g, '')           // strip null bytes
-    .replace(/\s+/g, ' ')         // collapse whitespace
+    .replace(/\.\.[/\\]/g, '') // strip directory traversal
+    .replace(/\0/g, '') // strip null bytes
+    .replace(/\s+/g, ' ') // collapse whitespace
     .trim()
     .slice(0, MAX_FILENAME_LENGTH);
 }
 
 @ApiTags('documents')
 @ApiBearerAuth('jwt')
-@Controller('documents')
+@Controller({ path: 'documents', version: '1' })
 export class DocumentsController {
   /** In-memory cache: SHA-256(fileBuffer) → upload result, to avoid redundant IPFS calls */
   private readonly ipfsCache = new Map<string, object>();
+  /** Temporary in-memory chunked upload sessions: fileId → session */
+  private readonly chunkStore = new Map<
+    string,
+    { chunks: Buffer[]; totalChunks: number; receivedCount: number }
+  >();
 
-  constructor(
-    private readonly documentsService: DocumentsService,
-    private readonly clamScan: ClamScanService,
-  ) {}
+  constructor(private readonly documentsService: DocumentsService) {}
 
   @Post()
   @Throttle({ default: { limit: 20, ttl: 60000 } })
@@ -125,8 +159,10 @@ export class DocumentsController {
   @ApiResponse({
     status: 400,
     description:
-      'Missing file, unsupported type, dangerous extension, file too large, or virus detected',
+      'Missing file, unsupported type, dangerous extension, or file too large',
   })
+  @ApiResponse({ status: 422, description: 'Virus detected' })
+  @ApiResponse({ status: 503, description: 'Malware scanner unavailable' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'Trade deal not found' })
   @ApiResponse({
@@ -183,12 +219,8 @@ export class DocumentsController {
     file.originalname = sanitized;
 
     // ── 4. Malware scan ──────────────────────────────────────────────────────
-    const scanResult = await this.clamScan.scan(file.buffer);
-    if (!scanResult.isClean) {
-      throw new BadRequestException(
-        `File rejected: virus detected (${scanResult.virusName})`,
-      );
-    }
+    // Scan before consulting the cache so every upload request is inspected.
+    await this.documentsService.scanBeforeUpload(file, req.user.id);
 
     // ── 5. Content-hash deduplication cache ──────────────────────────────────
     // SHA-256 of raw bytes uniquely identifies file content. If the same bytes
@@ -208,6 +240,131 @@ export class DocumentsController {
     });
 
     this.ipfsCache.set(contentKey, result);
+    return result;
+  }
+
+  @Post('upload-chunk')
+  @Throttle({ default: { limit: 100, ttl: 60000 } })
+  @UseGuards(AuthGuard('jwt'))
+  @UseInterceptors(FileInterceptor('chunk'))
+  @ApiOperation({
+    summary: 'Upload a single chunk of a large file (max 5 MB per chunk)',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: [
+        'chunk',
+        'fileId',
+        'chunkIndex',
+        'totalChunks',
+        'docType',
+        'tradeDealId',
+      ],
+      properties: {
+        chunk: { type: 'string', format: 'binary' },
+        fileId: { type: 'string' },
+        chunkIndex: { type: 'integer' },
+        totalChunks: { type: 'integer' },
+        docType: { type: 'string' },
+        tradeDealId: { type: 'string' },
+      },
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Chunk received' })
+  @ApiResponse({ status: 400, description: 'Invalid chunk' })
+  async uploadChunk(
+    @UploadedFile() file: Express.Multer.File,
+    @Body() dto: UploadChunkDto,
+  ) {
+    if (!file) throw new BadRequestException('Chunk file is required');
+    if (file.size > 5 * 1024 * 1024)
+      throw new BadRequestException('Chunk exceeds 5 MB limit');
+
+    const { fileId, chunkIndex, totalChunks } = dto;
+
+    if (chunkIndex >= totalChunks) {
+      throw new BadRequestException('chunkIndex must be less than totalChunks');
+    }
+
+    let session = this.chunkStore.get(fileId);
+    if (!session) {
+      session = {
+        chunks: new Array(totalChunks).fill(null),
+        totalChunks,
+        receivedCount: 0,
+      };
+      this.chunkStore.set(fileId, session);
+    }
+
+    if (session.chunks[chunkIndex] !== null) {
+      throw new BadRequestException(`Chunk ${chunkIndex} already received`);
+    }
+
+    session.chunks[chunkIndex] = file.buffer;
+    session.receivedCount += 1;
+
+    return {
+      fileId,
+      chunkIndex,
+      received: session.receivedCount,
+      total: totalChunks,
+      complete: session.receivedCount === totalChunks,
+    };
+  }
+
+  @Post('upload-complete')
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
+  @UseGuards(AuthGuard('jwt'))
+  @ApiOperation({
+    summary: 'Assemble uploaded chunks and finalize document upload',
+  })
+  @ApiResponse({ status: 201, description: 'Document assembled and uploaded' })
+  @ApiResponse({
+    status: 400,
+    description: 'Missing chunks or invalid request',
+  })
+  async uploadComplete(
+    @Body() dto: UploadCompleteDto,
+    @Request() req: AuthRequest,
+  ) {
+    const { fileId, docType, tradeDealId, fileName, mimeType } = dto;
+
+    const session = this.chunkStore.get(fileId);
+    if (!session) {
+      throw new BadRequestException('No upload session found for this fileId');
+    }
+
+    if (session.receivedCount < session.totalChunks) {
+      throw new BadRequestException(
+        `Missing chunks: received ${session.receivedCount}/${session.totalChunks}`,
+      );
+    }
+
+    const assembled = Buffer.concat(session.chunks);
+    this.chunkStore.delete(fileId);
+
+    const file: Express.Multer.File = {
+      fieldname: 'file',
+      originalname: fileName,
+      encoding: '7bit',
+      mimetype: mimeType,
+      size: assembled.length,
+      buffer: assembled,
+      destination: '',
+      filename: fileName,
+      path: '',
+      stream: null as any,
+    };
+
+    const result = await this.documentsService.handleUpload({
+      file,
+      docType,
+      tradeDealId,
+      userId: req.user.id,
+    });
+
     return result;
   }
 }

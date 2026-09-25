@@ -36,15 +36,36 @@ STELLAR_CLI_IMAGE="stellar/stellar-cli:latest"
 
 echo "🚀 Starting AgriFi Deployment Pipeline ($NETWORK)"
 
-# ── 1. Compilation ────────────────────────────────────────────────────────────
-echo "📦 Step 1: Compiling contracts inside Docker..."
+# ── 1. Compilation + WASM optimisation ───────────────────────────────────────
+echo "📦 Step 1: Compiling contracts and optimising WASM inside Docker..."
 docker run --rm \
   -v "$BLOCKCHAIN_DIR":/workspace \
   -w /workspace \
   "$RUST_IMAGE" \
-  bash -c "apt-get update && apt-get install -y clang && \
-           rustup target add wasm32-unknown-unknown && \
-           cargo build --target wasm32-unknown-unknown --release"
+  bash -c "
+    set -euo pipefail
+    apt-get update -qq && apt-get install -y --no-install-recommends clang curl xz-utils
+
+    # Install binaryen (wasm-opt) — use a pre-built release for speed
+    BINARYEN_VER=117
+    curl -fsSL https://github.com/WebAssembly/binaryen/releases/download/version_\${BINARYEN_VER}/binaryen-version_\${BINARYEN_VER}-x86_64-linux.tar.gz \
+      | tar -xz --strip-components=2 -C /usr/local/bin binaryen-version_\${BINARYEN_VER}/bin/wasm-opt
+
+    rustup target add wasm32-unknown-unknown
+
+    # Compile with workspace release profile (opt-level=z, lto, codegen-units=1, panic=abort)
+    cargo build --target wasm32-unknown-unknown --release
+
+    # Post-process each WASM with wasm-opt -Oz for further binary size reduction
+    WASM_DIR=target/wasm32-unknown-unknown/release
+    for wasm in \${WASM_DIR}/*.wasm; do
+      [ -f \"\${wasm}\" ] || continue
+      original_size=\$(wc -c < \"\${wasm}\")
+      wasm-opt -Oz --strip-debug --strip-producers \"\${wasm}\" -o \"\${wasm}\"
+      optimised_size=\$(wc -c < \"\${wasm}\")
+      echo \"  ✅ \$(basename \"\${wasm}\"): \${original_size} → \${optimised_size} bytes\"
+    done
+  "
 
 WASM_DIR="$BLOCKCHAIN_DIR/target/wasm32-unknown-unknown/release"
 

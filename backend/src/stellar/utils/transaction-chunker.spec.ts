@@ -40,8 +40,12 @@ describe('transaction-chunker', () => {
     });
 
     it('should throw error for invalid maxSize', () => {
-      expect(() => chunkOperations([1, 2, 3], 0)).toThrow('maxSize must be positive');
-      expect(() => chunkOperations([1, 2, 3], -1)).toThrow('maxSize must be positive');
+      expect(() => chunkOperations([1, 2, 3], 0)).toThrow(
+        'maxSize must be positive',
+      );
+      expect(() => chunkOperations([1, 2, 3], -1)).toThrow(
+        'maxSize must be positive',
+      );
     });
 
     it('should handle exact multiples of maxSize', () => {
@@ -118,7 +122,9 @@ describe('transaction-chunker', () => {
 
     it('should include operation count in error message', () => {
       const ops = Array(150).fill({});
-      expect(() => validateOperationCount(ops)).toThrow('Received 150 operations');
+      expect(() => validateOperationCount(ops)).toThrow(
+        'Received 150 operations',
+      );
     });
   });
 

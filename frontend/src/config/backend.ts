@@ -14,12 +14,17 @@ export function getBackendUrl(): string {
 // Named export for direct use in API route files
 export const BACKEND_URL = getBackendUrl();
 
+const API_VERSION = '/v1';
+
 export async function fetchBackend(
   path: string,
   options?: RequestInit
 ): Promise<Response> {
   const backendUrl = getBackendUrl();
-  const url = `${backendUrl}${path}`;
+  const versionedPath = path.startsWith('/v1') || path.startsWith('/v2')
+    ? path
+    : `${API_VERSION}${path}`;
+  const url = `${backendUrl}${versionedPath}`;
 
   try {
     const response = await fetch(url, options);

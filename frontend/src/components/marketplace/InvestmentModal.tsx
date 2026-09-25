@@ -97,6 +97,10 @@ export function InvestmentModal({ deal, onClose }: InvestmentModalProps) {
               dealId={deal.id}
               maxTokens={deal.tokens_remaining}
               tokenPrice={tokenPrice}
+              minLotSize={
+                (deal as unknown as { min_lot_size?: number }).min_lot_size
+              }
+              lotStep={(deal as unknown as { lot_step?: number }).lot_step}
               onQuantityChange={(qty) => setTokenQuantity(qty)}
               onSuccess={() => {
                 // Success handled by InvestmentForm internal state, but we could close modal here

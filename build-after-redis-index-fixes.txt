@@ -1,0 +1,935 @@
+[96mscripts/batch-seed.ts[0m:[93m217[0m:[93m17[0m - [91merror[0m[90m TS2345: [0mArgument of type '{ tradeDealId: string; investorId: string; tokenAmount: number; amountUsd: number; stellarTxId: any; complianceData: { taxId: string; sourceOfFunds: string; }; status: "pending"; }[]' is not assignable to parameter of type '_QueryDeepPartialEntity<Investment> | _QueryDeepPartialEntity<Investment>[]'.
+  Type '{ tradeDealId: string; investorId: string; tokenAmount: number; amountUsd: number; stellarTxId: any; complianceData: { taxId: string; sourceOfFunds: string; }; status: "pending"; }[]' is not assignable to type '_QueryDeepPartialEntity<Investment>[]'.
+    Type '{ tradeDealId: string; investorId: string; tokenAmount: number; amountUsd: number; stellarTxId: any; complianceData: { taxId: string; sourceOfFunds: string; }; status: "pending"; }' is not assignable to type '_QueryDeepPartialEntity<Investment>'.
+      Types of property 'status' are incompatible.
+        Type '"pending"' is not assignable to type '(() => string) | _QueryDeepPartialEntity<InvestmentStatus>'.
+
+[7m217[0m         .values(chunk)
+[7m   [0m [91m                ~~~~~[0m
+[96mscripts/seed.ts[0m:[93m132[0m:[93m45[0m - [91merror[0m[90m TS2769: [0mNo overload matches this call.
+  Overload 1 of 3, '(entityLikeArray: DeepPartial<Investment>[]): Investment[]', gave the following error.
+    Object literal may only specify known properties, and 'tradeDealId' does not exist in type 'DeepPartial<Investment>[]'.
+  Overload 2 of 3, '(entityLike: DeepPartial<Investment>): Investment', gave the following error.
+    Type '"pending"' is not assignable to type 'InvestmentStatus'.
+
+[7m132[0m     const investment = investmentRepository.create({
+[7m   [0m [91m                                            ~~~~~~[0m
+
+  [96msrc/investments/entities/investment.entity.ts[0m:[93m95[0m:[93m3[0m
+    [7m95[0m   status: InvestmentStatus;
+    [7m  [0m [96m  ~~~~~~[0m
+    The expected type comes from property 'status' which is declared here on type 'DeepPartial<Investment>'
+[96msrc/auth/admin.controller.ts[0m:[93m291[0m:[93m44[0m - [91merror[0m[90m TS2339: [0mProperty 'freezeAsset' does not exist on type 'StellarService'.
+
+[7m291[0m     const txId = await this.stellarService.freezeAsset(
+[7m   [0m [91m                                           ~~~~~~~~~~~[0m
+[96msrc/auth/admin.controller.ts[0m:[93m401[0m:[93m28[0m - [91merror[0m[90m TS2769: [0mNo overload matches this call.
+  Overload 1 of 3, '(entityLikeArray: DeepPartial<AdminAction>[]): AdminAction[]', gave the following error.
+    Object literal may only specify known properties, and 'adminId' does not exist in type 'DeepPartial<AdminAction>[]'.
+  Overload 2 of 3, '(entityLike: DeepPartial<AdminAction>): AdminAction', gave the following error.
+    Type '"approve_security_block"' is not assignable to type '"approve_kyc" | "approve_corporate_kyc" | "update_user_role" | "freeze_asset" | "verify_document" | "reject_document"'.
+
+[7m401[0m       this.adminActionRepo.create({
+[7m   [0m [91m                           ~~~~~~[0m
+
+  [96msrc/database/entities/admin-action.entity.ts[0m:[93m28[0m:[93m3[0m
+    [7m28[0m   action: AdminActionType;
+    [7m  [0m [96m  ~~~~~~[0m
+    The expected type comes from property 'action' which is declared here on type 'DeepPartial<AdminAction>'
+[96msrc/auth/auth.module.ts[0m:[93m51[0m:[93m5[0m - [91merror[0m[90m TS2304: [0mCannot find name 'EmailSequenceModule'.
+
+[7m51[0m     EmailSequenceModule,
+[7m  [0m [91m    ~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/auth/auth.module.ts[0m:[93m57[0m:[93m7[0m - [91merror[0m[90m TS2322: [0mType '(config: ConfigService) => { secret: string; signOptions: { expiresIn: string; }; }' is not assignable to type '(...args: any[]) => JwtModuleOptions | Promise<JwtModuleOptions>'.
+  Type '{ secret: string; signOptions: { expiresIn: string; }; }' is not assignable to type 'JwtModuleOptions | Promise<JwtModuleOptions>'.
+    Type '{ secret: string; signOptions: { expiresIn: string; }; }' is not assignable to type 'JwtModuleOptions'.
+      The types of 'signOptions.expiresIn' are incompatible between these types.
+        Type 'string' is not assignable to type 'number | StringValue'.
+
+[7m57[0m       useFactory: (config: ConfigService) => ({
+[7m  [0m [91m      ~~~~~~~~~~[0m
+
+  [96mnode_modules/@nestjs/jwt/dist/interfaces/jwt-module-options.interface.d.ts[0m:[93m24[0m:[93m5[0m
+    [7m24[0m     useFactory?: (...args: any[]) => Promise<JwtModuleOptions> | JwtModuleOptions;
+    [7m  [0m [96m    ~~~~~~~~~~[0m
+    The expected type comes from property 'useFactory' which is declared here on type 'JwtModuleAsyncOptions'
+[96msrc/auth/auth.service.ts[0m:[93m143[0m:[93m16[0m - [91merror[0m[90m TS2339: [0mProperty 'notificationsService' does not exist on type 'AuthService'.
+
+[7m143[0m     await this.notificationsService.sendEmail(
+[7m   [0m [91m               ~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m283[0m:[93m36[0m - [91merror[0m[90m TS2769: [0mNo overload matches this call.
+  Overload 1 of 3, '(payload: string, options?: Omit<JwtSignOptions, keyof SignOptions>): string', gave the following error.
+    Argument of type '{ typ: string; sub: string; email: string; role: string; tokenVersion?: number; jti?: string; familyId?: string; iat?: number; exp?: number; }' is not assignable to parameter of type 'string'.
+  Overload 2 of 3, '(payload: Buffer<ArrayBufferLike>, options?: JwtSignOptions): string', gave the following error.
+    Object literal may only specify known properties, and 'typ' does not exist in type 'Buffer<ArrayBufferLike>'.
+  Overload 3 of 3, '(payload: { typ: string; sub: string; email: string; role: string; tokenVersion?: number; jti?: string; familyId?: string; iat?: number; exp?: number; }, options?: JwtSignOptions): string', gave the following error.
+    Type 'string' is not assignable to type 'number | StringValue'.
+
+[7m283[0m       accessToken: this.jwtService.sign(
+[7m   [0m [91m                                   ~~~~[0m
+
+  [96mnode_modules/@types/jsonwebtoken/index.d.ts[0m:[93m43[0m:[93m5[0m
+    [7m43[0m     expiresIn?: StringValue | number;
+    [7m  [0m [96m    ~~~~~~~~~[0m
+    The expected type comes from property 'expiresIn' which is declared here on type 'JwtSignOptions'
+[96msrc/auth/auth.service.ts[0m:[93m287[0m:[93m37[0m - [91merror[0m[90m TS2769: [0mNo overload matches this call.
+  Overload 1 of 3, '(payload: string, options?: Omit<JwtSignOptions, keyof SignOptions>): string', gave the following error.
+    Argument of type '{ typ: string; jti: `${string}-${string}-${string}-${string}-${string}`; familyId: string; sub: string; email: string; role: string; tokenVersion?: number; iat?: number; exp?: number; }' is not assignable to parameter of type 'string'.
+  Overload 2 of 3, '(payload: Buffer<ArrayBufferLike>, options?: JwtSignOptions): string', gave the following error.
+    Object literal may only specify known properties, and 'typ' does not exist in type 'Buffer<ArrayBufferLike>'.
+  Overload 3 of 3, '(payload: { typ: string; jti: `${string}-${string}-${string}-${string}-${string}`; familyId: string; sub: string; email: string; role: string; tokenVersion?: number; iat?: number; exp?: number; }, options?: JwtSignOptions): string', gave the following error.
+    Type 'string' is not assignable to type 'number | StringValue'.
+
+[7m287[0m       refreshToken: this.jwtService.sign(
+[7m   [0m [91m                                    ~~~~[0m
+
+  [96mnode_modules/@types/jsonwebtoken/index.d.ts[0m:[93m43[0m:[93m5[0m
+    [7m43[0m     expiresIn?: StringValue | number;
+    [7m  [0m [96m    ~~~~~~~~~[0m
+    The expected type comes from property 'expiresIn' which is declared here on type 'JwtSignOptions'
+[96msrc/auth/auth.service.ts[0m:[93m404[0m:[93m20[0m - [91merror[0m[90m TS2339: [0mProperty 'notificationsService' does not exist on type 'AuthService'.
+
+[7m404[0m         await this.notificationsService.sendEmail(
+[7m   [0m [91m                   ~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m922[0m:[93m12[0m - [91merror[0m[90m TS2339: [0mProperty 'kycDraft' does not exist on type 'User'.
+
+[7m922[0m       user.kycDraft = null;
+[7m   [0m [91m           ~~~~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m944[0m:[93m26[0m - [91merror[0m[90m TS2339: [0mProperty 'kycDraft' does not exist on type 'User'.
+
+[7m944[0m     return { draft: user.kycDraft ?? null };
+[7m   [0m [91m                         ~~~~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m953[0m:[93m10[0m - [91merror[0m[90m TS2339: [0mProperty 'kycDraft' does not exist on type 'User'.
+
+[7m953[0m     user.kycDraft = draft;
+[7m   [0m [91m         ~~~~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m955[0m:[93m26[0m - [91merror[0m[90m TS2339: [0mProperty 'kycDraft' does not exist on type 'User'.
+
+[7m955[0m     return { draft: user.kycDraft };
+[7m   [0m [91m                         ~~~~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1415[0m:[93m36[0m - [91merror[0m[90m TS2365: [0mOperator '>' cannot be applied to types 'number' and 'string'.
+
+[7m1415[0m       if (tx.timeBounds.maxTime && now > tx.timeBounds.maxTime) {
+[7m    [0m [91m                                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1424[0m:[93m42[0m - [91merror[0m[90m TS2345: [0mArgument of type '(value?: Buffer<ArrayBufferLike>) => Buffer<ArrayBufferLike>' is not assignable to parameter of type 'Buffer<ArrayBufferLike>'.
+
+[7m1424[0m         return keypair.verify(tx.hash(), sig.signature);
+[7m    [0m [91m                                         ~~~~~~~~~~~~~[0m
+
+  [96msrc/auth/auth.service.ts[0m:[93m1424[0m:[93m42[0m
+    [7m1424[0m         return keypair.verify(tx.hash(), sig.signature);
+    [7m    [0m [96m                                         ~~~~~~~~~~~~~[0m
+    Did you mean to call this expression?
+[96msrc/auth/auth.service.ts[0m:[93m1437[0m:[93m15[0m - [91merror[0m[90m TS2367: [0mThis comparison appears to be unintentional because the types 'string' and 'number' have no overlap.
+
+[7m1437[0m       (op) => op.type === 11, // manageData
+[7m    [0m [91m              ~~~~~~~~~~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1456[0m:[93m40[0m - [91merror[0m[90m TS2554: [0mExpected 0 arguments, but got 1.
+
+[7m1456[0m         const hint = sig.hint.toString('hex');
+[7m    [0m [91m                                       ~~~~~[0m
+[96msrc/auth/auth.service.ts[0m:[93m1460[0m:[93m45[0m - [91merror[0m[90m TS2345: [0mArgument of type '(value?: Buffer<ArrayBufferLike>) => Buffer<ArrayBufferLike>' is not assignable to parameter of type 'Buffer<ArrayBufferLike>'.
+
+[7m1460[0m         return clientKeypair.verify(txHash, sig.signature);
+[7m    [0m [91m                                            ~~~~~~~~~~~~~[0m
+
+  [96msrc/auth/auth.service.ts[0m:[93m1460[0m:[93m45[0m
+    [7m1460[0m         return clientKeypair.verify(txHash, sig.signature);
+    [7m    [0m [96m                                            ~~~~~~~~~~~~~[0m
+    Did you mean to call this expression?
+[96msrc/auth/security-threat.service.ts[0m:[93m516[0m:[93m5[0m - [91merror[0m[90m TS2322: [0mType 'Promise<SecurityIpBlock[]>' is not assignable to type 'Promise<SecurityIpBlock>'.
+  Type 'SecurityIpBlock[]' is missing the following properties from type 'SecurityIpBlock': id, type, cidr, reason, and 5 more.
+
+[7m516[0m     return this.blockRepo.save(this.blockRepo.create(data as any));
+[7m   [0m [91m    ~~~~~~[0m
+[96msrc/compliance/compliance-report.service.ts[0m:[93m158[0m:[93m16[0m - [91merror[0m[90m TS2322: [0mType '"confirmed"' is not assignable to type 'InvestmentStatus | FindOperator<InvestmentStatus>'.
+
+[7m158[0m       where: { status: 'confirmed', createdAt: Between(start, end) as any },
+[7m   [0m [91m               ~~~~~~[0m
+[96msrc/compliance/compliance-report.service.ts[0m:[93m169[0m:[93m54[0m - [91merror[0m[90m TS2551: [0mProperty 'amount_usd' does not exist on type 'Investment'. Did you mean 'amountUsd'?
+
+[7m169[0m         (volumeByCountry[country] ?? 0) + Number(inv.amount_usd ?? 0);
+[7m   [0m [91m                                                     ~~~~~~~~~~[0m
+
+  [96msrc/investments/entities/investment.entity.ts[0m:[93m68[0m:[93m3[0m
+    [7m68[0m   amountUsd: number;
+    [7m  [0m [96m  ~~~~~~~~~[0m
+    'amountUsd' is declared here.
+[96msrc/compliance/compliance-report.service.ts[0m:[93m170[0m:[93m33[0m - [91merror[0m[90m TS2551: [0mProperty 'amount_usd' does not exist on type 'Investment'. Did you mean 'amountUsd'?
+
+[7m170[0m       totalVolume += Number(inv.amount_usd ?? 0);
+[7m   [0m [91m                                ~~~~~~~~~~[0m
+
+  [96msrc/investments/entities/investment.entity.ts[0m:[93m68[0m:[93m3[0m
+    [7m68[0m   amountUsd: number;
+    [7m  [0m [96m  ~~~~~~~~~[0m
+    'amountUsd' is declared here.
+[96msrc/compliance/compliance-report.service.ts[0m:[93m174[0m:[93m37[0m - [91merror[0m[90m TS2353: [0mObject literal may only specify known properties, and 'updatedAt' does not exist in type 'FindOptionsWhere<TradeDeal> | FindOptionsWhere<TradeDeal>[]'.
+
+[7m174[0m       where: { status: 'completed', updatedAt: Between(start, end) as any },
+[7m   [0m [91m                                    ~~~~~~~~~[0m
+
+  [96mnode_modules/typeorm/find-options/FindOneOptions.d.ts[0m:[93m23[0m:[93m5[0m
+    [7m23[0m     where?: FindOptionsWhere<Entity>[] | FindOptionsWhere<Entity>;
+    [7m  [0m [96m    ~~~~~[0m
+    The expected type comes from property 'where' which is declared here on type 'FindManyOptions<TradeDeal>'
+[96msrc/config/redis-cache.store.ts[0m:[93m47[0m:[93m25[0m - [91merror[0m[90m TS2345: [0mArgument of type 'string | {}' is not assignable to parameter of type 'string'.
+  Type '{}' is not assignable to type 'string'.
+
+[7m47[0m       return JSON.parse(raw) as T;
+[7m  [0m [91m                        ~~~[0m
+[96msrc/config/redis-cache.store.ts[0m:[93m91[0m:[93m27[0m - [91merror[0m[90m TS2345: [0mArgument of type 'string | {}' is not assignable to parameter of type 'string'.
+  Type '{}' is not assignable to type 'string'.
+
+[7m91[0m         return JSON.parse(v);
+[7m  [0m [91m                          ~[0m
+[96msrc/database/database.config.ts[0m:[93m55[0m:[93m16[0m - [91merror[0m[90m TS2304: [0mCannot find name 'isProduction'.
+
+[7m55[0m       logging: isProduction ? ['error'] : 'all',
+[7m  [0m [91m               ~~~~~~~~~~~~[0m
+[96msrc/database/database.config.ts[0m:[93m62[0m:[93m11[0m - [91merror[0m[90m TS2304: [0mCannot find name 'isProduction'.
+
+[7m62[0m           isProduction ? 50 : 10,
+[7m  [0m [91m          ~~~~~~~~~~~~[0m
+[96msrc/database/database.config.ts[0m:[93m64[0m:[93m59[0m - [91merror[0m[90m TS2304: [0mCannot find name 'isProduction'.
+
+[7m64[0m         min: this.config.get<number>('DATABASE_POOL_MIN', isProduction ? 5 : 2),
+[7m  [0m [91m                                                          ~~~~~~~~~~~~[0m
+[96msrc/database/entities/fee-configuration.entity.ts[0m:[93m27[0m:[93m3[0m - [91merror[0m[90m TS2769: [0mNo overload matches this call.
+  The last overload gave the following error.
+    Object literal may only specify known properties, and 'name' does not exist in type '(object?: any) => any[] | { [key: string]: number; }'.
+
+[7m27[0m   name: 'IDX_fee_config_unique',
+[7m  [0m [91m  ~~~~[0m
+
+  [96mnode_modules/typeorm/decorator/Index.d.ts[0m:[93m47[0m:[93m25[0m
+    [7m47[0m export declare function Index(name: string, fields: (object?: any) => any[] | {
+    [7m  [0m [96m                        ~~~~~[0m
+    The last overload is declared here.
+[96msrc/database/entities/fee-configuration.entity.ts[0m:[93m29[0m:[93m31[0m - [91merror[0m[90m TS2769: [0mNo overload matches this call.
+  The last overload gave the following error.
+    Object literal may only specify known properties, and 'name' does not exist in type '(object?: any) => any[] | { [key: string]: number; }'.
+
+[7m29[0m @Index(['dealType'] as any, { name: 'IDX_fee_config_deal_type' })
+[7m  [0m [91m                              ~~~~[0m
+
+  [96mnode_modules/typeorm/decorator/Index.d.ts[0m:[93m47[0m:[93m25[0m
+    [7m47[0m export declare function Index(name: string, fields: (object?: any) => any[] | {
+    [7m  [0m [96m                        ~~~~~[0m
+    The last overload is declared here.
+[96msrc/database/entities/fee-configuration.entity.ts[0m:[93m30[0m:[93m35[0m - [91merror[0m[90m TS2769: [0mNo overload matches this call.
+  The last overload gave the following error.
+    Object literal may only specify known properties, and 'name' does not exist in type '(object?: any) => any[] | { [key: string]: number; }'.
+
+[7m30[0m @Index(['investorTier'] as any, { name: 'IDX_fee_config_investor_tier' })
+[7m  [0m [91m                                  ~~~~[0m
+
+  [96mnode_modules/typeorm/decorator/Index.d.ts[0m:[93m47[0m:[93m25[0m
+    [7m47[0m export declare function Index(name: string, fields: (object?: any) => any[] | {
+    [7m  [0m [96m                        ~~~~~[0m
+    The last overload is declared here.
+[96msrc/database/entities/fee-configuration.entity.ts[0m:[93m31[0m:[93m30[0m - [91merror[0m[90m TS2769: [0mNo overload matches this call.
+  The last overload gave the following error.
+    Object literal may only specify known properties, and 'name' does not exist in type '(object?: any) => any[] | { [key: string]: number; }'.
+
+[7m31[0m @Index(['feeType'] as any, { name: 'IDX_fee_config_fee_type' })
+[7m  [0m [91m                             ~~~~[0m
+
+  [96mnode_modules/typeorm/decorator/Index.d.ts[0m:[93m47[0m:[93m25[0m
+    [7m47[0m export declare function Index(name: string, fields: (object?: any) => any[] | {
+    [7m  [0m [96m                        ~~~~~[0m
+    The last overload is declared here.
+[96msrc/database/entities/fee-configuration.entity.ts[0m:[93m33[0m:[93m3[0m - [91merror[0m[90m TS2769: [0mNo overload matches this call.
+  The last overload gave the following error.
+    Object literal may only specify known properties, and 'name' does not exist in type '(object?: any) => any[] | { [key: string]: number; }'.
+
+[7m33[0m   name: 'IDX_fee_config_effective',
+[7m  [0m [91m  ~~~~[0m
+
+  [96mnode_modules/typeorm/decorator/Index.d.ts[0m:[93m47[0m:[93m25[0m
+    [7m47[0m export declare function Index(name: string, fields: (object?: any) => any[] | {
+    [7m  [0m [96m                        ~~~~~[0m
+    The last overload is declared here.
+[96msrc/escrow/escrow.consumer.ts[0m:[93m168[0m:[93m47[0m - [91merror[0m[90m TS2304: [0mCannot find name 'context'.
+
+[7m168[0m     const parsed = this.parsePayload(payload, context);
+[7m   [0m [91m                                              ~~~~~~~[0m
+[96msrc/escrow/escrow.main.ts[0m:[93m31[0m:[93m7[0m - [91merror[0m[90m TS2353: [0mObject literal may only specify known properties, and 'noAck' does not exist in type '(NestApplicationContextOptions & RmqOptions) | (NestApplicationContextOptions & CustomStrategy)'.
+
+[7m31[0m       noAck: false,
+[7m  [0m [91m      ~~~~~[0m
+[96msrc/escrow/escrow.main.ts[0m:[93m33[0m:[93m3[0m - [91merror[0m[90m TS1135: [0mArgument expression expected.
+
+[7m33[0m   });
+[7m  [0m [91m  ~[0m
+[96msrc/escrow/escrow.main.ts[0m:[93m33[0m:[93m4[0m - [91merror[0m[90m TS1128: [0mDeclaration or statement expected.
+
+[7m33[0m   });
+[7m  [0m [91m   ~[0m
+[96msrc/escrow/escrow.main.ts[0m:[93m35[0m:[93m9[0m - [91merror[0m[90m TS2304: [0mCannot find name 'app'.
+
+[7m35[0m   await app.startAllMicroservices();
+[7m  [0m [91m        ~~~[0m
+[96msrc/escrow/escrow.main.ts[0m:[93m41[0m:[93m1[0m - [91merror[0m[90m TS1128: [0mDeclaration or statement expected.
+
+[7m41[0m }
+[7m  [0m [91m~[0m
+[96msrc/escrow/escrow.service.ts[0m:[93m164[0m:[93m11[0m - [91merror[0m[90m TS2345: [0mArgument of type 'Promise<string>' is not assignable to parameter of type 'string'.
+
+[7m164[0m           escrowSecret,
+[7m   [0m [91m          ~~~~~~~~~~~~[0m
+
+  [96msrc/escrow/escrow.service.ts[0m:[93m164[0m:[93m11[0m
+    [7m164[0m           escrowSecret,
+    [7m   [0m [96m          ~~~~~~~~~~~~[0m
+    Did you forget to use 'await'?
+[96msrc/investments/fee-configuration.controller.ts[0m:[93m26[0m:[93m28[0m - [91merror[0m[90m TS2307: [0mCannot find module '../auth/guards/admin.guard' or its corresponding type declarations.
+
+[7m26[0m import { AdminGuard } from '../auth/guards/admin.guard';
+[7m  [0m [91m                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/investments/fee-configuration.service.ts[0m:[93m112[0m:[93m12[0m - [91merror[0m[90m TS2554: [0mExpected 4 arguments, but got 3.
+
+[7m112[0m     return toPaginatedResult(qb, pagination.skip, pagination.take);
+[7m   [0m [91m           ~~~~~~~~~~~~~~~~~[0m
+
+  [96msrc/common/pagination.ts[0m:[93m37[0m:[93m3[0m
+    [7m37[0m   limit: number,
+    [7m  [0m [96m  ~~~~~~~~~~~~~[0m
+    An argument for 'limit' was not provided.
+[96msrc/investments/fee-configuration.service.ts[0m:[93m112[0m:[93m45[0m - [91merror[0m[90m TS2339: [0mProperty 'skip' does not exist on type 'PaginationQuery'.
+
+[7m112[0m     return toPaginatedResult(qb, pagination.skip, pagination.take);
+[7m   [0m [91m                                            ~~~~[0m
+[96msrc/investments/fee-configuration.service.ts[0m:[93m112[0m:[93m62[0m - [91merror[0m[90m TS2339: [0mProperty 'take' does not exist on type 'PaginationQuery'.
+
+[7m112[0m     return toPaginatedResult(qb, pagination.skip, pagination.take);
+[7m   [0m [91m                                                             ~~~~[0m
+[96msrc/investments/fee-configuration.service.ts[0m:[93m179[0m:[93m9[0m - [91merror[0m[90m TS2322: [0mType '{ _type: string; value: Date; }' is not assignable to type 'Date | FindOperator<Date>'.
+  Type '{ _type: string; value: Date; }' is missing the following properties from type 'FindOperator<Date>': "@instanceof", _value, _objectLiteralParameters, _useParameter, and 9 more.
+
+[7m179[0m         effectiveFrom: { _type: 'lte', value: date },
+[7m   [0m [91m        ~~~~~~~~~~~~~[0m
+[96msrc/investments/fee-configuration.service.ts[0m:[93m180[0m:[93m9[0m - [91merror[0m[90m TS2322: [0mType '{ _type: string; value: Date; }' is not assignable to type 'Date | FindOperator<Date>'.
+  Type '{ _type: string; value: Date; }' is missing the following properties from type 'FindOperator<Date>': "@instanceof", _value, _objectLiteralParameters, _useParameter, and 9 more.
+
+[7m180[0m         effectiveTo: { _type: 'gt', value: date },
+[7m   [0m [91m        ~~~~~~~~~~~[0m
+[96msrc/investments/investments.service.ts[0m:[93m370[0m:[93m10[0m - [91merror[0m[90m TS2339: [0mProperty 'referralService' does not exist on type 'InvestmentsService'.
+
+[7m370[0m     this.referralService?.triggerReward(investorId)?.catch(() => {});
+[7m   [0m [91m         ~~~~~~~~~~~~~~~[0m
+[96msrc/investments/investments.service.ts[0m:[93m510[0m:[93m9[0m - [91merror[0m[90m TS2345: [0mArgument of type 'QueryRunner' is not assignable to parameter of type 'EntityManager'.
+  Type 'QueryRunner' is missing the following properties from type 'EntityManager': "@instanceof", repositories, treeRepositories, plainObjectToEntityTransformer, and 48 more.
+
+[7m510[0m         this.dataSource.createQueryRunner(),
+[7m   [0m [91m        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/investments/investments.service.ts[0m:[93m555[0m:[93m9[0m - [91merror[0m[90m TS2345: [0mArgument of type 'QueryRunner' is not assignable to parameter of type 'EntityManager'.
+  Type 'QueryRunner' is missing the following properties from type 'EntityManager': "@instanceof", repositories, treeRepositories, plainObjectToEntityTransformer, and 48 more.
+
+[7m555[0m         this.dataSource.createQueryRunner(),
+[7m   [0m [91m        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/investments/receipt.service.ts[0m:[93m194[0m:[93m23[0m - [91merror[0m[90m TS2351: [0mThis expression is not constructable.
+  Type '{ default: PDFDocument; version: number; compress: boolean; info: DocumentInfo; options: PDFDocumentOptions; page: PDFPage; x: number; ... 126 more ...; endOutline(): void; }' has no construct signatures.
+
+[7m194[0m       const doc = new PDFDocument({ margin: 50, size: 'A4' });
+[7m   [0m [91m                      ~~~~~~~~~~~[0m
+
+  [96msrc/investments/receipt.service.ts[0m:[93m18[0m:[93m1[0m
+    [7m18[0m import * as PDFDocument from 'pdfkit';
+    [7m  [0m [96m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+    Type originates at this import. A namespace-style import cannot be called or constructed, and will cause a failure at runtime. Consider using a default import or import require here instead.
+[96msrc/investments/receipt.service.ts[0m:[93m204[0m:[93m11[0m - [91merror[0m[90m TS2352: [0mConversion of type 'TradeDeal' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'TradeDeal'.
+
+[7m204[0m         ((deal as Record<string, unknown>)?.['commodity'] as string) ?? 'N/A';
+[7m   [0m [91m          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/investments/tax-report.service.ts[0m:[93m52[0m:[93m35[0m - [91merror[0m[90m TS2345: [0mArgument of type 'number | "0"' is not assignable to parameter of type 'string'.
+  Type 'number' is not assignable to type 'string'.
+
+[7m52[0m       const invested = parseFloat(inv.amountUsd ?? '0');
+[7m  [0m [91m                                  ~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/investments/tax-report.service.ts[0m:[93m54[0m:[93m11[0m - [91merror[0m[90m TS2352: [0mConversion of type 'Investment' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'Investment'.
+
+[7m54[0m         ((inv as Record<string, unknown>)['returnAmountUsd'] as string) ?? '0',
+[7m  [0m [91m          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/investments/tax-report.service.ts[0m:[93m57[0m:[93m11[0m - [91merror[0m[90m TS2352: [0mConversion of type 'Investment' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'Investment'.
+
+[7m57[0m         ((inv as Record<string, unknown>)['feesUsd'] as string) ?? '0',
+[7m  [0m [91m          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/notifications/notification-preferences.controller.ts[0m:[93m18[0m:[93m22[0m - [91merror[0m[90m TS2307: [0mCannot find module '../../auth/entities/user.entity' or its corresponding type declarations.
+
+[7m18[0m import { User } from '../../auth/entities/user.entity';
+[7m  [0m [91m                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/notifications/notifications.gateway.ts[0m:[93m32[0m:[93m44[0m - [91merror[0m[90m TS2304: [0mCannot find name 'NotificationsService'.
+
+[7m32[0m     private readonly notificationsService: NotificationsService,
+[7m  [0m [91m                                           ~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/queue/queue-alert.service.ts[0m:[93m37[0m:[93m17[0m - [91merror[0m[90m TS2339: [0mProperty 'setContext' does not exist on type 'Logger'.
+
+[7m37[0m     this.logger.setContext(QueueAlertService.name);
+[7m  [0m [91m                ~~~~~~~~~~[0m
+[96msrc/queue/queue.processor.ts[0m:[93m357[0m:[93m50[0m - [91merror[0m[90m TS2339: [0mProperty 'submitTransaction' does not exist on type 'StellarService'.
+
+[7m357[0m         const result = await this.stellarService.submitTransaction(
+[7m   [0m [91m                                                 ~~~~~~~~~~~~~~~~~[0m
+[96msrc/queue/queue.service.ts[0m:[93m182[0m:[93m7[0m - [91merror[0m[90m TS2345: [0mArgument of type 'Omit<DealPublishPayload, "correlationId"> & BasePayload' is not assignable to parameter of type 'Record<string, unknown>'.
+  Index signature for type 'string' is missing in type 'Omit<DealPublishPayload, "correlationId"> & BasePayload'.
+
+[7m182[0m       enrichedPayload,
+[7m   [0m [91m      ~~~~~~~~~~~~~~~[0m
+[96msrc/queue/queue.service.ts[0m:[93m197[0m:[93m7[0m - [91merror[0m[90m TS2345: [0mArgument of type '{ tradeDealId: string; } & BasePayload' is not assignable to parameter of type 'Record<string, unknown>'.
+  Index signature for type 'string' is missing in type '{ tradeDealId: string; } & BasePayload'.
+
+[7m197[0m       payload,
+[7m   [0m [91m      ~~~~~~~[0m
+[96msrc/queue/queue.service.ts[0m:[93m212[0m:[93m7[0m - [91merror[0m[90m TS2345: [0mArgument of type '{ tradeDealId: string; } & BasePayload' is not assignable to parameter of type 'Record<string, unknown>'.
+  Index signature for type 'string' is missing in type '{ tradeDealId: string; } & BasePayload'.
+
+[7m212[0m       payload,
+[7m   [0m [91m      ~~~~~~~[0m
+[96msrc/queue/queue.service.ts[0m:[93m227[0m:[93m7[0m - [91merror[0m[90m TS2345: [0mArgument of type 'Omit<InvestmentFundPayload, "correlationId"> & BasePayload' is not assignable to parameter of type 'Record<string, unknown>'.
+  Index signature for type 'string' is missing in type 'Omit<InvestmentFundPayload, "correlationId"> & BasePayload'.
+
+[7m227[0m       enrichedPayload,
+[7m   [0m [91m      ~~~~~~~~~~~~~~~[0m
+[96msrc/queue/queue.service.ts[0m:[93m249[0m:[93m7[0m - [91merror[0m[90m TS2345: [0mArgument of type 'Omit<DealFundedPayload, "correlationId"> & BasePayload' is not assignable to parameter of type 'Record<string, unknown>'.
+  Index signature for type 'string' is missing in type 'Omit<DealFundedPayload, "correlationId"> & BasePayload'.
+
+[7m249[0m       enrichedPayload,
+[7m   [0m [91m      ~~~~~~~~~~~~~~~[0m
+[96msrc/settlement/settlement.service.ts[0m:[93m60[0m:[93m19[0m - [91merror[0m[90m TS2339: [0mProperty 'info' does not exist on type 'Logger'.
+
+[7m60[0m       this.logger.info(
+[7m  [0m [91m                  ~~~~[0m
+[96msrc/settlement/settlement.service.ts[0m:[93m116[0m:[93m19[0m - [91merror[0m[90m TS2339: [0mProperty 'info' does not exist on type 'Logger'.
+
+[7m116[0m       this.logger.info(
+[7m   [0m [91m                  ~~~~[0m
+[96msrc/shipments/shipments.service.ts[0m:[93m102[0m:[93m9[0m - [91merror[0m[90m TS2322: [0mType 'Promise<string>' is not assignable to type 'string'.
+
+[7m102[0m         signerSecret = this.stellarService.decryptSecret(deal.escrowSecretKey);
+[7m   [0m [91m        ~~~~~~~~~~~~[0m
+[96msrc/soroban/soroban-event-indexer.service.ts[0m:[93m189[0m:[93m21[0m - [91merror[0m[90m TS2769: [0mNo overload matches this call.
+  Overload 1 of 2, '(timeout: string | number | Timeout): void', gave the following error.
+    Argument of type 'Timer' is not assignable to parameter of type 'string | number | Timeout'.
+      Type 'Timer' is missing the following properties from type 'Timeout': close, _onTimeout, [Symbol.dispose]
+  Overload 2 of 2, '(id: number): void', gave the following error.
+    Argument of type 'Timer' is not assignable to parameter of type 'number'.
+
+[7m189[0m       clearInterval(this.pollingInterval);
+[7m   [0m [91m                    ~~~~~~~~~~~~~~~~~~~~[0m
+
+[96msrc/soroban/soroban-rent.service.ts[0m:[93m42[0m:[93m10[0m - [91merror[0m[90m TS2339: [0mProperty 'rpcUrl' does not exist on type 'SorobanRentService'.
+
+[7m42[0m     this.rpcUrl = this.config.get<string>('SOROBAN_RPC_URL', '');
+[7m  [0m [91m         ~~~~~~[0m
+[96msrc/soroban/soroban-rent.service.ts[0m:[93m50[0m:[93m15[0m - [91merror[0m[90m TS2339: [0mProperty 'rpcUrl' does not exist on type 'SorobanRentService'.
+
+[7m50[0m     if (!this.rpcUrl) {
+[7m  [0m [91m              ~~~~~~[0m
+[96msrc/soroban/soroban-rent.service.ts[0m:[93m51[0m:[93m12[0m - [91merror[0m[90m TS2339: [0mProperty 'logger' does not exist on type 'SorobanRentService'.
+
+[7m51[0m       this.logger.warn(
+[7m  [0m [91m           ~~~~~~[0m
+[96msrc/soroban/soroban-rent.service.ts[0m:[93m55[0m:[93m12[0m - [91merror[0m[90m TS2339: [0mProperty 'logger' does not exist on type 'SorobanRentService'.
+
+[7m55[0m       this.logger.log(
+[7m  [0m [91m           ~~~~~~[0m
+[96msrc/soroban/soroban-rent.service.ts[0m:[93m56[0m:[93m99[0m - [91merror[0m[90m TS2339: [0mProperty 'rpcUrl' does not exist on type 'SorobanRentService'.
+
+[7m56[0m         `SorobanRentService initialized with threshold ${this.warnThreshold} ledgers. RPC: ${this.rpcUrl}`,
+[7m  [0m [91m                                                                                                  ~~~~~~[0m
+[96msrc/soroban/soroban-rent.service.ts[0m:[93m73[0m:[93m15[0m - [91merror[0m[90m TS2339: [0mProperty 'rpcUrl' does not exist on type 'SorobanRentService'.
+
+[7m73[0m     if (!this.rpcUrl) return;
+[7m  [0m [91m              ~~~~~~[0m
+[96msrc/soroban/soroban-rent.service.ts[0m:[93m75[0m:[93m10[0m - [91merror[0m[90m TS2339: [0mProperty 'logger' does not exist on type 'SorobanRentService'.
+
+[7m75[0m     this.logger.log('Starting scheduled Soroban contract TTL extension run…');
+[7m  [0m [91m         ~~~~~~[0m
+[96msrc/soroban/soroban-rent.service.ts[0m:[93m79[0m:[93m12[0m - [91merror[0m[90m TS2339: [0mProperty 'logger' does not exist on type 'SorobanRentService'.
+
+[7m79[0m       this.logger.log(
+[7m  [0m [91m           ~~~~~~[0m
+[96msrc/soroban/soroban-rent.service.ts[0m:[93m85[0m:[93m10[0m - [91merror[0m[90m TS2339: [0mProperty 'logger' does not exist on type 'SorobanRentService'.
+
+[7m85[0m     this.logger.log(`Found ${contractIds.length} active contract(s) to check.`);
+[7m  [0m [91m         ~~~~~~[0m
+[96msrc/soroban/soroban-rent.service.ts[0m:[93m96[0m:[93m14[0m - [91merror[0m[90m TS2339: [0mProperty 'logger' does not exist on type 'SorobanRentService'.
+
+[7m96[0m         this.logger.error(
+[7m  [0m [91m             ~~~~~~[0m
+[96msrc/soroban/soroban-rent.service.ts[0m:[93m102[0m:[93m10[0m - [91merror[0m[90m TS2339: [0mProperty 'logger' does not exist on type 'SorobanRentService'.
+
+[7m102[0m     this.logger.log(
+[7m   [0m [91m         ~~~~~~[0m
+[96msrc/soroban/soroban-rent.service.ts[0m:[93m116[0m:[93m15[0m - [91merror[0m[90m TS2339: [0mProperty 'rpcUrl' does not exist on type 'SorobanRentService'.
+
+[7m116[0m     if (!this.rpcUrl || this.archivedContracts.size === 0) return;
+[7m   [0m [91m              ~~~~~~[0m
+[96msrc/soroban/soroban-rent.service.ts[0m:[93m116[0m:[93m30[0m - [91merror[0m[90m TS2339: [0mProperty 'archivedContracts' does not exist on type 'SorobanRentService'.
+
+[7m116[0m     if (!this.rpcUrl || this.archivedContracts.size === 0) return;
+[7m   [0m [91m                             ~~~~~~~~~~~~~~~~~[0m
+[96msrc/soroban/soroban-rent.service.ts[0m:[93m118[0m:[93m10[0m - [91merror[0m[90m TS2339: [0mProperty 'logger' does not exist on type 'SorobanRentService'.
+
+[7m118[0m     this.logger.log(
+[7m   [0m [91m         ~~~~~~[0m
+[96msrc/soroban/soroban-rent.service.ts[0m:[93m119[0m:[93m39[0m - [91merror[0m[90m TS2339: [0mProperty 'archivedContracts' does not exist on type 'SorobanRentService'.
+
+[7m119[0m       `Attempting recovery for ${this.archivedContracts.size} archived contract(s)…`,
+[7m   [0m [91m                                      ~~~~~~~~~~~~~~~~~[0m
+[96msrc/soroban/soroban-rent.service.ts[0m:[93m122[0m:[93m39[0m - [91merror[0m[90m TS2339: [0mProperty 'archivedContracts' does not exist on type 'SorobanRentService'.
+
+[7m122[0m     for (const contractId of [...this.archivedContracts]) {
+[7m   [0m [91m                                      ~~~~~~~~~~~~~~~~~[0m
+[96msrc/soroban/soroban-rent.service.ts[0m:[93m125[0m:[93m14[0m - [91merror[0m[90m TS2339: [0mProperty 'archivedContracts' does not exist on type 'SorobanRentService'.
+
+[7m125[0m         this.archivedContracts.delete(contractId);
+[7m   [0m [91m             ~~~~~~~~~~~~~~~~~[0m
+[96msrc/soroban/soroban-rent.service.ts[0m:[93m126[0m:[93m14[0m - [91merror[0m[90m TS2339: [0mProperty 'logger' does not exist on type 'SorobanRentService'.
+
+[7m126[0m         this.logger.log(
+[7m   [0m [91m             ~~~~~~[0m
+[96msrc/soroban/soroban-rent.service.ts[0m:[93m130[0m:[93m14[0m - [91merror[0m[90m TS2339: [0mProperty 'logger' does not exist on type 'SorobanRentService'.
+
+[7m130[0m         this.logger.error(
+[7m   [0m [91m             ~~~~~~[0m
+[96msrc/soroban/soroban-rent.service.ts[0m:[93m169[0m:[93m12[0m - [91merror[0m[90m TS2339: [0mProperty 'logger' does not exist on type 'SorobanRentService'.
+
+[7m169[0m       this.logger.warn(
+[7m   [0m [91m           ~~~~~~[0m
+[96msrc/soroban/soroban-rent.service.ts[0m:[93m172[0m:[93m12[0m - [91merror[0m[90m TS2339: [0mProperty 'archivedContracts' does not exist on type 'SorobanRentService'.
+
+[7m172[0m       this.archivedContracts.add(contractId);
+[7m   [0m [91m           ~~~~~~~~~~~~~~~~~[0m
+[96msrc/soroban/soroban-rent.service.ts[0m:[93m174[0m:[93m12[0m - [91merror[0m[90m TS2339: [0mProperty 'archivedContracts' does not exist on type 'SorobanRentService'.
+
+[7m174[0m       this.archivedContracts.delete(contractId);
+[7m   [0m [91m           ~~~~~~~~~~~~~~~~~[0m
+[96msrc/soroban/soroban-rent.service.ts[0m:[93m178[0m:[93m10[0m - [91merror[0m[90m TS2339: [0mProperty 'logger' does not exist on type 'SorobanRentService'.
+
+[7m178[0m     this.logger.debug(
+[7m   [0m [91m         ~~~~~~[0m
+[96msrc/soroban/soroban-rent.service.ts[0m:[93m183[0m:[93m12[0m - [91merror[0m[90m TS2339: [0mProperty 'logger' does not exist on type 'SorobanRentService'.
+
+[7m183[0m       this.logger.warn(
+[7m   [0m [91m           ~~~~~~[0m
+[96msrc/soroban/soroban-rent.service.ts[0m:[93m193[0m:[93m10[0m - [91merror[0m[90m TS2339: [0mProperty 'logger' does not exist on type 'SorobanRentService'.
+
+[7m193[0m     this.logger.log(
+[7m   [0m [91m         ~~~~~~[0m
+[96msrc/soroban/soroban-rent.service.ts[0m:[93m202[0m:[93m10[0m - [91merror[0m[90m TS2339: [0mProperty 'logger' does not exist on type 'SorobanRentService'.
+
+[7m202[0m     this.logger.log(
+[7m   [0m [91m         ~~~~~~[0m
+[96msrc/soroban/soroban-rent.service.ts[0m:[93m210[0m:[93m10[0m - [91merror[0m[90m TS2339: [0mProperty 'logger' does not exist on type 'SorobanRentService'.
+
+[7m210[0m     this.logger.log(
+[7m   [0m [91m         ~~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m381[0m:[93m21[0m - [91merror[0m[90m TS2554: [0mExpected 0 arguments, but got 1.
+
+[7m381[0m       new xdr.ScVal(xdr.ScVal.scvVec([])), // Empty investor_shares for direct trades
+[7m   [0m [91m                    ~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m631[0m:[93m3[0m - [91merror[0m[90m TS1434: [0mUnexpected keyword or identifier.
+
+[7m631[0m   async registerRevenueHolder(
+[7m   [0m [91m  ~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m631[0m:[93m3[0m - [91merror[0m[90m TS2304: [0mCannot find name 'async'.
+
+[7m631[0m   async registerRevenueHolder(
+[7m   [0m [91m  ~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m631[0m:[93m9[0m - [91merror[0m[90m TS2304: [0mCannot find name 'registerRevenueHolder'.
+
+[7m631[0m   async registerRevenueHolder(
+[7m   [0m [91m        ~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m632[0m:[93m5[0m - [91merror[0m[90m TS2304: [0mCannot find name 'contractId'.
+
+[7m632[0m     contractId: string,
+[7m   [0m [91m    ~~~~~~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m632[0m:[93m15[0m - [91merror[0m[90m TS1005: [0m',' expected.
+
+[7m632[0m     contractId: string,
+[7m   [0m [91m              ~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m632[0m:[93m17[0m - [91merror[0m[90m TS2693: [0m'string' only refers to a type, but is being used as a value here.
+
+[7m632[0m     contractId: string,
+[7m   [0m [91m                ~~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m633[0m:[93m5[0m - [91merror[0m[90m TS2304: [0mCannot find name 'holderAddress'.
+
+[7m633[0m     holderAddress: string,
+[7m   [0m [91m    ~~~~~~~~~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m633[0m:[93m18[0m - [91merror[0m[90m TS1005: [0m',' expected.
+
+[7m633[0m     holderAddress: string,
+[7m   [0m [91m                 ~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m633[0m:[93m20[0m - [91merror[0m[90m TS2693: [0m'string' only refers to a type, but is being used as a value here.
+
+[7m633[0m     holderAddress: string,
+[7m   [0m [91m                   ~~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m634[0m:[93m5[0m - [91merror[0m[90m TS2304: [0mCannot find name 'balance'.
+
+[7m634[0m     balance: bigint,
+[7m   [0m [91m    ~~~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m634[0m:[93m12[0m - [91merror[0m[90m TS1005: [0m',' expected.
+
+[7m634[0m     balance: bigint,
+[7m   [0m [91m           ~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m634[0m:[93m14[0m - [91merror[0m[90m TS2304: [0mCannot find name 'bigint'.
+
+[7m634[0m     balance: bigint,
+[7m   [0m [91m             ~~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m635[0m:[93m4[0m - [91merror[0m[90m TS1005: [0m';' expected.
+
+[7m635[0m   ): Promise<string> {
+[7m   [0m [91m   ~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m635[0m:[93m6[0m - [91merror[0m[90m TS2365: [0mOperator '>' cannot be applied to types 'boolean' and '{ const: xdr.ScVal[]; return: any; }'.
+
+[7m635[0m   ): Promise<string> {
+[7m   [0m [91m     ~~~~~~~~~~~~~~~~~[0m
+[7m636[0m     const args = [
+[7m   [0m [91m~~~~~~~~~~~~~~~~~~[0m
+[7m...[0m 
+[7m641[0m     return this.invokeContract(contractId, 'register_holder', args);
+[7m   [0m [91m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[7m642[0m   }
+[7m   [0m [91m~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m635[0m:[93m14[0m - [91merror[0m[90m TS2693: [0m'string' only refers to a type, but is being used as a value here.
+
+[7m635[0m   ): Promise<string> {
+[7m   [0m [91m             ~~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m636[0m:[93m11[0m - [91merror[0m[90m TS1005: [0m':' expected.
+
+[7m636[0m     const args = [
+[7m   [0m [91m          ~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m636[0m:[93m11[0m - [91merror[0m[90m TS2304: [0mCannot find name 'args'.
+
+[7m636[0m     const args = [
+[7m   [0m [91m          ~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m637[0m:[93m19[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m637[0m       new Address(this.platformKeypair.publicKey()).toScVal(),
+[7m   [0m [91m                  ~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m638[0m:[93m19[0m - [91merror[0m[90m TS2304: [0mCannot find name 'holderAddress'.
+
+[7m638[0m       new Address(holderAddress).toScVal(),
+[7m   [0m [91m                  ~~~~~~~~~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m639[0m:[93m21[0m - [91merror[0m[90m TS2304: [0mCannot find name 'balance'.
+
+[7m639[0m       nativeToScVal(balance, { type: 'i128' }),
+[7m   [0m [91m                    ~~~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m640[0m:[93m6[0m - [91merror[0m[90m TS1005: [0m',' expected.
+
+[7m640[0m     ];
+[7m   [0m [91m     ~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m641[0m:[93m12[0m - [91merror[0m[90m TS1005: [0m':' expected.
+
+[7m641[0m     return this.invokeContract(contractId, 'register_holder', args);
+[7m   [0m [91m           ~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m641[0m:[93m12[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m641[0m     return this.invokeContract(contractId, 'register_holder', args);
+[7m   [0m [91m           ~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m641[0m:[93m32[0m - [91merror[0m[90m TS2304: [0mCannot find name 'contractId'.
+
+[7m641[0m     return this.invokeContract(contractId, 'register_holder', args);
+[7m   [0m [91m                               ~~~~~~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m641[0m:[93m63[0m - [91merror[0m[90m TS2304: [0mCannot find name 'args'.
+
+[7m641[0m     return this.invokeContract(contractId, 'register_holder', args);
+[7m   [0m [91m                                                              ~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m641[0m:[93m68[0m - [91merror[0m[90m TS1005: [0m',' expected.
+
+[7m641[0m     return this.invokeContract(contractId, 'register_holder', args);
+[7m   [0m [91m                                                                   ~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m656[0m:[93m3[0m - [91merror[0m[90m TS1434: [0mUnexpected keyword or identifier.
+
+[7m656[0m   async triggerRevenueDistribution(
+[7m   [0m [91m  ~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m656[0m:[93m3[0m - [91merror[0m[90m TS2304: [0mCannot find name 'async'.
+
+[7m656[0m   async triggerRevenueDistribution(
+[7m   [0m [91m  ~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m656[0m:[93m9[0m - [91merror[0m[90m TS2304: [0mCannot find name 'triggerRevenueDistribution'.
+
+[7m656[0m   async triggerRevenueDistribution(
+[7m   [0m [91m        ~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m657[0m:[93m5[0m - [91merror[0m[90m TS2304: [0mCannot find name 'contractId'.
+
+[7m657[0m     contractId: string,
+[7m   [0m [91m    ~~~~~~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m657[0m:[93m15[0m - [91merror[0m[90m TS1005: [0m',' expected.
+
+[7m657[0m     contractId: string,
+[7m   [0m [91m              ~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m657[0m:[93m17[0m - [91merror[0m[90m TS2693: [0m'string' only refers to a type, but is being used as a value here.
+
+[7m657[0m     contractId: string,
+[7m   [0m [91m                ~~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m658[0m:[93m5[0m - [91merror[0m[90m TS2304: [0mCannot find name 'usdcToken'.
+
+[7m658[0m     usdcToken: string,
+[7m   [0m [91m    ~~~~~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m658[0m:[93m14[0m - [91merror[0m[90m TS1005: [0m',' expected.
+
+[7m658[0m     usdcToken: string,
+[7m   [0m [91m             ~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m658[0m:[93m16[0m - [91merror[0m[90m TS2693: [0m'string' only refers to a type, but is being used as a value here.
+
+[7m658[0m     usdcToken: string,
+[7m   [0m [91m               ~~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m659[0m:[93m5[0m - [91merror[0m[90m TS2304: [0mCannot find name 'totalAmount'.
+
+[7m659[0m     totalAmount: bigint,
+[7m   [0m [91m    ~~~~~~~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m659[0m:[93m16[0m - [91merror[0m[90m TS1005: [0m',' expected.
+
+[7m659[0m     totalAmount: bigint,
+[7m   [0m [91m               ~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m659[0m:[93m18[0m - [91merror[0m[90m TS2304: [0mCannot find name 'bigint'.
+
+[7m659[0m     totalAmount: bigint,
+[7m   [0m [91m                 ~~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m660[0m:[93m5[0m - [91merror[0m[90m TS2304: [0mCannot find name 'expectedPayouts'.
+
+[7m660[0m     expectedPayouts?: Map<string, bigint>,
+[7m   [0m [91m    ~~~~~~~~~~~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m660[0m:[93m21[0m - [91merror[0m[90m TS1109: [0mExpression expected.
+
+[7m660[0m     expectedPayouts?: Map<string, bigint>,
+[7m   [0m [91m                    ~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m661[0m:[93m4[0m - [91merror[0m[90m TS1005: [0m';' expected.
+
+[7m661[0m   ): Promise<{ hash: string; discrepancies: Array<{ holder: string; expected: bigint; actual: bigint }> }> {
+[7m   [0m [91m   ~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m661[0m:[93m6[0m - [91merror[0m[90m TS2365: [0mOperator '<' cannot be applied to types 'PromiseConstructor' and '{ hash: any; discrepancies: { (arrayLength: number): { holder: string; expected: bigint; actual: bigint; }[]; (...items: { holder: string; expected: bigint; actual: bigint; }[]): { holder: string; expected: bigint; actual: bigint; }[]; new (arrayLength: number): { ...; }[]; new (...items: { ...; }[]): { ...; }[]; .....'.
+
+[7m661[0m   ): Promise<{ hash: string; discrepancies: Array<{ holder: string; expected: bigint; actual: bigint }> }> {
+[7m   [0m [91m     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m661[0m:[93m6[0m - [91merror[0m[90m TS2365: [0mOperator '>' cannot be applied to types 'boolean' and '{ const: any; this: any; Array(): void; }'.
+
+[7m661[0m   ): Promise<{ hash: string; discrepancies: Array<{ holder: string; expected: bigint; actual: bigint }> }> {
+[7m   [0m [91m     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[7m662[0m     const args = [
+[7m   [0m [91m~~~~~~~~~~~~~~~~~~[0m
+[7m...[0m 
+[7m670[0m 
+[7m   [0m [91m[0m
+[7m671[0m     const discrepancies: Array<{ holder: string; expected: bigint; actual: bigint }> = [];
+[7m   [0m [91m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m661[0m:[93m22[0m - [91merror[0m[90m TS2693: [0m'string' only refers to a type, but is being used as a value here.
+
+[7m661[0m   ): Promise<{ hash: string; discrepancies: Array<{ holder: string; expected: bigint; actual: bigint }> }> {
+[7m   [0m [91m                     ~~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m661[0m:[93m28[0m - [91merror[0m[90m TS1005: [0m',' expected.
+
+[7m661[0m   ): Promise<{ hash: string; discrepancies: Array<{ holder: string; expected: bigint; actual: bigint }> }> {
+[7m   [0m [91m                           ~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m662[0m:[93m11[0m - [91merror[0m[90m TS1005: [0m':' expected.
+
+[7m662[0m     const args = [
+[7m   [0m [91m          ~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m662[0m:[93m11[0m - [91merror[0m[90m TS2304: [0mCannot find name 'args'.
+
+[7m662[0m     const args = [
+[7m   [0m [91m          ~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m663[0m:[93m19[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m663[0m       new Address(this.platformKeypair.publicKey()).toScVal(),
+[7m   [0m [91m                  ~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m664[0m:[93m19[0m - [91merror[0m[90m TS2304: [0mCannot find name 'usdcToken'.
+
+[7m664[0m       new Address(usdcToken).toScVal(),
+[7m   [0m [91m                  ~~~~~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m665[0m:[93m21[0m - [91merror[0m[90m TS2304: [0mCannot find name 'totalAmount'.
+
+[7m665[0m       nativeToScVal(totalAmount, { type: 'i128' }),
+[7m   [0m [91m                    ~~~~~~~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m666[0m:[93m6[0m - [91merror[0m[90m TS1005: [0m',' expected.
+
+[7m666[0m     ];
+[7m   [0m [91m     ~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m668[0m:[93m11[0m - [91merror[0m[90m TS1005: [0m':' expected.
+
+[7m668[0m     const hash = await this.invokeContract(contractId, 'distribute', args);
+[7m   [0m [91m          ~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m668[0m:[93m11[0m - [91merror[0m[90m TS2304: [0mCannot find name 'hash'.
+
+[7m668[0m     const hash = await this.invokeContract(contractId, 'distribute', args);
+[7m   [0m [91m          ~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m668[0m:[93m24[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m668[0m     const hash = await this.invokeContract(contractId, 'distribute', args);
+[7m   [0m [91m                       ~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m668[0m:[93m44[0m - [91merror[0m[90m TS2304: [0mCannot find name 'contractId'.
+
+[7m668[0m     const hash = await this.invokeContract(contractId, 'distribute', args);
+[7m   [0m [91m                                           ~~~~~~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m668[0m:[93m70[0m - [91merror[0m[90m TS2304: [0mCannot find name 'args'.
+
+[7m668[0m     const hash = await this.invokeContract(contractId, 'distribute', args);
+[7m   [0m [91m                                                                     ~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m668[0m:[93m75[0m - [91merror[0m[90m TS1005: [0m',' expected.
+
+[7m668[0m     const hash = await this.invokeContract(contractId, 'distribute', args);
+[7m   [0m [91m                                                                          ~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m669[0m:[93m9[0m - [91merror[0m[90m TS1005: [0m':' expected.
+
+[7m669[0m     this.logger.info({ contractId, totalAmount: totalAmount.toString(), hash }, 'Revenue distribution triggered');
+[7m   [0m [91m        ~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m669[0m:[93m24[0m - [91merror[0m[90m TS18004: [0mNo value exists in scope for the shorthand property 'contractId'. Either declare one or provide an initializer.
+
+[7m669[0m     this.logger.info({ contractId, totalAmount: totalAmount.toString(), hash }, 'Revenue distribution triggered');
+[7m   [0m [91m                       ~~~~~~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m669[0m:[93m49[0m - [91merror[0m[90m TS2304: [0mCannot find name 'totalAmount'.
+
+[7m669[0m     this.logger.info({ contractId, totalAmount: totalAmount.toString(), hash }, 'Revenue distribution triggered');
+[7m   [0m [91m                                                ~~~~~~~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m669[0m:[93m73[0m - [91merror[0m[90m TS18004: [0mNo value exists in scope for the shorthand property 'hash'. Either declare one or provide an initializer.
+
+[7m669[0m     this.logger.info({ contractId, totalAmount: totalAmount.toString(), hash }, 'Revenue distribution triggered');
+[7m   [0m [91m                                                                        ~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m669[0m:[93m114[0m - [91merror[0m[90m TS1005: [0m',' expected.
+
+[7m669[0m     this.logger.info({ contractId, totalAmount: totalAmount.toString(), hash }, 'Revenue distribution triggered');
+[7m   [0m [91m                                                                                                                 ~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m671[0m:[93m11[0m - [91merror[0m[90m TS1005: [0m':' expected.
+
+[7m671[0m     const discrepancies: Array<{ holder: string; expected: bigint; actual: bigint }> = [];
+[7m   [0m [91m          ~~~~~~~~~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m671[0m:[93m11[0m - [91merror[0m[90m TS2304: [0mCannot find name 'discrepancies'.
+
+[7m671[0m     const discrepancies: Array<{ holder: string; expected: bigint; actual: bigint }> = [];
+[7m   [0m [91m          ~~~~~~~~~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m671[0m:[93m24[0m - [91merror[0m[90m TS1005: [0m',' expected.
+
+[7m671[0m     const discrepancies: Array<{ holder: string; expected: bigint; actual: bigint }> = [];
+[7m   [0m [91m                       ~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m671[0m:[93m32[0m - [91merror[0m[90m TS1005: [0m'>' expected.
+
+[7m671[0m     const discrepancies: Array<{ holder: string; expected: bigint; actual: bigint }> = [];
+[7m   [0m [91m                               ~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m671[0m:[93m42[0m - [91merror[0m[90m TS2693: [0m'string' only refers to a type, but is being used as a value here.
+
+[7m671[0m     const discrepancies: Array<{ holder: string; expected: bigint; actual: bigint }> = [];
+[7m   [0m [91m                                         ~~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m671[0m:[93m60[0m - [91merror[0m[90m TS2304: [0mCannot find name 'bigint'.
+
+[7m671[0m     const discrepancies: Array<{ holder: string; expected: bigint; actual: bigint }> = [];
+[7m   [0m [91m                                                           ~~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m671[0m:[93m76[0m - [91merror[0m[90m TS2304: [0mCannot find name 'bigint'.
+
+[7m671[0m     const discrepancies: Array<{ holder: string; expected: bigint; actual: bigint }> = [];
+[7m   [0m [91m                                                                           ~~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m671[0m:[93m84[0m - [91merror[0m[90m TS1005: [0m',' expected.
+
+[7m671[0m     const discrepancies: Array<{ holder: string; expected: bigint; actual: bigint }> = [];
+[7m   [0m [91m                                                                                   ~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m671[0m:[93m86[0m - [91merror[0m[90m TS1109: [0mExpression expected.
+
+[7m671[0m     const discrepancies: Array<{ holder: string; expected: bigint; actual: bigint }> = [];
+[7m   [0m [91m                                                                                     ~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m673[0m:[93m9[0m - [91merror[0m[90m TS2304: [0mCannot find name 'expectedPayouts'.
+
+[7m673[0m     if (expectedPayouts && expectedPayouts.size > 0) {
+[7m   [0m [91m        ~~~~~~~~~~~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m673[0m:[93m28[0m - [91merror[0m[90m TS2304: [0mCannot find name 'expectedPayouts'.
+
+[7m673[0m     if (expectedPayouts && expectedPayouts.size > 0) {
+[7m   [0m [91m                           ~~~~~~~~~~~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m676[0m:[93m34[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m676[0m         const actualMap = (await this.readContract(contractId, 'get_holders', [])) as Record<string, unknown> | null;
+[7m   [0m [91m                                 ~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m676[0m:[93m52[0m - [91merror[0m[90m TS2304: [0mCannot find name 'contractId'.
+
+[7m676[0m         const actualMap = (await this.readContract(contractId, 'get_holders', [])) as Record<string, unknown> | null;
+[7m   [0m [91m                                                   ~~~~~~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m679[0m:[93m44[0m - [91merror[0m[90m TS2304: [0mCannot find name 'expectedPayouts'.
+
+[7m679[0m           for (const [holder, expected] of expectedPayouts.entries()) {
+[7m   [0m [91m                                           ~~~~~~~~~~~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m683[0m:[93m15[0m - [91merror[0m[90m TS2304: [0mCannot find name 'discrepancies'.
+
+[7m683[0m               discrepancies.push({ holder, expected, actual });
+[7m   [0m [91m              ~~~~~~~~~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m684[0m:[93m15[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m684[0m               this.logger.error(
+[7m   [0m [91m              ~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m692[0m:[93m9[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m692[0m         this.logger.warn({ err: err.message }, 'Could not cross-check distribution payouts');
+[7m   [0m [91m        ~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m697[0m:[93m3[0m - [91merror[0m[90m TS1128: [0mDeclaration or statement expected.
+
+[7m697[0m   }
+[7m   [0m [91m  ~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m702[0m:[93m3[0m - [91merror[0m[90m TS1434: [0mUnexpected keyword or identifier.
+
+[7m702[0m   async getRevenueDistributionCount(contractId: string): Promise<number> {
+[7m   [0m [91m  ~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m702[0m:[93m3[0m - [91merror[0m[90m TS2304: [0mCannot find name 'async'.
+
+[7m702[0m   async getRevenueDistributionCount(contractId: string): Promise<number> {
+[7m   [0m [91m  ~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m702[0m:[93m9[0m - [91merror[0m[90m TS2304: [0mCannot find name 'getRevenueDistributionCount'.
+
+[7m702[0m   async getRevenueDistributionCount(contractId: string): Promise<number> {
+[7m   [0m [91m        ~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m702[0m:[93m37[0m - [91merror[0m[90m TS2304: [0mCannot find name 'contractId'.
+
+[7m702[0m   async getRevenueDistributionCount(contractId: string): Promise<number> {
+[7m   [0m [91m                                    ~~~~~~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m702[0m:[93m47[0m - [91merror[0m[90m TS1005: [0m',' expected.
+
+[7m702[0m   async getRevenueDistributionCount(contractId: string): Promise<number> {
+[7m   [0m [91m                                              ~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m702[0m:[93m49[0m - [91merror[0m[90m TS2693: [0m'string' only refers to a type, but is being used as a value here.
+
+[7m702[0m   async getRevenueDistributionCount(contractId: string): Promise<number> {
+[7m   [0m [91m                                                ~~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m702[0m:[93m56[0m - [91merror[0m[90m TS1005: [0m';' expected.
+
+[7m702[0m   async getRevenueDistributionCount(contractId: string): Promise<number> {
+[7m   [0m [91m                                                       ~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m702[0m:[93m58[0m - [91merror[0m[90m TS2365: [0mOperator '>' cannot be applied to types 'boolean' and '{ const: any; return: number; }'.
+
+[7m702[0m   async getRevenueDistributionCount(contractId: string): Promise<number> {
+[7m   [0m [91m                                                         ~~~~~~~~~~~~~~~~~[0m
+[7m703[0m     const result = await this.readContract(contractId, 'get_distribution_count', []);
+[7m   [0m [91m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[7m704[0m     return Number(result ?? 0);
+[7m   [0m [91m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[7m705[0m   }
+[7m   [0m [91m~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m702[0m:[93m66[0m - [91merror[0m[90m TS2693: [0m'number' only refers to a type, but is being used as a value here.
+
+[7m702[0m   async getRevenueDistributionCount(contractId: string): Promise<number> {
+[7m   [0m [91m                                                                 ~~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m703[0m:[93m11[0m - [91merror[0m[90m TS1005: [0m':' expected.
+
+[7m703[0m     const result = await this.readContract(contractId, 'get_distribution_count', []);
+[7m   [0m [91m          ~~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m703[0m:[93m11[0m - [91merror[0m[90m TS2304: [0mCannot find name 'result'.
+
+[7m703[0m     const result = await this.readContract(contractId, 'get_distribution_count', []);
+[7m   [0m [91m          ~~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m703[0m:[93m26[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+[7m703[0m     const result = await this.readContract(contractId, 'get_distribution_count', []);
+[7m   [0m [91m                         ~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m703[0m:[93m44[0m - [91merror[0m[90m TS2304: [0mCannot find name 'contractId'.
+
+[7m703[0m     const result = await this.readContract(contractId, 'get_distribution_count', []);
+[7m   [0m [91m                                           ~~~~~~~~~~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m703[0m:[93m85[0m - [91merror[0m[90m TS1005: [0m',' expected.
+
+[7m703[0m     const result = await this.readContract(contractId, 'get_distribution_count', []);
+[7m   [0m [91m                                                                                    ~[0m
+[96msrc/soroban/soroban.service.ts[0m:[93m704[0m:[93m12[0m - [91merror[0m[90m TS1005: [0m':' expected.
+
+[7m704[0m     return Number(Found 731 error(s).
+

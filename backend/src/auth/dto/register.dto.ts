@@ -3,9 +3,9 @@ import {
   IsEmail,
   IsIn,
   IsNotEmpty,
+  IsOptional,
   IsString,
   MinLength,
-  IsOptional,
 } from 'class-validator';
 import { IsStrongPassword } from '../validators/password-strength.validator';
 

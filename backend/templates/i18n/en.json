@@ -1,0 +1,60 @@
+{
+  "welcome": {
+    "subject": "Welcome to Agri-Fi"
+  },
+  "kyc-approved": {
+    "subject": "Your KYC verification has been approved"
+  },
+  "kyc-rejected": {
+    "subject": "Your KYC verification was not approved"
+  },
+  "investment-confirmed": {
+    "subject": "Investment confirmed"
+  },
+  "payment-distributed": {
+    "subject": "Payment distributed"
+  },
+  "deal-funded": {
+    "subject": "Deal fully funded"
+  },
+  "deal-expired": {
+    "subject": "Deal expired"
+  },
+  "password-reset": {
+    "subject": "Reset your password"
+  },
+  "account-lockout": {
+    "subject": "Your account has been locked"
+  },
+  "security-alert": {
+    "subject": "Security alert: new device sign-in"
+  },
+  "deal-digest": {
+    "subject": "Your weekly deal digest",
+    "sections": {
+      "deals": "Funding progress",
+      "milestones": "Upcoming milestones this week",
+      "documents": "Documents awaiting submission",
+      "actions": "Action items",
+      "unsubscribe": "Unsubscribe from these emails"
+    }
+  },
+  "co-farmer-invitation": {
+    "subject": "You have been invited to co-farm a deal"
+  },
+  "drip-welcome": {
+    "subject": "Welcome to Agri-Fi — Start Your Investment Journey"
+  },
+  "drip-how-it-works": {
+    "subject": "How Agri-Fi Works: 5 Simple Steps"
+  },
+  "drip-featured-deal": {
+    "subject": "This Week's Featured Deals on Agri-Fi"
+  },
+  "drip-risk-returns": {
+    "subject": "Understanding Risk & Returns on Agri-Fi"
+  },
+  "drip-last-chance": {
+    "subject": "Complete Your First Investment — Deals Are Filling Fast"
+  }
+}

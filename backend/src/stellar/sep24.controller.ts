@@ -56,7 +56,10 @@ export class Sep24Controller {
     @Req() req: Request,
   ) {
     const user = req.user as User;
-    this.sep24Service.assertAccountMatchesWallet(body.account, user.walletAddress);
+    this.sep24Service.assertAccountMatchesWallet(
+      body.account,
+      user.walletAddress,
+    );
 
     return this.sep24Service.initiateDepositInteractive(
       {
@@ -82,7 +85,10 @@ export class Sep24Controller {
     @Req() req: Request,
   ) {
     const user = req.user as User;
-    this.sep24Service.assertAccountMatchesWallet(body.account, user.walletAddress);
+    this.sep24Service.assertAccountMatchesWallet(
+      body.account,
+      user.walletAddress,
+    );
 
     return this.sep24Service.initiateWithdrawInteractive(
       {
@@ -113,7 +119,9 @@ export class Sep24Controller {
   @Get('transactions/deposit')
   @UseGuards(AuthGuard('jwt'))
   @ApiBearerAuth('jwt')
-  @ApiOperation({ summary: 'List deposit transactions for the authenticated account' })
+  @ApiOperation({
+    summary: 'List deposit transactions for the authenticated account',
+  })
   async listDeposits(@Req() req: Request) {
     const user = req.user as User;
     if (!user.walletAddress) {
@@ -128,7 +136,9 @@ export class Sep24Controller {
   @Get('transactions/withdraw')
   @UseGuards(AuthGuard('jwt'))
   @ApiBearerAuth('jwt')
-  @ApiOperation({ summary: 'List withdrawal transactions for the authenticated account' })
+  @ApiOperation({
+    summary: 'List withdrawal transactions for the authenticated account',
+  })
   async listWithdrawals(@Req() req: Request) {
     const user = req.user as User;
     if (!user.walletAddress) {
@@ -148,7 +158,8 @@ export class Sep24Controller {
   @UseGuards(WebhookSignatureGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Receive SEP-24 transaction status callbacks from payment processors',
+    summary:
+      'Receive SEP-24 transaction status callbacks from payment processors',
   })
   @ApiHeader({
     name: 'x-webhook-signature',

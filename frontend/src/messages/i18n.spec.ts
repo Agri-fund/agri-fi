@@ -1,4 +1,5 @@
 import en from "./en.json";
+import es from "./es.json";
 import fr from "./fr.json";
 import sw from "./sw.json";
 import pt from "./pt.json";
@@ -39,6 +40,7 @@ function findMissingKeys(
 
 describe("Translation Catalogs", () => {
   const enKeys = extractKeys(en);
+  const esKeys = extractKeys(es);
   const frKeys = extractKeys(fr);
   const swKeys = extractKeys(sw);
   const ptKeys = extractKeys(pt);
@@ -57,6 +59,14 @@ describe("Translation Catalogs", () => {
       if (extraInFr.size > 0) {
         console.error("Extra keys in French:", Array.from(extraInFr));
       }
+    });
+
+    it("should have identical keys in English and Spanish catalogs", () => {
+      const missingInEs = findMissingKeys(enKeys, esKeys);
+      const extraInEs = findMissingKeys(esKeys, enKeys);
+
+      expect(missingInEs.size).toBe(0);
+      expect(extraInEs.size).toBe(0);
     });
 
     it("should have identical keys in English and Swahili catalogs", () => {
@@ -144,11 +154,13 @@ describe("Translation Catalogs", () => {
     it("should report key counts for all catalogs", () => {
       console.log("Translation Catalog Statistics:");
       console.log(`English keys: ${enKeys.size}`);
+      console.log(`Spanish keys: ${esKeys.size}`);
       console.log(`French keys: ${frKeys.size}`);
       console.log(`Swahili keys: ${swKeys.size}`);
       console.log(`Portuguese keys: ${ptKeys.size}`);
 
       // All catalogs should have the same number of keys
+      expect(esKeys.size).toBe(enKeys.size);
       expect(frKeys.size).toBe(enKeys.size);
       expect(swKeys.size).toBe(enKeys.size);
       expect(ptKeys.size).toBe(enKeys.size);
@@ -182,17 +194,21 @@ describe("Translation Catalogs", () => {
       };
 
       const enEmpty = checkEmptyValues(en, "en");
+      const esEmpty = checkEmptyValues(es, "es");
       const frEmpty = checkEmptyValues(fr, "fr");
       const swEmpty = checkEmptyValues(sw, "sw");
       const ptEmpty = checkEmptyValues(pt, "pt");
 
       expect(enEmpty).toEqual([]);
+      expect(esEmpty).toEqual([]);
       expect(frEmpty).toEqual([]);
       expect(swEmpty).toEqual([]);
       expect(ptEmpty).toEqual([]);
 
       if (enEmpty.length > 0)
         console.error("Empty values in English:", enEmpty);
+      if (esEmpty.length > 0)
+        console.error("Empty values in Spanish:", esEmpty);
       if (frEmpty.length > 0) console.error("Empty values in French:", frEmpty);
       if (swEmpty.length > 0)
         console.error("Empty values in Swahili:", swEmpty);
@@ -243,6 +259,7 @@ describe("Translation Catalogs", () => {
       };
 
       checkPlaceholders(en, fr, "", "FR");
+      checkPlaceholders(en, es, "", "ES");
       checkPlaceholders(en, sw, "", "SW");
       checkPlaceholders(en, pt, "", "PT");
 

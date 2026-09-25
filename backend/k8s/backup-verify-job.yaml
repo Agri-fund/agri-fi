@@ -1,0 +1,189 @@
+# backup-verify-job.yaml
+# Issue #862 — Automated database backup verification with restore testing.
+#
+# CronJob: runs every Sunday at 04:00 UTC (after the Sunday 02:00 archival job).
+# Also usable as a one-off Job for manual verification — extract the Job spec
+# and run: kubectl create -f <job-only.yaml>
+#
+# The job:
+#   1. Spins up an ephemeral sidecar Postgres container alongside the verify script.
+#   2. Downloads + decrypts the latest backup from S3.
+#   3. Restores it to the sidecar Postgres.
+#   4. Runs integrity-checks.sql and referential checks.
+#   5. Emails a report and fires a PagerDuty CRITICAL alert on failure.
+#   6. Exits — the pod terminates, taking the sidecar Postgres with it.
+#
+# Prerequisites:
+#   - Secret "agri-fi-backend-secrets" must contain BACKUP_ENCRYPTION_KEY,
+#     PAGERDUTY_ROUTING_KEY, SMTP_USER, SMTP_PASS, VERIFY_DB_PASS.
+#   - ConfigMap "agri-fi-backend-config" must contain BACKUP_S3_BUCKET,
+#     SMTP_HOST, SMTP_PORT, REPORT_EMAIL, VERIFY_DB_HOST (set to 127.0.0.1
+#     when running in the same pod as the sidecar PG).
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: db-backup-verify
+  labels:
+    app: agri-fi-backup-verify
+spec:
+  # Every Sunday at 04:00 UTC — after archival (02:00) and regular backup (03:00)
+  schedule: "0 4 * * 0"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      # Retry once on transient failure (network, S3 throttle)
+      backoffLimit: 1
+      # Hard deadline: 2 hours (well above the 30-min SLO)
+      activeDeadlineSeconds: 7200
+      template:
+        metadata:
+          labels:
+            app: agri-fi-backup-verify
+        spec:
+          restartPolicy: Never
+          serviceAccountName: agri-fi-backup-verify-sa
+
+          # Init container: wait for the sidecar Postgres to be ready
+          initContainers:
+            - name: wait-for-postgres
+              image: postgres:15-alpine
+              command:
+                - sh
+                - -c
+                - |
+                  until pg_isready -h 127.0.0.1 -p 5433 -U postgres; do
+                    echo "Waiting for sidecar postgres..."
+                    sleep 2
+                  done
+              env:
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: agri-fi-backend-secrets
+                      key: VERIFY_DB_PASS
+
+          containers:
+            # ── Main verify container ────────────────────────────────────────
+            - name: backup-verify
+              image: agri-fi/backend:latest
+              command:
+                - /bin/bash
+                - /app/scripts/verify-restore.sh
+              envFrom:
+                - configMapRef:
+                    name: agri-fi-backend-config
+                - secretRef:
+                    name: agri-fi-backend-secrets
+              env:
+                # Override DB host: target the sidecar PG in this same pod
+                - name: VERIFY_DB_HOST
+                  value: "127.0.0.1"
+                - name: VERIFY_DB_PORT
+                  value: "5433"
+                - name: VERIFY_DB_NAME
+                  value: "agri_fi_verify"
+                - name: VERIFY_DB_USER
+                  value: "postgres"
+                - name: VERIFY_DB_PASS
+                  valueFrom:
+                    secretKeyRef:
+                      name: agri-fi-backend-secrets
+                      key: VERIFY_DB_PASS
+                - name: BACKUP_ENCRYPTION_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: agri-fi-backend-secrets
+                      key: BACKUP_ENCRYPTION_KEY
+                - name: PAGERDUTY_ROUTING_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: agri-fi-backend-secrets
+                      key: PAGERDUTY_ROUTING_KEY
+                - name: SLO_RESTORE_MINUTES
+                  value: "30"
+              resources:
+                requests:
+                  cpu: "500m"
+                  memory: "512Mi"
+                limits:
+                  cpu: "1000m"
+                  memory: "1Gi"
+
+            # ── Sidecar: isolated PostgreSQL restore target ───────────────────
+            - name: postgres-restore-target
+              image: postgres:15-alpine
+              env:
+                - name: POSTGRES_USER
+                  value: "postgres"
+                - name: POSTGRES_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: agri-fi-backend-secrets
+                      key: VERIFY_DB_PASS
+                - name: POSTGRES_DB
+                  value: "postgres"
+                # Listen on non-standard port so it never conflicts with prod PG
+                - name: PGPORT
+                  value: "5433"
+              ports:
+                - containerPort: 5433
+                  name: pg-restore
+              resources:
+                requests:
+                  cpu: "500m"
+                  memory: "1Gi"
+                limits:
+                  cpu: "2000m"
+                  memory: "4Gi"
+              # Ephemeral storage — no PVC; data is discarded when pod exits
+              volumeMounts:
+                - name: pg-data
+                  mountPath: /var/lib/postgresql/data
+
+          volumes:
+            - name: pg-data
+              emptyDir: {}
+
+---
+# ServiceAccount with minimal permissions — only needs S3 read access (via IAM role annotation)
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: agri-fi-backup-verify-sa
+  labels:
+    app: agri-fi-backup-verify
+  annotations:
+    # Bind your S3-read IAM role here via IRSA (EKS) or Workload Identity (GKE)
+    eks.amazonaws.com/role-arn: ""
+
+---
+# NetworkPolicy: allow the verify job egress to S3 (via HTTPS) and SMTP.
+# The sidecar PG is localhost — no network policy needed for loopback.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backup-verify-egress
+spec:
+  podSelector:
+    matchLabels:
+      app: agri-fi-backup-verify
+  policyTypes:
+    - Egress
+  egress:
+    # HTTPS to AWS S3 and Secrets Manager
+    - ports:
+        - protocol: TCP
+          port: 443
+    # SMTP report delivery
+    - ports:
+        - protocol: TCP
+          port: 25
+        - protocol: TCP
+          port: 587
+    # PagerDuty Events API (HTTPS — already covered by 443 above, explicit for clarity)
+    - ports:
+        - protocol: TCP
+          port: 443

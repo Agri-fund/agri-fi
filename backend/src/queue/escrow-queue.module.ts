@@ -26,6 +26,7 @@ export const ESCROW_QUEUE_SERVICE = 'ESCROW_QUEUE_SERVICE';
             ],
             queue: ESCROW_QUEUE_NAME,
             queueOptions: dlxQueueOptions(ESCROW_QUEUE_DLX),
+            prefetchCount: config.get<number>('RABBITMQ_PREFETCH_COUNT', 10),
           },
         }),
         inject: [ConfigService],

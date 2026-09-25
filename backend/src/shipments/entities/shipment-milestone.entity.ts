@@ -3,6 +3,7 @@ import {
   PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
+  DeleteDateColumn,
 } from 'typeorm';
 
 export type MilestoneType = 'farm' | 'warehouse' | 'port' | 'importer';
@@ -38,4 +39,7 @@ export class ShipmentMilestone {
 
   @CreateDateColumn({ name: 'recorded_at' })
   recordedAt: Date;
+
+  @DeleteDateColumn({ name: 'deleted_at', nullable: true })
+  deletedAt: Date | null;
 }

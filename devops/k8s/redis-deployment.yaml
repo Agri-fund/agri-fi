@@ -1,5 +1,11 @@
-# Redis Deployment with persistence for Agri-fi
-# This deployment provides a caching layer for the application
+# Redis Deployment with memory limits, eviction policy, and Prometheus exporter
+# Updated for issue #735 — Redis Cache Memory Alerts
+#
+# Changes:
+#   - Redis started with --maxmemory 400mb and --maxmemory-policy allkeys-lru
+#     to prevent OOM kills and ensure graceful eviction of session/rate-limit keys
+#   - redis-exporter sidecar added on port 9121 so Prometheus can scrape
+#     redis_memory_used_bytes and related metrics
 
 apiVersion: apps/v1
 kind: Deployment
@@ -20,10 +26,26 @@ spec:
       labels:
         app: agri-fi
         component: redis
+      annotations:
+        # Tell Prometheus to scrape the redis-exporter sidecar
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9121"
+        prometheus.io/path: "/metrics"
     spec:
       containers:
       - name: redis
         image: redis:7-alpine
+        # Configure maxmemory cap and allkeys-lru eviction policy so Redis
+        # gracefully evicts the least-recently-used keys instead of refusing
+        # writes or crashing when memory fills up (#735).
+        command:
+          - redis-server
+          - --maxmemory
+          - "400mb"
+          - --maxmemory-policy
+          - allkeys-lru
+          - --save
+          - ""
         ports:
         - containerPort: 6379
           name: redis
@@ -32,6 +54,9 @@ spec:
             memory: "256Mi"
             cpu: "250m"
           limits:
+            # Hard memory limit on the container. Redis maxmemory (400 mb)
+            # is set slightly below this limit so Redis's own eviction
+            # kicks in before the kernel OOM-kills the container.
             memory: "512Mi"
             cpu: "500m"
         volumeMounts:
@@ -51,6 +76,34 @@ spec:
             - ping
           initialDelaySeconds: 5
           periodSeconds: 5
+
+      # ── Prometheus Redis Exporter sidecar (#735) ──────────────────────────
+      # oliver006/redis_exporter exposes Redis INFO metrics as Prometheus
+      # time-series on :9121/metrics.  The RedisMemoryUsageHigh alert rule
+      # in devops/prometheus/alerts.yaml queries redis_memory_used_bytes and
+      # redis_memory_max_bytes from this exporter.
+      - name: redis-exporter
+        image: oliver006/redis_exporter:v1.62.0
+        env:
+        - name: REDIS_ADDR
+          value: "redis://localhost:6379"
+        ports:
+        - containerPort: 9121
+          name: metrics
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "50m"
+          limits:
+            memory: "64Mi"
+            cpu: "100m"
+        livenessProbe:
+          httpGet:
+            path: /metrics
+            port: 9121
+          initialDelaySeconds: 10
+          periodSeconds: 15
+
       volumes:
       - name: redis-data
         persistentVolumeClaim:
@@ -72,3 +125,28 @@ spec:
     requests:
       storage: 1Gi
   storageClassName: standard
+---
+# Service exposing Redis port 6379 to the cluster
+# and the redis-exporter metrics port 9121 to Prometheus
+apiVersion: v1
+kind: Service
+metadata:
+  name: agri-fi-redis
+  namespace: default
+  labels:
+    app: agri-fi
+    component: redis
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9121"
+spec:
+  selector:
+    app: agri-fi
+    component: redis
+  ports:
+  - name: redis
+    port: 6379
+    targetPort: 6379
+  - name: metrics
+    port: 9121
+    targetPort: 9121

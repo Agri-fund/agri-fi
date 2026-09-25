@@ -15,7 +15,7 @@ function ModalContent() {
 describe('ModalWrapper', () => {
   it('renders nothing when isOpen is false', () => {
     render(
-      <ModalWrapper isOpen={false} onClose={jest.fn()}>
+      <ModalWrapper isOpen={false} onClose={vi.fn()}>
         <ModalContent />
       </ModalWrapper>,
     );
@@ -25,7 +25,7 @@ describe('ModalWrapper', () => {
 
   it('renders children with dialog semantics when isOpen is true', () => {
     render(
-      <ModalWrapper isOpen onClose={jest.fn()}>
+      <ModalWrapper isOpen onClose={vi.fn()}>
         <ModalContent />
       </ModalWrapper>,
     );
@@ -36,7 +36,7 @@ describe('ModalWrapper', () => {
   });
 
   it('calls onClose when Escape is pressed', async () => {
-    const onClose = jest.fn();
+    const onClose = vi.fn();
     const user = userEvent.setup();
     render(
       <ModalWrapper isOpen onClose={onClose}>
@@ -50,7 +50,7 @@ describe('ModalWrapper', () => {
   });
 
   it('does not call onClose on Escape when isDirty is true', async () => {
-    const onClose = jest.fn();
+    const onClose = vi.fn();
     const user = userEvent.setup();
     render(
       <ModalWrapper isOpen onClose={onClose} isDirty>
@@ -64,7 +64,7 @@ describe('ModalWrapper', () => {
   });
 
   it('calls onClose when the backdrop is clicked', async () => {
-    const onClose = jest.fn();
+    const onClose = vi.fn();
     const user = userEvent.setup();
     render(
       <ModalWrapper isOpen onClose={onClose}>
@@ -78,7 +78,7 @@ describe('ModalWrapper', () => {
   });
 
   it('does not call onClose when clicking inside the dialog panel', async () => {
-    const onClose = jest.fn();
+    const onClose = vi.fn();
     const user = userEvent.setup();
     render(
       <ModalWrapper isOpen onClose={onClose}>
@@ -92,7 +92,7 @@ describe('ModalWrapper', () => {
   });
 
   it('does not call onClose on backdrop click when isDirty is true', async () => {
-    const onClose = jest.fn();
+    const onClose = vi.fn();
     const user = userEvent.setup();
     render(
       <ModalWrapper isOpen onClose={onClose} isDirty>
@@ -107,7 +107,7 @@ describe('ModalWrapper', () => {
 
   it('moves focus to the first focusable element when opened', () => {
     render(
-      <ModalWrapper isOpen onClose={jest.fn()}>
+      <ModalWrapper isOpen onClose={vi.fn()}>
         <ModalContent />
       </ModalWrapper>,
     );
@@ -118,7 +118,7 @@ describe('ModalWrapper', () => {
   it('wraps Tab from the last focusable element back to the first (focus trap)', async () => {
     const user = userEvent.setup();
     render(
-      <ModalWrapper isOpen onClose={jest.fn()}>
+      <ModalWrapper isOpen onClose={vi.fn()}>
         <ModalContent />
       </ModalWrapper>,
     );
@@ -132,7 +132,7 @@ describe('ModalWrapper', () => {
   it('wraps Shift+Tab from the first focusable element back to the last (focus trap)', async () => {
     const user = userEvent.setup();
     render(
-      <ModalWrapper isOpen onClose={jest.fn()}>
+      <ModalWrapper isOpen onClose={vi.fn()}>
         <ModalContent />
       </ModalWrapper>,
     );
@@ -151,7 +151,7 @@ describe('ModalWrapper', () => {
     expect(trigger).toHaveFocus();
 
     const { rerender } = render(
-      <ModalWrapper isOpen onClose={jest.fn()}>
+      <ModalWrapper isOpen onClose={vi.fn()}>
         <ModalContent />
       </ModalWrapper>,
     );
@@ -159,7 +159,7 @@ describe('ModalWrapper', () => {
     expect(screen.getByText('First')).toHaveFocus();
 
     rerender(
-      <ModalWrapper isOpen={false} onClose={jest.fn()}>
+      <ModalWrapper isOpen={false} onClose={vi.fn()}>
         <ModalContent />
       </ModalWrapper>,
     );
@@ -171,7 +171,7 @@ describe('ModalWrapper', () => {
   it('does not throw and stops tabbing when there are no focusable elements', async () => {
     const user = userEvent.setup();
     render(
-      <ModalWrapper isOpen onClose={jest.fn()}>
+      <ModalWrapper isOpen onClose={vi.fn()}>
         <p>No interactive elements here.</p>
       </ModalWrapper>,
     );

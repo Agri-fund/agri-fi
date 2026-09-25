@@ -1,32 +1,69 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { apiClient } from '@/lib/api';
+import { apiClient, getStoredToken } from '@/lib/api';
 import { useToast } from '@/components/ui/ToastProvider';
 import { Dropzone, DropzoneFile } from '@/components/ui/Dropzone';
+import { useTranslations } from 'next-intl';
 
-type Mode = 'individual' | 'business';
+type Step = 0 | 1 | 2 | 3 | 4;
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+interface DraftPayload {
+  step: Step;
+  personal: {
+    fullName: string;
+    dateOfBirth: string;
+    nationality: string;
+    address: string;
+  };
+  files: {
+    frontName: string;
+    backName: string;
+    proofName: string;
+    selfieName: string;
+  };
+  savedAt: string;
+}
 
-/**
- * Uploads a file to the backend /documents endpoint and returns the storage URL.
- * Falls back to a placeholder URL if the upload endpoint is unavailable.
- */
-async function uploadFile(file: File, tradeDealId: string): Promise<string> {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+const LOCAL_KEY = 'kycWizard.draft.v1';
+const AUTO_SAVE_MS = 30_000;
+
+function emptyDraft(): DraftPayload {
+  return {
+    step: 0,
+    personal: {
+      fullName: '',
+      dateOfBirth: '',
+      nationality: '',
+      address: '',
+    },
+    files: {
+      frontName: '',
+      backName: '',
+      proofName: '',
+      selfieName: '',
+    },
+    savedAt: new Date().toISOString(),
+  };
+}
+
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+async function uploadFile(file: File): Promise<string> {
   const formData = new FormData();
   formData.append('file', file);
   formData.append('doc_type', 'purchase_agreement');
-  formData.append('trade_deal_id', tradeDealId);
+  formData.append('trade_deal_id', 'kyc-placeholder');
 
   const res = await fetch(
     `${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'}/documents`,
     {
       method: 'POST',
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      headers: getStoredToken() ? { Authorization: `Bearer ${getStoredToken()}` } : {},
       body: formData,
     },
   );
@@ -40,317 +77,411 @@ async function uploadFile(file: File, tradeDealId: string): Promise<string> {
   return data.storageUrl ?? data.storage_url ?? '';
 }
 
-// ── Component ─────────────────────────────────────────────────────────────────
-
 export default function KycPage() {
   const router = useRouter();
   const { toast } = useToast();
+  const t = useTranslations('kyc');
   const currentUser = useMemo(() => apiClient.getCurrentUser(), []);
 
-  const [mode, setMode] = useState<Mode>('individual');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [submitted, setSubmitted] = useState(false);
-
-  // Individual fields
-  const [govIdFile, setGovIdFile] = useState<DropzoneFile | null>(null);
-  const [proofFile, setProofFile] = useState<DropzoneFile | null>(null);
-
-  // Business fields
-  const [companyName, setCompanyName] = useState('');
-  const [registrationNumber, setRegistrationNumber] = useState('');
-  const [articlesFile, setArticlesFile] = useState<DropzoneFile | null>(null);
-  const [licenseFile, setLicenseFile] = useState<DropzoneFile | null>(null);
-
-  // Upload progress tracking
-  const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
+  const [step, setStep] = useState<Step>(0);
+  const [draft, setDraft] = useState<DraftPayload>(emptyDraft());
+  const [front, setFront] = useState<DropzoneFile | null>(null);
+  const [back, setBack] = useState<DropzoneFile | null>(null);
+  const [proof, setProof] = useState<DropzoneFile | null>(null);
+  const [selfie, setSelfie] = useState<DropzoneFile | null>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [restoredAt, setRestoredAt] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const isHydrated = useRef(false);
 
   useEffect(() => {
-    if (!currentUser) router.push('/login');
+    if (!currentUser) {
+      router.push('/login');
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const remote = await fetch('/api/auth/kyc/draft', {
+          headers: getStoredToken() ? { Authorization: `Bearer ${getStoredToken()}` } : {},
+        });
+        const remoteData = await remote.json().catch(() => ({}));
+
+        const localRaw = localStorage.getItem(LOCAL_KEY);
+        const localData = localRaw ? (JSON.parse(localRaw) as DraftPayload) : null;
+        const incoming = (remoteData?.draft ?? localData) as DraftPayload | null;
+
+        if (!cancelled && incoming) {
+          setDraft({
+            ...emptyDraft(),
+            ...incoming,
+            personal: {
+              ...emptyDraft().personal,
+              ...(incoming.personal ?? {}),
+            },
+            files: {
+              ...emptyDraft().files,
+              ...(incoming.files ?? {}),
+            },
+          });
+          setStep(incoming.step ?? 0);
+          setRestoredAt(incoming.savedAt ?? new Date().toISOString());
+        }
+      } catch {
+        // If draft restore fails, we just start fresh.
+      } finally {
+        isHydrated.current = true;
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [currentUser, router]);
 
-  // Revoke object URLs on unmount to avoid memory leaks
   useEffect(() => {
     return () => {
-      [govIdFile, proofFile, articlesFile, licenseFile].forEach((f) => {
-        if (f?.previewUrl) URL.revokeObjectURL(f.previewUrl);
+      [front, back, proof, selfie].forEach((file) => {
+        if (file?.previewUrl) URL.revokeObjectURL(file.previewUrl);
       });
     };
-  }, [govIdFile, proofFile, articlesFile, licenseFile]);
+  }, [front, back, proof, selfie]);
 
-  const trackProgress = useCallback((key: string, pct: number) => {
-    setUploadProgress((prev) => ({ ...prev, [key]: pct }));
-  }, []);
+  const persistDraft = async (nextStep: Step, nextDraft = draft) => {
+    const payload: DraftPayload = {
+      ...nextDraft,
+      step: nextStep,
+      savedAt: new Date().toISOString(),
+    };
 
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-    setUploadProgress({});
+    setDraft(payload);
+    try {
+      localStorage.setItem(LOCAL_KEY, JSON.stringify(payload));
+    } catch {
+      // local draft persistence is best-effort
+    }
+
+    if (!isHydrated.current) return;
 
     try {
-      // KYC submissions use a placeholder deal ID for document anchoring
-      const kycDealId = 'kyc-placeholder';
-
-      if (mode === 'individual') {
-        let governmentIdUrl: string | undefined;
-        let proofOfAddressUrl: string | undefined;
-
-        if (govIdFile) {
-          trackProgress('govId', 30);
-          governmentIdUrl = await uploadFile(govIdFile.file, kycDealId).catch(() => '');
-          trackProgress('govId', 100);
-        }
-
-        if (proofFile) {
-          trackProgress('proof', 30);
-          proofOfAddressUrl = await uploadFile(proofFile.file, kycDealId).catch(() => '');
-          trackProgress('proof', 100);
-        }
-
-        await apiClient.submitKyc({
-          isCorporate: false,
-          governmentIdUrl,
-          proofOfAddressUrl,
-        });
-      } else {
-        let articlesOfIncorporationUrl: string | undefined;
-        let businessLicenseUrl: string | undefined;
-
-        if (articlesFile) {
-          trackProgress('articles', 30);
-          articlesOfIncorporationUrl = await uploadFile(articlesFile.file, kycDealId).catch(() => '');
-          trackProgress('articles', 100);
-        }
-
-        if (licenseFile) {
-          trackProgress('license', 30);
-          businessLicenseUrl = await uploadFile(licenseFile.file, kycDealId).catch(() => '');
-          trackProgress('license', 100);
-        }
-
-        await apiClient.submitKyc({
-          isCorporate: true,
-          companyName: companyName || undefined,
-          registrationNumber: registrationNumber || undefined,
-          articlesOfIncorporationUrl,
-          businessLicenseUrl,
-        });
-      }
-
-      setSubmitted(true);
-      toast('KYC submitted successfully!', 'success');
-    } catch (err: any) {
-      setError(err?.response?.data?.message ?? err?.message ?? 'KYC submission failed');
-    } finally {
-      setLoading(false);
+      await fetch('/api/auth/kyc/draft', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(getStoredToken() ? { Authorization: `Bearer ${getStoredToken()}` } : {}),
+        },
+        body: JSON.stringify(payload),
+      });
+    } catch {
+      // Remote draft sync is best-effort; local storage keeps the flow resumable.
     }
   };
 
-  // ── Success screen ──────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!isHydrated.current) return;
+    const timer = setInterval(() => {
+      void persistDraft(step);
+    }, AUTO_SAVE_MS);
+    return () => clearInterval(timer);
+  }, [step, draft]);
 
-  if (submitted) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-brand-50 to-white flex items-center justify-center px-4">
-        <div className="card p-10 text-center max-w-md w-full">
-          <div className="w-16 h-16 rounded-3xl bg-emerald-50 flex items-center justify-center text-3xl mx-auto mb-5">
-            ✅
-          </div>
-          <h2 className="text-2xl font-black text-slate-900 mb-2">KYC Submitted!</h2>
-          <p className="text-slate-500 mb-6">
-            Your verification is under review. You&apos;ll be notified once approved.
-          </p>
-          <Link href="/dashboard" className="btn-primary mx-auto">
-            Go to Dashboard →
-          </Link>
-        </div>
-      </div>
-    );
-  }
+  const validateStep = (currentStep: Step): boolean => {
+    const nextErrors: Record<string, string> = {};
 
-  // ── Upload progress bar ─────────────────────────────────────────────────────
+    if (currentStep === 0) {
+      if (!draft.personal.fullName.trim()) nextErrors.fullName = t('errors.fullName');
+      if (!draft.personal.dateOfBirth.trim()) nextErrors.dateOfBirth = t('errors.dateOfBirth');
+      else if (draft.personal.dateOfBirth > todayIso()) nextErrors.dateOfBirth = t('errors.dateOfBirthPast');
+      if (!draft.personal.nationality.trim()) nextErrors.nationality = t('errors.nationality');
+      if (!draft.personal.address.trim()) nextErrors.address = t('errors.address');
+    }
 
-  const totalUploads = Object.keys(uploadProgress).length;
-  const avgProgress =
-    totalUploads > 0
-      ? Math.round(
-        Object.values(uploadProgress).reduce((a, b) => a + b, 0) / totalUploads,
-      )
-      : 0;
+    if (currentStep === 1) {
+      if (!front) nextErrors.front = t('errors.frontRequired');
+      if (!back) nextErrors.back = t('errors.backRequired');
+      if (front && front.width && front.width < 500) nextErrors.front = t('errors.photoWidth');
+      if (back && back.width && back.width < 500) nextErrors.back = t('errors.photoWidth');
+    }
 
-  // ── Main form ───────────────────────────────────────────────────────────────
+    if (currentStep === 2) {
+      if (!proof) nextErrors.proof = t('errors.proofRequired');
+      if (proof && proof.width && proof.width < 500 && proof.file.type.startsWith('image/')) {
+        nextErrors.proof = t('errors.photoWidth');
+      }
+    }
+
+    if (currentStep === 3) {
+      if (!selfie) nextErrors.selfie = t('errors.selfieRequired');
+      if (selfie && selfie.width && selfie.width < 500) nextErrors.selfie = t('errors.photoWidth');
+    }
+
+    setErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
+
+  const goNext = async () => {
+    if (!validateStep(step)) return;
+    await persistDraft((step + 1) as Step);
+    setStep((current) => ((current + 1) as Step));
+  };
+
+  const goBack = () => setStep((current) => ((current > 0 ? current - 1 : current) as Step));
+
+  const savePersonal = (field: keyof DraftPayload['personal'], value: string) => {
+    setDraft((current) => ({
+      ...current,
+      personal: {
+        ...current.personal,
+        [field]: value,
+      },
+    }));
+  };
+
+  const submit = async () => {
+    if (!validateStep(0) || !validateStep(1) || !validateStep(2) || !validateStep(3)) {
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const frontUrl = front ? await uploadFile(front.file) : '';
+      const backUrl = back ? await uploadFile(back.file) : '';
+      const proofUrl = proof ? await uploadFile(proof.file) : '';
+      const selfieUrl = selfie ? await uploadFile(selfie.file) : '';
+
+      const payload = {
+        isCorporate: false,
+        fullName: draft.personal.fullName,
+        dateOfBirth: draft.personal.dateOfBirth,
+        nationality: draft.personal.nationality,
+        address: draft.personal.address,
+        governmentIdUrl: frontUrl || undefined,
+        identityDocumentBackUrl: backUrl || undefined,
+        proofOfAddressUrl: proofUrl || undefined,
+        selfieUrl: selfieUrl || undefined,
+      };
+
+      const result = await apiClient.submitKyc(payload);
+      localStorage.removeItem(LOCAL_KEY);
+      setDraft(emptyDraft());
+      setFront(null);
+      setBack(null);
+      setProof(null);
+      setSelfie(null);
+      toast(t('submitted'), 'success');
+      setStep(4);
+      await persistDraft(4, emptyDraft());
+      void result;
+    } catch (error: any) {
+      setErrors({ submit: error?.response?.data?.message ?? error?.message ?? t('errors.submitFailed') });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (!currentUser) return null;
+
+  const progress = ((step + 1) / 5) * 100;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-brand-50 to-white flex flex-col">
-      {/* Header */}
-      <div className="px-6 py-4">
-        <Link href="/" className="flex items-center gap-2 font-black text-slate-900 w-fit">
-          <span className="text-2xl">🌾</span> AgriFi
-        </Link>
-      </div>
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.12),_transparent_32%),linear-gradient(180deg,_#f8fffb_0%,_#ffffff_48%,_#f7fafc_100%)]">
+      <div className="mx-auto max-w-5xl px-4 py-8 md:py-12">
+        <div className="mb-6 flex items-center justify-between">
+          <Link href="/" className="font-black text-slate-900">
+            <span className="mr-2 text-2xl">🌾</span> AgriFi
+          </Link>
+          {restoredAt && <span className="text-xs text-slate-500">{t('restored', { time: new Date(restoredAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) })}</span>}
+        </div>
 
-      <div className="flex-1 flex items-center justify-center px-4 py-10">
-        <div className="w-full max-w-md">
-          <div className="mb-8">
-            <h1 className="text-3xl font-black text-slate-900 tracking-tight">
-              KYC Verification
-            </h1>
-            <p className="text-slate-500 mt-2">
-              Verify your identity to unlock full platform access
-            </p>
+        <div className="overflow-hidden rounded-[2rem] border border-emerald-100 bg-white shadow-2xl shadow-emerald-100/60">
+          <div className="bg-gradient-to-r from-emerald-800 via-lime-600 to-amber-500 px-6 py-6 text-white md:px-10">
+            <p className="text-xs uppercase tracking-[0.35em] text-white/70">{t('badge')}</p>
+            <div className="mt-2 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+              <div>
+                <h1 className="text-3xl font-black md:text-4xl">{t('title')}</h1>
+                <p className="mt-2 max-w-2xl text-white/80">{t('subtitle')}</p>
+              </div>
+              <div className="rounded-full bg-white/10 px-4 py-2 text-sm">
+                {t('stepLabel', { current: step + 1, total: 5 })}
+              </div>
+            </div>
+            <div className="mt-5 h-2 rounded-full bg-white/15">
+              <div className="h-2 rounded-full bg-white transition-all" style={{ width: `${progress}%` }} />
+            </div>
           </div>
 
-          <div className="card p-8">
-            <form onSubmit={submit} className="space-y-5">
-              {error && (
-                <div className="alert-error">
-                  <span>⚠</span>
-                  <span>{error}</span>
-                </div>
-              )}
+          <div className="grid gap-8 px-6 py-6 md:px-10 md:py-8">
+            {errors.submit && (
+              <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{errors.submit}</div>
+            )}
 
-              {/* Upload progress bar */}
-              {loading && totalUploads > 0 && (
-                <div className="space-y-1.5" role="status" aria-label="Upload progress">
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>Uploading documents…</span>
-                    <span>{avgProgress}%</span>
-                  </div>
-                  <div className="progress-track">
-                    <div
-                      className="progress-green"
-                      style={{ width: `${avgProgress}%` }}
-                    />
-                  </div>
-                </div>
-              )}
+            {step === 0 && (
+              <section className="grid gap-4 md:grid-cols-2">
+                <WizardField label={t('fields.fullName')} error={errors.fullName}>
+                  <input className="input" value={draft.personal.fullName} onChange={(e) => savePersonal('fullName', e.target.value)} />
+                </WizardField>
+                <WizardField label={t('fields.dateOfBirth')} error={errors.dateOfBirth}>
+                  <input type="date" className="input" value={draft.personal.dateOfBirth} onChange={(e) => savePersonal('dateOfBirth', e.target.value)} />
+                </WizardField>
+                <WizardField label={t('fields.nationality')} error={errors.nationality}>
+                  <input className="input" value={draft.personal.nationality} onChange={(e) => savePersonal('nationality', e.target.value)} />
+                </WizardField>
+                <WizardField label={t('fields.address')} error={errors.address} className="md:col-span-2">
+                  <textarea className="input min-h-[130px]" value={draft.personal.address} onChange={(e) => savePersonal('address', e.target.value)} />
+                </WizardField>
+              </section>
+            )}
 
-              {/* Spinner when submitting without file uploads */}
-              {loading && totalUploads === 0 && (
-                <div className="flex items-center gap-3 text-sm text-muted-foreground" role="status">
-                  <svg className="w-4 h-4 animate-spin flex-shrink-0" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
-                  Submitting…
-                </div>
-              )}
-
-              {/* Mode toggle */}
-              <div>
-                <label className="label">Verification type</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {(['individual', 'business'] as Mode[]).map((m) => (
-                    <button
-                      key={m}
-                      type="button"
-                      onClick={() => setMode(m)}
-                      disabled={loading}
-                      className={`p-3 rounded-xl border-2 text-sm font-semibold capitalize transition-all ${mode === m
-                          ? 'border-brand-500 bg-brand-50 text-brand-700'
-                          : 'border-slate-200 text-slate-600 hover:border-slate-300'
-                        }`}
-                    >
-                      {m === 'individual' ? '👤 Individual' : '🏢 Business'}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Individual fields */}
-              {mode === 'individual' ? (
-                <>
+            {step === 1 && (
+              <section className="grid gap-4 md:grid-cols-2">
+                <WizardField label={t('fields.idFront')} error={errors.front} className="md:col-span-1">
                   <Dropzone
-                    label="Government ID"
-                    hint="Passport, national ID, or driver's license (PDF, PNG, JPG · max 5 MB)"
-                    value={govIdFile}
-                    onFileAccepted={setGovIdFile}
-                    onRemove={() => setGovIdFile(null)}
-                    disabled={loading}
+                    capture="environment"
+                    maxSizeBytes={10 * 1024 * 1024}
+                    label={t('fields.idFront')}
+                    hint={t('hints.documents')}
+                    onFileAccepted={(entry) => {
+                      setFront(entry);
+                      setDraft((current) => ({
+                        ...current,
+                        files: { ...current.files, frontName: entry.file.name },
+                      }));
+                    }}
+                    value={front}
+                    onRemove={() => setFront(null)}
                   />
+                </WizardField>
+                <WizardField label={t('fields.idBack')} error={errors.back}>
                   <Dropzone
-                    label="Proof of Address"
-                    hint="Utility bill or bank statement dated within 3 months (PDF, PNG, JPG · max 5 MB)"
-                    value={proofFile}
-                    onFileAccepted={setProofFile}
-                    onRemove={() => setProofFile(null)}
-                    disabled={loading}
+                    capture="environment"
+                    maxSizeBytes={10 * 1024 * 1024}
+                    label={t('fields.idBack')}
+                    hint={t('hints.documents')}
+                    onFileAccepted={(entry) => {
+                      setBack(entry);
+                      setDraft((current) => ({
+                        ...current,
+                        files: { ...current.files, backName: entry.file.name },
+                      }));
+                    }}
+                    value={back}
+                    onRemove={() => setBack(null)}
                   />
-                </>
-              ) : (
-                <>
-                  <div>
-                    <label className="label">Company Name</label>
-                    <input
-                      className="input"
-                      placeholder="Acme Agriculture Ltd."
-                      value={companyName}
-                      onChange={(e) => setCompanyName(e.target.value)}
-                      disabled={loading}
-                    />
-                  </div>
-                  <div>
-                    <label className="label">Registration Number</label>
-                    <input
-                      className="input"
-                      placeholder="RC-123456"
-                      value={registrationNumber}
-                      onChange={(e) => setRegistrationNumber(e.target.value)}
-                      disabled={loading}
-                    />
-                  </div>
-                  <Dropzone
-                    label="Articles of Incorporation"
-                    hint="PDF, PNG, or JPG · max 5 MB"
-                    value={articlesFile}
-                    onFileAccepted={setArticlesFile}
-                    onRemove={() => setArticlesFile(null)}
-                    disabled={loading}
-                  />
-                  <Dropzone
-                    label={
-                      <>
-                        Business License{' '}
-                        <span className="text-slate-400 font-normal">(optional)</span>
-                      </>
-                    }
-                    hint="PDF, PNG, or JPG · max 5 MB"
-                    value={licenseFile}
-                    onFileAccepted={setLicenseFile}
-                    onRemove={() => setLicenseFile(null)}
-                    disabled={loading}
-                  />
-                </>
-              )}
+                </WizardField>
+              </section>
+            )}
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="btn-primary w-full py-3 text-base"
-              >
-                {loading ? (
-                  <span className="flex items-center gap-2">
-                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
-                    Submitting…
-                  </span>
-                ) : (
-                  'Submit KYC →'
-                )}
+            {step === 2 && (
+              <section className="grid gap-4">
+                <WizardField label={t('fields.proofOfAddress')} error={errors.proof}>
+                  <Dropzone
+                    capture="environment"
+                    maxSizeBytes={10 * 1024 * 1024}
+                    label={t('fields.proofOfAddress')}
+                    hint={t('hints.proof')}
+                    onFileAccepted={(entry) => {
+                      setProof(entry);
+                      setDraft((current) => ({
+                        ...current,
+                        files: { ...current.files, proofName: entry.file.name },
+                      }));
+                    }}
+                    value={proof}
+                    onRemove={() => setProof(null)}
+                  />
+                </WizardField>
+              </section>
+            )}
+
+            {step === 3 && (
+              <section className="grid gap-4">
+                <WizardField label={t('fields.selfie')} error={errors.selfie}>
+                  <Dropzone
+                    capture="user"
+                    maxSizeBytes={10 * 1024 * 1024}
+                    label={t('fields.selfie')}
+                    hint={t('hints.selfie')}
+                    onFileAccepted={(entry) => {
+                      setSelfie(entry);
+                      setDraft((current) => ({
+                        ...current,
+                        files: { ...current.files, selfieName: entry.file.name },
+                      }));
+                    }}
+                    value={selfie}
+                    onRemove={() => setSelfie(null)}
+                  />
+                </WizardField>
+              </section>
+            )}
+
+            {step === 4 && (
+              <section className="grid gap-5 lg:grid-cols-[1.05fr_0.95fr]">
+                <div className="rounded-3xl border border-slate-200 p-5">
+                  <p className="text-xs uppercase tracking-[0.3em] text-slate-400">{t('review.personal')}</p>
+                  <div className="mt-4 space-y-3 text-sm">
+                    <Row label={t('fields.fullName')} value={draft.personal.fullName} />
+                    <Row label={t('fields.dateOfBirth')} value={draft.personal.dateOfBirth} />
+                    <Row label={t('fields.nationality')} value={draft.personal.nationality} />
+                    <Row label={t('fields.address')} value={draft.personal.address} />
+                  </div>
+                </div>
+                <div className="rounded-3xl border border-slate-200 p-5">
+                  <p className="text-xs uppercase tracking-[0.3em] text-slate-400">{t('review.files')}</p>
+                  <div className="mt-4 space-y-2 text-sm text-slate-600">
+                    <p>{t('fields.idFront')}: {draft.files.frontName || t('review.pending')}</p>
+                    <p>{t('fields.idBack')}: {draft.files.backName || t('review.pending')}</p>
+                    <p>{t('fields.proofOfAddress')}: {draft.files.proofName || t('review.pending')}</p>
+                    <p>{t('fields.selfie')}: {draft.files.selfieName || t('review.pending')}</p>
+                  </div>
+                </div>
+              </section>
+            )}
+
+            <div className="flex flex-col gap-3 border-t border-slate-100 pt-5 md:flex-row md:items-center md:justify-between">
+              <button type="button" onClick={() => router.push('/dashboard')} className="btn-secondary md:order-2">
+                {t('exit')}
               </button>
-            </form>
-
-            <p className="text-center text-sm text-slate-500 mt-5">
-              Already verified?{' '}
-              <Link href="/dashboard" className="text-brand-600 font-semibold hover:underline">
-                Go to Dashboard
-              </Link>
-            </p>
+              <div className="flex gap-3 md:order-1">
+                {step > 0 && (
+                  <button type="button" onClick={goBack} className="btn-secondary">
+                    {t('back')}
+                  </button>
+                )}
+                {step < 4 ? (
+                  <button type="button" onClick={goNext} className="btn-primary">
+                    {t('next')}
+                  </button>
+                ) : (
+                  <button type="button" onClick={submit} disabled={submitting} className="btn-primary">
+                    {submitting ? t('submitting') : t('submit')}
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function WizardField({ label, children, error, className }: { label: string; children: ReactNode; error?: string; className?: string }) {
+  return (
+    <label className={`space-y-2 ${className ?? ''}`}>
+      <span className="text-sm font-semibold text-slate-700">{label}</span>
+      {children}
+      {error && <p className="text-xs text-red-600">{error}</p>}
+    </label>
+  );
+}
+
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl bg-slate-50 px-4 py-3">
+      <p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">{label}</p>
+      <p className="mt-1 font-medium text-slate-900">{value || '—'}</p>
     </div>
   );
 }

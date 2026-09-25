@@ -63,6 +63,7 @@ const config: Config = {
       animation: {
         'fade-in':    'fadeIn 0.4s ease forwards',
         'slide-up':   'slideUp 0.4s ease forwards',
+        'slide-down': 'slideDown 0.3s ease forwards',
         'slide-in-r': 'slideInRight 0.3s ease forwards',
         'slide-out-r':'slideOutRight 0.3s ease forwards',
         'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
@@ -72,6 +73,7 @@ const config: Config = {
       keyframes: {
         fadeIn:       { from: { opacity: '0' },                          to: { opacity: '1' } },
         slideUp:      { from: { opacity: '0', transform: 'translateY(12px)' }, to: { opacity: '1', transform: 'translateY(0)' } },
+        slideDown:    { from: { opacity: '0', transform: 'translateY(-100%)' }, to: { opacity: '1', transform: 'translateY(0)' } },
         slideInRight: { from: { opacity: '0', transform: 'translateX(100%)' }, to: { opacity: '1', transform: 'translateX(0)' } },
         slideOutRight:{ from: { opacity: '1', transform: 'translateX(0)' },    to: { opacity: '0', transform: 'translateX(100%)' } },
         shimmer:      { '0%': { backgroundPosition: '-200% 0' }, '100%': { backgroundPosition: '200% 0' } },

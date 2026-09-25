@@ -37,6 +37,8 @@ export function InvestmentCertificate({
 }: CertificateProps) {
   const [ownershipPct, setOwnershipPct] = useState<string | null>(null);
   const [campaignState, setCampaignState] = useState<CampaignState | null>(null);
+  const [receiptLoading, setReceiptLoading] = useState(false);
+  const [receiptError, setReceiptError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!sorobanContractId || !investorAddress) return;
@@ -56,6 +58,28 @@ export function InvestmentCertificate({
     process.env.NEXT_PUBLIC_STELLAR_NETWORK === 'mainnet'
       ? 'https://stellar.expert/explorer/public/tx'
       : 'https://stellar.expert/explorer/testnet/tx';
+
+  async function handleDownloadReceipt() {
+    setReceiptLoading(true);
+    setReceiptError(null);
+    try {
+      const token = getStoredToken();
+      const res = await fetch(`/api/investments/${investmentId}/receipt`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        cache: 'no-store',
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.message ?? 'Failed to fetch receipt');
+      }
+      const { url } = await res.json() as { url: string; expiresAt: string };
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (err: any) {
+      setReceiptError(err?.message ?? 'Could not download receipt. Please try again.');
+    } finally {
+      setReceiptLoading(false);
+    }
+  }
 
   return (
     <div className="relative bg-gradient-to-br from-green-900 via-green-800 to-emerald-900 rounded-2xl p-8 text-white shadow-2xl overflow-hidden max-w-2xl">
@@ -167,6 +191,25 @@ export function InvestmentCertificate({
           >
             View Contract
           </a>
+        )}
+      </div>
+
+      {/* Download Receipt */}
+      <div className="relative mt-3">
+        <button
+          type="button"
+          onClick={handleDownloadReceipt}
+          disabled={receiptLoading}
+          aria-label="Download PDF payment receipt for this investment"
+          className="w-full text-center bg-white/10 hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors rounded-lg py-2 text-sm font-medium flex items-center justify-center gap-2"
+        >
+          <span aria-hidden="true">📄</span>
+          {receiptLoading ? 'Fetching receipt…' : 'Download Receipt'}
+        </button>
+        {receiptError && (
+          <p role="alert" className="mt-2 text-xs text-red-300 text-center">
+            {receiptError}
+          </p>
         )}
       </div>
 

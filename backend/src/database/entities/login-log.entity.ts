@@ -8,6 +8,8 @@ import {
 
 @Entity('login_logs')
 @Index(['userId'])
+@Index(['deviceFingerprint'])
+@Index(['countryCode'])
 export class LoginLog {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -26,6 +28,12 @@ export class LoginLog {
 
   @Column({ nullable: true })
   city: string | null;
+
+  @Column({ name: 'device_fingerprint', nullable: true, type: 'text' })
+  deviceFingerprint: string | null;
+
+  @Column({ name: 'country_code', nullable: true, length: 2 })
+  countryCode: string | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

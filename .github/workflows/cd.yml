@@ -206,6 +206,9 @@ jobs:
     needs: [prepare, build]
     runs-on: ubuntu-latest
     environment: staging
+    outputs:
+      active_slot: ${{ steps.bluegreen.outputs.active }}
+      inactive_slot: ${{ steps.bluegreen.outputs.inactive }}
     steps:
       - name: Set up kubectl
         uses: azure/setup-kubectl@v4
@@ -266,20 +269,76 @@ jobs:
           
           echo "Database migrations completed successfully"
 
-      - name: Roll out new image tags
+      # ── Blue-green deployment for the backend (#836) ────────────────────────
+      # The frontend keeps using a plain rolling update.
+
+      - name: Roll out frontend image tag
         env:
           IMAGE_PREFIX: ${{ needs.prepare.outputs.image_prefix }}
           TAG: ${{ needs.prepare.outputs.tag }}
         run: |
-          kubectl -n default set image deployment/agri-fi-backend \
-            backend="${IMAGE_PREFIX}/backend:${TAG}"
           kubectl -n default set image deployment/agri-fi-frontend \
             frontend="${IMAGE_PREFIX}/frontend:${TAG}"
-
-      - name: Wait for rollout to complete
-        run: |
-          kubectl -n default rollout status deployment/agri-fi-backend --timeout=180s
           kubectl -n default rollout status deployment/agri-fi-frontend --timeout=180s
+
+      - name: Determine active slot and deploy backend to inactive slot
+        id: bluegreen
+        env:
+          IMAGE_PREFIX: ${{ needs.prepare.outputs.image_prefix }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          ACTIVE=$(kubectl -n default get svc agri-fi-backend \
+            -o jsonpath='{.spec.selector.slot}')
+          if [ "$ACTIVE" = "green" ]; then INACTIVE=blue; else INACTIVE=green; fi
+          echo "Active slot: $ACTIVE — deploying new version to $INACTIVE"
+          echo "active=$ACTIVE" >> "$GITHUB_OUTPUT"
+          echo "inactive=$INACTIVE" >> "$GITHUB_OUTPUT"
+
+          kubectl -n default set image deployment/agri-fi-backend-$INACTIVE \
+            backend="${IMAGE_PREFIX}/backend:${TAG}"
+          kubectl -n default rollout status \
+            deployment/agri-fi-backend-$INACTIVE --timeout=180s
+
+      - name: Smoke test inactive slot (health + critical APIs)
+        run: |
+          SLOT=${{ steps.bluegreen.outputs.inactive }}
+
+          kubectl -n default delete svc agri-fi-backend-smoke --ignore-not-found=true
+          kubectl -n default create service clusterip agri-fi-backend-smoke --tcp=80:80
+          kubectl -n default patch svc agri-fi-backend-smoke \
+            -p "{\"spec\":{\"selector\":{\"app\":\"agri-fi-backend\",\"slot\":\"$SLOT\"}}}"
+
+          kubectl -n default run smoke-test-${GITHUB_SHA::12} \
+            --rm -i --restart=Never \
+            --image=curlimages/curl:latest \
+            --command -- sh -c '
+              set -e
+              curl -fsS --retry 10 --retry-delay 3 --retry-connrefused \
+                http://agri-fi-backend-smoke/health
+              curl -fsS http://agri-fi-backend-smoke/v1/trade-deals > /dev/null
+              curl -fsS http://agri-fi-backend-smoke/v1/prices/commodities > /dev/null
+              curl -fsS http://agri-fi-backend-smoke/v1/prices/fx > /dev/null
+            '
+
+          kubectl -n default delete svc agri-fi-backend-smoke --ignore-not-found=true
+
+      - name: Switch traffic to new slot
+        run: |
+          SLOT=${{ steps.bluegreen.outputs.inactive }}
+          kubectl -n default patch svc agri-fi-backend \
+            -p "{\"spec\":{\"selector\":{\"slot\":\"$SLOT\"}}}"
+          echo "Traffic switched to $SLOT"
+
+      - name: Keep old slot running for instant rollback (5 minutes)
+        run: |
+          echo "Old slot ${{ steps.bluegreen.outputs.active }} stays up for 5 minutes"
+          sleep 300
+
+      - name: Scale down old slot
+        run: |
+          kubectl -n default scale \
+            deployment/agri-fi-backend-${{ steps.bluegreen.outputs.active }} \
+            --replicas=0 || true
 
       - name: Notify on failure
         if: failure()
@@ -346,4 +405,39 @@ jobs:
                   }
                 ]
               }' || true
+          fi
+
+  rollback:
+    name: Blue-green rollback
+    needs: [deploy]
+    if: needs.deploy.result == 'failure'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBE_CONFIG_STAGING }}" | base64 -d > "$HOME/.kube/config"
+
+      # #836 — instant rollback: re-point the service selector back to the
+      # previous active slot and remove the failed slot.
+      - name: Re-point service to previous active slot
+        run: |
+          PREVIOUS="${{ needs.deploy.outputs.active_slot }}"
+          FAILED="${{ needs.deploy.outputs.inactive_slot }}"
+
+          if [ -z "$PREVIOUS" ]; then
+            echo "No slot information captured; nothing to roll back."
+            exit 0
+          fi
+
+          echo "Rolling back: $FAILED -> $PREVIOUS"
+          kubectl -n default scale deployment/agri-fi-backend-$PREVIOUS --replicas=2
+          kubectl -n default patch svc agri-fi-backend \
+            -p "{\"spec\":{\"selector\":{\"slot\":\"$PREVIOUS\"}}}"
+          if [ -n "$FAILED" ]; then
+            kubectl -n default scale deployment/agri-fi-backend-$FAILED --replicas=0 || true
           fi

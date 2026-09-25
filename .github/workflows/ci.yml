@@ -114,7 +114,7 @@ jobs:
                 "username": "GitHub Actions"
               }' || true
           fi
-          
+
           # Slack notification
           if [ -n "${{ secrets.SLACK_WEBHOOK_URL }}" ]; then
             curl -X POST ${{ secrets.SLACK_WEBHOOK_URL }} \

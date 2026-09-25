@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1
 
 # ---- Builder: install dependencies and produce the standalone build ----
-FROM node:20-alpine AS builder
+# Pin base image to a specific digest for reproducible builds (#890)
+FROM node:20-alpine@sha256:1b247886434392a35a4a847306af035a2c96a9730f88335c15e344b5b19f4e6e AS builder
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
@@ -9,7 +10,7 @@ COPY . .
 RUN npm run build
 
 # ---- Runner: serve the self-contained standalone output ----
-FROM node:20-alpine AS runner
+FROM node:20-alpine@sha256:1b247886434392a35a4a847306af035a2c96a9730f88335c15e344b5b19f4e6e AS runner
 ENV NODE_ENV=production
 ENV PORT=3001
 WORKDIR /app

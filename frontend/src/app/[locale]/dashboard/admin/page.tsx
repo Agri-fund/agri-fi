@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient, User, getStoredToken } from '@/lib/api';
 import DashboardLayout from '@/components/DashboardLayout';
@@ -10,6 +10,22 @@ import { useToast } from '@/components/ui/ToastProvider';
 interface AdminUser {
   id: string; email: string; role: string; kycStatus: string;
   country: string; createdAt: string; walletAddress?: string | null;
+}
+
+/** Shape returned by GET /admin/payments/failed */
+interface FailedPayment {
+  id: string;
+  dealId: string | null;
+  userId: string | null;
+  txHash: string | null;
+  errorCode: string | null;
+  createdAt: string;
+  dealCommodity: string | null;
+}
+
+interface PaginatedFailedPayments {
+  data: FailedPayment[];
+  meta: { total: number; page: number; limit: number; totalPages: number };
 }
 
 const ROLE_BADGE: Record<string, string> = {
@@ -26,9 +42,22 @@ export default function AdminDashboard() {
   const [user, setUser] = useState<User | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<'overview' | 'users' | 'kyc' | 'blockchain'>('overview');
+  const [tab, setTab] = useState<'overview' | 'users' | 'kyc' | 'blockchain' | 'payments'>('overview');
   const [search, setSearch] = useState('');
   const [actionId, setActionId] = useState<string | null>(null);
+
+  // ── Failed Payments State ─────────────────────────────────────────────────
+  const [failedPayments, setFailedPayments] = useState<FailedPayment[]>([]);
+  const [failedPaymentsMeta, setFailedPaymentsMeta] = useState<PaginatedFailedPayments['meta'] | null>(null);
+  const [failedPaymentsLoading, setFailedPaymentsLoading] = useState(false);
+  const [failedPaymentsPage, setFailedPaymentsPage] = useState(1);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
+
+  // ── Bulk KYC State (#800) ─────────────────────────────────────────────────
+  const [selectedKycIds, setSelectedKycIds] = useState<Set<string>>(new Set());
+  const [bulkActionLoading, setBulkActionLoading] = useState(false);
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [bulkRejectionReason, setBulkRejectionReason] = useState('');
 
   useEffect(() => {
     (async () => {
@@ -52,6 +81,56 @@ export default function AdminDashboard() {
     setLoading(false);
   };
 
+  const loadFailedPayments = useCallback(async (page = 1) => {
+    setFailedPaymentsLoading(true);
+    try {
+      const token = getStoredToken();
+      const res = await fetch(`/api/admin/payments/failed?page=${page}&limit=20`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const d: PaginatedFailedPayments = await res.json();
+        setFailedPayments(d.data ?? []);
+        setFailedPaymentsMeta(d.meta ?? null);
+        setFailedPaymentsPage(page);
+      } else {
+        toast('Failed to load payment alerts', 'error');
+      }
+    } catch {
+      toast('Could not fetch payment data', 'error');
+    }
+    setFailedPaymentsLoading(false);
+  }, [toast]);
+
+  // Load failed payments when the payments tab is first selected
+  useEffect(() => {
+    if (tab === 'payments' && failedPayments.length === 0 && !failedPaymentsLoading) {
+      loadFailedPayments(1);
+    }
+  }, [tab, failedPayments.length, failedPaymentsLoading, loadFailedPayments]);
+
+  const retryPayment = async (txId: string) => {
+    setRetryingId(txId);
+    try {
+      const token = getStoredToken();
+      const res = await fetch(`/api/admin/payments/failed/${txId}/retry`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        toast('Retry enqueued successfully ✅', 'success');
+        // Refresh the list after a short delay so the user sees updated state
+        setTimeout(() => loadFailedPayments(failedPaymentsPage), 1000);
+      } else {
+        const d = await res.json();
+        toast(d.message ?? 'Retry failed', 'error');
+      }
+    } catch {
+      toast('Request failed', 'error');
+    }
+    setRetryingId(null);
+  };
+
   const approveKyc = async (userId: string) => {
     setActionId(userId);
     try {
@@ -63,6 +142,60 @@ export default function AdminDashboard() {
       else { const d = await res.json(); toast(d.message ?? 'Failed', 'error'); }
     } catch { toast('Request failed', 'error'); }
     setActionId(null);
+  };
+
+  const toggleKycSelection = (userId: string) => {
+    setSelectedKycIds(prev => {
+      const next = new Set(prev);
+      if (next.has(userId)) next.delete(userId);
+      else next.add(userId);
+      return next;
+    });
+  };
+
+  const selectAllKyc = (ids: string[]) => {
+    setSelectedKycIds(new Set(ids));
+  };
+
+  const clearKycSelection = () => {
+    setSelectedKycIds(new Set());
+  };
+
+  const bulkKycAction = async (action: 'approve' | 'reject', reason?: string) => {
+    if (selectedKycIds.size === 0) return;
+    if (action === 'reject' && !reason?.trim()) {
+      toast('A reason is required for rejection', 'error');
+      return;
+    }
+    setBulkActionLoading(true);
+    try {
+      const token = getStoredToken();
+      const res = await fetch('/api/admin/kyc/bulk', {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userIds: Array.from(selectedKycIds),
+          action,
+          ...(reason ? { reason } : {}),
+        }),
+      });
+      const d = await res.json();
+      if (res.ok) {
+        const { processed = [], failures = [] } = d;
+        if (failures.length === 0) {
+          toast(`${processed.length} KYC submission${processed.length !== 1 ? 's' : ''} ${action}d ✅`, 'success');
+        } else {
+          toast(`${processed.length} succeeded, ${failures.length} failed`, 'error');
+        }
+        clearKycSelection();
+        setBulkRejectionReason('');
+        setShowRejectModal(false);
+        loadUsers();
+      } else {
+        toast(d.message ?? 'Bulk action failed', 'error');
+      }
+    } catch { toast('Request failed', 'error'); }
+    setBulkActionLoading(false);
   };
 
   const updateRole = async (userId: string, role: string) => {
@@ -99,7 +232,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div data-tour="portfolio-stats" className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
           <StatCard label="Total Users"  value={users.length}    icon="👥" color="bg-blue-50" />
           <StatCard label="Farmers"      value={byRole('farmer')} icon="🌱" color="bg-emerald-50" />
           <StatCard label="Investors"    value={byRole('investor')} icon="💼" color="bg-violet-50" />
@@ -109,15 +242,20 @@ export default function AdminDashboard() {
 
         {/* Tabs */}
         <div className="flex gap-1 bg-slate-100 rounded-xl p-1 w-fit">
-          {(['overview', 'users', 'kyc', 'blockchain'] as const).map(t => (
+          {(['overview', 'users', 'kyc', 'blockchain', 'payments'] as const).map(t => (
             <button key={t} onClick={() => setTab(t)}
               className={`px-4 py-2 rounded-lg text-sm font-semibold capitalize transition-all ${
                 tab === t ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'
               }`}>
-              {t === 'blockchain' ? '⛓ Blockchain' : t}
+              {t === 'blockchain' ? '⛓ Blockchain' : t === 'payments' ? '⚠️ Payments' : t}
               {t === 'kyc' && pendingKyc.length > 0 && (
                 <span className="ml-1.5 bg-red-500 text-white text-[10px] rounded-full px-1.5 py-0.5 font-bold">
                   {pendingKyc.length}
+                </span>
+              )}
+              {t === 'payments' && (failedPaymentsMeta?.total ?? 0) > 0 && (
+                <span className="ml-1.5 bg-red-500 text-white text-[10px] rounded-full px-1.5 py-0.5 font-bold">
+                  {failedPaymentsMeta!.total}
                 </span>
               )}
             </button>
@@ -126,7 +264,7 @@ export default function AdminDashboard() {
 
         {/* Overview */}
         {tab === 'overview' && (
-          <div className="grid sm:grid-cols-2 gap-5">
+          <div className="grid sm:grid-cols-2 md:grid-cols-2 gap-5">
             <div className="card p-5">
               <h3 className="section-title mb-5">Users by Role</h3>
               <div className="space-y-3">
@@ -239,10 +377,88 @@ export default function AdminDashboard() {
         {/* KYC review */}
         {tab === 'kyc' && (
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-3">
               <h2 className="section-title">Pending KYC Reviews</h2>
-              <span className="muted">{pendingKyc.length} pending</span>
+              <div className="flex items-center gap-2">
+                {selectedKycIds.size > 0 && (
+                  <span className="text-sm text-slate-500">{selectedKycIds.size} selected</span>
+                )}
+                <span className="muted">{pendingKyc.length} pending</span>
+              </div>
             </div>
+
+            {pendingKyc.length > 0 && (
+              <div className="flex flex-wrap gap-2 items-center bg-slate-50 border border-slate-200 rounded-xl p-3">
+                {/* Select all / clear */}
+                <button
+                  onClick={() =>
+                    selectedKycIds.size === pendingKyc.length
+                      ? clearKycSelection()
+                      : selectAllKyc(pendingKyc.map(u => u.id))
+                  }
+                  className="text-xs px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 font-medium text-slate-700">
+                  {selectedKycIds.size === pendingKyc.length ? 'Deselect all' : 'Select all'}
+                </button>
+
+                {/* Bulk approve */}
+                <button
+                  disabled={selectedKycIds.size === 0 || bulkActionLoading}
+                  onClick={() => bulkKycAction('approve')}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-emerald-600 text-white font-semibold disabled:opacity-40 hover:bg-emerald-700 transition-colors">
+                  {bulkActionLoading ? (
+                    <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                    </svg>
+                  ) : '✓'}
+                  Approve selected ({selectedKycIds.size})
+                </button>
+
+                {/* Bulk reject */}
+                <button
+                  disabled={selectedKycIds.size === 0 || bulkActionLoading}
+                  onClick={() => setShowRejectModal(true)}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-red-600 text-white font-semibold disabled:opacity-40 hover:bg-red-700 transition-colors">
+                  ✕ Reject selected ({selectedKycIds.size})
+                </button>
+              </div>
+            )}
+
+            {/* Reject reason modal */}
+            {showRejectModal && (
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
+                  <h3 className="text-lg font-bold text-slate-900">Reject {selectedKycIds.size} KYC submission{selectedKycIds.size !== 1 ? 's' : ''}</h3>
+                  <p className="text-sm text-slate-500">Please provide a mandatory reason for rejection. This will be recorded in the audit log and sent to affected users.</p>
+                  <textarea
+                    className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 resize-none"
+                    rows={3}
+                    placeholder="e.g. Documents expired, name mismatch, address verification failed…"
+                    value={bulkRejectionReason}
+                    onChange={e => setBulkRejectionReason(e.target.value)}
+                  />
+                  <div className="flex gap-2 justify-end">
+                    <button
+                      onClick={() => { setShowRejectModal(false); setBulkRejectionReason(''); }}
+                      className="px-4 py-2 rounded-lg border border-slate-200 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                      Cancel
+                    </button>
+                    <button
+                      disabled={!bulkRejectionReason.trim() || bulkRejectionReason.trim().length < 3 || bulkActionLoading}
+                      onClick={() => bulkKycAction('reject', bulkRejectionReason)}
+                      className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-semibold disabled:opacity-40 hover:bg-red-700 flex items-center gap-2">
+                      {bulkActionLoading && (
+                        <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                        </svg>
+                      )}
+                      Confirm Rejection
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {pendingKyc.length === 0 ? (
               <div className="card p-14 text-center">
@@ -251,43 +467,57 @@ export default function AdminDashboard() {
                 <p className="text-slate-500 text-sm">No pending KYC submissions to review.</p>
               </div>
             ) : (
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {pendingKyc.map(u => (
-                  <div key={u.id} className="card p-5 space-y-4">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-2xl bg-slate-100 flex items-center justify-center font-bold text-slate-600">
-                          {u.email[0].toUpperCase()}
+              <div className="grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                {pendingKyc.map(u => {
+                  const isSelected = selectedKycIds.has(u.id);
+                  return (
+                    <div key={u.id}
+                      className={`card p-5 space-y-4 cursor-pointer transition-all ${isSelected ? 'ring-2 ring-brand-500 bg-brand-50/30' : 'hover:ring-1 hover:ring-slate-200'}`}
+                      onClick={() => toggleKycSelection(u.id)}>
+                      <div className="flex items-start justify-between gap-2">
+                        {/* Checkbox */}
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleKycSelection(u.id)}
+                            onClick={e => e.stopPropagation()}
+                            className="w-4 h-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500 cursor-pointer"
+                            aria-label={`Select ${u.email} for bulk action`}
+                          />
+                          <div className="w-10 h-10 rounded-2xl bg-slate-100 flex items-center justify-center font-bold text-slate-600">
+                            {u.email[0].toUpperCase()}
+                          </div>
+                          <div>
+                            <p className="font-semibold text-slate-900 text-sm truncate max-w-[140px] md:max-w-[160px]">{u.email}</p>
+                            <p className="text-xs text-slate-400">{u.country}</p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="font-semibold text-slate-900 text-sm truncate max-w-[140px]">{u.email}</p>
-                          <p className="text-xs text-slate-400">{u.country}</p>
-                        </div>
+                        <span className={ROLE_BADGE[u.role] ?? 'badge-gray'}>{u.role}</span>
                       </div>
-                      <span className={ROLE_BADGE[u.role] ?? 'badge-gray'}>{u.role}</span>
-                    </div>
 
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-slate-400">Submitted {new Date(u.createdAt).toLocaleDateString()}</span>
-                      <span className="badge-yellow">pending</span>
-                    </div>
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-slate-400">Submitted {new Date(u.createdAt).toLocaleDateString()}</span>
+                        <span className="badge-yellow">pending</span>
+                      </div>
 
-                    <button
-                      disabled={actionId === u.id}
-                      onClick={() => approveKyc(u.id)}
-                      className="btn-primary w-full text-sm py-2.5">
-                      {actionId === u.id ? (
-                        <span className="flex items-center gap-2">
-                          <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                          </svg>
-                          Approving…
-                        </span>
-                      ) : '✓ Approve KYC'}
-                    </button>
-                  </div>
-                ))}
+                      <button
+                        disabled={actionId === u.id}
+                        onClick={e => { e.stopPropagation(); approveKyc(u.id); }}
+                        className="btn-primary w-full text-sm py-2.5">
+                        {actionId === u.id ? (
+                          <span className="flex items-center gap-2">
+                            <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                            </svg>
+                            Approving…
+                          </span>
+                        ) : '✓ Approve KYC'}
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -297,8 +527,242 @@ export default function AdminDashboard() {
         {tab === 'blockchain' && (
           <BlockchainTab token={getStoredToken() ?? ''} toast={toast} />
         )}
+
+        {/* Failed Payments tab */}
+        {tab === 'payments' && (
+          <FailedPaymentsTab
+            payments={failedPayments}
+            meta={failedPaymentsMeta}
+            loading={failedPaymentsLoading}
+            retryingId={retryingId}
+            page={failedPaymentsPage}
+            onRetry={retryPayment}
+            onPageChange={loadFailedPayments}
+            onRefresh={() => loadFailedPayments(failedPaymentsPage)}
+          />
+        )}
       </div>
     </DashboardLayout>
+  );
+}
+
+// ── Failed Payments Tab ───────────────────────────────────────────────────────
+
+interface FailedPaymentsTabProps {
+  payments: FailedPayment[];
+  meta: PaginatedFailedPayments['meta'] | null;
+  loading: boolean;
+  retryingId: string | null;
+  page: number;
+  onRetry: (txId: string) => void;
+  onPageChange: (page: number) => void;
+  onRefresh: () => void;
+}
+
+function FailedPaymentsTab({
+  payments,
+  meta,
+  loading,
+  retryingId,
+  page,
+  onRetry,
+  onPageChange,
+  onRefresh,
+}: FailedPaymentsTabProps) {
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="section-title">Failed Payment Alerts</h2>
+          <p className="text-sm text-slate-500 mt-1">
+            Escrow transactions that failed and require admin attention.
+          </p>
+        </div>
+        <button
+          onClick={onRefresh}
+          disabled={loading}
+          className="btn-secondary flex items-center gap-2 text-sm px-4 py-2"
+          aria-label="Refresh failed payments list"
+        >
+          <svg
+            className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+            />
+          </svg>
+          {loading ? 'Loading…' : 'Refresh'}
+        </button>
+      </div>
+
+      {/* Summary badge */}
+      {meta && meta.total > 0 && (
+        <div className="flex items-center gap-3 p-4 bg-red-50 border border-red-200 rounded-xl">
+          <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center text-xl" aria-hidden="true">
+            ⚠️
+          </div>
+          <div>
+            <p className="font-semibold text-red-800 text-sm">
+              {meta.total} failed payment{meta.total !== 1 ? 's' : ''} require attention
+            </p>
+            <p className="text-xs text-red-600 mt-0.5">
+              Review each transaction below and trigger a retry if appropriate.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Loading skeleton */}
+      {loading && (
+        <div className="space-y-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="card h-20 skeleton" />
+          ))}
+        </div>
+      )}
+
+      {/* Empty state */}
+      {!loading && payments.length === 0 && (
+        <div className="card p-14 text-center">
+          <div className="w-16 h-16 rounded-3xl bg-emerald-50 flex items-center justify-center text-3xl mx-auto mb-5" aria-hidden="true">
+            ✅
+          </div>
+          <h3 className="font-bold text-slate-900 text-lg mb-2">No failed payments</h3>
+          <p className="text-slate-500 text-sm">
+            All escrow transactions are processing normally.
+          </p>
+        </div>
+      )}
+
+      {/* Payments table */}
+      {!loading && payments.length > 0 && (
+        <div className="table-wrapper">
+          <div className="overflow-x-auto">
+            <table className="w-full" aria-label="Failed escrow payments">
+              <thead className="table-head">
+                <tr>
+                  {['Transaction ID', 'Deal / Commodity', 'Error Code', 'TX Hash', 'Date', 'Action'].map((h) => (
+                    <th key={h} className="table-th" scope="col">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {payments.map((payment) => (
+                  <tr key={payment.id} className="table-row">
+                    {/* Transaction ID */}
+                    <td className="table-td font-mono text-xs text-slate-600" title={payment.id}>
+                      {payment.id.substring(0, 8)}…
+                    </td>
+
+                    {/* Deal / Commodity */}
+                    <td className="table-td">
+                      {payment.dealId ? (
+                        <div>
+                          <p className="text-sm font-medium text-slate-900">
+                            {payment.dealCommodity ?? 'Unknown commodity'}
+                          </p>
+                          <p className="font-mono text-[10px] text-slate-400" title={payment.dealId}>
+                            {payment.dealId.substring(0, 8)}…
+                          </p>
+                        </div>
+                      ) : (
+                        <span className="text-slate-400 text-sm italic">No deal linked</span>
+                      )}
+                    </td>
+
+                    {/* Error Code */}
+                    <td className="table-td">
+                      {payment.errorCode ? (
+                        <span className="badge-red font-mono text-xs">
+                          {payment.errorCode}
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 text-xs">—</span>
+                      )}
+                    </td>
+
+                    {/* TX Hash */}
+                    <td className="table-td font-mono text-xs text-slate-500" title={payment.txHash ?? ''}>
+                      {payment.txHash ? `${payment.txHash.substring(0, 12)}…` : '—'}
+                    </td>
+
+                    {/* Date */}
+                    <td className="table-td text-xs text-slate-400">
+                      <time dateTime={payment.createdAt}>
+                        {new Date(payment.createdAt).toLocaleString()}
+                      </time>
+                    </td>
+
+                    {/* Retry action */}
+                    <td className="table-td">
+                      <button
+                        disabled={retryingId === payment.id || !payment.dealId}
+                        onClick={() => onRetry(payment.id)}
+                        title={!payment.dealId ? 'Cannot retry: no deal linked' : 'Trigger manual retry'}
+                        aria-label={`Retry transaction ${payment.id.substring(0, 8)}`}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        {retryingId === payment.id ? (
+                          <>
+                            <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                            </svg>
+                            Retrying…
+                          </>
+                        ) : (
+                          <>
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden="true">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                            </svg>
+                            Retry
+                          </>
+                        )}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination */}
+          {meta && meta.totalPages > 1 && (
+            <div className="flex items-center justify-between px-5 py-4 border-t border-slate-100">
+              <p className="text-xs text-slate-500">
+                Showing page {meta.page} of {meta.totalPages} ({meta.total} total)
+              </p>
+              <div className="flex gap-2">
+                <button
+                  disabled={page <= 1}
+                  onClick={() => onPageChange(page - 1)}
+                  aria-label="Previous page"
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  ← Prev
+                </button>
+                <button
+                  disabled={page >= meta.totalPages}
+                  onClick={() => onPageChange(page + 1)}
+                  aria-label="Next page"
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Next →
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

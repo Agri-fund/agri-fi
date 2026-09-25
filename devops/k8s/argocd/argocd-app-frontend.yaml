@@ -1,0 +1,23 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: agri-fi-frontend
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: agri-fi
+  source:
+    repoURL: https://github.com/Agri-fund/agri-fi.git
+    targetRevision: main
+    path: devops/k8s/frontend
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: agri-fi
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: false # Manual approval / safety for production
+    syncOptions:
+      - CreateNamespace=true
+      - ApplyOutOfSyncOnly=true

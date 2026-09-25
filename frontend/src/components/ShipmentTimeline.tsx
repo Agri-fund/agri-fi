@@ -101,7 +101,7 @@ export const ShipmentTimeline: React.FC<ShipmentTimelineProps> = ({
   const extraMilestones = milestones.filter(m => !STEP_CONFIG[m.milestone]);
 
   return (
-    <div className={`space-y-5 ${className}`}>
+    <div className={`max-w-full space-y-5 overflow-hidden ${className}`}>
       <h3 className="section-title">Shipment Timeline</h3>
 
       <div className="relative">
@@ -127,12 +127,12 @@ export const ShipmentTimeline: React.FC<ShipmentTimelineProps> = ({
 
                 {/* Content */}
                 <div className="flex-1 min-w-0 pt-1.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className={`text-sm font-semibold ${status === 'pending' ? 'text-slate-400' : 'text-slate-900'}`}>
+                  <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
+                    <p className={`break-words text-sm font-semibold ${status === 'pending' ? 'text-slate-400' : 'text-slate-900'}`}>
                       {cfg.label}
                     </p>
                     {m && (
-                      <span className="text-xs text-slate-400 flex-shrink-0">
+                      <span className="text-xs text-slate-400 sm:flex-shrink-0">
                         {new Date(m.recordedAt).toLocaleDateString('en', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                       </span>
                     )}
@@ -142,7 +142,7 @@ export const ShipmentTimeline: React.FC<ShipmentTimelineProps> = ({
                     <p className="text-sm text-slate-500 mt-0.5">{m.notes}</p>
                   )}
                   {m?.stellarTxId && (
-                    <p className="text-xs text-slate-400 font-mono mt-0.5">
+                    <p className="break-all text-xs text-slate-400 font-mono mt-0.5">
                       TX: {m.stellarTxId.slice(0, 20)}…
                     </p>
                   )}
@@ -159,8 +159,8 @@ export const ShipmentTimeline: React.FC<ShipmentTimelineProps> = ({
             <div key={m.id} className="relative flex items-start gap-4">
               <div className="relative z-10 w-9 h-9 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center text-sm flex-shrink-0">❓</div>
               <div className="flex-1 min-w-0 pt-1.5">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-semibold text-slate-900 capitalize">{m.milestone.replace(/_/g, ' ')}</p>
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
+                  <p className="break-words text-sm font-semibold text-slate-900 capitalize">{m.milestone.replace(/_/g, ' ')}</p>
                   <span className="text-xs text-slate-400">{new Date(m.recordedAt).toLocaleDateString()}</span>
                 </div>
                 {m.notes && <p className="text-sm text-slate-500 mt-0.5">{m.notes}</p>}

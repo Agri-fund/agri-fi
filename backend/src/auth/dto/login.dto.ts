@@ -19,4 +19,14 @@ export class LoginDto {
   @IsString()
   @IsOptional()
   redirect?: string;
+
+  @ApiProperty({
+    description:
+      'hCaptcha response token. Required when a CAPTCHA challenge has been ' +
+      'issued for this account by credential-stuffing detection (#898).',
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  captchaToken?: string;
 }

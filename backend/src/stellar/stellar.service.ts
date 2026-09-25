@@ -12,7 +12,11 @@ import { PinoLogger } from 'nestjs-pino';
 import { createHash } from 'crypto';
 import axios from 'axios';
 import { TransactionLog, TxStatus } from './entities/transaction-log.entity';
-import { CursorPaginatedResult, decodeCursor, encodeCursor } from '../common/pagination';
+import {
+  CursorPaginatedResult,
+  decodeCursor,
+  encodeCursor,
+} from '../common/pagination';
 import { KmsService } from '../kms/kms.service';
 import {
   Horizon,
@@ -39,13 +43,12 @@ import { HorizonFailoverClient } from './horizon-failover';
 
 export const SEQUENCE_REDIS_CLIENT = 'SEQUENCE_REDIS_CLIENT';
 const SEQUENCE_CACHE_TTL = 5; // seconds
+export const TIMEBOUNDS_SECONDS = 300;
 
 /** TTL for terminal transaction statuses (success / failed) in Redis — 1 hour. */
 const TX_STATUS_CACHE_TTL_SECONDS = 3600;
 /** Redis key prefix for cached transaction status lookups. */
 const TX_STATUS_CACHE_PREFIX = 'stellar:tx:';
-
-
 export interface InvestorShare {
   walletAddress: string;
   tokenAmount: number;
@@ -66,13 +69,20 @@ export interface SignatureValidationResult {
 @Injectable()
 export class StellarService implements OnModuleInit, OnModuleDestroy {
   private readonly horizonClient: HorizonFailoverClient;
-  private get server(): Horizon.Server { return this.horizonClient.activeServer; }
-  private set server(s: Horizon.Server) { (this.horizonClient as any)._server = s; }
+  private get server(): Horizon.Server {
+    return this.horizonClient.activeServer;
+  }
+  private set server(s: Horizon.Server) {
+    (this.horizonClient as any)._server = s;
+  }
   private readonly networkPassphrase: string;
   private readonly platformKeypair: Keypair;
   private readonly multiSigSigners: Keypair[];
   private readonly usdcAsset: Asset;
-  private readonly localSequenceCache: Map<string, { seq: string; expiresAt: number }>;
+  private readonly localSequenceCache: Map<
+    string,
+    { seq: string; expiresAt: number }
+  >;
   private readonly enableSequenceCache: boolean;
 
   constructor(
@@ -92,7 +102,10 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     // Support a comma-separated list of Horizon URLs for failover.
     const horizonUrlsRaw = config.get<string>(
       'STELLAR_HORIZON_URLS',
-      config.get<string>('STELLAR_HORIZON_URL', 'https://horizon-testnet.stellar.org'),
+      config.get<string>(
+        'STELLAR_HORIZON_URL',
+        'https://horizon-testnet.stellar.org',
+      ),
     );
     const horizonUrls = horizonUrlsRaw!
       .split(',')
@@ -100,7 +113,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       .filter(Boolean);
     const network = config.get<string>('STELLAR_NETWORK', 'testnet');
 
-    this.horizonClient = new HorizonFailoverClient(horizonUrls, this.logger, { timeout: 30000 } as Horizon.Server.Options);
+    this.horizonClient = new HorizonFailoverClient(horizonUrls, this.logger, {});
     this.networkPassphrase =
       network === 'mainnet' ? Networks.PUBLIC : Networks.TESTNET;
 
@@ -124,7 +137,6 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
 
     // Removed ENCRYPTION_KEY validation as KMS handles encryption.
     // Ensure KMS_KEY_ID is set via environment.
-
 
     const usdcAssetCode = config.get<string>('USDC_ASSET_CODE', 'USDC');
     const usdcIssuer = config.get<string>('USDC_ISSUER', '');
@@ -154,7 +166,10 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     const maxSigners = 2; // We'll have 3 total: platform key + 2 additional signers
 
     for (let i = 1; i <= maxSigners; i++) {
-      const secretKey = config.get<string>(`STELLAR_MULTISIG_SIGNER_${i}_SECRET`, '');
+      const secretKey = config.get<string>(
+        `STELLAR_MULTISIG_SIGNER_${i}_SECRET`,
+        '',
+      );
       if (secretKey) {
         try {
           signers.push(Keypair.fromSecret(secretKey));
@@ -180,6 +195,19 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
    */
   getPlatformPublicKey(): string {
     return this.platformKeypair.publicKey();
+  }
+
+  private getTransactionTimebounds(
+    maxSeconds = TIMEBOUNDS_SECONDS,
+  ): { minTime: number; maxTime: number } {
+    const now = Math.floor(Date.now() / 1000);
+    return { minTime: 0, maxTime: now + maxSeconds };
+  }
+
+  private getTxSubmissionFee(existingFee?: string | number): string {
+    const baseFee = parseInt(BASE_FEE, 10);
+    const currentFee = parseInt(String(existingFee ?? baseFee), 10) || baseFee;
+    return Math.max(currentFee + baseFee, baseFee).toString();
   }
 
   /**
@@ -241,18 +269,17 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     const tx = new TransactionBuilder(platformAccount, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
+      timebounds: this.getTransactionTimebounds(),
     })
       .addOperation(setOptionsOp)
-      .setTimeout(30)
       .build();
 
     // Sign with platform key
     tx.sign(this.platformKeypair);
+    await this.submitWithRetrySigned(tx, [this.platformKeypair]);
 
-    await this.submitWithRetry(tx);
-
-    // Add second signer in a separate transaction
-    const updatedPlatformAccount = await this.server.loadAccount(platformPublicKey);
+    const updatedPlatformAccount =
+      await this.server.loadAccount(platformPublicKey);
 
     const secondSignerOp = Operation.setOptions({
       signer: {
@@ -264,14 +291,13 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     const secondTx = new TransactionBuilder(updatedPlatformAccount, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
+      timebounds: this.getTransactionTimebounds(),
     })
       .addOperation(secondSignerOp)
-      .setTimeout(30)
       .build();
 
     secondTx.sign(this.platformKeypair);
-
-    await this.submitWithRetry(secondTx);
+    await this.submitWithRetrySigned(secondTx, [this.platformKeypair]);
 
     this.logger.info(
       {
@@ -391,7 +417,9 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
 
     if (this.sequenceRedis) {
       try {
-        const raw = await this.sequenceRedis.get(this.cacheSeqKey(publicKey)) as string | null;
+        const raw = (await this.sequenceRedis.get(
+          this.cacheSeqKey(publicKey),
+        )) as string | null;
         if (raw) {
           const parsed = JSON.parse(raw);
           this.localSequenceCache.set(publicKey, {
@@ -407,7 +435,10 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     return null;
   }
 
-  private async setCachedSequence(publicKey: string, seq: string): Promise<void> {
+  private async setCachedSequence(
+    publicKey: string,
+    seq: string,
+  ): Promise<void> {
     const expiresAt = Date.now() + SEQUENCE_CACHE_TTL * 1000;
     this.localSequenceCache.set(publicKey, { seq, expiresAt });
 
@@ -483,9 +514,15 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
   ): Promise<{ valid: boolean; reason?: string }> {
     let tx: Transaction;
     try {
-      tx = TransactionBuilder.fromXDR(signedXdr, this.networkPassphrase) as Transaction;
+      tx = TransactionBuilder.fromXDR(
+        signedXdr,
+        this.networkPassphrase,
+      ) as Transaction;
     } catch {
-      return { valid: false, reason: 'Invalid XDR: could not decode transaction' };
+      return {
+        valid: false,
+        reason: 'Invalid XDR: could not decode transaction',
+      };
     }
 
     const opTypeMap: Record<number, string> = {
@@ -579,6 +616,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     const tx = new TransactionBuilder(platformAccount, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
+      timebounds: this.getTransactionTimebounds(),
     })
       .addOperation(
         Operation.createAccount({
@@ -587,11 +625,11 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         }),
       )
       .addMemo(Memo.text(`escrow:${tradeDealId.slice(0, 20)}`))
-      .setTimeout(30)
+      
       .build();
 
     tx.sign(this.platformKeypair);
-    await this.submitWithRetry(tx);
+    await this.submitWithRetrySigned(tx, [this.platformKeypair]);
 
     // Establish USDC trustline on the escrow account (skip if USDC issuer not configured)
     if (!this.usdcAsset.isNative()) {
@@ -601,17 +639,18 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       const trustlineTx = new TransactionBuilder(escrowAccount, {
         fee: BASE_FEE,
         networkPassphrase: this.networkPassphrase,
+        timebounds: this.getTransactionTimebounds(),
       })
         .addOperation(
           Operation.changeTrust({
             asset: this.usdcAsset,
           }),
         )
-        .setTimeout(30)
+        
         .build();
 
       trustlineTx.sign(escrowKeypair);
-      await this.submitWithRetry(trustlineTx);
+      await this.submitWithRetrySigned(trustlineTx, [escrowKeypair]);
     }
 
     this.logger.info(
@@ -627,6 +666,80 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     return {
       publicKey: escrowKeypair.publicKey(),
       secretKey: escrowKeypair.secret(),
+    };
+  }
+
+  /**
+   * Creates a replacement account for account merge recovery.
+   * - Generates a new keypair
+   * - Funds with sufficient XLM for base reserve + USDC trustline
+   * - Establishes USDC trustline automatically
+   * - Used when an investor's original account is merged/closed
+   * Issue #683 — Account merge handler re-establishes trustlines
+   */
+  async createReplacementAccount(): Promise<{
+    publicKey: string;
+    secretKey: string;
+  }> {
+    const replacementKeypair = Keypair.random();
+    await this.fundAccountWithFriendbot(replacementKeypair.publicKey());
+
+    const platformAccount = await this.server.loadAccount(
+      this.platformKeypair.publicKey(),
+    );
+
+    // Fund with 3 XLM (2 base reserve + 0.5 for USDC trustline + 0.5 buffer)
+    const tx = new TransactionBuilder(platformAccount, {
+      fee: BASE_FEE,
+      networkPassphrase: this.networkPassphrase,
+      timebounds: this.getTransactionTimebounds(),
+    })
+      .addOperation(
+        Operation.createAccount({
+          destination: replacementKeypair.publicKey(),
+          startingBalance: '3',
+        }),
+      )
+      .addMemo(Memo.text('acct-merge-recovery'))
+      
+      .build();
+
+    tx.sign(this.platformKeypair);
+    await this.submitWithRetrySigned(tx, [this.platformKeypair]);
+
+    // Establish USDC trustline immediately
+    if (!this.usdcAsset.isNative()) {
+      const replacementAccount = await this.server.loadAccount(
+        replacementKeypair.publicKey(),
+      );
+      const trustlineTx = new TransactionBuilder(replacementAccount, {
+        fee: BASE_FEE,
+        networkPassphrase: this.networkPassphrase,
+        timebounds: this.getTransactionTimebounds(),
+      })
+        .addOperation(
+          Operation.changeTrust({
+            asset: this.usdcAsset,
+          }),
+        )
+        
+        .build();
+
+      trustlineTx.sign(replacementKeypair);
+      await this.submitWithRetrySigned(trustlineTx, [replacementKeypair]);
+
+      this.logger.info(
+        {
+          replacementPublicKey: replacementKeypair.publicKey(),
+          trustlineEstablished: true,
+        },
+        'Replacement account created for merge recovery with USDC trustline',
+      );
+    }
+
+    return {
+      publicKey: replacementKeypair.publicKey(),
+      secretKey: replacementKeypair.secret(),
     };
   }
 
@@ -655,6 +768,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     const fundIssuerTx = new TransactionBuilder(platformAccount, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
+      timebounds: this.getTransactionTimebounds(),
     })
       .addOperation(
         Operation.createAccount({
@@ -669,11 +783,14 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
           setFlags: 10 as any,
         }),
       )
-      .setTimeout(30)
+      
       .build();
 
     fundIssuerTx.sign(this.platformKeypair, issuerKeypair);
-    await this.submitWithRetry(fundIssuerTx);
+    await this.submitWithRetrySigned(fundIssuerTx, [
+      this.platformKeypair,
+      issuerKeypair,
+    ]);
 
     const tradeAsset = createAsset(assetCode, issuerKeypair.publicKey());
 
@@ -684,6 +801,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     const trustlineTx = new TransactionBuilder(escrowAccount, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
+      timebounds: this.getTransactionTimebounds(),
     })
       .addOperation(
         Operation.changeTrust({
@@ -691,11 +809,11 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
           limit: tokenCount.toString(),
         }),
       )
-      .setTimeout(30)
+      
       .build();
 
     trustlineTx.sign(escrowKeypair);
-    await this.submitWithRetry(trustlineTx);
+    await this.submitWithRetrySigned(trustlineTx, [escrowKeypair]);
 
     // Issuer mints tokens to escrow account
     const issuerAccount = await this.server.loadAccount(
@@ -705,6 +823,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     const mintTx = new TransactionBuilder(issuerAccount, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
+      timebounds: this.getTransactionTimebounds(),
     })
       .addOperation(
         Operation.payment({
@@ -713,11 +832,13 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
           amount: tokenCount.toString(),
         }),
       )
-      .setTimeout(30)
+      
       .build();
 
     mintTx.sign(issuerKeypair);
-    const mintResult = await this.submitWithRetry(mintTx);
+    const mintResult = await this.submitWithRetrySigned(mintTx, [
+      issuerKeypair,
+    ]);
 
     const txId = (mintResult as any).hash as string;
     this.logger.info(
@@ -765,6 +886,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     const tx = new TransactionBuilder(investorAccount, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
+      timebounds: this.getTransactionTimebounds(),
     })
       .addOperation(
         Operation.payment({
@@ -773,7 +895,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
           amount: amountUSD,
         }),
       )
-      .setTimeout(30)
+      
       .build();
 
     // Note: in production the investor signs this via their wallet (Freighter/Albedo)
@@ -814,6 +936,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     const tx = new TransactionBuilder(escrowAccount, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
+      timebounds: this.getTransactionTimebounds(),
     })
       .addOperation(
         Operation.payment({
@@ -822,12 +945,12 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
           amount: tokenAmount.toFixed(7),
         }),
       )
-      .setTimeout(30)
+      
       .build();
 
     tx.sign(escrowKeypair);
 
-    const result = await this.submitWithRetry(tx);
+    const result = await this.submitWithRetrySigned(tx, [escrowKeypair]);
     const txId = (result as any).hash as string;
     this.logger.info(
       {
@@ -862,6 +985,80 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
    * of a payment so funds remain available for later claiming.
    * Returns an array of transaction IDs for each batch.
    */
+  /**
+   * Releases escrow with automatic op_no_trust recovery via replacement accounts.
+   * Wraps releaseEscrow() with 3-attempt retry logic for account merge scenarios.
+   * If op_no_trust is detected, attempts to use replacement accounts from merge recovery.
+   */
+  async releaseEscrowWithMergeRecovery(
+    escrowSecret: string,
+    farmerWallet: string,
+    investorShares: InvestorShare[],
+    platformWallet: string,
+    totalValue: number,
+    dealId?: string,
+  ): Promise<string[]> {
+    const MAX_RETRIES = 3;
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      try {
+        return await this.releaseEscrow(
+          escrowSecret,
+          farmerWallet,
+          investorShares,
+          platformWallet,
+          totalValue,
+        );
+      } catch (error: any) {
+        lastError = error;
+        const errorCode =
+          error?.response?.data?.extras?.result_codes?.operations?.[0];
+        const isOpNoTrust = errorCode === 'op_no_trust';
+
+        this.logger.warn(
+          {
+            attempt: attempt + 1,
+            maxRetries: MAX_RETRIES,
+            errorCode,
+            isOpNoTrust,
+            dealId,
+          },
+          `Escrow release failed (attempt ${attempt + 1}/${MAX_RETRIES})`,
+        );
+
+        if (isOpNoTrust && attempt < MAX_RETRIES - 1) {
+          // op_no_trust detected - likely due to account merge
+          // Wait before retrying to allow merge recovery handler to complete
+          this.logger.info(
+            { dealId, attempt: attempt + 1 },
+            'op_no_trust detected - waiting for account merge recovery...',
+          );
+          await new Promise((resolve) =>
+            setTimeout(resolve, 2000 * Math.pow(2, attempt)),
+          );
+          continue;
+        }
+
+        if (attempt === MAX_RETRIES - 1) {
+          break; // Last attempt, don't retry
+        }
+      }
+    }
+
+    // All retries exhausted
+    this.logger.error(
+      {
+        dealId,
+        maxRetries: MAX_RETRIES,
+        finalError: lastError?.message,
+      },
+      'Escrow release failed after all retry attempts',
+    );
+
+    throw lastError || new Error('Escrow release failed');
+  }
+
   async releaseEscrow(
     escrowSecret: string,
     farmerWallet: string,
@@ -880,9 +1077,9 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     }
 
     // Calculate platform fee (2%) and investor pool (98%) using BigNumber
-    const platformStroopsBN = totalStroopsBN.multipliedBy(0.02).integerValue(
-      BigNumber.ROUND_FLOOR,
-    );
+    const platformStroopsBN = totalStroopsBN
+      .multipliedBy(0.02)
+      .integerValue(BigNumber.ROUND_FLOOR);
     const investorPoolStroopsBN = totalStroopsBN.minus(platformStroopsBN);
 
     const platformStroops = platformStroopsBN.toNumber();
@@ -931,84 +1128,91 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       const batchStart = batchIdx * BATCH_SIZE;
       const batch = investorShares.slice(batchStart, batchStart + BATCH_SIZE);
 
-      const batchAccount = this.enableSequenceCache
-        ? await this.loadAccountCached(escrowKeypair.publicKey())
-        : await this.server.loadAccount(escrowKeypair.publicKey());
-      const txBuilder = new TransactionBuilder(batchAccount, {
-        fee: BASE_FEE,
-        networkPassphrase: this.networkPassphrase,
-      });
-
-      batch.forEach((share, localIdx) => {
-        const globalIdx = batchStart + localIdx;
-        let shareStroops = Math.floor(
-          (share.tokenAmount / totalTokens) * investorPoolStroops,
-        );
-
-        if (globalIdx === investorShares.length - 1) {
-          shareStroops =
-            investorPoolStroops -
-            distributedToInvestors;
-        }
-
-        distributedToInvestors += shareStroops;
-
-        const shareAmount = new BigNumber(shareStroops)
-          .dividedBy(1e7)
-          .toFixed(7);
-        if (parseFloat(shareAmount) > 0) {
-          if (hasUsdcTrustline[globalIdx]) {
-            txBuilder.addOperation(
-              Operation.payment({
-                destination: share.walletAddress,
-                asset: this.usdcAsset,
-                amount: shareAmount,
-              }),
-            );
-          } else {
-            // Investor lacks USDC trustline — create claimable balance
-            txBuilder.addOperation(
-              Operation.createClaimableBalance({
-                asset: this.usdcAsset,
-                amount: shareAmount,
-                claimants: [
-                  new Claimant(
-                    share.walletAddress,
-                    Claimant.predicateUnconditional(),
-                  ),
-                ],
-              }),
-            );
-            claimableInvestors.push({
-              walletAddress: share.walletAddress,
-              amount: shareAmount,
-            });
-          }
-        }
-      });
-
-      if (batchIdx === batchCount - 1) {
-        txBuilder.addOperation(
-          Operation.payment({
-            destination: platformWallet,
-            asset: this.usdcAsset,
-            amount: new BigNumber(platformStroops)
-              .dividedBy(1e7)
-              .toFixed(7),
-          }),
-        );
-      }
-
-      const tx = txBuilder.setTimeout(30).build();
-      tx.sign(escrowKeypair);
-
-      // Increment local sequence for next batch
-      if (this.enableSequenceCache) {
-        await this.incrementLocalSequence(escrowKeypair.publicKey());
-      }
+      // Capture batch-scoped variables for the buildTx closure
+      const capturedBatch = batch;
+      const capturedBatchStart = batchStart;
+      const isLastBatch = batchIdx === batchCount - 1;
 
       try {
-        const result = await this.submitWithRetry(tx);
+        // #826 — use fee-bump retry to handle tx_insufficient_fee on congested networks
+        const result = await this.submitWithFeeBumpRetry(
+          async (fee: string) => {
+            const batchAccount = this.enableSequenceCache
+              ? await this.loadAccountCached(escrowKeypair.publicKey())
+              : await this.server.loadAccount(escrowKeypair.publicKey());
+            const txBuilder = new TransactionBuilder(batchAccount, {
+              fee,
+              networkPassphrase: this.networkPassphrase,
+              timebounds: this.getTransactionTimebounds(),
+            });
+
+            capturedBatch.forEach((share, localIdx) => {
+              const globalIdx = capturedBatchStart + localIdx;
+              let shareStroops = Math.floor(
+                (share.tokenAmount / totalTokens) * investorPoolStroops,
+              );
+
+              if (globalIdx === investorShares.length - 1) {
+                shareStroops = investorPoolStroops - distributedToInvestors;
+              }
+
+              distributedToInvestors += shareStroops;
+
+              const shareAmount = new BigNumber(shareStroops)
+                .dividedBy(1e7)
+                .toFixed(7);
+              if (parseFloat(shareAmount) > 0) {
+                if (hasUsdcTrustline[globalIdx]) {
+                  txBuilder.addOperation(
+                    Operation.payment({
+                      destination: share.walletAddress,
+                      asset: this.usdcAsset,
+                      amount: shareAmount,
+                    }),
+                  );
+                } else {
+                  txBuilder.addOperation(
+                    Operation.createClaimableBalance({
+                      asset: this.usdcAsset,
+                      amount: shareAmount,
+                      claimants: [
+                        new Claimant(
+                          share.walletAddress,
+                          Claimant.predicateUnconditional(),
+                        ),
+                      ],
+                    }),
+                  );
+                  claimableInvestors.push({
+                    walletAddress: share.walletAddress,
+                    amount: shareAmount,
+                  });
+                }
+              }
+            });
+
+            if (isLastBatch) {
+              txBuilder.addOperation(
+                Operation.payment({
+                  destination: platformWallet,
+                  asset: this.usdcAsset,
+                  amount: new BigNumber(platformStroops)
+                    .dividedBy(1e7)
+                    .toFixed(7),
+                }),
+              );
+            }
+
+            return txBuilder.build();
+          },
+          escrowKeypair,
+        );
+
+        // Increment local sequence for next batch
+        if (this.enableSequenceCache) {
+          await this.incrementLocalSequence(escrowKeypair.publicKey());
+        }
+
         const txHash = (result as any).hash as string;
         txIds.push(txHash);
 
@@ -1016,7 +1220,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         const batchClaimable = claimableInvestors.filter(
           (ci) =>
             !ci.txHash &&
-            batch.some((s) => s.walletAddress === ci.walletAddress),
+            capturedBatch.some((s) => s.walletAddress === ci.walletAddress),
         );
         for (const ci of batchClaimable) {
           ci.txHash = txHash;
@@ -1058,6 +1262,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     const tx = new TransactionBuilder(account, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
+      timebounds: this.getTransactionTimebounds(),
     })
       .addOperation(
         Operation.payment({
@@ -1067,11 +1272,10 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         }),
       )
       .addMemo(Memo.hash(docHashHex))
-      .setTimeout(30)
       .build();
 
     tx.sign(signerKeypair);
-    const result = await this.submitWithRetry(tx);
+    const result = await this.submitWithRetrySigned(tx, [signerKeypair]);
 
     const txId = (result as any).hash as string;
     return txId;
@@ -1128,6 +1332,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     const txBuilder = new TransactionBuilder(account, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
+      timebounds: this.getTransactionTimebounds(),
     });
 
     for (const balance of account.balances) {
@@ -1156,11 +1361,11 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       }),
     );
 
-    const tx = txBuilder.setTimeout(30).build();
+    const tx = txBuilder.build();
     tx.sign(keypair);
 
     try {
-      const result = await this.submitWithRetry(tx);
+      const result = await this.submitWithRetrySigned(tx, [keypair]);
       const txId = (result as any).hash as string;
       this.logger.info(
         { publicKey, destination, txId },
@@ -1202,6 +1407,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     const tx = new TransactionBuilder(account, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
+      timebounds: this.getTransactionTimebounds(),
     })
       .addOperation(
         Operation.payment({
@@ -1211,11 +1417,10 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         }),
       )
       .addMemo(stellarMemo)
-      .setTimeout(30)
       .build();
 
     tx.sign(signerKeypair);
-    const result = await this.submitWithRetry(tx);
+    const result = await this.submitWithRetrySigned(tx, [signerKeypair]);
     return (result as any).hash as string;
   }
 
@@ -1261,7 +1466,8 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       return {
         ...base,
         valid: false,
-        error: 'Failed to parse XDR envelope. Ensure the transaction was built for the correct network.',
+        error:
+          'Failed to parse XDR envelope. Ensure the transaction was built for the correct network.',
       };
     }
 
@@ -1368,20 +1574,15 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
    * Verifies an account's XLM balance exceeds the minimum base reserve
    * before sending transactions. Returns the balance and minimum required.
    */
-  async checkMinimumReserve(
-    publicKey: string,
-  ): Promise<{
+  async checkMinimumReserve(publicKey: string): Promise<{
     sufficient: boolean;
     balance: string;
     minimumRequired: string;
   }> {
     const account = await this.server.loadAccount(publicKey);
     const xlmBalance =
-      (
-        account.balances.find(
-          (b: any) => b.asset_type === 'native',
-        ) as any
-      )?.balance ?? '0';
+      (account.balances.find((b: any) => b.asset_type === 'native') as any)
+        ?.balance ?? '0';
     const minRequired = await this.getMinimumBalance(account);
     return {
       sufficient: new BigNumber(xlmBalance).gte(minRequired),
@@ -1404,6 +1605,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     tokenAmount: number,
     issuerPublicKey: string,
     complianceData?: Record<string, unknown>,
+    investmentMemo?: string,
   ): Promise<string> {
     const investorAccount = await this.server.loadAccount(investorWallet);
     const tradeAsset = createAsset(assetCode, issuerPublicKey);
@@ -1437,6 +1639,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     const txBuilder = new TransactionBuilder(investorAccount, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
+      timebounds: this.getTransactionTimebounds(),
     });
 
     if (needsTrustline) {
@@ -1451,8 +1654,10 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
           amount: amountUSD.toFixed(7),
         }),
       )
-      .addMemo(Memo.text(`invest:${assetCode}:${tokenAmount}`))
-      .setTimeout(300);
+      .addMemo(
+        Memo.text(investmentMemo || `invest:${assetCode}:${tokenAmount}`),
+      )
+      ;
 
     this.addComplianceDataOperations(txBuilder, complianceData);
 
@@ -1527,7 +1732,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     if (!pathResult) {
       throw new Error(
         `No path found from ${sourceAsset.getCode()} to USDC for ${sendAmount} ${sourceAsset.getCode()}. ` +
-        'Ensure the Stellar DEX has sufficient liquidity for this conversion.',
+          'Ensure the Stellar DEX has sufficient liquidity for this conversion.',
       );
     }
 
@@ -1549,7 +1754,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       if (xlmBalance < minRequired) {
         throw new Error(
           `Insufficient XLM balance for trustline base reserve. ` +
-          `Need at least ${minRequired.toFixed(3)} XLM, have ${xlmBalance} XLM.`,
+            `Need at least ${minRequired.toFixed(3)} XLM, have ${xlmBalance} XLM.`,
         );
       }
     }
@@ -1557,6 +1762,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     const txBuilder = new TransactionBuilder(investorAccount, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
+      timebounds: this.getTransactionTimebounds(),
     });
 
     if (needsTrustline) {
@@ -1575,7 +1781,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         }),
       )
       .addMemo(Memo.text(`path:${assetCode}:${tokenAmount}`))
-      .setTimeout(300);
+      ;
 
     this.addComplianceDataOperations(txBuilder, complianceData);
 
@@ -1677,6 +1883,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     const txBuilder = new TransactionBuilder(investorAccount, {
       fee: totalFee,
       networkPassphrase: this.networkPassphrase,
+      timebounds: this.getTransactionTimebounds(),
     });
 
     // Add trustline operations first
@@ -1698,7 +1905,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
 
     // Build a single memo summarising the bulk (max 28 bytes)
     txBuilder.addMemo(Memo.text(`bulk:${investments.length}deals`));
-    txBuilder.setTimeout(300); // 5 minutes for wallet signing
+    txBuilder; // 5 minutes for wallet signing
 
     const tx = txBuilder.build();
 
@@ -1757,6 +1964,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     const tx = new TransactionBuilder(sellerAccount, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
+      timebounds: this.getTransactionTimebounds(),
     })
       .addOperation(
         Operation.manageSellOffer({
@@ -1768,7 +1976,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         }),
       )
       .addMemo(Memo.text(`sell:${tradeTokenCode}`))
-      .setTimeout(300)
+      
       .build();
 
     this.logger.info(
@@ -1862,7 +2070,11 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     const tradeAsset = createAsset(assetCode, issuerPublicKey);
 
     const LIMIT = 200;
-    let page = await this.server.accounts().forAsset(tradeAsset).limit(LIMIT).call();
+    let page = await this.server
+      .accounts()
+      .forAsset(tradeAsset)
+      .limit(LIMIT)
+      .call();
 
     const holders: Array<{ walletAddress: string; tokenAmount: number }> = [];
 
@@ -1879,7 +2091,10 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         if (balanceEntry) {
           const bal = parseFloat(balanceEntry.balance || '0');
           if (bal > 0) {
-            holders.push({ walletAddress: acc.account_id ?? acc.id, tokenAmount: bal });
+            holders.push({
+              walletAddress: acc.account_id ?? acc.id,
+              tokenAmount: bal,
+            });
           }
         }
       }
@@ -1889,7 +2104,10 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         try {
           page = await (page as any).next();
         } catch (e) {
-          this.logger.warn({ err: e }, 'Failed to fetch next page of asset holders');
+          this.logger.warn(
+            { err: e },
+            'Failed to fetch next page of asset holders',
+          );
           break;
         }
       } else {
@@ -1907,21 +2125,132 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Submits a transaction with exponential backoff retry for transient Horizon errors.
-   * Retries on HTTP 429, 503, 504, and network timeout errors.
-   * Waits 1s → 2s → 4s before each retry; throws after 3 failed attempts.
+   * Emits structured transaction log entries for all Stellar transaction attempts (#803).
    */
-  private async submitWithRetry(tx: any): Promise<any> {
+  public logStructuredTx(params: {
+    correlationId?: string;
+    txHash?: string;
+    operation: string;
+    durationMs: number;
+    status: 'success' | 'failed' | 'timeout' | 'error';
+    error?: string;
+  }): void {
+    const correlationId =
+      params.correlationId ||
+      createHash('sha256')
+        .update(`${Date.now()}-${Math.random()}`)
+        .digest('hex')
+        .substring(0, 16);
+
+    const logData = {
+      correlationId,
+      txHash: params.txHash || 'N/A',
+      operation: params.operation,
+      durationMs: params.durationMs,
+      status: params.status,
+      error: params.error,
+    };
+
+    if (params.status === 'success') {
+      this.logger.info(
+        logData,
+        `Stellar transaction [${params.operation}] succeeded`,
+      );
+    } else {
+      this.logger.error(
+        logData,
+        `Stellar transaction [${params.operation}] failed`,
+      );
+    }
+  }
+
+  /**
+   * Checks whether a Horizon submission error is tx_too_late (expired timebound).
+   * #681 — expired transactions must be rebuilt with fresh timebounds and re-submitted.
+   */
+  private isTxTooLateError(err: any): boolean {
+    const resultCodes = err?.response?.data?.extras?.result_codes;
+    if (resultCodes?.transaction === 'tx_too_late') return true;
+    if (typeof err?.message === 'string' && err.message.includes('tx_too_late'))
+      return true;
+    return false;
+  }
+
+  /**
+   * Rebuilds an expired transaction with fresh timebounds and the same operations,
+   * fee, and memo. Requires loading the latest account sequence from Horizon.
+   * Used when tx_too_late is returned to avoid indefinite mempool hangs (#681).
+   */
+  private async rebuildWithFreshTimebounds(tx: any): Promise<any> {
+    const sourceKey = typeof tx.source === 'string' ? tx.source : tx._source;
+    const freshAccount = await this.server.loadAccount(sourceKey);
+
+    const builder = new TransactionBuilder(freshAccount, {
+      fee: this.getTxSubmissionFee(tx.fee),
+      networkPassphrase: this.networkPassphrase,
+      timebounds: this.getTransactionTimebounds(),
+    });
+
+    const xdrOperations =
+      tx?.toEnvelope?.()?._value?._attributes?.tx?._attributes?.operations ??
+      tx?.operations ??
+      [];
+
+    for (const op of xdrOperations) {
+      builder.addOperation(op);
+    }
+
+    if (tx.memo && tx.memo.type !== 'none') {
+      builder.addMemo(tx.memo);
+    }
+
+    return builder.build();
+  }
+
+  /**
+   * Submits a transaction with exponential backoff retry and random jitter for transient Horizon errors.
+   * Formula: base_delay * 2^attempt + random_jitter.
+   * Retries on HTTP 429, 503, 504, and network timeout errors.
+   * On tx_too_late (expired timebound), throws immediately — callers that hold the
+   * signing keys should use submitWithRetrySigned instead (#681).
+   */
+  private async submitWithRetry(
+    tx: any,
+    operationName = 'submitTransaction',
+    correlationId?: string,
+  ): Promise<any> {
     const RETRYABLE = new Set([429, 503, 504]);
     const MAX_RETRIES = 3;
+    const startTime = Date.now();
+    const txHash =
+      typeof tx?.hash === 'function' ? tx.hash().toString('hex') : tx?.hash;
 
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
-        return await this.server.submitTransaction(tx);
+        const result = await this.server.submitTransaction(tx);
+        const durationMs = Date.now() - startTime;
+        this.logStructuredTx({
+          correlationId,
+          txHash: result?.hash || txHash,
+          operation: operationName,
+          durationMs,
+          status: 'success',
+        });
+        return result;
       } catch (err: any) {
         const status: number | undefined = err?.response?.status;
         const isTimeout =
           err?.code === 'ECONNABORTED' || err?.message?.includes('timeout');
+
+        // tx_too_late: timebound expired — surface immediately as a named error
+        if (this.isTxTooLateError(err)) {
+          this.logger.warn(
+            { sourceKey: tx.source },
+            'tx_too_late: transaction timebound expired (#681). Use submitWithRetrySigned for auto-rebuild.',
+          );
+          throw err;
+        }
+
         const isRetryable =
           (status !== undefined && RETRYABLE.has(status)) || isTimeout;
 
@@ -1929,14 +2258,159 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
           throw err;
         }
 
-        const delayMs = 1000 * Math.pow(2, attempt); // 1s, 2s, 4s
+        const baseDelayMs = 1000;
+        const randomJitter = Math.floor(Math.random() * 500);
+        const delayMs = baseDelayMs * Math.pow(2, attempt) + randomJitter;
         this.logger.warn(
-          { attempt, status, delayMs },
-          `Transient Horizon error (${status ?? 'timeout'}); retrying in ${delayMs}ms`,
+          { attempt, status, delayMs, jitter: randomJitter },
+          `Transient Horizon error (${status ?? 'timeout'}); retrying with exponential backoff and jitter in ${delayMs}ms`,
         );
         await new Promise((resolve) => setTimeout(resolve, delayMs));
       }
     }
+  }
+
+  /**
+   * Submits a transaction with both fee-bump and tx_too_late retry handling.
+   * Signs the rebuilt transaction with the provided signer keypair(s).
+   * Used for backend-controlled transactions where the signing key is known (#681).
+   */
+  private async submitWithRetrySigned(
+    tx: any,
+    signers: Keypair[],
+  ): Promise<any> {
+    const RETRYABLE = new Set([429, 503, 504]);
+    const MAX_RETRIES = 3;
+    let currentTx = tx;
+
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        return await this.server.submitTransaction(currentTx);
+      } catch (err: any) {
+        const status: number | undefined = err?.response?.status;
+        const isTimeout =
+          err?.code === 'ECONNABORTED' || err?.message?.includes('timeout');
+        const isTooLate = this.isTxTooLateError(err);
+
+        // tx_too_late: rebuild with fresh timebounds and re-sign (#681)
+        if (isTooLate && attempt < MAX_RETRIES) {
+          this.logger.warn(
+            { attempt, sourceKey: currentTx.source },
+            'tx_too_late detected — rebuilding and re-signing with fresh timebounds (#681)',
+          );
+          try {
+            currentTx = await this.rebuildWithFreshTimebounds(currentTx);
+            for (const signer of signers) {
+              currentTx.sign(signer);
+            }
+          } catch (rebuildErr: any) {
+            this.logger.error(
+              { rebuildErr: rebuildErr.message },
+              'Failed to rebuild expired transaction',
+            );
+            throw err;
+          }
+          continue;
+        }
+
+        const isRetryable =
+          (status !== undefined && RETRYABLE.has(status)) || isTimeout;
+
+        if (!isRetryable || attempt === MAX_RETRIES) {
+          throw err;
+        }
+
+        const baseDelayMs = 1000;
+        const randomJitter = Math.floor(Math.random() * 500);
+        const delayMs = baseDelayMs * Math.pow(2, attempt) + randomJitter;
+        this.logger.warn(
+          { attempt, status, delayMs, jitter: randomJitter },
+          `Transient Horizon error (${status ?? 'timeout'}); retrying with exponential backoff and jitter in ${delayMs}ms`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+  }
+
+  /**
+   * Checks whether a Horizon submission error indicates tx_insufficient_fee.
+   */
+  private isInsufficientFeeError(err: any): boolean {
+    const resultCodes = err?.response?.data?.extras?.result_codes;
+    if (resultCodes?.transaction === 'tx_insufficient_fee') return true;
+    if (
+      typeof err?.message === 'string' &&
+      err.message.includes('tx_insufficient_fee')
+    )
+      return true;
+    return false;
+  }
+
+  /**
+   * Submits a transaction with fee-bump retry on tx_insufficient_fee.
+   * Doubles the fee each attempt up to STELLAR_MAX_FEE (default: 10000 stroops).
+   * Used for escrow release where fee surges can cause silent failures (#826).
+   */
+  private async submitWithFeeBumpRetry(
+    buildTx: (fee: string) => Promise<any>,
+    signer: Keypair,
+    operationName = 'submitWithFeeBumpRetry',
+    correlationId?: string,
+  ): Promise<any> {
+    const maxFee = this.config.get<string>('STELLAR_MAX_FEE', '10000');
+    const maxFeeNum = parseInt(maxFee, 10);
+    let currentFee = parseInt(BASE_FEE, 10);
+    const MAX_ATTEMPTS = 4;
+    const startTime = Date.now();
+
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      const tx = await buildTx(currentFee.toString());
+      tx.sign(signer);
+      const txHash =
+        typeof tx?.hash === 'function' ? tx.hash().toString('hex') : tx?.hash;
+
+      try {
+        const result = await this.server.submitTransaction(tx);
+        const durationMs = Date.now() - startTime;
+        this.logStructuredTx({
+          correlationId,
+          txHash: result?.hash || txHash,
+          operation: operationName,
+          durationMs,
+          status: 'success',
+        });
+        return result;
+      } catch (err: any) {
+        if (this.isInsufficientFeeError(err) && currentFee < maxFeeNum) {
+          currentFee = Math.min(currentFee * 2, maxFeeNum);
+          this.logger.warn(
+            {
+              attempt,
+              newFee: currentFee,
+              maxFee: maxFeeNum,
+              correlationId,
+              txHash,
+            },
+            `tx_insufficient_fee detected — retrying with higher fee (${currentFee} stroops)`,
+          );
+          continue;
+        }
+        const durationMs = Date.now() - startTime;
+        this.logStructuredTx({
+          correlationId,
+          txHash,
+          operation: operationName,
+          durationMs,
+          status: 'failed',
+          error: err?.message,
+        });
+        throw err;
+      }
+    }
+
+    throw new Error(
+      `Escrow release failed: fee exceeded max (${maxFeeNum} stroops) after ${MAX_ATTEMPTS} attempts`,
+    );
   }
 
   /**
@@ -1997,7 +2471,10 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     // 1. Cache read — skip Horizon if we already have a terminal result.
     const cached = await this.getCachedTxStatus(txId);
     if (cached) {
-      this.logger.info({ txId, cached }, 'Transaction status served from cache');
+      this.logger.info(
+        { txId, cached },
+        'Transaction status served from cache',
+      );
       return cached;
     }
 
@@ -2034,7 +2511,9 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       return null;
     }
     try {
-      const raw = await this.sequenceRedis.get(this.txStatusCacheKey(txId)) as string | null;
+      const raw = (await this.sequenceRedis.get(
+        this.txStatusCacheKey(txId),
+      )) as string | null;
       if (raw === 'success' || raw === 'failed') {
         return raw;
       }
@@ -2101,6 +2580,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     const tx = new TransactionBuilder(issuerAccount, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
+      timebounds: this.getTransactionTimebounds(),
     })
       .addOperation(
         Operation.setTrustLineFlags({
@@ -2109,11 +2589,11 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
           flags: { authorized: !freeze },
         }),
       )
-      .setTimeout(30)
+      
       .build();
 
     tx.sign(issuerKeypair);
-    const result = await this.submitWithRetry(tx);
+    const result = await this.submitWithRetrySigned(tx, [issuerKeypair]);
     const txId = (result as any).hash as string;
 
     this.logger.info(
@@ -2168,6 +2648,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     const tx = new TransactionBuilder(investorAccount, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
+      timebounds: this.getTransactionTimebounds(),
     })
       .addOperation(
         Operation.changeTrust({
@@ -2176,11 +2657,11 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         }),
       )
       .addMemo(Memo.text(`cleanup:${assetCode}`))
-      .setTimeout(30)
+      
       .build();
 
     tx.sign(investorKeypair);
-    const result = await this.submitWithRetry(tx);
+    const result = await this.submitWithRetrySigned(tx, [investorKeypair]);
     const txId = (result as any).hash as string;
 
     this.logger.info(
@@ -2222,7 +2703,10 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     }
 
     if (operations.length > MAX_OPERATIONS_PER_TX) {
-      const plan = planTransactionBatches(operations.length, MAX_OPERATIONS_PER_TX);
+      const plan = planTransactionBatches(
+        operations.length,
+        MAX_OPERATIONS_PER_TX,
+      );
       this.logger.info(
         {
           totalOperations: operations.length,
@@ -2240,7 +2724,11 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     const txHashes: string[] = [];
 
     // Submit transactions sequentially with correct sequence numbers
-    for (let chunkIndex = 0; chunkIndex < operationChunks.length; chunkIndex++) {
+    for (
+      let chunkIndex = 0;
+      chunkIndex < operationChunks.length;
+      chunkIndex++
+    ) {
       const chunk = operationChunks[chunkIndex];
       const totalChunks = operationChunks.length;
 
@@ -2263,6 +2751,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       const txBuilder = new TransactionBuilder(account, {
         fee,
         networkPassphrase: this.networkPassphrase,
+        timebounds: this.getTransactionTimebounds(timeout),
       });
 
       // Add all operations for this chunk
@@ -2282,13 +2771,11 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         txBuilder.addMemo(Memo.text(batchMemo));
       }
 
-      txBuilder.setTimeout(timeout);
-
       const tx = txBuilder.build();
       tx.sign(sourceKeypair);
 
       try {
-        const result = await this.submitWithRetry(tx);
+        const result = await this.submitWithRetrySigned(tx, [sourceKeypair]);
         const txHash = (result as any).hash as string;
         txHashes.push(txHash);
 
@@ -2349,6 +2836,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     const txBuilder = new TransactionBuilder(issuerAccount, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
+      timebounds: this.getTransactionTimebounds(),
     });
 
     for (const holder of holders) {
@@ -2363,11 +2851,11 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
-    const tx = txBuilder.setTimeout(300).build();
+    const tx = txBuilder.build();
     tx.sign(issuerKeypair);
 
     try {
-      await this.submitWithRetry(tx);
+      await this.submitWithRetrySigned(tx, [issuerKeypair]);
       this.logger.info(
         { assetCode, issuerPublicKey, holdersCount: holders.length },
         'Tokens clawed back successfully',

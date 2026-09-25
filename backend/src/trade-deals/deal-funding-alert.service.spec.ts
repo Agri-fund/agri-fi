@@ -15,7 +15,9 @@ const mockHttpService = () => ({
 });
 
 const mockConfigService = (overrides: Record<string, string> = {}) => ({
-  get: jest.fn((key: string, defaultVal?: string) => overrides[key] ?? defaultVal),
+  get: jest.fn(
+    (key: string, defaultVal?: string) => overrides[key] ?? defaultVal,
+  ),
 });
 
 function buildDeal(overrides: Partial<TradeDeal> = {}): TradeDeal {

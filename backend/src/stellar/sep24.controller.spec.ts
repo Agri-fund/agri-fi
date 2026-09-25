@@ -2,9 +2,13 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ForbiddenException } from '@nestjs/common';
 import { Sep24Controller } from './sep24.controller';
 import { Sep24Service } from './sep24.service';
-import { Sep24TxKind, Sep24TxStatus } from './entities/sep24-transaction.entity';
+import {
+  Sep24TxKind,
+  Sep24TxStatus,
+} from './entities/sep24-transaction.entity';
 
-const STELLAR_ACCOUNT = 'GCEZWKCA5VLDNRLN3RPRJMRZOX3Z6G5CHCGWKX2ZVBFGCNX5J3MHAQX';
+const STELLAR_ACCOUNT =
+  'GCEZWKCA5VLDNRLN3RPRJMRZOX3Z6G5CHCGWKX2ZVBFGCNX5J3MHAQX';
 
 const mockSep24Service = {
   getInfo: jest.fn(),

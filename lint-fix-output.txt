@@ -1,0 +1,200 @@
+
+/home/rilwanu/Desktop/agri-fi/backend/src/achievements/achievement.service.spec.ts
+  8:31  error  'ConflictException' is defined but never used  @typescript-eslint/no-unused-vars
+
+/home/rilwanu/Desktop/agri-fi/backend/src/archival/admin-archive.controller.ts
+  18:31  error  'MoreThanOrEqual' is defined but never used  @typescript-eslint/no-unused-vars
+  18:48  error  'LessThanOrEqual' is defined but never used  @typescript-eslint/no-unused-vars
+
+/home/rilwanu/Desktop/agri-fi/backend/src/archival/archival-cron.service.ts
+  2:16  error  'CronExpression' is defined but never used  @typescript-eslint/no-unused-vars
+
+/home/rilwanu/Desktop/agri-fi/backend/src/auth/admin.controller.ts
+  32:3  error  'IsOptional' is defined but never used  @typescript-eslint/no-unused-vars
+
+/home/rilwanu/Desktop/agri-fi/backend/src/auth/api-key.controller.ts
+   8:3  error  'UseGuards' is defined but never used      @typescript-eslint/no-unused-vars
+  16:3  error  'ApiResponse' is defined but never used    @typescript-eslint/no-unused-vars
+  17:3  error  'ApiBearerAuth' is defined but never used  @typescript-eslint/no-unused-vars
+
+/home/rilwanu/Desktop/agri-fi/backend/src/auth/api-key.service.ts
+  5:3  error  'ForbiddenException' is defined but never used  @typescript-eslint/no-unused-vars
+
+/home/rilwanu/Desktop/agri-fi/backend/src/auth/auth-unlock.integration.spec.ts
+    2:28  error  'HttpStatus' is defined but never used                     @typescript-eslint/no-unused-vars
+    3:10  error  'TypeOrmModule' is defined but never used                  @typescript-eslint/no-unused-vars
+    6:13  error  'request' is defined but never used                        @typescript-eslint/no-unused-vars
+    7:13  error  'bcrypt' is defined but never used                         @typescript-eslint/no-unused-vars
+   10:10  error  'User' is defined but never used                           @typescript-eslint/no-unused-vars
+   11:10  error  'LoginLog' is defined but never used                       @typescript-eslint/no-unused-vars
+   30:7   error  'authService' is assigned a value but never used           @typescript-eslint/no-unused-vars
+   32:7   error  'notificationsService' is assigned a value but never used  @typescript-eslint/no-unused-vars
+   34:9   error  'testUser' is assigned a value but never used              @typescript-eslint/no-unused-vars
+  249:13  error  'invalidToken' is assigned a value but never used          @typescript-eslint/no-unused-vars
+  326:13  error  'mockEmail' is assigned a value but never used             @typescript-eslint/no-unused-vars
+
+/home/rilwanu/Desktop/agri-fi/backend/src/auth/auth.module.ts
+  12:10  error  'ReferralCode' is defined but never used  @typescript-eslint/no-unused-vars
+  13:10  error  'Referral' is defined but never used      @typescript-eslint/no-unused-vars
+
+/home/rilwanu/Desktop/agri-fi/backend/src/auth/auth.service.ts
+  36:10  error  'NotificationsService' is defined but never used  @typescript-eslint/no-unused-vars
+
+/home/rilwanu/Desktop/agri-fi/backend/src/auth/dto/mfa.dto.ts
+  1:28  error  'IsOptional' is defined but never used  @typescript-eslint/no-unused-vars
+
+/home/rilwanu/Desktop/agri-fi/backend/src/auth/kyc-cron.service.ts
+  4:22  error  'LessThanOrEqual' is defined but never used  @typescript-eslint/no-unused-vars
+  4:39  error  'MoreThan' is defined but never used         @typescript-eslint/no-unused-vars
+
+/home/rilwanu/Desktop/agri-fi/backend/src/auth/referral.service.ts
+  4:3  error  'ConflictException' is defined but never used  @typescript-eslint/no-unused-vars
+
+/home/rilwanu/Desktop/agri-fi/backend/src/common/interceptors/decimal-precision.spec.ts
+  1:10  error  'Test' is defined but never used           @typescript-eslint/no-unused-vars
+  1:16  error  'TestingModule' is defined but never used  @typescript-eslint/no-unused-vars
+
+/home/rilwanu/Desktop/agri-fi/backend/src/compliance/compliance-report.service.ts
+   17:22  error  'NotFoundException' is defined but never used  @typescript-eslint/no-unused-vars
+  325:15  error  'extra' is assigned a value but never used     @typescript-eslint/no-unused-vars
+
+/home/rilwanu/Desktop/agri-fi/backend/src/compliance/compliance.controller.ts
+  14:3  error  'Param' is defined but never used    @typescript-eslint/no-unused-vars
+  16:3  error  'Request' is defined but never used  @typescript-eslint/no-unused-vars
+
+/home/rilwanu/Desktop/agri-fi/backend/src/config/aws-secrets.ts
+  168:25  error  Require statement not part of import statement  @typescript-eslint/no-var-requires
+
+/home/rilwanu/Desktop/agri-fi/backend/src/database/database.config.ts
+  5:10  error  'InjectDataSource' is defined but never used  @typescript-eslint/no-unused-vars
+
+/home/rilwanu/Desktop/agri-fi/backend/src/documents/dto/upload-chunk.dto.ts
+  1:40  error  'Max' is defined but never used  @typescript-eslint/no-unused-vars
+
+/home/rilwanu/Desktop/agri-fi/backend/src/documents/ipfs-cid.ts
+  60:5  error  'value' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+/home/rilwanu/Desktop/agri-fi/backend/src/escrow/escrow.main.ts
+  33:2  error  Parsing error: Argument expression expected
+
+/home/rilwanu/Desktop/agri-fi/backend/src/escrow/escrow.service.ts
+  11:3  error  'FarmerPayout' is defined but never used  @typescript-eslint/no-unused-vars
+
+/home/rilwanu/Desktop/agri-fi/backend/src/health/health.controller.ts
+  10:10  error  'Transport' is defined but never used             @typescript-eslint/no-unused-vars
+  11:10  error  'ConfigService' is defined but never used         @typescript-eslint/no-unused-vars
+  16:3   error  'StellarHealthDetails' is defined but never used  @typescript-eslint/no-unused-vars
+
+/home/rilwanu/Desktop/agri-fi/backend/src/investments/fee-calculator.service.spec.ts
+  6:3  error  'FeeBreakdown' is defined but never used          @typescript-eslint/no-unused-vars
+  7:3  error  'FeeCalculationConfig' is defined but never used  @typescript-eslint/no-unused-vars
+
+/home/rilwanu/Desktop/agri-fi/backend/src/investments/fee-calculator.service.ts
+  9:10  error  'TradeDeal' is defined but never used  @typescript-eslint/no-unused-vars
+
+/home/rilwanu/Desktop/agri-fi/backend/src/investments/investments.controller.ts
+  12:3  error  'Version' is defined but never used  @typescript-eslint/no-unused-vars
+
+/home/rilwanu/Desktop/agri-fi/backend/src/notifications/email-template.service.ts
+  151:5  error  Definition for rule 'security/detect-non-literal-fs-filename' was not found  security/detect-non-literal-fs-filename
+  179:7  error  Definition for rule 'security/detect-non-literal-fs-filename' was not found  security/detect-non-literal-fs-filename
+
+/home/rilwanu/Desktop/agri-fi/backend/src/notifications/notification-preferences.service.ts
+  1:22  error  'NotFoundException' is defined but never used  @typescript-eslint/no-unused-vars
+
+/home/rilwanu/Desktop/agri-fi/backend/src/notifications/notifications.controller.ts
+  14:3  error  'ApiResponse' is defined but never used  @typescript-eslint/no-unused-vars
+
+/home/rilwanu/Desktop/agri-fi/backend/src/notifications/notifications.gateway.ts
+   7:3   error  'SubscribeMessage' is defined but never used    @typescript-eslint/no-unused-vars
+  10:3   error  'MessageBody' is defined but never used         @typescript-eslint/no-unused-vars
+  11:3   error  'ConnectedSocket' is defined but never used     @typescript-eslint/no-unused-vars
+  14:22  error  'WS_AUTH_ERROR_CODE' is defined but never used  @typescript-eslint/no-unused-vars
+
+/home/rilwanu/Desktop/agri-fi/backend/src/notifications/ws-jwt.guard.spec.ts
+  3:22  error  'WS_AUTH_ERROR_CODE' is defined but never used  @typescript-eslint/no-unused-vars
+
+/home/rilwanu/Desktop/agri-fi/backend/src/queue/retry-policy.spec.ts
+  6:3  error  'DEFAULT_BASE_DELAY_MS' is defined but never used  @typescript-eslint/no-unused-vars
+  7:3  error  'DEFAULT_MAX_JITTER_MS' is defined but never used  @typescript-eslint/no-unused-vars
+
+/home/rilwanu/Desktop/agri-fi/backend/src/search/search.controller.ts
+  11:49  error  'IsIn' is defined but never used  @typescript-eslint/no-unused-vars
+
+/home/rilwanu/Desktop/agri-fi/backend/src/settlement/settlement.service.ts
+  10:10  error  'nativeToScVal' is defined but never used  @typescript-eslint/no-unused-vars
+
+/home/rilwanu/Desktop/agri-fi/backend/src/soroban/soroban-event-indexer.service.ts
+  270:17  error  'contractName' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+/home/rilwanu/Desktop/agri-fi/backend/src/soroban/soroban-rent.service.ts
+  19:22  error  'Logger' is defined but never used  @typescript-eslint/no-unused-vars
+
+/home/rilwanu/Desktop/agri-fi/backend/src/soroban/soroban.controller.ts
+  10:3  error  'Version' is defined but never used  @typescript-eslint/no-unused-vars
+
+/home/rilwanu/Desktop/agri-fi/backend/src/soroban/soroban.module.ts
+  5:10  error  'SorobanEventIndexer' is defined but never used  @typescript-eslint/no-unused-vars
+
+/home/rilwanu/Desktop/agri-fi/backend/src/soroban/soroban.service.ts
+  631:2  error  Parsing error: Unexpected keyword or identifier
+
+/home/rilwanu/Desktop/agri-fi/backend/src/stellar/fx-rate.service.spec.ts
+  8:3  error  'SUPPORTED_CURRENCIES' is defined but never used  @typescript-eslint/no-unused-vars
+
+/home/rilwanu/Desktop/agri-fi/backend/src/stellar/prices.controller.ts
+  3:25  error  'SUPPORTED_CURRENCIES' is defined but never used  @typescript-eslint/no-unused-vars
+
+/home/rilwanu/Desktop/agri-fi/backend/src/stellar/stellar-merge-recovery.integration.spec.ts
+   22:3   error  'Operation' is defined but never used                    @typescript-eslint/no-unused-vars
+   23:3   error  'TransactionBuilder' is defined but never used           @typescript-eslint/no-unused-vars
+   24:3   error  'BASE_FEE' is defined but never used                     @typescript-eslint/no-unused-vars
+   35:7   error  'service' is assigned a value but never used             @typescript-eslint/no-unused-vars
+   44:7   error  'platformKeypair' is assigned a value but never used     @typescript-eslint/no-unused-vars
+  206:13  error  'mockInvestorShares' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+/home/rilwanu/Desktop/agri-fi/backend/src/stellar/stellar-monitor.service.spec.ts
+  5:10  error  'Horizon' is defined but never used  @typescript-eslint/no-unused-vars
+
+/home/rilwanu/Desktop/agri-fi/backend/src/stellar/stellar.controller.ts
+  12:3  error  'Version' is defined but never used  @typescript-eslint/no-unused-vars
+
+/home/rilwanu/Desktop/agri-fi/backend/src/stellar/stellar.service.spec.ts
+    6:26  error  'TxStatus' is defined but never used                                 @typescript-eslint/no-unused-vars
+  808:13  error  'i' is defined but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+
+/home/rilwanu/Desktop/agri-fi/backend/src/stellar/stellar.service.ts
+  2101:2  error  Parsing error: ',' expected
+
+/home/rilwanu/Desktop/agri-fi/backend/src/trade-deals/deal-digest.service.ts
+  286:11  error  'width' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+/home/rilwanu/Desktop/agri-fi/backend/src/trade-deals/deal-health-monitor.service.spec.ts
+  3:10  error  'Gauge' is defined but never used  @typescript-eslint/no-unused-vars
+
+/home/rilwanu/Desktop/agri-fi/backend/src/trade-deals/risk-scoring.service.ts
+  205:11  error  'now' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+/home/rilwanu/Desktop/agri-fi/backend/src/trade-deals/trade-deals.controller.ts
+  46:10  error  'ActivityFeedService' is defined but never used  @typescript-eslint/no-unused-vars
+
+/home/rilwanu/Desktop/agri-fi/backend/src/trade-deals/trade-deals.service.ts
+  9:34  error  'QueryRunner' is defined but never used  @typescript-eslint/no-unused-vars
+
+/home/rilwanu/Desktop/agri-fi/backend/src/upgrade/entities/soroban-contract-deployment.entity.ts
+  6:3  error  'ManyToOne' is defined but never used   @typescript-eslint/no-unused-vars
+  7:3  error  'JoinColumn' is defined but never used  @typescript-eslint/no-unused-vars
+
+/home/rilwanu/Desktop/agri-fi/backend/src/users/users.controller.ts
+   4:3   error  'Patch' is defined but never used                        @typescript-eslint/no-unused-vars
+   8:3   error  'Body' is defined but never used                         @typescript-eslint/no-unused-vars
+  27:10  error  'RolesGuard' is defined but never used                   @typescript-eslint/no-unused-vars
+  28:10  error  'Roles' is defined but never used                        @typescript-eslint/no-unused-vars
+  29:10  error  'UpdateOnboardingProgressDto' is defined but never used  @typescript-eslint/no-unused-vars
+
+/home/rilwanu/Desktop/agri-fi/backend/src/users/users.service.ts
+  5:3   error  'ConflictException' is defined but never used  @typescript-eslint/no-unused-vars
+  8:22  error  'In' is defined but never used                 @typescript-eslint/no-unused-vars
+
+✖ 91 problems (91 errors, 0 warnings)
+

@@ -96,7 +96,10 @@ export class IpfsGatewayMonitorService {
         this.logger.warn(
           `IPFS gateway ${result.url} is OFFLINE (timeout/error)`,
         );
-      } else if (result.latencyMs !== null && result.latencyMs > SLOW_THRESHOLD_MS) {
+      } else if (
+        result.latencyMs !== null &&
+        result.latencyMs > SLOW_THRESHOLD_MS
+      ) {
         this.logger.warn(
           `IPFS gateway ${result.url} is SLOW (${result.latencyMs} ms > ${SLOW_THRESHOLD_MS} ms threshold)`,
         );

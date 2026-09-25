@@ -3,17 +3,22 @@ import {
   ForbiddenException,
   NotFoundException,
   ConflictException,
+  Inject,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In, DataSource } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { randomBytes } from 'crypto';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import type { Cache } from 'cache-manager';
 import { User, UserRole } from '../auth/entities/user.entity';
+import { UpdateOnboardingProgressDto } from './dto/update-onboarding-progress.dto';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
 import { Investment } from '../investments/entities/investment.entity';
 import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.entity';
 import { PaymentDistribution } from '../escrow/entities/payment-distribution.entity';
 import { KycSubmission } from '../auth/entities/kyc-submission.entity';
 import { Document } from '../trade-deals/entities/document.entity';
+import { AuditLog } from '../database/entities/audit-log.entity';
 
 export interface CurrentUserProfile {
   id: string;
@@ -27,10 +32,47 @@ export interface CurrentUserProfile {
   createdAt: Date;
 }
 
+export interface PublicUserProfile {
+  id: string;
+  role: UserRole;
+  country: string;
+  kycStatus: User['kycStatus'];
+  walletAddress: string | null; // truncated
+  creditScore: number | null;
+  createdAt: Date;
+  // computed
+  dealsCompleted: number;
+  activeDeals: number;
+  reputationScore: number;
+  onTimeRepaymentRate: number;
+}
+
 export type DashboardDealRole = 'farmer' | 'trader';
 
+export type ActivityEventType =
+  | 'investment'
+  | 'deal_created'
+  | 'deal_status_change'
+  | 'milestone'
+  | 'document_upload'
+  | 'payment'
+  | 'kyc'
+  | 'login'
+  | 'account';
+
+export interface ActivityLogItem {
+  id: string;
+  type: ActivityEventType;
+  title: string;
+  description: string;
+  meta: Record<string, unknown>;
+  created_at: string;
+}
+
 function generateRandomString(length: number): string {
-  return randomBytes(Math.ceil(length / 2)).toString('hex').slice(0, length);
+  return randomBytes(Math.ceil(length / 2))
+    .toString('hex')
+    .slice(0, length);
 }
 
 @Injectable()
@@ -50,7 +92,11 @@ export class UsersService {
     private readonly kycSubmissionRepository: Repository<KycSubmission>,
     @InjectRepository(Document)
     private readonly documentRepository: Repository<Document>,
+    @InjectRepository(AuditLog)
+    private readonly auditLogRepository: Repository<AuditLog>,
     private readonly dataSource: DataSource,
+    @Inject(CACHE_MANAGER)
+    private readonly cacheManager: Cache,
   ) {}
 
   async getProfile(userId: string): Promise<CurrentUserProfile> {
@@ -73,14 +119,121 @@ export class UsersService {
     };
   }
 
+  /**
+   * Returns a public-safe profile for a given user (no PII).
+   * Reputation score is cached in Redis with a 15-minute TTL
+   * under key `farmer:reputation:{id}`.
+   */
+  async getPublicProfile(targetId: string): Promise<PublicUserProfile> {
+    const user = await this.userRepository.findOne({ where: { id: targetId } });
+    if (!user) {
+      throw new NotFoundException('User not found.');
+    }
+
+    // Truncate wallet address: show first 4 + "..." + last 4 chars
+    const truncatedWallet = user.walletAddress
+      ? `${user.walletAddress.slice(0, 4)}...${user.walletAddress.slice(-4)}`
+      : null;
+
+    // --- Compute deal counts ---
+    const allFarmerDeals = await this.tradeDealRepository.find({
+      where: { farmerId: targetId },
+      select: ['id', 'status'],
+    });
+    const dealsCompleted = allFarmerDeals.filter((d) => d.status === 'completed').length;
+    const activeDeals = allFarmerDeals.filter(
+      (d) => d.status === 'published' || d.status === 'funded',
+    ).length;
+
+    // --- Reputation score with Redis cache ---
+    const cacheKey = `farmer:reputation:${targetId}`;
+    const REPUTATION_TTL_MS = 15 * 60 * 1000; // 15 minutes
+
+    let reputationScore: number;
+    let onTimeRepaymentRate: number;
+
+    const cached = await this.cacheManager.get<{
+      reputationScore: number;
+      onTimeRepaymentRate: number;
+    }>(cacheKey);
+
+    if (cached) {
+      reputationScore = cached.reputationScore;
+      onTimeRepaymentRate = cached.onTimeRepaymentRate;
+    } else {
+      // Derive on-time repayment rate from completed deals with confirmed payments
+      const completedDealIds = allFarmerDeals
+        .filter((d) => d.status === 'completed')
+        .map((d) => d.id);
+
+      let computedRepaymentRate = 0;
+      if (completedDealIds.length > 0) {
+        const confirmedPayments = await this.paymentDistributionRepository.count({
+          where: {
+            tradeDealId: In(completedDealIds),
+            recipientId: targetId,
+            recipientType: 'farmer',
+            status: 'confirmed',
+          },
+        });
+        computedRepaymentRate =
+          completedDealIds.length > 0
+            ? confirmedPayments / completedDealIds.length
+            : 0;
+      }
+
+      // Use stored creditScore if available; otherwise derive a simple reputation
+      // score (0–100) from deal completion rate and repayment rate
+      const totalDeals = allFarmerDeals.length;
+      const completionRate = totalDeals > 0 ? dealsCompleted / totalDeals : 0;
+
+      if (user.creditScore !== null) {
+        // Map FICO-like 300-850 to 0-100
+        reputationScore = Math.round(((user.creditScore - 300) / 550) * 100);
+      } else {
+        reputationScore = Math.round(
+          computedRepaymentRate * 50 + completionRate * 50,
+        );
+      }
+
+      onTimeRepaymentRate = computedRepaymentRate;
+
+      await this.cacheManager.set(
+        cacheKey,
+        { reputationScore, onTimeRepaymentRate },
+        REPUTATION_TTL_MS,
+      );
+    }
+
+    return {
+      id: user.id,
+      role: user.role,
+      country: user.country,
+      kycStatus: user.kycStatus,
+      walletAddress: truncatedWallet,
+      creditScore: user.creditScore,
+      createdAt: user.createdAt,
+      dealsCompleted,
+      activeDeals,
+      reputationScore,
+      onTimeRepaymentRate,
+    };
+  }
+
   async deleteAccount(userId: string): Promise<void> {
     await this.dataSource.transaction(async (manager) => {
-      const user = await manager.findOne(User, { where: { id: userId } });
+      const user = await manager.findOne(User, {
+        where: { id: userId },
+        withDeleted: true,
+      });
       if (!user) {
         throw new NotFoundException('User not found.');
       }
 
-      // Anonymize user PII
+      const now = new Date();
+      const dueAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // 30-day grace period
+
+      // Anonymize user PII immediately while preserving financial records with anonymized user ref
       const anonymizedUser = manager.create(User, {
         id: user.id,
         email: `deleted-${generateRandomString(16)}@example.com`,
@@ -90,8 +243,13 @@ export class UsersService {
         fullName: null,
         birthdate: null,
         taxId: null,
+        phone: null,
+        physicalAddress: null,
         isEmailVerified: false,
         emailVerificationToken: null,
+        gdprErasureRequestedAt: now,
+        gdprErasureDueAt: dueAt,
+        gdprStatus: 'pending_erasure',
         companyDetails: user.isCompany
           ? {
               companyName: `Deleted Company ${generateRandomString(8)}`,
@@ -119,8 +277,31 @@ export class UsersService {
         });
       }
 
+      // Record audit log for GDPR erasure request
+      const audit = manager.create(AuditLog, {
+        entityName: 'User',
+        entityId: userId,
+        action: 'DELETE',
+        userId: userId,
+        changes: `GDPR erasure requested. Account soft-deleted with 30-day grace period ending ${dueAt.toISOString()}`,
+        oldValues: { email: user.email, gdprStatus: user.gdprStatus },
+        newValues: {
+          gdprStatus: 'pending_erasure',
+          gdprErasureDueAt: dueAt.toISOString(),
+        },
+      });
+      await manager.save(AuditLog, audit);
+
       // Soft delete the user
       await manager.softDelete(User, userId);
+    });
+  }
+
+  async getPendingErasureQueue(): Promise<User[]> {
+    return this.userRepository.find({
+      where: { gdprStatus: 'pending_erasure' },
+      withDeleted: true,
+      order: { gdprErasureDueAt: 'ASC' },
     });
   }
 
@@ -239,6 +420,193 @@ export class UsersService {
     );
   }
 
+  /**
+   * Synthesises a chronological activity feed for the user by merging events
+   * from: investments, trade deals, shipment milestones, documents, KYC
+   * submissions, payment distributions, and the audit_logs table.
+   *
+   * Returns the most recent `limit` events, sorted newest-first.
+   */
+  async getActivityLog(userId: string, limit = 50): Promise<ActivityLogItem[]> {
+    const events: ActivityLogItem[] = [];
+
+    // ── Investments ────────────────────────────────────────────────────────
+    const investments = await this.investmentRepository.find({
+      where: { investorId: userId },
+      relations: ['tradeDeal'],
+      order: { createdAt: 'DESC' },
+      take: limit,
+    });
+    for (const inv of investments) {
+      events.push({
+        id: `inv-${inv.id}`,
+        type: 'investment',
+        title: 'Investment made',
+        description: `Invested $${Number(inv.amountUsd).toLocaleString()} in ${inv.tradeDeal?.commodity ?? 'a trade deal'} (${inv.tradeDeal?.tokenSymbol ?? ''})`,
+        meta: {
+          investmentId: inv.id,
+          dealId: inv.tradeDealId,
+          commodity: inv.tradeDeal?.commodity,
+          amountUsd: Number(inv.amountUsd),
+          tokenAmount: Number(inv.tokenAmount),
+          status: inv.status,
+          stellarTxId: inv.stellarTxId,
+        },
+        created_at: inv.createdAt.toISOString(),
+      });
+    }
+
+    // ── Trade deals created by this user ──────────────────────────────────
+    const deals = await this.tradeDealRepository.find({
+      where: [{ farmerId: userId }, { traderId: userId }],
+      order: { createdAt: 'DESC' },
+      take: limit,
+    });
+    for (const deal of deals) {
+      events.push({
+        id: `deal-${deal.id}`,
+        type: 'deal_created',
+        title: 'Trade deal created',
+        description: `Created trade deal for ${deal.commodity} — $${Number(deal.totalValue).toLocaleString()} (${deal.tokenSymbol})`,
+        meta: {
+          dealId: deal.id,
+          commodity: deal.commodity,
+          totalValue: Number(deal.totalValue),
+          status: deal.status,
+          tokenSymbol: deal.tokenSymbol,
+        },
+        created_at: deal.createdAt.toISOString(),
+      });
+    }
+
+    // ── Shipment milestones recorded by this user ─────────────────────────
+    const milestones = await this.milestoneRepository.find({
+      where: { recordedBy: userId },
+      order: { recordedAt: 'DESC' },
+      take: limit,
+    });
+    for (const ms of milestones) {
+      const milestoneLabels: Record<string, string> = {
+        farm: 'Farm',
+        warehouse: 'Warehouse',
+        port: 'Port',
+        importer: 'Importer',
+      };
+      events.push({
+        id: `ms-${ms.id}`,
+        type: 'milestone',
+        title: 'Shipment milestone recorded',
+        description: `Recorded "${milestoneLabels[ms.milestone] ?? ms.milestone}" milestone${ms.notes ? `: ${ms.notes}` : ''}`,
+        meta: {
+          milestoneId: ms.id,
+          dealId: ms.tradeDealId,
+          milestone: ms.milestone,
+          notes: ms.notes,
+          stellarTxId: ms.stellarTxId,
+        },
+        created_at: ms.recordedAt.toISOString(),
+      });
+    }
+
+    // ── Document uploads ──────────────────────────────────────────────────
+    const docs = await this.documentRepository.find({
+      where: { uploaderId: userId },
+      order: { createdAt: 'DESC' },
+      take: limit,
+    });
+    for (const doc of docs) {
+      events.push({
+        id: `doc-${doc.id}`,
+        type: 'document_upload',
+        title: 'Document uploaded',
+        description: `Uploaded document of type "${doc.docType}"`,
+        meta: {
+          documentId: doc.id,
+          docType: doc.docType,
+          dealId: doc.tradeDealId,
+          ipfsHash: doc.ipfsHash,
+        },
+        created_at: doc.createdAt.toISOString(),
+      });
+    }
+
+    // ── KYC submissions ───────────────────────────────────────────────────
+    const kycSubmissions = await this.kycSubmissionRepository.find({
+      where: { userId },
+      order: { createdAt: 'DESC' },
+      take: 10,
+    });
+    for (const kyc of kycSubmissions) {
+      events.push({
+        id: `kyc-${kyc.id}`,
+        type: 'kyc',
+        title: 'KYC submission',
+        description: `KYC verification ${kyc.status === 'approved' ? 'approved' : kyc.status === 'rejected' ? 'rejected' : 'submitted'}`,
+        meta: {
+          kycId: kyc.id,
+          status: kyc.status,
+          isCorporate: kyc.isCorporate,
+        },
+        created_at: kyc.createdAt.toISOString(),
+      });
+    }
+
+    // ── Payment distributions received ────────────────────────────────────
+    const payments = await this.paymentDistributionRepository.find({
+      where: { recipientId: userId, status: 'confirmed' },
+      order: { createdAt: 'DESC' },
+      take: limit,
+    });
+    for (const pd of payments) {
+      events.push({
+        id: `pay-${pd.id}`,
+        type: 'payment',
+        title: 'Payment received',
+        description: `Received $${Number(pd.amountUsd).toLocaleString()} from escrow release (${pd.recipientType})`,
+        meta: {
+          paymentId: pd.id,
+          dealId: pd.tradeDealId,
+          amountUsd: Number(pd.amountUsd),
+          recipientType: pd.recipientType,
+          stellarTxId: pd.stellarTxId,
+        },
+        created_at: pd.createdAt.toISOString(),
+      });
+    }
+
+    // ── Audit log entries attributed to this user ─────────────────────────
+    const auditEntries = await this.auditLogRepository.find({
+      where: { userId },
+      order: { createdAt: 'DESC' },
+      take: limit,
+    });
+    for (const entry of auditEntries) {
+      // Skip TradeDeal mutations — already covered by deal_created above
+      if (entry.entityName === 'TradeDeal') continue;
+      events.push({
+        id: `audit-${entry.id}`,
+        type: 'account',
+        title: `${entry.action.toLowerCase().replace('insert', 'created').replace('update', 'updated').replace('delete', 'deleted')} ${entry.entityName}`,
+        description: entry.changes ?? `${entry.action} on ${entry.entityName}`,
+        meta: {
+          auditId: entry.id,
+          entityName: entry.entityName,
+          entityId: entry.entityId,
+          action: entry.action,
+        },
+        created_at: entry.createdAt.toISOString(),
+      });
+    }
+
+    // ── Sort all events newest-first and cap ──────────────────────────────
+    events.sort(
+      (a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    );
+
+    return events.slice(0, limit);
+  }
+
   async exportUserData(userId: string): Promise<any> {
     const user = await this.userRepository.findOne({ where: { id: userId } });
     if (!user) {
@@ -329,5 +697,96 @@ export class UsersService {
       })),
       exportedAt: new Date().toISOString(),
     };
+  }
+
+  /**
+   * Returns the current onboarding progress for a farmer.
+   * Always returns the four checklist fields (defaulting to false if null).
+   */
+  async getOnboardingProgress(userId: string): Promise<{
+    profileComplete: boolean;
+    kycSubmitted: boolean;
+    firstDealCreated: boolean;
+    walletConnected: boolean;
+    allComplete: boolean;
+  }> {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('User not found.');
+    }
+
+    const progress = user.onboardingProgress ?? {
+      profileComplete: false,
+      kycSubmitted: false,
+      firstDealCreated: false,
+      walletConnected: false,
+    };
+
+    const allComplete =
+      progress.profileComplete &&
+      progress.kycSubmitted &&
+      progress.firstDealCreated &&
+      progress.walletConnected;
+
+    return { ...progress, allComplete };
+  }
+
+  /**
+   * Merges a partial checklist update into the user's persisted
+   * onboarding_progress column, then returns the full updated state.
+   * Once all four steps are true, allComplete is set to true.
+   */
+  async updateOnboardingProgress(
+    userId: string,
+    dto: UpdateOnboardingProgressDto,
+  ): Promise<{
+    profileComplete: boolean;
+    kycSubmitted: boolean;
+    firstDealCreated: boolean;
+    walletConnected: boolean;
+    allComplete: boolean;
+  }> {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('User not found.');
+    }
+
+    // Start from the stored progress (or zeros) and apply the partial update
+    const existing = user.onboardingProgress ?? {
+      profileComplete: false,
+      kycSubmitted: false,
+      firstDealCreated: false,
+      walletConnected: false,
+    };
+
+    const updated = {
+      profileComplete:
+        dto.profileComplete !== undefined
+          ? dto.profileComplete
+          : existing.profileComplete,
+      kycSubmitted:
+        dto.kycSubmitted !== undefined
+          ? dto.kycSubmitted
+          : existing.kycSubmitted,
+      firstDealCreated:
+        dto.firstDealCreated !== undefined
+          ? dto.firstDealCreated
+          : existing.firstDealCreated,
+      walletConnected:
+        dto.walletConnected !== undefined
+          ? dto.walletConnected
+          : existing.walletConnected,
+    };
+
+    user.onboardingProgress = updated;
+    await this.userRepository.save(user);
+
+    const allComplete =
+      updated.profileComplete &&
+      updated.kycSubmitted &&
+      updated.firstDealCreated &&
+      updated.walletConnected;
+
+    return { ...updated, allComplete };
   }
 }

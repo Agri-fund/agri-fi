@@ -1,12 +1,13 @@
 import {
   Injectable,
+  Optional,
   NotFoundException,
   BadRequestException,
   UnprocessableEntityException,
   ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository, QueryRunner } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { PinoLogger } from 'nestjs-pino';
 import { TradeDeal, TradeDealStatus } from './entities/trade-deal.entity';
 import { Document, DocumentType } from './entities/document.entity';
@@ -19,6 +20,8 @@ import {
 } from '../investments/entities/investment.entity';
 import { StellarService } from '../stellar/stellar.service';
 import { QueueService } from '../queue/queue.service';
+import { RiskScoringService } from './risk-scoring.service';
+import { SorobanService } from '../soroban/soroban.service';
 
 const VALID_DOC_TYPES: DocumentType[] = [
   'purchase_agreement',
@@ -27,6 +30,38 @@ const VALID_DOC_TYPES: DocumentType[] = [
   'warehouse_receipt',
 ];
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
+const PUBLIC_STATUSES: TradeDealStatus[] = ['open', 'funded'];
+
+type DealSearchSortBy =
+  'newest' | 'highest_roi' | 'closing_soon' | 'most_funded';
+type DealDurationBucket =
+  '<3 months' | '3-6 months' | '6-12 months' | '>12 months';
+
+export interface TradeDealSearchQuery {
+  commodity?: string;
+  country?: string;
+  minAmount?: number;
+  maxAmount?: number;
+  minRoi?: number;
+  maxRoi?: number;
+  duration?: DealDurationBucket;
+  riskRating?: 'Low' | 'Medium' | 'High';
+  status?: 'open' | 'almost funded' | 'fully funded';
+  sortBy?: DealSearchSortBy;
+  page?: number;
+  limit?: number;
+  q?: string;
+}
+
+function bucketToDayRange(
+  bucket?: DealDurationBucket,
+): [number, number] | null {
+  if (!bucket) return null;
+  if (bucket === '<3 months') return [0, 90];
+  if (bucket === '3-6 months') return [91, 180];
+  if (bucket === '6-12 months') return [181, 365];
+  return [366, Number.MAX_SAFE_INTEGER];
+}
 
 export interface AddDocumentDto {
   tradeDealId: string;
@@ -55,6 +90,8 @@ export class TradeDealsService {
     private readonly investmentRepo: Repository<Investment>,
     private readonly stellarService: StellarService,
     private readonly queueService: QueueService,
+    private readonly riskScoringService: RiskScoringService,
+    @Optional() private readonly sorobanService?: SorobanService,
     private readonly logger: PinoLogger,
     private readonly dataSource: DataSource,
   ) {
@@ -79,6 +116,18 @@ export class TradeDealsService {
     traderId: string,
     dto: CreateTradeDealDto,
   ): Promise<TradeDeal> {
+    const normalizedTitle = dto.title?.trim() || dto.commodity.trim();
+    const existingTitle = await this.tradeDealRepo
+      .createQueryBuilder('deal')
+      .where('LOWER(deal.title) = LOWER(:title)', { title: normalizedTitle })
+      .getOne();
+    if (existingTitle) {
+      throw new BadRequestException({
+        code: 'DUPLICATE_TITLE',
+        message: 'A deal with this title already exists.',
+      });
+    }
+
     const farmerId = dto.farmer_id ?? traderId;
     const effectiveTraderId = dto.trader_id ?? traderId;
 
@@ -102,10 +151,25 @@ export class TradeDealsService {
     }
 
     const tradeDeal = this.tradeDealRepo.create({
+      title: normalizedTitle,
       commodity: dto.commodity,
+      country: dto.country ?? 'Unknown',
+      region: dto.region ?? null,
+      shortDescription: dto.short_description ?? null,
+      longDescription: dto.long_description ?? null,
       quantity: dto.quantity,
       quantityUnit: dto.quantity_unit,
       totalValue: dto.total_value,
+      expectedRoi: dto.expected_roi ?? null,
+      durationDays: dto.duration_days ?? null,
+      minInvestmentLot: dto.min_investment_lot ?? null,
+      riskRating: dto.risk_rating ?? null,
+      farmLocation: dto.farm_location ?? null,
+      farmLatitude: dto.farm_latitude ?? null,
+      farmLongitude: dto.farm_longitude ?? null,
+      farmPhotos: dto.farm_photos ?? [],
+      supportingDocuments: dto.supporting_documents ?? [],
+      logisticsPlan: dto.logistics_plan ?? [],
       tokenCount,
       tokenSymbol: 'PENDING',
       status: 'draft',
@@ -113,12 +177,16 @@ export class TradeDealsService {
       traderId: effectiveTraderId,
       totalInvested: 0,
       deliveryDate: new Date(dto.delivery_date),
+      fundingDeadline: new Date(dto.funding_deadline ?? dto.delivery_date),
+      minimumFundingTarget: dto.minimum_funding_target ?? dto.total_value,
+      minLotSize: dto.min_lot_size ?? 1,
+      lotStep: dto.lot_step ?? 1,
       escrowPublicKey: null,
       escrowSecretKey: null,
       issuerPublicKey: null,
       issuerSecretKey: null,
       stellarAssetTxId: null,
-    });
+    } as any);
 
     const savedDeal = await this.tradeDealRepo.save(tradeDeal);
 
@@ -127,11 +195,32 @@ export class TradeDealsService {
       savedDeal.id,
     );
 
-    return this.tradeDealRepo.save(savedDeal);
+    const saved = await this.tradeDealRepo.save(savedDeal);
+
+    // #828 — compute initial risk score (non-blocking)
+    this.riskScoringService.computeAndPersist(saved.id).catch((err) => {
+      this.logger.warn(
+        { dealId: saved.id, error: err.message },
+        'Failed to compute initial risk score',
+      );
+    });
+
+    return saved;
   }
 
   async findOpen(query: {
     commodity?: string;
+    country?: string;
+    region?: string;
+    minAmount?: number;
+    maxAmount?: number;
+    minRoi?: number;
+    maxRoi?: number;
+    duration?: DealDurationBucket;
+    riskRating?: 'Low' | 'Medium' | 'High';
+    status?: 'open' | 'almost funded' | 'fully funded';
+    sortBy?: DealSearchSortBy;
+    q?: string;
     page?: number;
     limit?: number;
   }): Promise<{ data: any[]; total: number; page: number; limit: number }> {
@@ -139,16 +228,19 @@ export class TradeDealsService {
     const limit = query.limit ?? 12;
     const skip = (page - 1) * limit;
 
-    if (query.commodity && !/^[a-zA-Z0-9 _-]{1,100}$/.test(query.commodity)) {
+    if (query.commodity && !/^[a-zA-Z0-9 _,-]{1,100}$/.test(query.commodity)) {
       throw new BadRequestException('Invalid commodity search term.');
     }
 
     const qb = this.tradeDealRepo
       .createQueryBuilder('deal')
-      .where('deal.status = :status', { status: 'open' })
+      .where('deal.status IN (:...statuses)', { statuses: PUBLIC_STATUSES })
       .select([
         'deal.id',
+        'deal.title',
         'deal.commodity',
+        'deal.country',
+        'deal.region',
         'deal.quantity',
         'deal.quantityUnit',
         'deal.totalValue',
@@ -156,16 +248,129 @@ export class TradeDealsService {
         'deal.tokenCount',
         'deal.tokenSymbol',
         'deal.deliveryDate',
+        'deal.shortDescription',
+        'deal.longDescription',
+        'deal.expectedRoi',
+        'deal.durationDays',
+        'deal.minInvestmentLot',
+        'deal.riskRating',
+        'deal.farmLocation',
         'deal.farmerId',
         'deal.traderId',
+        'deal.riskScore',
+        'deal.riskRating',
       ])
       .skip(skip)
       .take(limit);
 
-    if (query.commodity) {
-      qb.andWhere('LOWER(deal.commodity) = LOWER(:commodity)', {
-        commodity: query.commodity,
+    const commodityValues = query.commodity
+      ?.split(',')
+      .map((value) => value.trim())
+      .filter(Boolean);
+    if (commodityValues && commodityValues.length > 0) {
+      qb.andWhere('LOWER(deal.commodity) IN (:...commodityValues)', {
+        commodityValues: commodityValues.map((value) => value.toLowerCase()),
       });
+    }
+
+    if (query.country) {
+      qb.andWhere("LOWER(COALESCE(deal.country, '')) LIKE LOWER(:country)", {
+        country: `%${query.country}%`,
+      });
+    }
+
+    if (query.region) {
+      qb.andWhere("LOWER(COALESCE(deal.region, '')) LIKE LOWER(:region)", {
+        region: `%${query.region}%`,
+      });
+    }
+
+    if (
+      typeof query.minAmount === 'number' &&
+      Number.isFinite(query.minAmount)
+    ) {
+      qb.andWhere('COALESCE(deal.min_investment_lot, 0) >= :minAmount', {
+        minAmount: query.minAmount,
+      });
+    }
+
+    if (
+      typeof query.maxAmount === 'number' &&
+      Number.isFinite(query.maxAmount)
+    ) {
+      qb.andWhere('COALESCE(deal.min_investment_lot, 0) <= :maxAmount', {
+        maxAmount: query.maxAmount,
+      });
+    }
+
+    if (typeof query.minRoi === 'number' && Number.isFinite(query.minRoi)) {
+      qb.andWhere('COALESCE(deal.expected_roi, 0) >= :minRoi', {
+        minRoi: query.minRoi,
+      });
+    }
+
+    if (typeof query.maxRoi === 'number' && Number.isFinite(query.maxRoi)) {
+      qb.andWhere('COALESCE(deal.expected_roi, 0) <= :maxRoi', {
+        maxRoi: query.maxRoi,
+      });
+    }
+
+    const durationRange = bucketToDayRange(query.duration);
+    if (durationRange) {
+      qb.andWhere(
+        'COALESCE(deal.duration_days, 0) BETWEEN :minDuration AND :maxDuration',
+        {
+          minDuration: durationRange[0],
+          maxDuration: durationRange[1],
+        },
+      );
+    }
+
+    if (query.riskRating) {
+      qb.andWhere('deal.risk_rating = :riskRating', {
+        riskRating: query.riskRating,
+      });
+    }
+
+    if (query.status) {
+      if (query.status === 'open') {
+        qb.andWhere('deal.total_invested < deal.total_value * 0.5');
+      } else if (query.status === 'almost funded') {
+        qb.andWhere(
+          'deal.total_invested >= deal.total_value * 0.5 AND deal.total_invested < deal.total_value',
+        );
+      } else if (query.status === 'fully funded') {
+        qb.andWhere('deal.total_invested >= deal.total_value');
+      }
+    }
+
+    if (query.q?.trim()) {
+      qb.andWhere(
+        `to_tsvector('english', coalesce(deal.title, '') || ' ' || coalesce(deal.short_description, '') || ' ' || coalesce(deal.long_description, '')) @@ plainto_tsquery('english', :search)`,
+        { search: query.q.trim() },
+      );
+    }
+
+    switch (query.sortBy) {
+      case 'highest_roi':
+        qb.orderBy('COALESCE(deal.expected_roi, 0)', 'DESC').addOrderBy(
+          'deal.created_at',
+          'DESC',
+        );
+        break;
+      case 'closing_soon':
+        qb.orderBy('deal.delivery_date', 'ASC');
+        break;
+      case 'most_funded':
+        qb.orderBy('deal.total_invested', 'DESC').addOrderBy(
+          'deal.created_at',
+          'DESC',
+        );
+        break;
+      case 'newest':
+      default:
+        qb.orderBy('deal.created_at', 'DESC');
+        break;
     }
 
     const [deals, total] = await qb.getManyAndCount();
@@ -173,7 +378,10 @@ export class TradeDealsService {
     return {
       data: deals.map((deal) => ({
         id: deal.id,
+        title: deal.title,
         commodity: deal.commodity,
+        country: deal.country,
+        region: deal.region,
         quantity: deal.quantity,
         quantity_unit: deal.quantityUnit,
         total_value: deal.totalValue,
@@ -182,9 +390,20 @@ export class TradeDealsService {
         token_count: deal.tokenCount,
         token_symbol: deal.tokenSymbol,
         delivery_date: deal.deliveryDate,
+        short_description: deal.shortDescription,
+        long_description: deal.longDescription,
+        expected_roi: deal.expectedRoi,
+        duration_days: deal.durationDays,
+        min_investment_lot: deal.minInvestmentLot,
+        risk_rating: deal.riskRating,
+        farm_location: deal.farmLocation,
         farmer_id: deal.farmerId,
         trader_id: deal.traderId,
         remaining_funding: Number(deal.totalValue) - Number(deal.totalInvested),
+        risk_score: deal.riskScore,
+        risk_rating: deal.riskRating,
+        min_lot_size: Number(deal.minLotSize),
+        lot_step: Number(deal.lotStep),
       })),
       total,
       page,
@@ -221,21 +440,41 @@ export class TradeDealsService {
     const canViewSensitive = !!access?.canViewSensitive;
     const publicDetail = {
       id: deal.id,
+      title: deal.title,
       commodity: deal.commodity,
+      country: deal.country,
+      region: deal.region,
       quantity: deal.quantity,
       quantity_unit: deal.quantityUnit,
       total_value: deal.totalValue,
       delivery_date: deal.deliveryDate,
       status: deal.status,
+      short_description: deal.shortDescription,
+      long_description: deal.longDescription,
       token_count: deal.tokenCount,
       token_symbol: deal.tokenSymbol,
       total_invested: deal.totalInvested,
       funded_amount: deal.totalInvested,
+      expected_roi: deal.expectedRoi,
+      duration_days: deal.durationDays,
+      min_investment_lot: deal.minInvestmentLot,
+      risk_rating: deal.riskRating,
+      farm_location: deal.farmLocation,
+      farm_photos: deal.farmPhotos,
+      logistics_plan: deal.logisticsPlan,
       tokens_remaining: tokensRemaining,
       trader_name: deal.trader?.email || 'Unknown Trader',
       description: `${deal.quantity} ${deal.quantityUnit} of ${deal.commodity} for delivery by ${new Date(
         deal.deliveryDate,
       ).toLocaleDateString()}`,
+      risk_score: deal.riskScore,
+      risk_rating: deal.riskRating,
+      risk_breakdown: deal.riskBreakdown,
+      // #835 — lot sizing exposed to the investment form
+      min_lot_size: Number(deal.minLotSize),
+      lot_step: Number(deal.lotStep),
+      // #830 — on-chain FarmCampaign contract address for this deal
+      soroban_contract_address: deal.sorobanCampaignContractId ?? null,
     };
 
     if (!canViewSensitive) {
@@ -306,8 +545,8 @@ export class TradeDealsService {
       // the deal would otherwise be stuck holding an escrow account no job
       // will ever process.
       // Use transactional outbox for atomic DB update + event publish
-      return await this.dataSource.transaction(async (queryRunner: QueryRunner) => {
-        await queryRunner.manager.update(TradeDeal, dealId, {
+      return await this.dataSource.transaction(async (entityManager) => {
+        await entityManager.update(TradeDeal, dealId, {
           escrowPublicKey,
           escrowSecretKey: encryptedEscrowSecret,
         });
@@ -317,7 +556,7 @@ export class TradeDealsService {
           'Escrow account created, enqueuing token issuance',
         );
 
-        await this.queueService.enqueueDealPublishTransactional(queryRunner, {
+        await this.queueService.enqueueDealPublishTransactional(entityManager, {
           dealId,
           tokenSymbol: deal.tokenSymbol,
           escrowPublicKey,
@@ -447,7 +686,7 @@ export class TradeDealsService {
       }
 
       if (investorShares.length > 0) {
-        const issuerSecret = this.stellarService.decryptSecret(
+        const issuerSecret = await this.stellarService.decryptSecret(
           deal.issuerSecretKey,
         );
 
@@ -507,6 +746,13 @@ export class TradeDealsService {
       throw new UnprocessableEntityException({
         code: 'DEAL_NOT_OPEN',
         message: `Cannot expire a deal in "${deal.status}" status. Only open deals can be expired.`,
+      });
+    }
+
+    if (Number(deal.totalInvested) >= Number(deal.totalValue)) {
+      throw new UnprocessableEntityException({
+        code: 'DEAL_FUNDED',
+        message: 'Cannot expire a deal that has already reached its funding target.',
       });
     }
 
@@ -594,6 +840,85 @@ export class TradeDealsService {
     return saved;
   }
 
+  async closeUnderfundedDeal(dealId: string): Promise<TradeDeal> {
+    const deal = await this.tradeDealRepo.findOne({
+      where: { id: dealId },
+      relations: ['investments', 'investments.investor'],
+    });
+
+    if (!deal) throw new NotFoundException('Trade deal not found.');
+    if (deal.status !== 'open') {
+      throw new UnprocessableEntityException({
+        code: 'DEAL_NOT_OPEN',
+        message: `Cannot close a deal in "${deal.status}" status.`,
+      });
+    }
+
+    const minimumTarget = Number(deal.minimumFundingTarget ?? deal.totalValue);
+    if (Number(deal.totalInvested) >= minimumTarget) {
+      throw new UnprocessableEntityException({
+        code: 'FUNDING_TARGET_REACHED',
+        message: 'Cannot close a deal that reached its minimum funding target.',
+      });
+    }
+
+    const confirmedInvestments = (deal.investments ?? []).filter(
+      (investment) => investment.status === InvestmentStatus.CONFIRMED,
+    );
+
+    if (deal.sorobanCampaignContractId && this.sorobanService) {
+      await this.sorobanService.markCampaignFailed(
+        deal.sorobanCampaignContractId,
+      );
+      for (const investment of confirmedInvestments) {
+        const walletAddress = investment.investor?.walletAddress;
+        if (!walletAddress) {
+          throw new UnprocessableEntityException({
+            code: 'INVESTOR_WALLET_REQUIRED',
+            message: `Investment ${investment.id} has no wallet address for refund.`,
+          });
+        }
+        await this.sorobanService.refundCampaignInvestor(
+          deal.sorobanCampaignContractId,
+          walletAddress,
+        );
+      }
+    } else {
+      await this.refundConfirmedInvestmentsWithClawback(deal, confirmedInvestments);
+    }
+
+    if (confirmedInvestments.length > 0) {
+      await this.investmentRepo.update(
+        confirmedInvestments.map((investment) => investment.id),
+        { status: InvestmentStatus.REFUNDED },
+      );
+    }
+    deal.status = 'expired';
+    deal.appTraceId = `app-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 10)}`;
+    return this.tradeDealRepo.save(deal);
+  }
+
+  private async refundConfirmedInvestmentsWithClawback(
+    deal: TradeDeal,
+    confirmedInvestments: Investment[],
+  ): Promise<void> {
+    if (!deal.issuerPublicKey || !deal.issuerSecretKey || !deal.stellarAssetTxId) return;
+    const shares = confirmedInvestments
+      .filter((investment) => investment.investor?.walletAddress)
+      .map((investment) => ({
+        walletAddress: investment.investor!.walletAddress as string,
+        tokenAmount: Number(investment.tokenAmount),
+      }));
+    if (shares.length === 0) return;
+    const issuerSecret = await this.stellarService.decryptSecret(deal.issuerSecretKey);
+    await this.stellarService.clawbackTokens(
+      deal.tokenSymbol,
+      deal.issuerPublicKey,
+      issuerSecret,
+      shares,
+    );
+  }
+
   async findByUser(userId: string, role: string): Promise<any[]> {
     if (role !== 'farmer' && role !== 'trader') {
       return [];
@@ -635,6 +960,49 @@ export class TradeDealsService {
     );
 
     return dealsWithCounts;
+  }
+
+  /**
+   * Soft-delete a trade deal (admin only).
+   * This preserves audit history while excluding the deal from standard queries.
+   * Soft-deleted deals can be restored with restore().
+   *
+   * @param dealId  UUID of the deal to soft-delete
+   * @returns       void (throws NotFoundException if deal doesn't exist)
+   */
+  async softDeleteDeal(dealId: string): Promise<void> {
+    const deal = await this.tradeDealRepo.findOne({ where: { id: dealId } });
+    if (!deal) {
+      throw new NotFoundException('Trade deal not found.');
+    }
+
+    await this.tradeDealRepo.softDelete(dealId);
+    this.logger.info({ dealId }, 'Trade deal soft-deleted by admin');
+  }
+
+  /**
+   * Restore a soft-deleted trade deal (admin only).
+   *
+   * @param dealId  UUID of the deal to restore
+   * @returns       void (throws NotFoundException if deal doesn't exist)
+   */
+  async restoreDeal(dealId: string): Promise<void> {
+    const deal = await this.tradeDealRepo.findOne({
+      where: { id: dealId },
+      withDeleted: true,
+    });
+
+    if (!deal) {
+      throw new NotFoundException('Trade deal not found.');
+    }
+
+    if (!deal.deletedAt) {
+      this.logger.warn({ dealId }, 'Attempted restore on non-deleted deal');
+      return;
+    }
+
+    await this.tradeDealRepo.restore(dealId);
+    this.logger.info({ dealId }, 'Trade deal restored by admin');
   }
 
   private generateTokenSymbol(commodity: string, dealId: string): string {

@@ -6,7 +6,7 @@ describe('CurrencyInput', () => {
   it('formats USD values with commas and two decimals on blur', async () => {
     const user = userEvent.setup();
     let value = '1234.5';
-    const handleChange = jest.fn((nextValue: string) => {
+    const handleChange = vi.fn((nextValue: string) => {
       value = nextValue;
       rerenderInput();
     });
@@ -45,7 +45,7 @@ describe('CurrencyInput', () => {
   it('restricts USD input to positive decimals with two places', async () => {
     const user = userEvent.setup();
     let value = '';
-    const handleChange = jest.fn((nextValue: string) => {
+    const handleChange = vi.fn((nextValue: string) => {
       value = nextValue;
       rerenderInput();
     });
@@ -79,7 +79,7 @@ describe('CurrencyInput', () => {
   it('supports Stellar precision with seven decimals and suffixes', async () => {
     const user = userEvent.setup();
     let value = '';
-    const handleChange = jest.fn((nextValue: string) => {
+    const handleChange = vi.fn((nextValue: string) => {
       value = nextValue;
       rerenderInput();
     });

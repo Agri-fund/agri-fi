@@ -8,15 +8,15 @@ const renderWithToast = (ui: React.ReactElement) =>
   render(<ToastProvider>{ui}</ToastProvider>);
 
 // Mock the useWallet hook
-jest.mock('../../hooks/useWallet', () => ({
-  useWallet: jest.fn(),
+vi.mock('../../hooks/useWallet', () => ({
+  useWallet: vi.fn(),
 }));
 
 const mockUseWallet = require('../../hooks/useWallet').useWallet as jest.Mock;
 
 // Mock localStorage
 const mockLocalStorage = {
-  getItem: jest.fn(() => 'mock-auth-token'),
+  getItem: vi.fn(() => 'mock-auth-token'),
 };
 Object.defineProperty(window, 'localStorage', {
   value: mockLocalStorage,
@@ -27,8 +27,8 @@ describe('InvestmentForm', () => {
     dealId: 'deal-123',
     maxTokens: 50,
     tokenPrice: 100,
-    onSuccess: jest.fn(),
-    onError: jest.fn(),
+    onSuccess: vi.fn(),
+    onError: vi.fn(),
   };
 
   beforeEach(() => {
@@ -39,7 +39,7 @@ describe('InvestmentForm', () => {
     mockUseWallet.mockReturnValue({
       isConnected: true,
       publicKey: 'GTEST123...',
-      signTransaction: jest.fn(),
+      signTransaction: vi.fn(),
     });
   });
 
@@ -51,7 +51,7 @@ describe('InvestmentForm', () => {
     expect(tokenInput).toHaveValue(1);
 
     // Check initial calculation
-    expect(screen.getByText('Token Price:')).toBeInTheDocument();
+    expect(screen.getByText('Price per lot:')).toBeInTheDocument();
     expect(screen.getByText('Quantity:')).toBeInTheDocument();
     expect(screen.getByText('Total Investment:')).toBeInTheDocument();
 
@@ -105,7 +105,7 @@ describe('InvestmentForm', () => {
     mockUseWallet.mockReturnValue({
       isConnected: false,
       publicKey: null,
-      signTransaction: jest.fn(),
+      signTransaction: vi.fn(),
     });
 
     renderWithToast(<InvestmentForm {...defaultProps} />);
@@ -116,7 +116,7 @@ describe('InvestmentForm', () => {
 
   it('handles successful investment flow', async () => {
     const user = userEvent.setup();
-    const mockSignTransaction = jest.fn().mockResolvedValue('signed-xdr-123');
+    const mockSignTransaction = vi.fn().mockResolvedValue('signed-xdr-123');
     
     mockUseWallet.mockReturnValue({
       isConnected: true,
@@ -203,7 +203,7 @@ describe('InvestmentForm', () => {
 
   it('handles Freighter signing error', async () => {
     const user = userEvent.setup();
-    const mockSignTransaction = jest.fn().mockRejectedValue(new Error('User rejected transaction'));
+    const mockSignTransaction = vi.fn().mockRejectedValue(new Error('User rejected transaction'));
     
     mockUseWallet.mockReturnValue({
       isConnected: true,
@@ -247,7 +247,7 @@ describe('InvestmentForm', () => {
 
   it('allows making another investment after success', async () => {
     const user = userEvent.setup();
-    const mockSignTransaction = jest.fn().mockResolvedValue('signed-xdr-123');
+    const mockSignTransaction = vi.fn().mockResolvedValue('signed-xdr-123');
     
     mockUseWallet.mockReturnValue({
       isConnected: true,

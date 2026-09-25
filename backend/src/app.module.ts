@@ -1,4 +1,5 @@
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -7,6 +8,7 @@ import { ClsModule, ClsMiddleware } from 'nestjs-cls';
 import { DatabaseConfig } from './database/database.config';
 import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './auth/auth.module';
+import { ReferralModule } from './auth/referral.module';
 import { StellarModule } from './stellar/stellar.module';
 import { ShipmentsModule } from './shipments/shipments.module';
 import { TradeDealsModule } from './trade-deals/trade-deals.module';
@@ -23,7 +25,7 @@ import { HttpLoggerMiddleware } from './common/middleware/http-logger.middleware
 import { loggingConfig } from './common/logging/logging.config';
 import { HealthModule } from './health/health.module';
 import { TerminusModule } from '@nestjs/terminus';
-import { ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { SorobanModule } from './soroban/soroban.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { ReferralsModule } from './referrals/referrals.module';
@@ -31,6 +33,15 @@ import { validateEnvironment } from './config/env.validation';
 import { ScheduleModule } from '@nestjs/schedule';
 import { APP_FILTER } from '@nestjs/core';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { AuditModule } from './audit/audit.module';
+import { GraphQLApiModule } from './graphql/graphql.module';
+
+import { AchievementModule } from './achievements/achievement.module';
+import { EmailSequenceModule } from './email-sequence/email-sequence.module';
+import { SettlementModule } from './settlement/settlement.module';
+import { SearchModule } from './search/search.module';
+import { UpgradeModule } from './upgrade/upgrade.module';
+import { WebhooksModule } from './webhooks/webhooks.module';
 
 @Module({
   controllers: [AppController],
@@ -73,6 +84,7 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
     }),
     DatabaseModule,
     AuthModule,
+    ReferralModule,
     StellarModule,
     ShipmentsModule,
     TradeDealsModule,
@@ -88,12 +100,23 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
     TerminusModule,
     SorobanModule,
     MetricsModule,
-    ReferralsModule,
+    AuditModule,
+    AchievementModule,
+    GraphQLApiModule,
+    EmailSequenceModule,
+    SettlementModule,
+    SearchModule,
+    UpgradeModule,
+    WebhooksModule,
   ],
   providers: [
     {
       provide: APP_FILTER,
       useClass: HttpExceptionFilter,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
     },
   ],
 })
@@ -103,6 +126,6 @@ export class AppModule implements NestModule {
     // ClsMiddleware MUST run before CorrelationIdMiddleware so it can safely call cls.set()
     consumer
       .apply(HttpLoggerMiddleware, ClsMiddleware, CorrelationIdMiddleware)
-      .forRoutes('*');
+      .forRoutes('{*splat}');
   }
 }

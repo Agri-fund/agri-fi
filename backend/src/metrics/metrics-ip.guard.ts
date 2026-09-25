@@ -49,9 +49,7 @@ export class MetricsIpGuard implements CanActivate {
     const allowed = this.allowedIps.includes(clientIp);
 
     if (!allowed) {
-      this.logger.warn(
-        `Blocked /metrics access attempt from ${clientIp}`,
-      );
+      this.logger.warn(`Blocked /metrics access attempt from ${clientIp}`);
     }
 
     return allowed;
@@ -60,8 +58,7 @@ export class MetricsIpGuard implements CanActivate {
   /** Extract the originating IP, respecting X-Forwarded-For when trusted. */
   private resolveClientIp(request: any): string {
     if (this.trustProxy) {
-      const forwarded: string | undefined =
-        request.headers['x-forwarded-for'];
+      const forwarded: string | undefined = request.headers['x-forwarded-for'];
       if (forwarded) {
         // X-Forwarded-For may be a comma-separated chain: take the leftmost
         // (client) address.

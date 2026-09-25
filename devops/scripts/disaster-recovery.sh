@@ -1,4 +1,21 @@
 #!/usr/bin/env bash
+# Disaster recovery runbook for Agri-Fi staging.
+#
+# Blue-green rollback (#836):
+#   The backend runs as two slots — agri-fi-backend-blue and
+#   agri-fi-backend-green. Traffic is routed to the active slot by the
+#   `slot` selector on the agri-fi-backend Service.
+#
+#   Instant rollback to a known-good slot:
+#     1. kubectl -n default scale deployment/agri-fi-backend-<good-slot> --replicas=2
+#     2. kubectl -n default patch svc agri-fi-backend \
+#          -p '{"spec":{"selector":{"slot":"<good-slot>"}}}'
+#     3. Optionally remove the bad slot:
+#        kubectl -n default scale deployment/agri-fi-backend-<bad-slot> --replicas=0
+#
+#   The CD pipeline (`.github/workflows/cd.yml`) performs the same steps
+#   automatically in its `rollback` job when a deploy or smoke test fails.
+#   Note: the backend HPA (devops/k8s/hpa.yaml) scales the active slot only.
 set -euo pipefail
 
 KUBECONFIG="${KUBECONFIG:-${HOME}/.kube/config}"

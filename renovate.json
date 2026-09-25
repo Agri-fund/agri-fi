@@ -3,10 +3,44 @@
   "extends": [
     "config:base"
   ],
-  "schedule": ["at any time on the weekend"],
   "timezone": "UTC",
   "automerge": false,
+  "automergeType": "pr",
+  "platformAutomerge": true,
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 5am on monday"],
+    "automerge": true,
+    "automergeType": "pr",
+    "platformAutomerge": true
+  },
   "packageRules": [
+    {
+      "description": "Auto-merge patch updates that pass CI",
+      "matchUpdateTypes": ["patch"],
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": true,
+      "schedule": ["at any time on the weekend"],
+      "requiredStatusChecks": [
+        "Lint and Test",
+        "Backend — lint, build, test",
+        "Frontend — lint, build"
+      ]
+    },
+    {
+      "description": "Minor updates — require manual review, run on weekends",
+      "matchUpdateTypes": ["minor"],
+      "automerge": false,
+      "schedule": ["at any time on the weekend"],
+      "addLabels": ["dependencies", "minor-update"]
+    },
+    {
+      "description": "Major updates — require manual review, no schedule restriction",
+      "matchUpdateTypes": ["major"],
+      "automerge": false,
+      "addLabels": ["dependencies", "major-update"]
+    },
     {
       "matchPackagePatterns": ["^@nestjs/"],
       "groupName": "nestjs packages"
@@ -36,6 +70,7 @@
   ],
   "vulnerabilityAlerts": {
     "enabled": true,
+    "automerge": false,
     "addLabels": ["security"]
   },
   "labels": ["dependencies"],

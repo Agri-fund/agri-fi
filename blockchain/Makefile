@@ -51,6 +51,12 @@ build-escrow:
 	cargo build -p escrow --release --target wasm32-unknown-unknown
 	@echo "✓ Escrow build complete."
 
+# Build only revenue_distributor contract
+build-revenue-distributor:
+	@echo "Building revenue_distributor contract..."
+	cargo build -p revenue_distributor --release --target wasm32-unknown-unknown
+	@echo "✓ RevenueDistributor build complete."
+
 # Verify WASM binaries were created
 check-wasm:
 	@echo "Checking WASM binaries..."
@@ -75,6 +81,12 @@ test-escrow:
 	@echo "Testing escrow contract..."
 	cargo test -p escrow --verbose
 	@echo "✓ Escrow tests complete."
+
+# Test only revenue_distributor contract
+test-revenue-distributor:
+	@echo "Testing revenue_distributor contract..."
+	cargo test -p revenue_distributor --verbose
+	@echo "✓ RevenueDistributor tests complete."
 
 # Run tests with output
 test-verbose:

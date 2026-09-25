@@ -17,10 +17,7 @@ function makeContext(ip: string, forwardedFor?: string): ExecutionContext {
   } as unknown as ExecutionContext;
 }
 
-function makeConfig(
-  allowedIps?: string,
-  trustProxy?: string,
-): ConfigService {
+function makeConfig(allowedIps?: string, trustProxy?: string): ConfigService {
   return {
     get: (key: string, defaultValue: string) => {
       if (key === 'METRICS_ALLOWED_IPS')
