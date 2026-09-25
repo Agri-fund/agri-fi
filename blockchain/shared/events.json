@@ -1,0 +1,342 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "version": "1.0.0",
+  "schemaVersion": "v1",
+  "description": "Standardized Soroban Event Schemas across all 6 Agri-Fi smart contracts",
+  "namingConvention": "{contract}.{event}",
+  "contracts": {
+    "escrow": {
+      "name": "escrow",
+      "description": "Smart contract managing milestone-based escrow funds, compliance halts, and releases",
+      "events": {
+        "escrow.initialized": {
+          "topic": "escrow.initialized",
+          "version": "v1",
+          "description": "Emitted when escrow contract instance is initialized",
+          "fields": [
+            { "name": "dealValue", "type": "i128", "description": "Total value committed to escrow" },
+            { "name": "milestoneCount", "type": "u32", "description": "Number of defined milestone tranches" }
+          ]
+        },
+        "escrow.funded": {
+          "topic": "escrow.funded",
+          "version": "v1",
+          "description": "Emitted when funds are deposited into escrow",
+          "fields": [
+            { "name": "contributor", "type": "Address", "description": "Address of funder" },
+            { "name": "amount", "type": "i128", "description": "Amount deposited" }
+          ]
+        },
+        "escrow.approved": {
+          "topic": "escrow.approved",
+          "version": "v1",
+          "description": "Emitted when an escrow release or terms are approved by participants",
+          "fields": [
+            { "name": "approver", "type": "Address", "description": "Approving party" },
+            { "name": "approved", "type": "bool", "description": "Approval status" }
+          ]
+        },
+        "escrow.milestone_completed": {
+          "topic": "escrow.milestone_completed",
+          "version": "v1",
+          "description": "Emitted when an agricultural milestone is approved and verified",
+          "fields": [
+            { "name": "milestoneId", "type": "u32", "description": "Sequential milestone identifier" },
+            { "name": "completed", "type": "bool", "description": "Completion flag" }
+          ]
+        },
+        "escrow.released": {
+          "topic": "escrow.released",
+          "version": "v1",
+          "description": "Emitted when escrow funds are released to the farmer",
+          "fields": [
+            { "name": "recipient", "type": "Address", "description": "Farmer or recipient address" },
+            { "name": "amount", "type": "i128", "description": "Amount released" }
+          ]
+        },
+        "escrow.settled": {
+          "topic": "escrow.settled",
+          "version": "v1",
+          "description": "Emitted when escrow completes final settlement",
+          "fields": [
+            { "name": "totalFunded", "type": "i128", "description": "Total settlement amount disbursed" }
+          ]
+        },
+        "escrow.compliance_halt": {
+          "topic": "escrow.compliance_halt",
+          "version": "v1",
+          "description": "Emitted when compliance/sanctions screening flags an account or halts escrow",
+          "fields": [
+            { "name": "flaggedAccount", "type": "Address", "description": "Account flagged by compliance" }
+          ]
+        },
+        "escrow.refunded": {
+          "topic": "escrow.refunded",
+          "version": "v1",
+          "description": "Emitted when an investor receives a refund",
+          "fields": [
+            { "name": "contributor", "type": "Address", "description": "Contributor refunded" },
+            { "name": "amount", "type": "i128", "description": "Refunded amount" }
+          ]
+        },
+        "escrow.frozen": {
+          "topic": "escrow.frozen",
+          "version": "v1",
+          "description": "Emitted when an account's contribution is frozen pending review",
+          "fields": [
+            { "name": "account", "type": "Address", "description": "Frozen account address" }
+          ]
+        },
+        "escrow.unfrozen": {
+          "topic": "escrow.unfrozen",
+          "version": "v1",
+          "description": "Emitted when an account freeze is lifted",
+          "fields": [
+            { "name": "account", "type": "Address", "description": "Unfrozen account address" }
+          ]
+        },
+        "escrow.batch_refunded": {
+          "topic": "escrow.batch_refunded",
+          "version": "v1",
+          "description": "Emitted when a batch refund is executed for a canceled deal",
+          "fields": [
+            { "name": "totalRefunded", "type": "i128", "description": "Total amount refunded across all contributors" }
+          ]
+        }
+      }
+    },
+    "farm_campaign": {
+      "name": "farm_campaign",
+      "description": "Manages farm project crowd-investing campaign lifecycle, tranches, and revenue shares",
+      "events": {
+        "farm_campaign.initialized": {
+          "topic": "farm_campaign.initialized",
+          "version": "v1",
+          "description": "Emitted upon campaign setup",
+          "fields": [
+            { "name": "campaignId", "type": "String", "description": "Deal or campaign identifier" }
+          ]
+        },
+        "farm_campaign.max_funding": {
+          "topic": "farm_campaign.max_funding",
+          "version": "v1",
+          "description": "Emitted when campaign funding cap is established",
+          "fields": [
+            { "name": "maxFunding", "type": "i128", "description": "Cap in stroops/tokens" }
+          ]
+        },
+        "farm_campaign.invested": {
+          "topic": "farm_campaign.invested",
+          "version": "v1",
+          "description": "Emitted when an investor contributes funds",
+          "fields": [
+            { "name": "investor", "type": "Address", "description": "Investor address" },
+            { "name": "amount", "type": "i128", "description": "Invested token amount" }
+          ]
+        },
+        "farm_campaign.status_changed": {
+          "topic": "farm_campaign.status_changed",
+          "version": "v1",
+          "description": "Emitted when campaign state transitions (active, paused, delivered, failed, open)",
+          "fields": [
+            { "name": "newStatus", "type": "Symbol", "description": "New campaign status string" }
+          ]
+        },
+        "farm_campaign.milestone_completed": {
+          "topic": "farm_campaign.milestone_completed",
+          "version": "v1",
+          "description": "Emitted when a milestone tranche is verified",
+          "fields": [
+            { "name": "milestoneIndex", "type": "u32", "description": "Zero-indexed milestone number" },
+            { "name": "trancheAmount", "type": "i128", "description": "Tranche capital unlocked" }
+          ]
+        },
+        "farm_campaign.partial_released": {
+          "topic": "farm_campaign.partial_released",
+          "version": "v1",
+          "description": "Emitted when partial milestone funds are released",
+          "fields": [
+            { "name": "dealId", "type": "String", "description": "Campaign deal ID" },
+            { "name": "amountBps", "type": "u32", "description": "Basis points released" },
+            { "name": "amount", "type": "i128", "description": "Raw amount released" }
+          ]
+        },
+        "farm_campaign.revenue_distributed": {
+          "topic": "farm_campaign.revenue_distributed",
+          "version": "v1",
+          "description": "Emitted when crop harvest proceeds are distributed to backers",
+          "fields": [
+            { "name": "revenueAmount", "type": "i128", "description": "Total revenue disbursed" }
+          ]
+        },
+        "farm_campaign.dispute_raised": {
+          "topic": "farm_campaign.dispute_raised",
+          "version": "v1",
+          "description": "Emitted when a participant raises an arbitration dispute",
+          "fields": [
+            { "name": "milestoneIndex", "type": "u32", "description": "Disputed milestone" },
+            { "name": "caller", "type": "Address", "description": "Dispute initiator" }
+          ]
+        },
+        "farm_campaign.dispute_resolved": {
+          "topic": "farm_campaign.dispute_resolved",
+          "version": "v1",
+          "description": "Emitted when arbitrator resolves a disputed milestone",
+          "fields": [
+            { "name": "milestoneIndex", "type": "u32", "description": "Milestone resolved" },
+            { "name": "approved", "type": "bool", "description": "Arbitration decision" }
+          ]
+        },
+        "farm_campaign.arbitrator_updated": {
+          "topic": "farm_campaign.arbitrator_updated",
+          "version": "v1",
+          "description": "Emitted when designated arbitrator address changes",
+          "fields": [
+            { "name": "newArbitrator", "type": "Address", "description": "New arbitrator address" }
+          ]
+        },
+        "farm_campaign.refunded": {
+          "topic": "farm_campaign.refunded",
+          "version": "v1",
+          "description": "Emitted when an investor claims a campaign refund",
+          "fields": [
+            { "name": "investor", "type": "Address", "description": "Investor address" },
+            { "name": "amount", "type": "i128", "description": "Refund amount" }
+          ]
+        }
+      }
+    },
+    "farm_campaign_settlement": {
+      "name": "farm_campaign_settlement",
+      "description": "Settles final campaign harvests, audits, and investor token redemptions",
+      "events": {
+        "farm_campaign_settlement.settlement_initiated": {
+          "topic": "farm_campaign_settlement.settlement_initiated",
+          "version": "v1",
+          "description": "Emitted when settlement calculations commence",
+          "fields": [
+            { "name": "campaignId", "type": "String", "description": "Campaign contract identifier" },
+            { "name": "totalYield", "type": "i128", "description": "Audited crop harvest yield value" }
+          ]
+        },
+        "farm_campaign_settlement.settlement_completed": {
+          "topic": "farm_campaign_settlement.settlement_completed",
+          "version": "v1",
+          "description": "Emitted when campaign funds and yields are fully distributed",
+          "fields": [
+            { "name": "dealId", "type": "String", "description": "Trade deal or campaign ID" },
+            { "name": "settlementAmount", "type": "i128", "description": "Total settlement amount" }
+          ]
+        }
+      }
+    },
+    "marketplace_settlement": {
+      "name": "marketplace_settlement",
+      "description": "Settlement contract for off-taker spot and forward agricultural purchase orders",
+      "events": {
+        "marketplace_settlement.order_created": {
+          "topic": "marketplace_settlement.order_created",
+          "version": "v1",
+          "description": "Emitted when an off-taker creates a produce purchase order",
+          "fields": [
+            { "name": "orderId", "type": "u64", "description": "Unique order ID" },
+            { "name": "buyer", "type": "Address", "description": "Buyer address" },
+            { "name": "amount", "type": "i128", "description": "Committed purchase price" }
+          ]
+        },
+        "marketplace_settlement.trade_settled": {
+          "topic": "marketplace_settlement.trade_settled",
+          "version": "v1",
+          "description": "Emitted when delivery is confirmed and payment released to farmer",
+          "fields": [
+            { "name": "orderId", "type": "u64", "description": "Settled order ID" },
+            { "name": "total", "type": "i128", "description": "Disbursed payment" }
+          ]
+        },
+        "marketplace_settlement.order_refunded": {
+          "topic": "marketplace_settlement.order_refunded",
+          "version": "v1",
+          "description": "Emitted when an unfilled or canceled purchase order is returned",
+          "fields": [
+            { "name": "orderId", "type": "u64", "description": "Canceled order ID" },
+            { "name": "refundAmount", "type": "i128", "description": "Refunded sum" }
+          ]
+        }
+      }
+    },
+    "project_factory": {
+      "name": "project_factory",
+      "description": "Factory contract responsible for deploying and cataloging verified farm campaigns",
+      "events": {
+        "project_factory.campaign_created": {
+          "topic": "project_factory.campaign_created",
+          "version": "v1",
+          "description": "Emitted when a new farm campaign WASM instance is deployed",
+          "fields": [
+            { "name": "dealId", "type": "String", "description": "Platform trade deal UUID" },
+            { "name": "contractAddress", "type": "Address", "description": "Newly deployed contract address" }
+          ]
+        },
+        "project_factory.project_registered": {
+          "topic": "project_factory.project_registered",
+          "version": "v1",
+          "description": "Emitted when metadata and farmer credentials are registered with the factory",
+          "fields": [
+            { "name": "dealId", "type": "String", "description": "Deal UUID" },
+            { "name": "farmer", "type": "Address", "description": "Farmer principal address" }
+          ]
+        },
+        "project_factory.template_updated": {
+          "topic": "project_factory.template_updated",
+          "version": "v1",
+          "description": "Emitted when child campaign bytecode hash is upgraded",
+          "fields": [
+            { "name": "wasmHash", "type": "BytesN<32>", "description": "New WASM hash" }
+          ]
+        }
+      }
+    },
+    "revenue_distributor": {
+      "name": "revenue_distributor",
+      "description": "Pro-rata automated distribution of farm revenues and dividend yields to token holders",
+      "events": {
+        "revenue_distributor.initialized": {
+          "topic": "revenue_distributor.initialized",
+          "version": "v1",
+          "description": "Emitted on distributor instantiation",
+          "fields": [
+            { "name": "admin", "type": "Address", "description": "Admin address" }
+          ]
+        },
+        "revenue_distributor.holder_registered": {
+          "topic": "revenue_distributor.holder_registered",
+          "version": "v1",
+          "description": "Emitted when a token holder balance is snapshotted",
+          "fields": [
+            { "name": "holder", "type": "Address", "description": "Holder address" },
+            { "name": "balance", "type": "i128", "description": "Recorded token balance" }
+          ]
+        },
+        "revenue_distributor.revenue_distributed": {
+          "topic": "revenue_distributor.revenue_distributed",
+          "version": "v1",
+          "description": "Emitted when a dividend pool is deposited and made available for claim",
+          "fields": [
+            { "name": "dealId", "type": "String", "description": "Originating deal ID" },
+            { "name": "amount", "type": "i128", "description": "Total revenue pool" },
+            { "name": "distributionCount", "type": "u32", "description": "Total recipients credited" }
+          ]
+        },
+        "revenue_distributor.revenue_claimed": {
+          "topic": "revenue_distributor.revenue_claimed",
+          "version": "v1",
+          "description": "Emitted when an individual investor withdraws their dividend allotment",
+          "fields": [
+            { "name": "holder", "type": "Address", "description": "Claiming investor" },
+            { "name": "amount", "type": "i128", "description": "Amount transferred" }
+          ]
+        }
+      }
+    }
+  }
+}

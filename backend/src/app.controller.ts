@@ -3,11 +3,25 @@ import { ConfigService } from '@nestjs/config';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { ETagInterceptor } from './common/interceptors/etag.interceptor';
 
+export interface PublicPlatformStats {
+  totalFunded: number;
+  totalFundedFormatted: string;
+  activeFarmers: number;
+  activeFarmersFormatted: string;
+  dealsCompleted: number;
+  dealsCompletedFormatted: string;
+  avgReturn: number;
+  avgReturnFormatted: string;
+  updatedAt: string;
+}
+
 @ApiTags('config')
 @UseInterceptors(ETagInterceptor)
 @Controller('config')
 export class AppController {
   private cachedConfig: Record<string, unknown> | null = null;
+  private cachedStats: PublicPlatformStats | null = null;
+  private statsCachedAt: number = 0;
 
   constructor(private readonly config: ConfigService) {}
 
@@ -33,5 +47,47 @@ export class AppController {
       };
     }
     return this.cachedConfig;
+  }
+
+  @Get('stats')
+  @ApiOperation({ summary: 'Return cached public platform live statistics' })
+  @ApiResponse({ status: 200, description: 'Public platform metrics cached with 60s TTL' })
+  getPlatformStats(): PublicPlatformStats {
+    const now = Date.now();
+    const cacheTtlMs = 60 * 1000; // 60s TTL cache
+
+    if (this.cachedStats && now - this.statsCachedAt < cacheTtlMs) {
+      return this.cachedStats;
+    }
+
+    const totalFunded = parseFloat(
+      this.config.get<string>('STATS_TOTAL_FUNDED', '2840000'),
+    );
+    const activeFarmers = parseInt(
+      this.config.get<string>('STATS_ACTIVE_FARMERS', '384'),
+      10,
+    );
+    const dealsCompleted = parseInt(
+      this.config.get<string>('STATS_DEALS_COMPLETED', '142'),
+      10,
+    );
+    const avgReturn = parseFloat(
+      this.config.get<string>('STATS_AVG_RETURN', '14.8'),
+    );
+
+    this.cachedStats = {
+      totalFunded,
+      totalFundedFormatted: `$${(totalFunded / 1000000).toFixed(1)}M+`,
+      activeFarmers,
+      activeFarmersFormatted: `${activeFarmers}+`,
+      dealsCompleted,
+      dealsCompletedFormatted: `${dealsCompleted}+`,
+      avgReturn,
+      avgReturnFormatted: `${avgReturn.toFixed(1)}%`,
+      updatedAt: new Date().toISOString(),
+    };
+    this.statsCachedAt = now;
+
+    return this.cachedStats;
   }
 }

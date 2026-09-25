@@ -26,6 +26,11 @@ import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.enti
 import { QueueService } from '../queue/queue.service';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
 
+import {
+  normalizeContractEvent,
+  StandardizedEventPayload,
+} from './events/event-schema.registry';
+
 /**
  * Represents a processed event to prevent duplicate processing
  */
@@ -60,12 +65,14 @@ export class SorobanEventIndexer implements OnModuleInit, OnModuleDestroy {
   private readonly processedEventsCache = new Map<string, ProcessedEvent>();
   private isRunning = false;
 
-  // Contract addresses (should be in config)
+  // Contract addresses across all 6 contracts
   private readonly contractAddresses = {
     farmCampaign: process.env.FARM_CAMPAIGN_CONTRACT || '',
     projectFactory: process.env.PROJECT_FACTORY_CONTRACT || '',
     revenueDistributor: process.env.REVENUE_DISTRIBUTOR_CONTRACT || '',
     marketplaceSettlement: process.env.MARKETPLACE_SETTLEMENT_CONTRACT || '',
+    escrow: process.env.ESCROW_CONTRACT || '',
+    farmCampaignSettlement: process.env.FARM_CAMPAIGN_SETTLEMENT_CONTRACT || '',
   };
 
   constructor(
@@ -290,17 +297,27 @@ export class SorobanEventIndexer implements OnModuleInit, OnModuleDestroy {
     }
 
     try {
-      // Route to appropriate handler based on contract and event type
-      if (event.contractId === this.contractAddresses.farmCampaign) {
-        await this.handleFarmCampaignEvent(event);
-      } else if (
-        event.contractId === this.contractAddresses.marketplaceSettlement
-      ) {
-        await this.handleMarketplaceSettlementEvent(event);
-      } else if (
-        event.contractId === this.contractAddresses.revenueDistributor
-      ) {
-        await this.handleRevenueDistributorEvent(event);
+      // Determine contract name if known
+      const contractName = Object.entries(this.contractAddresses).find(
+        ([, addr]) => addr && addr.toLowerCase() === event.contractId.toLowerCase(),
+      )?.[0];
+
+      const standardized = normalizeContractEvent(event, contractName);
+      if (standardized) {
+        await this.dispatchStandardizedEvent(standardized);
+      } else {
+        // Fallback to legacy routing
+        if (event.contractId === this.contractAddresses.farmCampaign) {
+          await this.handleFarmCampaignEvent(event);
+        } else if (
+          event.contractId === this.contractAddresses.marketplaceSettlement
+        ) {
+          await this.handleMarketplaceSettlementEvent(event);
+        } else if (
+          event.contractId === this.contractAddresses.revenueDistributor
+        ) {
+          await this.handleRevenueDistributorEvent(event);
+        }
       }
 
       // Mark as processed
@@ -624,6 +641,152 @@ export class SorobanEventIndexer implements OnModuleInit, OnModuleDestroy {
         { error, txHash },
         'Error handling revenue_distributed event',
       );
+    }
+  }
+
+  /**
+   * Dispatches a standardized schema v1 event to its corresponding DB handler
+   */
+  private async dispatchStandardizedEvent(event: StandardizedEventPayload) {
+    const { schemaTopic, data, transactionHash } = event;
+
+    switch (schemaTopic) {
+      case 'farm_campaign.milestone_completed':
+      case 'escrow.milestone_completed':
+        await this.handleMilestoneCompleted(data, transactionHash);
+        break;
+
+      case 'farm_campaign.partial_released':
+        await this.handlePartialRelease(data, transactionHash);
+        break;
+
+      case 'farm_campaign.invested':
+      case 'escrow.funded':
+        await this.handleFundingReceived(data, transactionHash);
+        break;
+
+      case 'farm_campaign.status_changed':
+        await this.handleCampaignStatusChanged(data, transactionHash);
+        break;
+
+      case 'farm_campaign_settlement.settlement_completed':
+        await this.handleSettlementCompleted(data, transactionHash);
+        break;
+
+      case 'marketplace_settlement.trade_settled':
+      case 'escrow.settled':
+        await this.handleTradeSettled(data, transactionHash);
+        break;
+
+      case 'marketplace_settlement.order_created':
+        await this.handleOrderCreated(data, transactionHash);
+        break;
+
+      case 'revenue_distributor.revenue_distributed':
+      case 'farm_campaign.revenue_distributed':
+        await this.handleRevenueDistributed(data, transactionHash);
+        break;
+
+      case 'escrow.compliance_halt':
+        await this.handleComplianceHalt(data, transactionHash);
+        break;
+
+      case 'escrow.refunded':
+      case 'farm_campaign.refunded':
+      case 'marketplace_settlement.order_refunded':
+        await this.handleRefund(data, transactionHash);
+        break;
+
+      case 'project_factory.campaign_created':
+        await this.handleFactoryCampaignCreated(data, transactionHash);
+        break;
+
+      default:
+        this.logger.debug(
+          { schemaTopic, contract: event.contract },
+          'Processed schema event with no dedicated DB mutations needed',
+        );
+    }
+  }
+
+  /**
+   * Handle order created in marketplace settlement
+   */
+  private async handleOrderCreated(data: any, txHash: string) {
+    try {
+      const { orderId, buyer, amount } = data;
+      await this.txLogRepo.update(
+        { txHash },
+        { status: TxStatus.SUCCESS },
+      );
+
+      this.queueService.emit('marketplace.order_created', {
+        orderId,
+        buyer,
+        amount,
+        txHash,
+        timestamp: new Date(),
+      });
+      this.logger.info({ orderId, buyer, amount, txHash }, 'Marketplace order created on-chain');
+    } catch (error) {
+      this.logger.error({ error, txHash }, 'Error handling order_created event');
+    }
+  }
+
+  /**
+   * Handle compliance halt in escrow contract
+   */
+  private async handleComplianceHalt(data: any, txHash: string) {
+    try {
+      const { flaggedAccount } = data;
+      this.logger.warn({ flaggedAccount, txHash }, 'Escrow compliance halt triggered on-chain');
+      this.queueService.emit('escrow.compliance_halt', {
+        flaggedAccount,
+        txHash,
+        timestamp: new Date(),
+      });
+    } catch (error) {
+      this.logger.error({ error, txHash }, 'Error handling compliance_halt event');
+    }
+  }
+
+  /**
+   * Handle refund events
+   */
+  private async handleRefund(data: any, txHash: string) {
+    try {
+      const { contributor, investor, amount } = data;
+      const recipient = contributor || investor;
+      this.logger.info({ recipient, amount, txHash }, 'Refund executed on-chain');
+      this.queueService.emit('deal.refunded', {
+        recipient,
+        amount,
+        txHash,
+        timestamp: new Date(),
+      });
+    } catch (error) {
+      this.logger.error({ error, txHash }, 'Error handling refund event');
+    }
+  }
+
+  /**
+   * Handle project factory campaign creation
+   */
+  private async handleFactoryCampaignCreated(data: any, txHash: string) {
+    try {
+      const { dealId, contractAddress } = data;
+      if (dealId) {
+        await this.dealRepo.update({ id: dealId }, { onChainContractAddress: contractAddress } as any);
+      }
+      this.queueService.emit('campaign.deployed', {
+        dealId,
+        contractAddress,
+        txHash,
+        timestamp: new Date(),
+      });
+      this.logger.info({ dealId, contractAddress, txHash }, 'Child campaign deployed by factory');
+    } catch (error) {
+      this.logger.error({ error, txHash }, 'Error handling factory campaign_created event');
     }
   }
 
