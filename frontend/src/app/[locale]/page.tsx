@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { LiveStatsBand } from "@/components/LiveStatsBand";
 
 /* ── Animated counter ─────────────────────────────────────────────────────── */
 function useCounter(target: string, duration = 1800) {
@@ -206,12 +207,8 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ── Stats ─────────────────────────────────────────────────────────── */}
-      <section className="py-16 bg-white border-y border-slate-100">
-        <div className="max-w-5xl mx-auto px-4 grid grid-cols-2 sm:grid-cols-4 gap-8">
-          {stats.map(s => <StatItem key={s.label} {...s} />)}
-        </div>
-      </section>
+      {/* ── Live Stats Strip (Issue #1013) ─────────────────────────────────── */}
+      <LiveStatsBand />
 
       {/* ── Features ──────────────────────────────────────────────────────── */}
       <section className="py-24 px-4 bg-slate-50">
