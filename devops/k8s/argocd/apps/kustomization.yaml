@@ -1,0 +1,11 @@
+# Kustomization for the app-of-apps child manifests directory.
+# The root app-of-apps Application points to this directory; ArgoCD will
+# discover and manage each Application listed here.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - redis.yaml
+  - rabbitmq.yaml
+  - backend.yaml
+  - frontend.yaml

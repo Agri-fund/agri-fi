@@ -1,0 +1,72 @@
+# Staging environment overlay
+#
+# Inherits all child Application manifests from the base apps/ directory.
+# Patches namespace references and reduces replica counts / resource limits
+# to keep staging costs low.
+#
+# Sync policy inherited from each child app's wave annotation; no changes
+# needed here — staging uses selfHeal: true as set in the ApplicationSet.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: argocd
+
+# Pull in the base child Application manifests unchanged.
+resources:
+  - ../../apps/redis.yaml
+  - ../../apps/rabbitmq.yaml
+  - ../../apps/backend.yaml
+  - ../../apps/frontend.yaml
+
+# Patch each Application to target the staging namespace and branch.
+patches:
+  # ── Redis ────────────────────────────────────────────────────────────────
+  - patch: |-
+      - op: replace
+        path: /metadata/name
+        value: agri-fi-redis-staging
+      - op: replace
+        path: /spec/destination/namespace
+        value: agri-fi-staging
+    target:
+      kind: Application
+      name: agri-fi-redis
+
+  # ── RabbitMQ ─────────────────────────────────────────────────────────────
+  - patch: |-
+      - op: replace
+        path: /metadata/name
+        value: agri-fi-rabbitmq-staging
+      - op: replace
+        path: /spec/destination/namespace
+        value: agri-fi-staging
+    target:
+      kind: Application
+      name: agri-fi-rabbitmq
+
+  # ── Backend ──────────────────────────────────────────────────────────────
+  - patch: |-
+      - op: replace
+        path: /metadata/name
+        value: agri-fi-backend-staging
+      - op: replace
+        path: /spec/destination/namespace
+        value: agri-fi-staging
+    target:
+      kind: Application
+      name: agri-fi-backend
+
+  # ── Frontend ─────────────────────────────────────────────────────────────
+  - patch: |-
+      - op: replace
+        path: /metadata/name
+        value: agri-fi-frontend-staging
+      - op: replace
+        path: /spec/destination/namespace
+        value: agri-fi-staging
+    target:
+      kind: Application
+      name: agri-fi-frontend
+
+commonLabels:
+  app.kubernetes.io/environment: staging

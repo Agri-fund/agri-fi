@@ -1,0 +1,49 @@
+# NetworkPolicy for RabbitMQ — allow AMQP ingress only from backend pods.
+# Management UI and Prometheus metrics are also restricted.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agri-fi-rabbitmq-netpol
+  namespace: agri-fi
+spec:
+  podSelector:
+    matchLabels:
+      app: agri-fi
+      component: rabbitmq
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Backend NestJS pods connect on AMQP port 5672
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: backend
+      ports:
+        - protocol: TCP
+          port: 5672
+    # Prometheus scrapes the prometheus plugin on 15692
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 15692
+    # Internal management UI access (optional; restrict to ops namespace)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: argocd
+      ports:
+        - protocol: TCP
+          port: 15672
+  egress:
+    # Allow DNS resolution
+    - ports:
+        - protocol: UDP
+          port: 53
+    # RabbitMQ Erlang distribution port for future clustering
+    - ports:
+        - protocol: TCP
+          port: 25672

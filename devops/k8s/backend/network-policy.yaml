@@ -1,0 +1,254 @@
+# NetworkPolicy — agri-fi backend / escrow-worker pods (#1039)
+#
+# Enforces least-privilege egress for every pod with label:
+#   app.kubernetes.io/component: backend
+#
+# ─── Egress allow-list (derived from code audit) ────────────────────────────
+#
+#  Peer                   Port    Why
+#  ─────────────────────  ──────  ──────────────────────────────────────────
+#  agri-fi-postgres        5432   PgBouncer sidecar → upstream Postgres
+#  agri-fi-rabbitmq        5672   AMQP: queue consumer + publisher
+#  agri-fi-rabbitmq       15672   RabbitMQ Management API (QueueAlertService)
+#  agri-fi-redis           6379   Idempotency leases, sequence cache
+#  Stellar Horizon         443    Transaction submission, account loads
+#  SMTP relay             587     Payout failure ops-alert emails (STARTTLS)
+#  SMTP relay             465     Payout failure ops-alert emails (SMTPS)
+#  Discord/Slack webhooks  443    DLQ alert POSTs (discord.com, hooks.slack.com)
+#  AWS KMS / Secrets Mgr   443    KmsService GenerateDataKey / Decrypt
+#  kube-dns               53/UDP  In-cluster DNS (required for all service discovery)
+#
+# NOTE — PgBouncer sidecar (127.0.0.1:6432):
+#   TypeORM connects to the sidecar on loopback; that traffic never leaves the
+#   pod, so no egress rule is needed for port 6432. The sidecar's outbound
+#   connection to agri-fi-postgres:5432 is covered by the Postgres rule below.
+#
+# NOTE — Stellar Horizon failover:
+#   STELLAR_HORIZON_URLS may list multiple endpoints. All use HTTPS (443).
+#   The ipBlock 0.0.0.0/0:443 egress rule covers all possible Horizon nodes,
+#   Discord, Slack, AWS KMS, and any future HTTPS dependencies without
+#   widening the attack surface beyond the port.
+#
+# NOTE — Friendbot (https://friendbot.stellar.org):
+#   Only called when NODE_ENV=development AND network=testnet. Not fired in
+#   production; covered by the same HTTPS/443 ipBlock rule in staging.
+#
+# ─── Two policies are defined ───────────────────────────────────────────────
+#
+#  1. backend-default-deny-egress
+#     Selects all backend pods; applies a bare Egress policyType with no
+#     rules — this is the Kubernetes-idiomatic way to default-deny all egress
+#     before the allow-list policy is evaluated.
+#
+#  2. backend-egress-allowlist
+#     Selects the same pods; enumerates every permitted outbound flow.
+#     Policies are additive: together with (1) only listed flows are allowed.
+
+---
+# ── Policy 1: default-deny all egress ────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend-default-deny-egress
+  namespace: agri-fi
+  labels:
+    app.kubernetes.io/part-of: agri-fi
+    app.kubernetes.io/component: backend
+    policy-type: egress-default-deny
+  annotations:
+    agri-fi/issue: "#1039"
+    agri-fi/description: >
+      Default-deny all egress from backend/escrow worker pods.
+      Paired with backend-egress-allowlist which enumerates permitted flows.
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: backend
+  policyTypes:
+    - Egress
+  # No egress rules — this is intentional. All egress is denied until
+  # backend-egress-allowlist adds explicit allow rules.
+
+---
+# ── Policy 2: egress allow-list ───────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend-egress-allowlist
+  namespace: agri-fi
+  labels:
+    app.kubernetes.io/part-of: agri-fi
+    app.kubernetes.io/component: backend
+    policy-type: egress-allowlist
+  annotations:
+    agri-fi/issue: "#1039"
+    agri-fi/description: >
+      Least-privilege egress allow-list for backend and escrow worker pods.
+      Covers: Postgres, RabbitMQ (AMQP + management), Redis, Stellar Horizon,
+      SMTP, Discord/Slack/AWS webhooks, and cluster DNS.
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: backend
+  policyTypes:
+    - Egress
+  egress:
+
+    # ── 1. Cluster DNS (required for all in-cluster service name resolution) ──
+    # Without this, podSelector-based rules below cannot resolve service names.
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+    # ── 2. PostgreSQL — agri-fi-postgres:5432 ────────────────────────────────
+    # PgBouncer sidecars open real Postgres server connections here.
+    # (TypeORM → PgBouncer:6432 on loopback is pod-internal; no rule needed.)
+    - to:
+        - podSelector:
+            matchLabels:
+              app: agri-fi
+              component: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+
+    # ── 3. RabbitMQ — agri-fi-rabbitmq:5672 (AMQP) ──────────────────────────
+    # Used by: EscrowConsumer (queue consume), QueueService (publish),
+    #          escrow.main.ts microservice bootstrap.
+    - to:
+        - podSelector:
+            matchLabels:
+              app: agri-fi
+              component: rabbitmq
+      ports:
+        - protocol: TCP
+          port: 5672
+
+    # ── 4. RabbitMQ Management API — agri-fi-rabbitmq:15672 ──────────────────
+    # Used by: QueueAlertService.monitorQueue() — polls /api/queues every minute
+    # to detect queue backlog and send Discord alerts.
+    - to:
+        - podSelector:
+            matchLabels:
+              app: agri-fi
+              component: rabbitmq
+      ports:
+        - protocol: TCP
+          port: 15672
+
+    # ── 5. Redis — agri-fi-redis:6379 ────────────────────────────────────────
+    # Used by: IdempotencyService (lease keys), StellarService (sequence cache,
+    #          tx-status cache), general Redis cache clients.
+    - to:
+        - podSelector:
+            matchLabels:
+              app: agri-fi
+              component: redis
+      ports:
+        - protocol: TCP
+          port: 6379
+
+    # ── 6. HTTPS (443) — Stellar Horizon, Discord, Slack, AWS KMS/SecretsManager
+    # Single rule covering all external HTTPS destinations:
+    #   • horizon-testnet.stellar.org / horizon.stellar.org (Stellar SDK calls)
+    #   • horizon failover nodes (comma-separated STELLAR_HORIZON_URLS)
+    #   • discord.com (DLQ alert webhooks via QueueAlertService)
+    #   • hooks.slack.com (Slack webhook notifications)
+    #   • kms.us-east-1.amazonaws.com (KmsService GenerateDataKey/Decrypt)
+    #   • secretsmanager.us-east-1.amazonaws.com (AWS Secrets Manager)
+    #   • friendbot.stellar.org (testnet/staging dev-mode only; harmless in prod)
+    # Restricting this rule to named ipBlocks is intentionally avoided because
+    # AWS KMS, Horizon, and webhook IPs change without notice. Port 443 is the
+    # minimal constraint that closes all non-HTTPS external attack surface.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              # Exclude all RFC-1918 private ranges — internal traffic must
+              # use podSelector rules, not the ipBlock wildcard.
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+
+    # ── 7. SMTP — ops-alert emails from PayoutDeadLetterConsumer ─────────────
+    # Port 587 (STARTTLS) and 465 (SMTPS) are the standard submission ports.
+    # Port 25 is intentionally excluded (MTA relay; not used by nodemailer in
+    # authenticated submission mode and a common spam-relay attack vector).
+    # The SMTP relay host is configured via SMTP_HOST env var.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 587
+        - protocol: TCP
+          port: 465
+
+    # ── 8. Prometheus metrics scrape (ingress from monitoring namespace) ──────
+    # pgbouncer_exporter (9127) and the NestJS /metrics endpoint (3001) receive
+    # scrapes from Prometheus pods in the monitoring namespace. Those are ingress
+    # rules on the monitoring side; no egress rule is needed here for scraping.
+    # This comment documents the intentional omission.
+
+---
+# ── Ingress policy — protect backend pods from unsolicited inbound traffic ────
+# Allows only:
+#   • The frontend pods (UI → API calls on port 3001)
+#   • Prometheus pods in the monitoring namespace (metrics scrape on 9127)
+#   • The ingress controller (external HTTP traffic on 3001)
+# All other inbound connections are implicitly denied.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend-ingress-allowlist
+  namespace: agri-fi
+  labels:
+    app.kubernetes.io/part-of: agri-fi
+    app.kubernetes.io/component: backend
+    policy-type: ingress-allowlist
+  annotations:
+    agri-fi/issue: "#1039"
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: backend
+  policyTypes:
+    - Ingress
+  ingress:
+    # API calls from the frontend SPA pods
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: frontend
+      ports:
+        - protocol: TCP
+          port: 3001
+
+    # Prometheus scrape of NestJS /metrics and pgbouncer_exporter sidecar
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 3001   # NestJS /metrics endpoint
+        - protocol: TCP
+          port: 9127   # pgbouncer_exporter sidecar
+
+    # NGINX ingress controller forwards external HTTP(S) to the backend
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 3001

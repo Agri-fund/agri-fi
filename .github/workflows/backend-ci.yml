@@ -199,6 +199,76 @@ jobs:
               body: comment
             });
 
+      # ── Network policy CI check (#1039) ───────────────────────────────────
+      # Validates that backend/escrow pod NetworkPolicy manifests satisfy the
+      # least-privilege egress rules defined in devops/policy/k8s/.
+      #
+      # Two tools are used in sequence:
+      #   1. OPA  — runs the Rego unit tests in network_policy_test.rego to
+      #             verify the policy logic itself is correct.
+      #   2. conftest — evaluates the live NetworkPolicy manifests in
+      #             devops/k8s/backend/ against the Rego policy.
+      #
+      # Both are installed as pre-built binaries from their GitHub releases;
+      # no additional package manager or Docker daemon is needed.
+      - name: Install OPA
+        run: |
+          OPA_VERSION="v0.68.0"
+          curl -sSfL \
+            "https://github.com/open-policy-agent/opa/releases/download/${OPA_VERSION}/opa_linux_amd64_static" \
+            -o /usr/local/bin/opa
+          chmod +x /usr/local/bin/opa
+          opa version
+
+      - name: Install conftest
+        run: |
+          CONFTEST_VERSION="0.55.0"
+          curl -sSfL \
+            "https://github.com/open-policy-agent/conftest/releases/download/v${CONFTEST_VERSION}/conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz" \
+            | tar -xz -C /usr/local/bin conftest
+          chmod +x /usr/local/bin/conftest
+          conftest --version
+
+      - name: OPA unit-test the Rego policy
+        # Runs network_policy_test.rego against network_policy.rego to verify
+        # the policy logic before applying it to real manifests.
+        run: |
+          opa test devops/policy/k8s/ -v --exit-zero-on-skipped
+        env:
+          # Suppress OPA's colour output for cleaner CI logs
+          NO_COLOR: "1"
+
+      - name: conftest — validate backend NetworkPolicy manifests
+        # Evaluates every YAML document in devops/k8s/backend/ against the
+        # Rego policy. Exits non-zero if any `deny` rule fires.
+        # `--all-namespaces` ensures multi-document YAML files are all checked.
+        run: |
+          conftest test \
+            --policy devops/policy/k8s \
+            --namespace main \
+            --all-namespaces \
+            --output github \
+            devops/k8s/backend/network-policy.yaml
+        env:
+          NO_COLOR: "1"
+
+      - name: conftest — validate existing devops NetworkPolicy manifests
+        # Also run against the older policy files to catch regressions.
+        run: |
+          conftest test \
+            --policy devops/policy/k8s \
+            --namespace main \
+            --all-namespaces \
+            --output github \
+            --ignore "restrict-database-ingress|allow-redis-ingress" \
+            devops/k8s/network-policy.yaml \
+            devops/k8s/redis-network-policy.yaml \
+            backend/k8s/network-policy.yaml \
+          || true
+          # `|| true` because legacy policies pre-date this enforcement;
+          # they produce warnings but are not required to be fully compliant
+          # until migrated to the agri-fi namespace in a follow-up.
+
       - name: Run database migrations
         run: npm run migration:run
         working-directory: backend

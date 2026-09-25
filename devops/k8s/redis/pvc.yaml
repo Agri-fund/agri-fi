@@ -1,0 +1,16 @@
+# Redis PersistentVolumeClaim — 1 Gi for AOF/RDB snapshots
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: agri-fi-redis-pvc
+  namespace: agri-fi
+  labels:
+    app: agri-fi
+    component: redis
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: standard

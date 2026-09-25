@@ -1,0 +1,56 @@
+# Child App — Frontend React SPA (sync-wave 1)
+#
+# The frontend is the outermost layer; it depends on the backend API being
+# available so health-check endpoints resolve correctly after deployment.
+#
+# It is the last workload to sync, after all infrastructure and the API
+# tier are confirmed Healthy.
+#
+# Kubernetes manifests live at: devops/k8s/frontend/
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: agri-fi-frontend
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: agri-fi
+    app.kubernetes.io/component: frontend
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    # Wave 1: last to sync, after backend (wave 0) is Healthy.
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: agri-fi
+
+  source:
+    repoURL: https://github.com/Agri-fund/agri-fi.git
+    targetRevision: main
+    path: devops/k8s/frontend
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: agri-fi
+
+  syncPolicy:
+    automated:
+      prune: true
+      # selfHeal disabled for frontend — production UI rollbacks should be
+      # explicit, not automatic.
+      selfHeal: false
+    syncOptions:
+      - ServerSideApply=true
+      - CreateNamespace=true
+      - ApplyOutOfSyncOnly=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m
+
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas

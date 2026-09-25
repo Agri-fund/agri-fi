@@ -1,0 +1,67 @@
+# Child App — Backend NestJS API (sync-wave 0)
+#
+# The backend depends on both Redis (cache/queues) and RabbitMQ (event bus).
+# It must not start syncing until both wave -2 and wave -1 apps are Healthy.
+#
+# The backend uses a blue/green deployment strategy — two Deployments
+# (agri-fi-backend-blue and agri-fi-backend-green) exist; only the active
+# slot receives traffic via the agri-fi-backend Service selector.
+#
+# Kubernetes manifests live at: devops/k8s/backend/
+# (backend/k8s/ is symlinked / copied into devops/k8s/backend/ by CI)
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: agri-fi-backend
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: agri-fi
+    app.kubernetes.io/component: backend
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    # Wave 0: runs after redis (-2) and rabbitmq (-1) are both Healthy.
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: agri-fi
+
+  source:
+    repoURL: https://github.com/Agri-fund/agri-fi.git
+    targetRevision: main
+    path: devops/k8s/backend
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: agri-fi
+
+  syncPolicy:
+    automated:
+      prune: true
+      # selfHeal disabled for backend — a human should confirm blue/green
+      # slot flips rather than having ArgoCD revert them automatically.
+      selfHeal: false
+    syncOptions:
+      - ServerSideApply=true
+      - CreateNamespace=true
+      - ApplyOutOfSyncOnly=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m
+
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        # Blue/green slot flip changes the Service selector, not the
+        # Deployment spec; ignore replica drift from HPA.
+        - /spec/replicas
+    # Ignore the active-slot label on the Service — it is managed by the
+    # blue/green promotion script, not by git manifests.
+    - group: ""
+      kind: Service
+      name: agri-fi-backend
+      jsonPointers:
+        - /spec/selector/slot

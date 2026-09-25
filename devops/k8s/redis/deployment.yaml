@@ -1,0 +1,98 @@
+# Redis Deployment — agri-fi namespace
+#
+# Migrated from devops/k8s/redis-deployment.yaml into the structured
+# workload directory so the ArgoCD app-of-apps can manage it independently.
+#
+# Changes from the original:
+#   - namespace updated from `default` to `agri-fi` (consistent with all
+#     other workloads)
+#   - PVC reference updated to use the pvc.yaml in this directory
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agri-fi-redis
+  namespace: agri-fi
+  labels:
+    app: agri-fi
+    component: redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agri-fi
+      component: redis
+  template:
+    metadata:
+      labels:
+        app: agri-fi
+        component: redis
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9121"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          command:
+            - redis-server
+            - --maxmemory
+            - "400mb"
+            - --maxmemory-policy
+            - allkeys-lru
+            - --save
+            - ""
+          ports:
+            - containerPort: 6379
+              name: redis
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          volumeMounts:
+            - name: redis-data
+              mountPath: /data
+          livenessProbe:
+            exec:
+              command: [redis-cli, ping]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command: [redis-cli, ping]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 3
+
+        # Prometheus redis-exporter sidecar — exposes Redis INFO metrics
+        # on port 9121 for the RedisMemoryUsageHigh alert rule.
+        - name: redis-exporter
+          image: oliver006/redis_exporter:v1.62.0
+          env:
+            - name: REDIS_ADDR
+              value: "redis://localhost:6379"
+          ports:
+            - containerPort: 9121
+              name: metrics
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "50m"
+            limits:
+              memory: "64Mi"
+              cpu: "100m"
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: 9121
+            initialDelaySeconds: 10
+            periodSeconds: 15
+
+      volumes:
+        - name: redis-data
+          persistentVolumeClaim:
+            claimName: agri-fi-redis-pvc
