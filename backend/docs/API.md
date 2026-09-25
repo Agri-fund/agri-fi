@@ -2,7 +2,9 @@
 
 ## Overview
 
-The Agri-Fi API uses URI-based versioning with path prefixes (`/api/v1`, `/api/v2`).
+The Agri-Fi API uses URI-based versioning with path prefixes (`/v1`, `/v2`).
+
+See the [API versioning and deprecation policy](../../docs/api/versioning.md) for compatibility rules, OpenAPI-diff expectations, and sunset timelines.
 
 ## Current Versions
 
@@ -23,13 +25,9 @@ GET /v1/users/me
 POST /v1/auth/login
 ```
 
-### Header Fallback
+### Response Version Header
 
-Clients can also specify the version via the `Accept` header:
-
-```
-Accept: application/vnd.agri-fi.v1+json
-```
+Responses include an `API-Version` header that confirms which URI version served the request. It does not select an API version; clients must use the URI path prefix.
 
 ## Deprecation Policy
 
