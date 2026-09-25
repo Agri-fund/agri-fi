@@ -9,6 +9,8 @@ import { ConfigService } from '@nestjs/config';
 import { PinoLogger } from 'nestjs-pino';
 import { TradeDeal } from './entities/trade-deal.entity';
 import { SorobanService } from '../soroban/soroban.service';
+import { FeeConfigurationService } from '../investments/fee-configuration.service';
+import { MAX_FEE_BPS } from '../database/entities/fee-configuration.entity';
 import { AuditService } from '../audit/audit.service';
 import { QueueService } from '../queue/queue.service';
 
@@ -16,7 +18,7 @@ import { QueueService } from '../queue/queue.service';
  * Admin deal approval + on-chain FarmCampaign deployment via the
  * ProjectFactory contract (#830).
  *
- * Happy path:  admin approves a draft deal -> factory `deploy` is invoked ->
+ * Happy path:  admin approves a draft deal -> factory `create_campaign` is invoked ->
  *              returned contract address is stored on the deal and the deal
  *              goes live (status "open").
  * Failure path: deployment failure reverts the approval (deal stays/reverts to
@@ -24,13 +26,11 @@ import { QueueService } from '../queue/queue.service';
  */
 @Injectable()
 export class DealDeploymentService {
-  /** Approximate Stellar ledger close time in milliseconds. */
-  private static readonly LEDGER_DURATION_MS = 5_000;
-
   constructor(
     @InjectRepository(TradeDeal)
     private readonly tradeDealRepo: Repository<TradeDeal>,
     private readonly sorobanService: SorobanService,
+    private readonly feeConfigurationService: FeeConfigurationService,
     private readonly auditService: AuditService,
     private readonly queueService: QueueService,
     private readonly config: ConfigService,
@@ -73,20 +73,45 @@ export class DealDeploymentService {
       });
     }
 
-    const targetStroops = BigInt(
-      Math.round(Number(deal.minimumFundingTarget ?? deal.totalValue) * 1e7),
+    const targetUsd = Number(deal.minimumFundingTarget ?? deal.totalValue);
+    if (!Number.isFinite(targetUsd) || targetUsd <= 0) {
+      throw new UnprocessableEntityException({
+        code: 'INVALID_CAMPAIGN_TARGET',
+        message: 'Campaign funding target must be greater than zero.',
+      });
+    }
+    const targetStroopsNumber = Math.round(targetUsd * 1e7);
+    if (!Number.isSafeInteger(targetStroopsNumber) || targetStroopsNumber <= 0) {
+      throw new UnprocessableEntityException({
+        code: 'INVALID_CAMPAIGN_TARGET',
+        message: 'Campaign funding target must be greater than zero.',
+      });
+    }
+    const targetStroops = BigInt(targetStroopsNumber);
+
+    const deadline = Math.floor(
+      new Date(deal.fundingDeadline ?? deal.deliveryDate).getTime() / 1000,
     );
-    const durationLedgers = Math.max(
-      1,
-      Math.ceil(
-        (new Date(deal.fundingDeadline ?? deal.deliveryDate).getTime() - Date.now()) /
-          DealDeploymentService.LEDGER_DURATION_MS,
-      ),
+    if (!Number.isSafeInteger(deadline) || deadline <= Math.floor(Date.now() / 1000)) {
+      throw new UnprocessableEntityException({
+        code: 'INVALID_CAMPAIGN_DEADLINE',
+        message: 'Campaign funding deadline must be in the future.',
+      });
+    }
+
+    const feeBps = await this.feeConfigurationService.getPlatformOriginationFeeBps(
+      deal.commodity,
     );
-    const commodityCode = deal.commodity
-      .replace(/[^a-zA-Z0-9]/g, '')
-      .toUpperCase()
-      .slice(0, 9);
+    if (
+      !Number.isSafeInteger(feeBps) ||
+      feeBps < 0 ||
+      feeBps > MAX_FEE_BPS
+    ) {
+      throw new UnprocessableEntityException({
+        code: 'INVALID_CAMPAIGN_FEE_BPS',
+        message: `Campaign fee must be between 0 and ${MAX_FEE_BPS} bps.`,
+      });
+    }
 
     try {
       const campaignAddress = await this.sorobanService.deployFarmCampaign(
@@ -94,8 +119,8 @@ export class DealDeploymentService {
         {
           farmerAddress: deal.farmer.walletAddress,
           targetAmount: targetStroops,
-          durationLedgers,
-          commodityCode,
+          deadline,
+          feeBps,
         },
       );
 

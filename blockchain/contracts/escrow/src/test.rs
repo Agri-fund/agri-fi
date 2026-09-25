@@ -97,8 +97,10 @@ fn test_initialize_twice_fails() {
     let client = EscrowContractClient::new(&env, &contract_id);
     client.initialize(&admin, &farmer, &platform, &usdc_token, &1000, &1, &investors, &1000);
 
-    let result = client.try_initialize(&admin, &farmer, &platform, &usdc_token, &1000, &1, &investors, &1000);
+    let result = client.try_initialize(&admin, &farmer, &platform, &usdc_token, &2000, &2, &investors, &2000);
     assert_eq!(result, Err(Ok(Error::AlreadyInitialized)));
+    assert_eq!(client.get_deal_value(), 1000);
+    assert_eq!(client.get_total_funded(), 0);
 }
 
 #[test]
@@ -1419,4 +1421,166 @@ fn test_settlement_succeeds_after_unfreeze() {
     // Now settlement should succeed
     let result = client.try_settle_escrow(&setup.admin);
     assert!(result.is_ok());
+}
+
+#[test]
+fn test_release_replay_does_not_double_pay() {
+    let setup = setup();
+    let client = EscrowContractClient::new(&setup._env, &setup.contract_id);
+    let total_funded: i128 = 10_000_000_000;
+
+    fund_contract(&setup, total_funded);
+    client.approve_delivery(&setup.admin);
+    client.release(&setup.admin);
+
+    let farmer_balance = setup.usdc.balance(&setup.farmer);
+    let platform_balance = setup.usdc.balance(&setup.platform);
+    let result = client.try_release(&setup.admin);
+
+    assert_eq!(result, Err(Ok(Error::AlreadyReleased)));
+    assert_eq!(setup.usdc.balance(&setup.farmer), farmer_balance);
+    assert_eq!(setup.usdc.balance(&setup.platform), platform_balance);
+}
+
+#[test]
+fn test_settle_replay_does_not_double_pay() {
+    let setup = setup();
+    let client = EscrowContractClient::new(&setup._env, &setup.contract_id);
+    let total_funded: i128 = 10_000_000_000;
+
+    fund_contract(&setup, total_funded);
+    client.record_milestone(&setup.admin, &0);
+    client.record_milestone(&setup.admin, &1);
+    client.record_milestone(&setup.admin, &2);
+    client.settle_escrow(&setup.admin);
+
+    let farmer_balance = setup.usdc.balance(&setup.farmer);
+    let platform_balance = setup.usdc.balance(&setup.platform);
+    let result = client.try_settle_escrow(&setup.admin);
+
+    assert_eq!(result, Err(Ok(Error::AlreadyReleased)));
+    assert_eq!(setup.usdc.balance(&setup.farmer), farmer_balance);
+    assert_eq!(setup.usdc.balance(&setup.platform), platform_balance);
+}
+
+#[test]
+fn test_individual_refund_replay_does_not_double_pay() {
+    let setup = setup();
+    setup._env.ledger().set_timestamp(2000);
+    let client = EscrowContractClient::new(&setup._env, &setup.contract_id);
+    let investor = Address::generate(&setup._env);
+    let amount: i128 = 5_000_000_000;
+
+    setup.usdc.mint(&investor, &amount);
+    client.fund(&investor, &amount);
+    client.refund_after_expiry(&investor);
+    let balance_after_first = setup.usdc.balance(&investor);
+
+    let result = client.try_refund_after_expiry(&investor);
+
+    assert!(result.is_ok());
+    assert_eq!(setup.usdc.balance(&investor), balance_after_first);
+    assert_eq!(client.get_total_funded(), 0);
+}
+
+#[test]
+fn test_batch_refund_replay_does_not_double_pay() {
+    let setup = setup();
+    setup._env.ledger().set_timestamp(2000);
+    let client = EscrowContractClient::new(&setup._env, &setup.contract_id);
+    let investor1 = Address::generate(&setup._env);
+    let investor2 = Address::generate(&setup._env);
+    let amount1: i128 = 3_000_000_000;
+    let amount2: i128 = 2_000_000_000;
+
+    setup.usdc.mint(&investor1, &amount1);
+    setup.usdc.mint(&investor2, &amount2);
+    client.fund(&investor1, &amount1);
+    client.fund(&investor2, &amount2);
+    client.refund_all_after_expiry(&setup.admin);
+    let balance1_after_first = setup.usdc.balance(&investor1);
+    let balance2_after_first = setup.usdc.balance(&investor2);
+
+    let result = client.try_refund_all_after_expiry(&setup.admin);
+
+    assert!(result.is_ok());
+    assert_eq!(setup.usdc.balance(&investor1), balance1_after_first);
+    assert_eq!(setup.usdc.balance(&investor2), balance2_after_first);
+    assert_eq!(client.get_total_funded(), 0);
+}
+
+#[test]
+fn test_repeated_funding_is_additive_and_blocked_after_release() {
+    let setup = setup();
+    let client = EscrowContractClient::new(&setup._env, &setup.contract_id);
+    let investor = Address::generate(&setup._env);
+    let first: i128 = 3_000_000_000;
+    let second: i128 = 2_000_000_000;
+
+    setup.usdc.mint(&investor, &(first + second));
+    client.fund(&investor, &first);
+    client.fund(&investor, &second);
+    assert_eq!(client.get_total_funded(), first + second);
+    assert_eq!(setup.usdc.balance(&setup.contract_id), first + second);
+
+    client.approve_delivery(&setup.admin);
+    client.release(&setup.admin);
+    let total_after_release = client.get_total_funded();
+    let escrow_balance_after_release = setup.usdc.balance(&setup.contract_id);
+    let third: i128 = 1_000_000_000;
+    setup.usdc.mint(&investor, &third);
+
+    let result = client.try_fund(&investor, &third);
+
+    assert_eq!(result, Err(Ok(Error::AlreadyReleased)));
+    assert_eq!(client.get_total_funded(), total_after_release);
+    assert_eq!(setup.usdc.balance(&setup.contract_id), escrow_balance_after_release);
+    assert_eq!(setup.usdc.balance(&investor), third);
+}
+
+#[test]
+fn test_operation_lock_blocks_reentrant_entrypoints() {
+    let setup = setup();
+    setup._env.ledger().set_timestamp(2000);
+    let client = EscrowContractClient::new(&setup._env, &setup.contract_id);
+    let investor = Address::generate(&setup._env);
+    let amount: i128 = 5_000_000_000;
+
+    setup.usdc.mint(&investor, &amount);
+    client.fund(&investor, &amount);
+    client.approve_delivery(&setup.admin);
+    let total_before = client.get_total_funded();
+    let balance_before = setup.usdc.balance(&investor);
+    setup._env.as_contract(&setup.contract_id, || {
+        setup._env
+            .storage()
+            .instance()
+            .set(&DataKey::OperationInProgress, &true);
+    });
+
+    assert_eq!(
+        client.try_fund(&investor, &amount),
+        Err(Ok(Error::OperationInProgress))
+    );
+    assert_eq!(
+        client.try_release(&setup.admin),
+        Err(Ok(Error::OperationInProgress))
+    );
+    assert_eq!(
+        client.try_settle_escrow(&setup.admin),
+        Err(Ok(Error::OperationInProgress))
+    );
+    assert!(client.try_refund_after_expiry(&investor).is_ok());
+    assert!(client.try_refund_all_after_expiry(&setup.admin).is_ok());
+    assert_eq!(client.get_total_funded(), total_before);
+    assert_eq!(setup.usdc.balance(&investor), balance_before);
+
+    setup._env.as_contract(&setup.contract_id, || {
+        setup._env
+            .storage()
+            .instance()
+            .set(&DataKey::OperationInProgress, &false);
+    });
+    client.refund_after_expiry(&investor);
+    assert_eq!(client.get_total_funded(), 0);
 }

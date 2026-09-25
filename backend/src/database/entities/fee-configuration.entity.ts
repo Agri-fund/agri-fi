@@ -9,6 +9,9 @@ import {
 } from 'typeorm';
 import { ApiProperty } from '@nestjs/swagger';
 
+export const MAX_FEE_PERCENT = 100;
+export const MAX_FEE_BPS = MAX_FEE_PERCENT * 100;
+
 export enum FeeType {
   PLATFORM_ORIGINATION = 'platform_origination',
   PLATFORM_SUCCESS = 'platform_success',
@@ -32,7 +35,7 @@ export enum InvestorTier {
 @Index(['effectiveFrom', 'effectiveTo'] as any, {
   name: 'IDX_fee_config_effective',
 })
-@Check(`rate_percent >= 0 AND rate_percent <= 100`)
+@Check(`rate_percent >= 0 AND rate_percent <= ${MAX_FEE_PERCENT}`)
 export class FeeConfiguration {
   @PrimaryGeneratedColumn('uuid')
   @ApiProperty({
