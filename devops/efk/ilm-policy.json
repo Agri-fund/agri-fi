@@ -1,0 +1,55 @@
+{
+  "policy": "agri-fi-logs-retention",
+  "phases": {
+    "hot": {
+      "min_age": "0d",
+      "actions": {
+        "rollover": {
+          "max_primary_shard_size": "50gb",
+          "max_age": "1d"
+        },
+        "set_priority": {
+          "priority": 100
+        }
+      }
+    },
+    "warm": {
+      "min_age": "7d",
+      "actions": {
+        "set_priority": {
+          "priority": 50
+        },
+        "shrink": {
+          "number_of_shards": 1
+        }
+      }
+    },
+    "cold": {
+      "min_age": "30d",
+      "actions": {
+        "set_priority": {
+          "priority": 0
+        },
+        "searchable_snapshot": {
+          "snapshot_repository": "s3-backup-repo"
+        }
+      }
+    },
+    "frozen": {
+      "min_age": "90d",
+      "actions": {
+        "searchable_snapshot": {
+          "snapshot_repository": "s3-backup-repo"
+        }
+      }
+    },
+    "delete": {
+      "min_age": "180d",
+      "actions": {
+        "delete": {
+          "delete_searchability": true
+        }
+      }
+    }
+  }
+}

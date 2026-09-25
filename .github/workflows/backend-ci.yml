@@ -102,6 +102,103 @@ jobs:
         run: npm run build
         working-directory: backend
 
+      - name: Generate OpenAPI spec
+        run: node generate-openapi.js
+        working-directory: backend
+        env:
+          NODE_ENV: development
+          PORT: '0'
+          DATABASE_URL: postgresql://localhost/dummy
+          JWT_SECRET: dummy-secret-for-spec-generation
+          RABBITMQ_URL: amqp://localhost:5672
+          LOG_LEVEL: error
+
+      - name: Check OpenAPI spec drift (PR only)
+        if: github.event_name == 'pull_request'
+        run: |
+          if ! diff -u backend/openapi.json <(git show HEAD:backend/openapi.json) > /tmp/openapi.diff 2>/dev/null; then
+            echo "::error::OpenAPI spec drift detected. Run 'npm run generate-openapi' and commit changes."
+            cat /tmp/openapi.diff
+            exit 1
+          fi
+
+      - name: Upload OpenAPI spec artifact
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openapi-spec-pr-${{ github.event.pull_request.number }}
+          path: backend/openapi.json
+          retention-days: 30
+
+      - name: Comment PR with OpenAPI changes
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+
+            // Get the diff
+            let diff = '';
+            try {
+              const { execSync } = require('child_process');
+              diff = execSync(`diff -u backend/openapi.json <(git show HEAD:backend/openapi.json) 2>/dev/null || true`, {
+                cwd: process.env.GITHUB_WORKSPACE,
+                encoding: 'utf-8',
+                shell: '/bin/bash'
+              }).trim();
+            } catch (e) {
+              // If diff fails (file doesn't exist in HEAD), that's OK
+            }
+
+            if (!diff) {
+              core.info('No OpenAPI changes detected');
+              return;
+            }
+
+            // Parse diff to count additions/deletions
+            const lines = diff.split('\n');
+            const additions = lines.filter(l => l.startsWith('+')).length;
+            const deletions = lines.filter(l => l.startsWith('-')).length;
+
+            // Extract breaking changes (removed paths or changed methods)
+            const breaking = [];
+            const added = [];
+            const modified = [];
+
+            for (let i = 0; i < lines.length; i++) {
+              const line = lines[i];
+              if (line.startsWith('-    "/') && !lines[i+1]?.startsWith('+')) {
+                breaking.push(line.slice(6, -3)); // extract path
+              } else if (line.startsWith('+    "/')) {
+                added.push(line.slice(6, -3));
+              }
+            }
+
+            let comment = '## 📋 OpenAPI Spec Changes\n\n';
+            comment += `**Additions:** ${additions} | **Deletions:** ${deletions}\n\n`;
+
+            if (breaking.length > 0) {
+              comment += '### ⚠️ Breaking Changes\n';
+              breaking.forEach(p => comment += `- \`${p}\`\n`);
+              comment += '\n';
+            }
+
+            if (added.length > 0) {
+              comment += '### ✨ New Endpoints\n';
+              added.forEach(p => comment += `- \`${p}\`\n`);
+              comment += '\n';
+            }
+
+            comment += '[View full spec diff](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})\n';
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+
       - name: Run database migrations
         run: npm run migration:run
         working-directory: backend
