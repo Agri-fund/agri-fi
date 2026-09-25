@@ -21,7 +21,9 @@ import { MarketplaceSettlementService } from './marketplace-settlement.service';
 import { MarketplaceSettlementController } from './marketplace-settlement.controller';
 import { TaxReportService } from './tax-report.service';
 import { ReceiptService } from './receipt.service';
+import { InvoiceService } from './invoice.service';
 import { AuditModule } from '../audit/audit.module';
+import { PaymentDistribution } from '../escrow/entities/payment-distribution.entity';
 
 @Module({
   imports: [
@@ -32,6 +34,7 @@ import { AuditModule } from '../audit/audit.module';
       TradeDeal,
       User,
       FeeConfiguration,
+      PaymentDistribution,
     ]),
     StellarModule,
     QueueModule,
@@ -53,6 +56,7 @@ import { AuditModule } from '../audit/audit.module';
     MarketplaceSettlementService,
     TaxReportService,
     ReceiptService,
+    InvoiceService,
   ],
   exports: [
     InvestmentsService,

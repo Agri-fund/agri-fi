@@ -644,4 +644,215 @@ export class SorobanEventIndexer implements OnModuleInit, OnModuleDestroy {
   async pollOnce() {
     await this.pollForEvents();
   }
+
+  /**
+   * Issue #1028 — Replay/backfill mode to reconstruct events from historical ledgers.
+   * Given a contract ID and starting ledger, reconstructs events from Horizon/Soroban RPC history.
+   * Uses idempotent upserts (unique event hash) to avoid duplicates.
+   */
+  async replayEvents(
+    contractId: string,
+    fromLedger: number,
+    toLedger?: number,
+  ): Promise<{ processed: number; gaps: number; duplicates: number }> {
+    this.logger.info(
+      { contractId, fromLedger, toLedger },
+      'Starting event replay/backfill',
+    );
+
+    const endLedger = toLedger || (await this.getCurrentLedger());
+    let processed = 0;
+    let gaps = 0;
+    let duplicates = 0;
+
+    try {
+      // Query events from the specified ledger range
+      const events = await this.queryEventsFromRange(
+        contractId,
+        fromLedger,
+        endLedger,
+      );
+
+      for (const event of events) {
+        const eventHash = this.computeEventHash(event);
+
+        // Check if already processed (idempotent check)
+        if (this.processedEventsCache.has(eventHash)) {
+          duplicates++;
+          continue;
+        }
+
+        // Process the event
+        await this.processEvent(event);
+        processed++;
+
+        // Mark as processed
+        this.processedEventsCache.set(eventHash, {
+          eventId: event.id,
+          transactionHash: event.transactionHash,
+          contractId: event.contractId,
+          eventType: event.type,
+          processedAt: new Date(),
+        });
+      }
+
+      // Detect gaps in the ledger sequence
+      gaps = await this.detectLedgerGaps(fromLedger, endLedger, contractId);
+
+      this.logger.info(
+        { processed, gaps, duplicates, fromLedger, toLedger: endLedger },
+        'Event replay/backfill completed',
+      );
+
+      return { processed, gaps, duplicates };
+    } catch (error) {
+      this.logger.error({ error }, 'Error during event replay/backfill');
+      throw error;
+    }
+  }
+
+  /**
+   * Query events from a specific ledger range
+   */
+  private async queryEventsFromRange(
+    contractId: string,
+    fromLedger: number,
+    toLedger: number,
+  ): Promise<ContractEvent[]> {
+    const events: ContractEvent[] = [];
+    const batchSize = 100;
+    let currentLedger = fromLedger;
+
+    while (currentLedger <= toLedger) {
+      try {
+        const batchEndLedger = Math.min(currentLedger + batchSize - 1, toLedger);
+        const eventsResponse = await (this.rpcServer as any).getEvents({
+          startLedger: currentLedger,
+          endLedger: batchEndLedger,
+          filters: [
+            {
+              contractIds: [contractId],
+              type: 'contract',
+            },
+          ],
+          limit: batchSize,
+        });
+
+        if (eventsResponse?.events) {
+          for (const event of eventsResponse.events) {
+            events.push({
+              id: `${event.id}`,
+              transactionHash: event.transactionHash,
+              ledger: event.ledger,
+              contractId: event.contractId,
+              type: event.type,
+              topic: event.topic || [],
+              value: event.value || {},
+            });
+          }
+        }
+
+        currentLedger = batchEndLedger + 1;
+      } catch (error) {
+        this.logger.warn(
+          { error, ledger: currentLedger },
+          'Error querying events batch, skipping to next batch',
+        );
+        currentLedger += batchSize;
+      }
+    }
+
+    return events;
+  }
+
+  /**
+   * Compute a unique hash for an event to enable idempotent processing
+   */
+  private computeEventHash(event: ContractEvent): string {
+    const hashInput = `${event.transactionHash}-${event.contractId}-${event.type}-${JSON.stringify(event.topic)}`;
+    return require('crypto')
+      .createHash('sha256')
+      .update(hashInput)
+      .digest('hex');
+  }
+
+  /**
+   * Detect gaps in the ledger sequence for a contract
+   */
+  private async detectLedgerGaps(
+    fromLedger: number,
+    toLedger: number,
+    contractId: string,
+  ): Promise<number> {
+    let gaps = 0;
+    let expectedLedger = fromLedger;
+
+    // Query ledgers in the range and check for continuity
+    const batchSize = 100;
+    let currentLedger = fromLedger;
+
+    while (currentLedger <= toLedger) {
+      try {
+        const batchEndLedger = Math.min(currentLedger + batchSize - 1, toLedger);
+        const eventsResponse = await (this.rpcServer as any).getEvents({
+          startLedger: currentLedger,
+          endLedger: batchEndLedger,
+          filters: [
+            {
+              contractIds: [contractId],
+              type: 'contract',
+            },
+          ],
+          limit: batchSize,
+        });
+
+        if (eventsResponse?.events && eventsResponse.events.length > 0) {
+          const minLedgerInBatch = Math.min(
+            ...eventsResponse.events.map((e: any) => e.ledger),
+          );
+          const maxLedgerInBatch = Math.max(
+            ...eventsResponse.events.map((e: any) => e.ledger),
+          );
+
+          // Check for gaps between batches
+          if (minLedgerInBatch > expectedLedger) {
+            gaps += minLedgerInBatch - expectedLedger;
+          }
+
+          expectedLedger = maxLedgerInBatch + 1;
+        }
+
+        currentLedger = batchEndLedger + 1;
+      } catch (error) {
+        this.logger.warn(
+          { error, ledger: currentLedger },
+          'Error detecting gaps, assuming gap',
+        );
+        gaps += batchSize;
+        currentLedger += batchSize;
+      }
+    }
+
+    return gaps;
+  }
+
+  /**
+   * Get the current latest ledger from Horizon
+   */
+  private async getCurrentLedger(): Promise<number> {
+    try {
+      const ledger = await this.horizonServer
+        .ledgers()
+        .limit(1)
+        .order('desc')
+        .call();
+      if (ledger.records && ledger.records.length > 0) {
+        return ledger.records[0].sequence;
+      }
+      return 0;
+    } catch (error) {
+      this.logger.warn({ error }, 'Could not fetch current ledger');
+      return 0;
+    }
+  }
 }
