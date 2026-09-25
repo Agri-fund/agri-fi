@@ -107,33 +107,33 @@ The API will be available at `http://localhost:3001` and the frontend at `http:/
 
 Copy `backend/.env.example` to `backend/.env` and update the values:
 
-| Variable | Description | Required |
-|---|---|---|
-| `DATABASE_HOST` | PostgreSQL host | yes |
-| `DATABASE_PORT` | PostgreSQL port (default: 5432) | yes |
-| `DATABASE_USER` | DB username | yes |
-| `DATABASE_PASSWORD` | DB password | yes |
-| `DATABASE_NAME` | DB name (`agric_onchain`) | yes |
-| `JWT_SECRET` | Secret for signing JWTs | yes |
-| `JWT_EXPIRES_IN` | Token expiry (e.g. `7d`) | yes |
-| `RABBITMQ_URL` | RabbitMQ connection URL | yes |
-| `STELLAR_NETWORK` | `testnet` or `mainnet` | yes |
-| `STELLAR_HORIZON_URL` | Horizon API URL | yes |
-| `STELLAR_PLATFORM_SECRET` | Platform Stellar secret key | yes |
-| `STELLAR_PLATFORM_PUBLIC` | Platform Stellar public key | yes |
-| `ENCRYPTION_KEY` | AES-256 key for escrow secrets at rest | yes |
-| `IPFS_GATEWAY` | IPFS/web3.storage API URL | optional |
-| `IPFS_TOKEN` | web3.storage API token | optional |
-| `AWS_REGION` | S3 region (fallback storage) | optional |
-| `AWS_ACCESS_KEY_ID` | S3 access key | optional |
-| `AWS_SECRET_ACCESS_KEY` | S3 secret key | optional |
-| `AWS_S3_BUCKET` | S3 bucket name | optional |
-| `NOTIFICATIONS_ENABLED` | Set to false to disable sending emails | optional |
-| `SMTP_HOST` | SMTP server host for sending emails | optional |
-| `SMTP_PORT` | SMTP server port | optional |
-| `SMTP_USER` | SMTP authentication user | optional |
-| `SMTP_PASS` | SMTP authentication password | optional |
-| `EMAIL_FROM` | Sender address for emails | optional |
+| Variable                  | Description                            | Required |
+| ------------------------- | -------------------------------------- | -------- |
+| `DATABASE_HOST`           | PostgreSQL host                        | yes      |
+| `DATABASE_PORT`           | PostgreSQL port (default: 5432)        | yes      |
+| `DATABASE_USER`           | DB username                            | yes      |
+| `DATABASE_PASSWORD`       | DB password                            | yes      |
+| `DATABASE_NAME`           | DB name (`agric_onchain`)              | yes      |
+| `JWT_SECRET`              | Secret for signing JWTs                | yes      |
+| `JWT_EXPIRES_IN`          | Token expiry (e.g. `7d`)               | yes      |
+| `RABBITMQ_URL`            | RabbitMQ connection URL                | yes      |
+| `STELLAR_NETWORK`         | `testnet` or `mainnet`                 | yes      |
+| `STELLAR_HORIZON_URL`     | Horizon API URL                        | yes      |
+| `STELLAR_PLATFORM_SECRET` | Platform Stellar secret key            | yes      |
+| `STELLAR_PLATFORM_PUBLIC` | Platform Stellar public key            | yes      |
+| `ENCRYPTION_KEY`          | AES-256 key for escrow secrets at rest | yes      |
+| `IPFS_GATEWAY`            | IPFS/web3.storage API URL              | optional |
+| `IPFS_TOKEN`              | web3.storage API token                 | optional |
+| `AWS_REGION`              | S3 region (fallback storage)           | optional |
+| `AWS_ACCESS_KEY_ID`       | S3 access key                          | optional |
+| `AWS_SECRET_ACCESS_KEY`   | S3 secret key                          | optional |
+| `AWS_S3_BUCKET`           | S3 bucket name                         | optional |
+| `NOTIFICATIONS_ENABLED`   | Set to false to disable sending emails | optional |
+| `SMTP_HOST`               | SMTP server host for sending emails    | optional |
+| `SMTP_PORT`               | SMTP server port                       | optional |
+| `SMTP_USER`               | SMTP authentication user               | optional |
+| `SMTP_PASS`               | SMTP authentication password           | optional |
+| `EMAIL_FROM`              | Sender address for emails              | optional |
 
 For Stellar work, generate a testnet keypair at https://laboratory.stellar.org and fund it via [Friendbot](https://friendbot.stellar.org).
 
@@ -145,8 +145,8 @@ When the secret is not configured, CI sets `STELLAR_INTEGRATION_TESTS=false` and
 
 ### Frontend env vars
 
-| Variable | Description | Required |
-|---|---|---|
+| Variable              | Description                                                                                                                                    | Required             |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
 | `NEXT_PUBLIC_API_URL` | Base URL of the backend the frontend talks to (e.g. `http://localhost:3001` for local dev). Baked into the client bundle at `next build` time. | yes for `next build` |
 
 The marketplace pages (`src/app/marketplace/**`) are rendered on demand (`export const dynamic = 'force-dynamic'`) so `pnpm run build` does not require a reachable backend. If you add new server components that fetch from the API, either mark them `force-dynamic` or wrap the fetch in `try/catch` so the build can continue on transient failures.
@@ -228,19 +228,40 @@ The project uses structured logging with `nestjs-pino` for better observability 
 - **Use PinoLogger**: Inject `PinoLogger` instead of NestJS `Logger` in all services
 - **Set context**: Always call `this.logger.setContext(ServiceName.name)` in constructors
 - **Structured data**: Use objects for log data, strings for messages:
+
   ```ts
   // Good
-  this.logger.info({ userId, dealId, amount }, 'Investment created successfully');
-  
+  this.logger.info(
+    { userId, dealId, amount },
+    "Investment created successfully",
+  );
+
   // Bad
-  this.logger.info(`Investment created for user ${userId} deal ${dealId} amount ${amount}`);
+  this.logger.info(
+    `Investment created for user ${userId} deal ${dealId} amount ${amount}`,
+  );
   ```
+
 - **Log levels**:
   - `info`: Normal operations (deal created, payment processed)
   - `warn`: Recoverable issues (retry attempts, validation warnings)
   - `error`: Failures that require attention (Stellar errors, database failures)
 - **Correlation IDs**: All logs automatically include correlation IDs for request tracing
 - **No console.log**: Never use `console.log` in service files — always use the injected logger
+
+### OpenAPI Specification
+
+The API specification is generated from NestJS route decorators and lives in `backend/openapi.json`. This file is committed to the repo and verified in CI.
+
+**After modifying API routes or DTOs, regenerate the spec:**
+
+```bash
+cd backend && node generate-openapi.js
+```
+
+Commit the updated `openapi.json` with your changes. PRs that modify routes/DTOs without regenerating the spec will fail CI with a spec drift error.
+
+**Why**: The spec must always match the deployed routes. CI compares the generated spec against the committed version on all PRs — if they differ, the PR is blocked until you regenerate and commit the spec.
 
 Run the linter before committing:
 

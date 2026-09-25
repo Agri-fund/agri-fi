@@ -1,0 +1,230 @@
+---
+# Elasticsearch S3 Repository Secret
+# Stores AWS credentials for S3 snapshot backups
+kind: Secret
+apiVersion: v1
+metadata:
+  name: elasticsearch-s3-credentials
+  namespace: logging
+type: Opaque
+stringData:
+  # AWS credentials for S3 access
+  # Create via: kubectl create secret generic elasticsearch-s3-credentials \
+  #   --from-literal=s3_access_key=$AWS_ACCESS_KEY_ID \
+  #   --from-literal=s3_secret_key=$AWS_SECRET_ACCESS_KEY \
+  #   -n logging
+  s3_access_key: ""  # Set via kubectl or secrets manager
+  s3_secret_key: ""  # Set via kubectl or secrets manager
+
+---
+# ConfigMap for Elasticsearch ILM Policy
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: elasticsearch-ilm-policy
+  namespace: logging
+data:
+  ilm-policy.json: |
+    {
+      "policy": "agri-fi-logs-retention",
+      "phases": {
+        "hot": {
+          "min_age": "0d",
+          "actions": {
+            "rollover": {
+              "max_primary_shard_size": "50gb",
+              "max_age": "1d"
+            },
+            "set_priority": {
+              "priority": 100
+            }
+          }
+        },
+        "warm": {
+          "min_age": "7d",
+          "actions": {
+            "set_priority": {
+              "priority": 50
+            },
+            "shrink": {
+              "number_of_shards": 1
+            }
+          }
+        },
+        "cold": {
+          "min_age": "30d",
+          "actions": {
+            "set_priority": {
+              "priority": 0
+            },
+            "searchable_snapshot": {
+              "snapshot_repository": "s3-backup-repo"
+            }
+          }
+        },
+        "frozen": {
+          "min_age": "90d",
+          "actions": {
+            "searchable_snapshot": {
+              "snapshot_repository": "s3-backup-repo"
+            }
+          }
+        },
+        "delete": {
+          "min_age": "180d",
+          "actions": {
+            "delete": {
+              "delete_searchability": true
+            }
+          }
+        }
+      }
+    }
+
+  s3-repository.json: |
+    {
+      "type": "s3",
+      "settings": {
+        "bucket": "agri-fi-elasticsearch-backups",
+        "base_path": "logs/snapshots",
+        "region": "us-east-1",
+        "compress": true,
+        "chunk_size": "100mb",
+        "server_side_encryption": true,
+        "buffer_size": "256mb",
+        "canned_acl": "private",
+        "storage_class": "STANDARD_IA",
+        "max_snapshot_bytes_per_sec": "500mb",
+        "max_restore_bytes_per_sec": "500mb"
+      }
+    }
+
+  index-template.json: |
+    {
+      "index_patterns": ["agri-fi-*"],
+      "template": {
+        "settings": {
+          "index.lifecycle.name": "agri-fi-logs-retention",
+          "index.lifecycle.rollover_alias": "agri-fi-logs",
+          "number_of_shards": 1,
+          "number_of_replicas": 0
+        },
+        "mappings": {
+          "properties": {
+            "@timestamp": {
+              "type": "date"
+            },
+            "message": {
+              "type": "text"
+            },
+            "log": {
+              "type": "text"
+            },
+            "kubernetes": {
+              "type": "object",
+              "enabled": true
+            },
+            "correlationId": {
+              "type": "keyword"
+            },
+            "txHash": {
+              "type": "keyword"
+            },
+            "operation": {
+              "type": "keyword"
+            },
+            "durationMs": {
+              "type": "long"
+            },
+            "status": {
+              "type": "keyword"
+            },
+            "level": {
+              "type": "keyword"
+            }
+          }
+        }
+      }
+    }
+
+---
+# Job to initialize Elasticsearch ILM and S3 repository
+# Run after Elasticsearch is ready
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: elasticsearch-init
+  namespace: logging
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      serviceAccountName: elasticsearch-init
+      containers:
+      - name: es-init
+        image: curlimages/curl:latest
+        env:
+        - name: ES_URL
+          value: "http://elasticsearch:9200"
+        - name: ES_USER
+          value: "elastic"
+        - name: ES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: elasticsearch-credentials
+              key: password
+              optional: true
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: elasticsearch-s3-credentials
+              key: s3_access_key
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: elasticsearch-s3-credentials
+              key: s3_secret_key
+        volumeMounts:
+        - name: policies
+          mountPath: /config
+        command:
+        - /bin/sh
+        - -c
+        - |
+          set -e
+          echo "Waiting for Elasticsearch to be ready..."
+          until curl -s -f -u "$ES_USER:$ES_PASSWORD" "$ES_URL/_cluster/health?wait_for_status=yellow" > /dev/null 2>&1; do
+            echo "  Still waiting..."
+            sleep 5
+          done
+          
+          echo "Creating S3 repository..."
+          curl -X PUT -u "$ES_USER:$ES_PASSWORD" \
+            -H "Content-Type: application/json" \
+            "$ES_URL/_snapshot/s3-backup-repo" \
+            -d @/config/s3-repository.json
+          
+          echo "Creating ILM policy..."
+          curl -X PUT -u "$ES_USER:$ES_PASSWORD" \
+            -H "Content-Type: application/json" \
+            "$ES_URL/_ilm/policy/agri-fi-logs-retention" \
+            -d @/config/ilm-policy.json
+          
+          echo "Creating index template..."
+          curl -X PUT -u "$ES_USER:$ES_PASSWORD" \
+            -H "Content-Type: application/json" \
+            "$ES_URL/_index_template/agri-fi-logs-template" \
+            -d @/config/index-template.json
+          
+          echo "Applying ILM policy to existing indices..."
+          curl -X PUT -u "$ES_USER:$ES_PASSWORD" \
+            -H "Content-Type: application/json" \
+            "$ES_URL/agri-fi-*/_settings" \
+            -d '{"index.lifecycle.name":"agri-fi-logs-retention","index.lifecycle.rollover_alias":"agri-fi-logs"}'
+          
+          echo "✅ Elasticsearch initialization complete"
+      volumes:
+      - name: policies
+        configMap:
+          name: elasticsearch-ilm-policy
+      restartPolicy: OnFailure

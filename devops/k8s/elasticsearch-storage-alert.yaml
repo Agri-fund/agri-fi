@@ -1,0 +1,196 @@
+---
+# Prometheus PrometheusRule for Elasticsearch storage alerts
+# Monitors cluster health, disk usage, and JVM heap
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: elasticsearch-storage-alerts
+  namespace: monitoring
+spec:
+  groups:
+  - name: elasticsearch.storage
+    interval: 30s
+    rules:
+    # Alert when cluster status is red (data loss risk)
+    - alert: ElasticsearchClusterStatusRed
+      expr: elasticsearch_cluster_health_status{color="red"} == 1
+      for: 5m
+      labels:
+        severity: critical
+        component: elasticsearch
+      annotations:
+        summary: "Elasticsearch cluster status is RED"
+        description: "Elasticsearch cluster {{ $labels.cluster }} is in RED status. Data loss risk. Immediate action required."
+        dashboard: "http://grafana:3000/d/elasticsearch"
+
+    # Alert when yellow status (some replicas unavailable)
+    - alert: ElasticsearchClusterStatusYellow
+      expr: elasticsearch_cluster_health_status{color="yellow"} == 1
+      for: 15m
+      labels:
+        severity: warning
+        component: elasticsearch
+      annotations:
+        summary: "Elasticsearch cluster status is YELLOW"
+        description: "Elasticsearch cluster {{ $labels.cluster }} is in YELLOW status. Some replicas are unavailable."
+
+    # Alert when storage usage exceeds 80%
+    - alert: ElasticsearchDiskUsageHigh
+      expr: |
+        (elasticsearch_fs_stats_total_in_bytes - elasticsearch_fs_stats_available_in_bytes) 
+        / elasticsearch_fs_stats_total_in_bytes > 0.8
+      for: 10m
+      labels:
+        severity: warning
+        component: elasticsearch
+      annotations:
+        summary: "Elasticsearch disk usage is above 80%"
+        description: "Disk usage on node {{ $labels.node_name }}: {{ $value | humanizePercentage }}"
+        runbook: "https://wiki.example.com/runbooks/elasticsearch-disk-full"
+
+    # Alert when storage usage exceeds 95% (critical)
+    - alert: ElasticsearchDiskUsageCritical
+      expr: |
+        (elasticsearch_fs_stats_total_in_bytes - elasticsearch_fs_stats_available_in_bytes) 
+        / elasticsearch_fs_stats_total_in_bytes > 0.95
+      for: 5m
+      labels:
+        severity: critical
+        component: elasticsearch
+      annotations:
+        summary: "Elasticsearch disk usage is CRITICAL (>95%)"
+        description: "Node {{ $labels.node_name }} is nearly full: {{ $value | humanizePercentage }}. Immediate action required."
+        action: "Delete old indices or increase disk capacity"
+
+    # Alert on low disk space available
+    - alert: ElasticsearchDiskSpaceLow
+      expr: elasticsearch_fs_stats_available_in_bytes < 10737418240  # 10GB
+      for: 10m
+      labels:
+        severity: warning
+        component: elasticsearch
+      annotations:
+        summary: "Elasticsearch available disk space is low"
+        description: "Available disk on node {{ $labels.node_name }}: {{ $value | humanize1024 }}"
+
+    # Alert when JVM heap usage exceeds 85%
+    - alert: ElasticsearchJvmHeapUsageHigh
+      expr: elasticsearch_jvm_memory_used_percent{area="heap"} > 85
+      for: 10m
+      labels:
+        severity: warning
+        component: elasticsearch
+      annotations:
+        summary: "Elasticsearch JVM heap usage is high (>85%)"
+        description: "JVM heap usage on node {{ $labels.node_name }}: {{ $value }}%"
+
+    # Alert when JVM heap usage exceeds 95%
+    - alert: ElasticsearchJvmHeapUsageCritical
+      expr: elasticsearch_jvm_memory_used_percent{area="heap"} > 95
+      for: 5m
+      labels:
+        severity: critical
+        component: elasticsearch
+      annotations:
+        summary: "Elasticsearch JVM heap usage is CRITICAL (>95%)"
+        description: "JVM heap usage on node {{ $labels.node_name }}: {{ $value }}%. May cause OOM."
+
+    # Alert on unassigned shards (data loss risk)
+    - alert: ElasticsearchUnassignedShards
+      expr: elasticsearch_cluster_health_unassigned_shards > 0
+      for: 10m
+      labels:
+        severity: warning
+        component: elasticsearch
+      annotations:
+        summary: "Elasticsearch has unassigned shards"
+        description: "Cluster {{ $labels.cluster }} has {{ $value }} unassigned shards"
+
+    # Alert on too many pending tasks (cluster under stress)
+    - alert: ElasticsearchPendingTasks
+      expr: elasticsearch_cluster_health_number_of_pending_tasks > 10
+      for: 10m
+      labels:
+        severity: warning
+        component: elasticsearch
+      annotations:
+        summary: "Elasticsearch has too many pending tasks"
+        description: "Cluster {{ $labels.cluster }} has {{ $value }} pending tasks"
+
+    # Alert when ILM policy state changes unexpectedly
+    - alert: ElasticsearchIlmPolicyError
+      expr: elasticsearch_indices_ilm_shard_state{state!~"hot|warm|cold|frozen|deleted"} > 0
+      for: 15m
+      labels:
+        severity: warning
+        component: elasticsearch
+      annotations:
+        summary: "Elasticsearch ILM policy error detected"
+        description: "Index {{ $labels.index }} is in unexpected ILM state: {{ $labels.state }}"
+
+    # Alert on snapshot failures
+    - alert: ElasticsearchSnapshotFailed
+      expr: elasticsearch_snapshot_stats_failed > 0
+      for: 10m
+      labels:
+        severity: warning
+        component: elasticsearch
+      annotations:
+        summary: "Elasticsearch snapshot backup failed"
+        description: "{{ $value }} snapshot(s) failed to complete. Check S3 connectivity."
+
+---
+# PrometheusRule for storage forecast (predict when disk will fill)
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: elasticsearch-storage-forecast
+  namespace: monitoring
+spec:
+  groups:
+  - name: elasticsearch.forecast
+    interval: 5m
+    rules:
+    # Predict disk full in 7 days
+    - alert: ElasticsearchDiskFullIn7Days
+      expr: |
+        predict_linear(elasticsearch_fs_stats_available_in_bytes[1h], 7*24*3600) < 0
+      for: 1h
+      labels:
+        severity: warning
+        component: elasticsearch
+      annotations:
+        summary: "Elasticsearch disk will be full in ~7 days"
+        description: "Based on current growth rate, node {{ $labels.node_name }} will fill up in approximately 7 days."
+        action: "Increase disk capacity or reduce log retention"
+
+    # Predict disk full in 24 hours
+    - alert: ElasticsearchDiskFullIn24Hours
+      expr: |
+        predict_linear(elasticsearch_fs_stats_available_in_bytes[1h], 24*3600) < 0
+      for: 30m
+      labels:
+        severity: critical
+        component: elasticsearch
+      annotations:
+        summary: "Elasticsearch disk will be full in ~24 hours"
+        description: "Based on current growth rate, node {{ $labels.node_name }} will fill up in approximately 24 hours. Urgent action required."
+        action: "Immediately increase disk capacity or delete old indices"
+
+---
+# ServiceMonitor for Elasticsearch metrics collection
+# Assumes elasticsearch-exporter is running on port 9114
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: elasticsearch-metrics
+  namespace: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: elasticsearch
+  endpoints:
+  - port: metrics
+    interval: 30s
+    path: /metrics
+    scrapeTimeout: 10s

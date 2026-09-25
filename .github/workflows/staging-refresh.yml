@@ -3,13 +3,13 @@ name: Staging Environment Refresh
 on:
   schedule:
     # Weekly on Sunday at 01:00 UTC
-    - cron: '0 1 * * 0'
+    - cron: "0 1 * * 0"
   workflow_dispatch:
     inputs:
       force_refresh:
-        description: 'Force staging refresh even if last refresh was recent'
+        description: "Force staging refresh even if last refresh was recent"
         required: false
-        default: 'false'
+        default: "false"
         type: boolean
 
 permissions:
@@ -21,7 +21,7 @@ env:
   STAGING_DB_USER: ${{ secrets.STAGING_DB_USER }}
   STAGING_DB_NAME: ${{ secrets.STAGING_DB_NAME || 'agric_onchain_staging' }}
   STAGING_S3_BUCKET: ${{ secrets.STAGING_S3_BUCKET || 'agrifi-staging-dumps' }}
-  STAGING_S3_PREFIX: 'weekly-snapshots'
+  STAGING_S3_PREFIX: "weekly-snapshots"
   AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
 
 jobs:
@@ -37,7 +37,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "20"
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -53,17 +53,17 @@ jobs:
         run: |
           TIMESTAMP=$(aws s3 ls "s3://${STAGING_S3_BUCKET}/production-backups/" \
             --region "${AWS_REGION}" | sort | tail -1 | awk '{print $4}')
-          
+
           if [ -z "$TIMESTAMP" ]; then
             echo "No production backup found in S3"
             exit 1
           fi
-          
+
           echo "Latest backup: $TIMESTAMP"
           aws s3 cp "s3://${STAGING_S3_BUCKET}/production-backups/${TIMESTAMP}" \
             "/tmp/production-dump.sql.gz" \
             --region "${AWS_REGION}"
-          
+
           gunzip "/tmp/production-dump.sql.gz"
 
       - name: Anonymise dump
@@ -71,29 +71,42 @@ jobs:
           ts-node devops/scripts/anonymise-dump.ts \
             --input /tmp/production-dump.sql \
             --output /tmp/anonymised-dump.sql
-          
+
           echo "Anonymised dump size: $(du -h /tmp/anonymised-dump.sql | cut -f1)"
 
-      - name: Validate no PII remains
+      - name: PII scan gate — verify anonymisation
         run: |
-          echo "Checking for remaining PII patterns..."
-          
-          # Check for email patterns (should be replaced with @example.com etc.)
-          EMAIL_COUNT=$(grep -cE "'[^']*@[^']*\\.[^']*'" /tmp/anonymised-dump.sql || true)
-          echo "Email-like patterns found: $EMAIL_COUNT"
-          
-          # Check for real phone numbers (not our synthetic ones)
-          PHONE_COUNT=$(grep -cE "'\\+[0-9]{10,13}'" /tmp/anonymised-dump.sql || true)
-          echo "Phone patterns found: $PHONE_COUNT"
-          
-          # Check for Stellar addresses (should be testnet format)
-          STELLAR_COUNT=$(grep -cE "G[A-Z2-5]{55}" /tmp/anonymised-dump.sql || true)
-          echo "Stellar addresses found: $STELLAR_COUNT"
-          
-          # Fail if we find patterns that look like real PII
-          if [ "$EMAIL_COUNT" -gt 0 ]; then
-            echo "WARNING: Email patterns detected - review anonymisation"
+          echo "Running PII scan on anonymised dump..."
+
+          # Check for email patterns with real domains (non-example)
+          REAL_EMAILS=$(grep -cE "'[^']*@(?!example\\.com|test\\.org|sample\\.net|demo\\.io|staging\\.dev)[^']*\\.[^']*'" /tmp/anonymised-dump.sql || true)
+          if [ "$REAL_EMAILS" -gt 0 ]; then
+            echo "❌ FAIL: Found $REAL_EMAILS non-anonymised emails in dump"
+            exit 1
           fi
+
+          # Check for real phone numbers (should only have +1, +234, etc. with synthetic numbers)
+          SUSPICIOUS_PHONES=$(grep -cE "'\\+1415555|\\+234801|\\+254722'" /tmp/anonymised-dump.sql || true)
+          if [ "$SUSPICIOUS_PHONES" -gt 0 ]; then
+            echo "❌ FAIL: Found $SUSPICIOUS_PHONES suspicious phone numbers"
+            exit 1
+          fi
+
+          # Check for private IP addresses (non-127.x)
+          PRIVATE_IPS=$(grep -cE "10\\.|172\\.1[6-9]\\.|172\\.2[0-9]\\.|172\\.3[0-1]\\.|192\\.168\\." /tmp/anonymised-dump.sql || true)
+          if [ "$PRIVATE_IPS" -gt 0 ]; then
+            echo "❌ FAIL: Found $PRIVATE_IPS private IP addresses"
+            exit 1
+          fi
+
+          # Check for JWT/encrypted data patterns in KYC fields
+          ENCRYPTED_DATA=$(grep -cE "eyJ[A-Za-z0-9_-]+" /tmp/anonymised-dump.sql || true)
+          if [ "$ENCRYPTED_DATA" -gt 0 ]; then
+            echo "❌ FAIL: Found $ENCRYPTED_DATA potential encrypted/JWT tokens"
+            exit 1
+          fi
+
+          echo "✅ PII scan passed — anonymisation verified"
 
       - name: Compress anonymised dump
         run: |
@@ -104,12 +117,12 @@ jobs:
         run: |
           DATE=$(date +'%Y%m%d_%H%M%S')
           S3_PATH="s3://${STAGING_S3_BUCKET}/${STAGING_S3_PREFIX}/anonymised_${DATE}.sql.gz"
-          
+
           aws s3 cp /tmp/anonymised-dump.sql.gz "${S3_PATH}" \
             --region "${AWS_REGION}" \
             --sse AES256 \
             --storage-class STANDARD
-          
+
           echo "Uploaded to: ${S3_PATH}"
 
       - name: Restore staging database
@@ -126,13 +139,13 @@ jobs:
               --dbname="${STAGING_DB_NAME}" \
               --set ON_ERROR_STOP=on \
               --file=/restore/anonymised-dump.sql
-          
+
           echo "Staging database restored successfully"
 
       - name: Verify staging database
         run: |
           echo "Verifying staging database..."
-          
+
           docker run --rm --network host \
             -e PGPASSWORD="${{ secrets.STAGING_DB_PASSWORD }}" \
             postgres:17-alpine \
@@ -147,19 +160,214 @@ jobs:
               --command="SELECT extname FROM pg_extension ORDER BY extname;" \
               --command="SELECT COUNT(*) AS rls_tables FROM pg_class WHERE relrowsecurity;"
 
-      - name: Notify team
-        if: success()
+      - name: Run smoke tests — staging health check
         run: |
-          echo "Staging environment refreshed successfully"
-          echo "Timestamp: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-          
-          # Optional: Send Slack/Discord notification
-          if [ -n "${{ secrets.STAGING_WEBHOOK_URL }}" ]; then
-            curl -X POST "${{ secrets.STAGING_WEBHOOK_URL }}" \
+          STAGING_API_URL="${{ secrets.STAGING_API_URL || 'https://api.staging.example.com' }}"
+          MAX_RETRIES=10
+          RETRY_DELAY=5
+
+          echo "Running smoke tests against $STAGING_API_URL..."
+
+          # Health check
+          echo "✓ Testing /health endpoint..."
+          for i in $(seq 1 $MAX_RETRIES); do
+            if curl -fsS "$STAGING_API_URL/health" > /dev/null 2>&1; then
+              echo "  Health check passed"
+              break
+            fi
+            if [ $i -eq $MAX_RETRIES ]; then
+              echo "❌ Health check failed after $MAX_RETRIES attempts"
+              exit 1
+            fi
+            echo "  Retry $i/$MAX_RETRIES..."
+            sleep $RETRY_DELAY
+          done
+
+          # Test marketplace endpoints
+          echo "✓ Testing /v1/prices/commodities endpoint..."
+          if ! curl -fsS "$STAGING_API_URL/v1/prices/commodities" | jq . > /dev/null 2>&1; then
+            echo "❌ Commodities endpoint failed"
+            exit 1
+          fi
+
+          echo "✓ Testing /v1/prices/fx endpoint..."
+          if ! curl -fsS "$STAGING_API_URL/v1/prices/fx" | jq . > /dev/null 2>&1; then
+            echo "❌ FX prices endpoint failed"
+            exit 1
+          fi
+
+          echo "✓ Testing /v1/trade-deals endpoint..."
+          if ! curl -fsS "$STAGING_API_URL/v1/trade-deals?page=1&limit=10" | jq . > /dev/null 2>&1; then
+            echo "❌ Trade deals endpoint failed"
+            exit 1
+          fi
+
+          # Test seed user login (if seed credentials exist)
+          if [ -n "${{ secrets.STAGING_SEED_EMAIL }}" ] && [ -n "${{ secrets.STAGING_SEED_PASSWORD }}" ]; then
+            echo "✓ Testing seed user login..."
+            LOGIN_RESPONSE=$(curl -fsS -X POST "$STAGING_API_URL/auth/login" \
               -H "Content-Type: application/json" \
               -d '{
-                "text": "✅ Staging environment refreshed successfully",
-                "content": "✅ Staging environment refreshed successfully\nTimestamp: '"$(date -u +'%Y-%m-%dT%H:%M:%SZ')"'\nAnonymised dump uploaded to S3."
+                "email": "${{ secrets.STAGING_SEED_EMAIL }}",
+                "password": "${{ secrets.STAGING_SEED_PASSWORD }}"
+              }')
+
+            if echo "$LOGIN_RESPONSE" | jq -e '.access_token' > /dev/null 2>&1; then
+              echo "  Seed user login successful"
+            else
+              echo "⚠️  Seed user login test skipped or failed (not blocking)"
+            fi
+          fi
+
+          echo "✅ All smoke tests passed"
+
+      - name: Notify team — success
+        if: success()
+        run: |
+          TIMESTAMP=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+          echo "✅ Staging refresh completed successfully"
+          echo "Timestamp: $TIMESTAMP"
+          echo "Database: $STAGING_DB_NAME @ $STAGING_DB_HOST"
+          echo "Status: All smoke tests passed"
+
+          # Discord notification
+          if [ -n "${{ secrets.DISCORD_WEBHOOK_URL }}" ]; then
+            curl -X POST "${{ secrets.DISCORD_WEBHOOK_URL }}" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "content": "✅ **Staging Refresh Complete**",
+                "embeds": [{
+                  "title": "Staging Environment Refreshed",
+                  "description": "Production snapshot anonymised and restored to staging",
+                  "color": 65280,
+                  "fields": [
+                    {
+                      "name": "Timestamp",
+                      "value": "'"$TIMESTAMP"'",
+                      "inline": true
+                    },
+                    {
+                      "name": "Database",
+                      "value": "'"$STAGING_DB_NAME"'",
+                      "inline": true
+                    },
+                    {
+                      "name": "Status",
+                      "value": "PII verified ✓\nSmoke tests passed ✓",
+                      "inline": false
+                    }
+                  ]
+                }]
+              }' || true
+          fi
+
+          # Slack notification
+          if [ -n "${{ secrets.SLACK_WEBHOOK_URL }}" ]; then
+            curl -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "text": "✅ Staging Refresh Complete",
+                "blocks": [
+                  {
+                    "type": "header",
+                    "text": {
+                      "type": "plain_text",
+                      "text": "✅ Staging Environment Refreshed"
+                    }
+                  },
+                  {
+                    "type": "section",
+                    "fields": [
+                      {
+                        "type": "mrkdwn",
+                        "text": "*Timestamp:*\n'"$TIMESTAMP"'"
+                      },
+                      {
+                        "type": "mrkdwn",
+                        "text": "*Database:*\n'"$STAGING_DB_NAME"'"
+                      },
+                      {
+                        "type": "mrkdwn",
+                        "text": "*Status:*\n✓ PII verified\n✓ Smoke tests passed"
+                      }
+                    ]
+                  }
+                ]
+              }' || true
+          fi
+
+      - name: Notify team — failure
+        if: failure()
+        run: |
+          TIMESTAMP=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+          FAILURE_STEP="${{ job.status }}"
+
+          # Discord notification
+          if [ -n "${{ secrets.DISCORD_WEBHOOK_URL }}" ]; then
+            curl -X POST "${{ secrets.DISCORD_WEBHOOK_URL }}" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "content": "❌ **Staging Refresh Failed**",
+                "embeds": [{
+                  "title": "Staging Refresh Failed",
+                  "description": "Production snapshot restore or smoke tests failed",
+                  "color": 16711680,
+                  "fields": [
+                    {
+                      "name": "Timestamp",
+                      "value": "'"$TIMESTAMP"'",
+                      "inline": true
+                    },
+                    {
+                      "name": "Status",
+                      "value": "'"$FAILURE_STEP"'",
+                      "inline": true
+                    },
+                    {
+                      "name": "Action",
+                      "value": "Check workflow logs at ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+                      "inline": false
+                    }
+                  ]
+                }]
+              }' || true
+          fi
+
+          # Slack notification
+          if [ -n "${{ secrets.SLACK_WEBHOOK_URL }}" ]; then
+            curl -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "text": "❌ Staging Refresh Failed",
+                "blocks": [
+                  {
+                    "type": "header",
+                    "text": {
+                      "type": "plain_text",
+                      "text": "❌ Staging Environment Refresh Failed"
+                    }
+                  },
+                  {
+                    "type": "section",
+                    "fields": [
+                      {
+                        "type": "mrkdwn",
+                        "text": "*Timestamp:*\n'"$TIMESTAMP"'"
+                      },
+                      {
+                        "type": "mrkdwn",
+                        "text": "*Status:*\n'"$FAILURE_STEP"'"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "section",
+                    "text": {
+                      "type": "mrkdwn",
+                      "text": "<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow Logs>"
+                    }
+                  }
+                ]
               }' || true
           fi
 
