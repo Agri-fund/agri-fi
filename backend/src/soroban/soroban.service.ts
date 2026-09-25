@@ -110,6 +110,10 @@ export class SorobanService {
     const tx = new TransactionBuilder(account, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
+      timebounds: {
+        minTime: 0,
+        maxTime: Math.floor(Date.now() / 1000) + 30,
+      },
     })
       .addOperation(contract.call(method, ...args))
       .setTimeout(30)
@@ -187,9 +191,12 @@ export class SorobanService {
     const tx = new TransactionBuilder(account, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
+      timebounds: {
+        minTime: 0,
+        maxTime: Math.floor(Date.now() / 1000) + 30,
+      },
     })
       .addOperation(contract.call(method, ...args))
-      .setTimeout(30)
       .build();
 
     const simResult = await this.rpcServer.simulateTransaction(tx);

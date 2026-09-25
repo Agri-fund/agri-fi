@@ -6,6 +6,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { TransactionLog } from './entities/transaction-log.entity';
 import { KmsService } from '../kms/kms.service';
 import {
+  BASE_FEE,
   Keypair,
   TransactionBuilder,
   Operation,
@@ -127,6 +128,45 @@ describe('StellarService', () => {
 
   it('should initialize with testnet network passphrase', () => {
     expect(service).toBeInstanceOf(StellarService);
+  });
+
+  it('should rebuild expired transactions with fresh timebounds and higher fee', async () => {
+    const source = Keypair.random();
+    const originalTx = new TransactionBuilder(
+      new Account(source.publicKey(), '1'),
+      {
+        fee: '100',
+        networkPassphrase: Networks.TESTNET,
+        timebounds: { minTime: 0, maxTime: 1 },
+      },
+    )
+      .addOperation(
+        Operation.payment({
+          destination: Keypair.random().publicKey(),
+          asset: Asset.native(),
+          amount: '1',
+        }),
+      )
+      .build();
+
+    Object.defineProperty((service as any).horizonClient, 'activeServer', {
+      get: () => ({
+        loadAccount: jest.fn().mockResolvedValue(
+          new Account(source.publicKey(), '2'),
+        ),
+      }),
+      configurable: true,
+    });
+
+    const rebuiltTx = await (service as any).rebuildWithFreshTimebounds(originalTx);
+
+    expect(rebuiltTx.timeBounds).toBeDefined();
+    expect(Number(rebuiltTx.timeBounds.maxTime)).toBeGreaterThan(
+      Date.now() / 1000,
+    );
+    expect(parseInt(rebuiltTx.fee, 10)).toBeGreaterThanOrEqual(
+      parseInt(originalTx.fee, 10) + parseInt(BASE_FEE, 10),
+    );
   });
 
   describe('createInvestmentTransaction', () => {
