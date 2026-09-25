@@ -254,15 +254,19 @@ groups:
         labels:
           severity: warning
           team: backend
+          owner: backend-oncall
+          runbook: "docs/runbooks/escrow.md"
           component: escrow
         annotations:
           summary: "Escrow queue depth above 500"
+          runbook_url: "docs/runbooks/escrow.md"
           description: >
             The escrow processing queue on {{ $labels.instance }} has exceeded
             500 pending messages for more than 5 minutes.
             Current depth: {{ $value }}.
             Consumer throughput may be insufficient to keep up with incoming
             investment confirmations. Check consumer health and scaling.
+            See runbook: docs/runbooks/escrow.md
 
       # ── Escrow queue depth critical (>2000 for 2m) ─────────────────────────
       - alert: EscrowQueueDepthCritical
@@ -271,16 +275,20 @@ groups:
         labels:
           severity: critical
           team: backend
+          owner: backend-oncall
+          runbook: "docs/runbooks/escrow.md"
           component: escrow
           pagerduty: "true"
         annotations:
           summary: "Escrow queue depth critically high (>2000)"
+          runbook_url: "docs/runbooks/escrow.md"
           description: >
             The escrow processing queue on {{ $labels.instance }} has exceeded
             2000 pending messages for more than 2 minutes.
             Current depth: {{ $value }}.
             Escrow releases are significantly backlogged. Investors may
             experience delayed token delivery. Scale consumers immediately.
+            See runbook: docs/runbooks/escrow.md
 
       # ── DLQ message count increased in last 15m ────────────────────────────
       - alert: DLQGrowing
@@ -289,14 +297,18 @@ groups:
         labels:
           severity: warning
           team: backend
+          owner: backend-oncall
+          runbook: "docs/runbooks/escrow.md"
           component: escrow
         annotations:
           summary: "Dead-letter queue is accumulating messages"
+          runbook_url: "docs/runbooks/escrow.md"
           description: >
             The escrow DLQ on {{ $labels.instance }} has received
             {{ $value }} new messages in the last 15 minutes.
             Failed escrow transactions are accumulating. Investigate
             root cause and use `npm run queue:retry-dlq` to retry.
+            See runbook: docs/runbooks/escrow.md
 
       # ── DLQ has messages for more than 1h ──────────────────────────────────
       - alert: DLQNotEmpty
@@ -305,16 +317,20 @@ groups:
         labels:
           severity: critical
           team: backend
+          owner: backend-oncall
+          runbook: "docs/runbooks/escrow.md"
           component: escrow
           pagerduty: "true"
         annotations:
           summary: "Escrow DLQ has unprocessed messages for >1 hour"
+          runbook_url: "docs/runbooks/escrow.md"
           description: >
             The escrow DLQ on {{ $labels.instance }} has {{ $value }}
             messages that have been sitting for more than 1 hour.
             These represent failed escrow settlements that require manual
             intervention. Run `npm run queue:retry-dlq` or investigate
             the root cause.
+            See runbook: docs/runbooks/escrow.md
 
       # ── Consumer lag exceeds 100 for 10m ───────────────────────────────────
       - alert: EscrowConsumerLag
@@ -323,14 +339,18 @@ groups:
         labels:
           severity: warning
           team: backend
+          owner: backend-oncall
+          runbook: "docs/runbooks/escrow.md"
           component: escrow
         annotations:
           summary: "Escrow consumer has no active consumers"
+          runbook_url: "docs/runbooks/escrow.md"
           description: >
             The escrow processing queue on {{ $labels.instance }} has had
             zero active consumers for more than 10 minutes.
             Messages will accumulate in the queue. Verify the consumer
             service is running and healthy.
+            See runbook: docs/runbooks/escrow.md
 
       # ── Stellar transaction failure rate (>5% in 5m) ───────────────────────
       - alert: StellarTxFailureRate
@@ -344,10 +364,13 @@ groups:
         labels:
           severity: critical
           team: backend
+          owner: backend-oncall
+          runbook: "docs/runbooks/escrow.md"
           component: stellar
           pagerduty: "true"
         annotations:
           summary: "Stellar transaction failure rate above 5%"
+          runbook_url: "docs/runbooks/escrow.md"
           description: >
             More than 5% of Stellar escrow transactions on
             {{ $labels.instance }} are failing.
@@ -355,6 +378,7 @@ groups:
             This may indicate network congestion, insufficient base fee,
             or contract invocation errors. Check Stellar network status
             and contract health.
+            See runbook: docs/runbooks/escrow.md
 
       # ── Outbox stalled events (>50 pending for 10m) ────────────────────────
       - alert: OutboxStalledEvents
@@ -363,14 +387,18 @@ groups:
         labels:
           severity: warning
           team: backend
+          owner: backend-oncall
+          runbook: "docs/runbooks/escrow.md"
           component: outbox
         annotations:
           summary: "Outbox has more than 50 pending events"
+          runbook_url: "docs/runbooks/escrow.md"
           description: >
             The transactional outbox on {{ $labels.instance }} has
             {{ $value }} pending events for more than 10 minutes.
             Events are not being published to the message broker.
             Check the outbox relay process and RabbitMQ connectivity.
+            See runbook: docs/runbooks/escrow.md
 
   # ── Stellar Horizon Failover Alerts ──────────────────────────────────────────
   - name: agri_fi_stellar_horizon
