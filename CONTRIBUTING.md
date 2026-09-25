@@ -288,6 +288,18 @@ For deeper context, read the [project overview](./README.md), [production-readin
 
 ---
 
+## Architectural Decision Records (ADRs)
+
+Agri-Fi maintains a strict log of Architecture Decision Records in [`docs/adr/`](./docs/adr/README.md).
+
+Whenever you submit a Pull Request that introduces or alters significant architectural patterns (e.g. state persistence, ledger interaction models, queue message encryption, security RLS boundaries, or key management):
+
+1. **Mandatory Requirement:** You MUST include a new ADR document based on [`docs/adr/ADR-000-template.md`](./docs/adr/ADR-000-template.md).
+2. Document the context, decision outcome, trade-offs/consequences, and alternatives considered.
+3. Update the index in [`docs/adr/README.md`](./docs/adr/README.md).
+
+---
+
 ## Architecture Notes
 
 - **PostgreSQL** is the source of truth for application state.

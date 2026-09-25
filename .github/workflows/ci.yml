@@ -71,6 +71,11 @@ jobs:
         run: npm run lint -- --max-warnings=0
         working-directory: backend
 
+      - name: Check ER Diagram Freshness
+        run: |
+          npm run doc:diagram
+          git diff --exit-code docs/database/schema.md || (echo "DB schema ER diagram is out of date! Run 'npm run doc:diagram' and commit changes." && exit 1)
+
       - name: Run database migrations
         run: npm run migration:run
         working-directory: backend

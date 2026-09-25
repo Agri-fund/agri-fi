@@ -11,7 +11,8 @@ export function buildOpenApiConfig(): DocumentBuilder {
     .setTitle('Agri-Fi API')
     .setDescription(
       'REST API for the Agri-Fi agricultural trade finance platform. ' +
-        'Farmers list produce, traders create deals, investors fund them via Stellar escrow.',
+        'Farmers list produce, traders create deals, investors fund them via Stellar escrow. ' +
+        'See [Webhooks & API Keys Getting Started](docs/webhooks/getting-started.md) for partner integrations.',
     )
     .setVersion('1.0')
     .addBearerAuth(

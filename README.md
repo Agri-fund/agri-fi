@@ -141,6 +141,15 @@ The backend uses **Jest** for unit tests and **fast-check** for property-based t
 
 ---
 
+## Documentation
+
+- [Webhooks & Partner Integration Guide](./docs/webhooks/getting-started.md) — Self-serve guide for API keys (`agfi_live_*`), scopes, webhook registration, and HMAC signature verification.
+- [SEP-10 Web Auth Flow](./docs/auth/sep10-flow.md) — Sequence diagram, wallet authentication (Freighter/Albedo), signature verification, and error recovery.
+- [Database Schema Diagram](./docs/database/schema.md) — Rendered ER diagram generated automatically from entities (`npm run doc:diagram`).
+- [Architecture Decision Records (ADRs)](./docs/adr/README.md) — Index of ADRs covering escrow 98/2 settlement, outbox DLQ, RLS, queue encryption, and per-deal keypairs.
+
+---
+
 ## Contributing
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for setup instructions, coding conventions, branching strategy, and PR guidelines.

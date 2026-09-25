@@ -1569,6 +1569,7 @@ export class AuthService {
   /**
    * Generates a SEP-10 challenge transaction for Stellar Web Authentication.
    * The client signs this transaction to prove ownership of their wallet.
+   * See detailed flow doc: [SEP-10 Flow](../../../docs/auth/sep10-flow.md)
    */
   async generateSep10Challenge(
     clientPublicKey: string,
