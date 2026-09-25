@@ -76,6 +76,10 @@ jobs:
           npm run doc:diagram
           git diff --exit-code docs/database/schema.md || (echo "DB schema ER diagram is out of date! Run 'npm run doc:diagram' and commit changes." && exit 1)
 
+      - name: Backend - Verify .env.example coverage
+        run: npm run check:env
+        working-directory: backend
+
       - name: Run database migrations
         run: npm run migration:run
         working-directory: backend
