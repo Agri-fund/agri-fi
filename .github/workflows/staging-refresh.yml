@@ -115,17 +115,17 @@ jobs:
       - name: Restore staging database
         run: |
           echo "Restoring anonymised dump to staging database..."
-          
-          PGPASSWORD="${{ secrets.STAGING_DB_PASSWORD }}" pg_restore \
-            --host="${STAGING_DB_HOST}" \
-            --port="${STAGING_DB_PORT}" \
-            --username="${STAGING_DB_USER}" \
-            --dbname="${STAGING_DB_NAME}" \
-            --no-owner \
-            --no-privileges \
-            --clean \
-            --if-exists \
-            /tmp/anonymised-dump.sql || true
+
+          docker run --rm --network host \
+            -e PGPASSWORD="${{ secrets.STAGING_DB_PASSWORD }}" \
+            -v /tmp:/restore:ro postgres:17-alpine \
+            psql \
+              --host="${STAGING_DB_HOST}" \
+              --port="${STAGING_DB_PORT}" \
+              --username="${STAGING_DB_USER}" \
+              --dbname="${STAGING_DB_NAME}" \
+              --set ON_ERROR_STOP=on \
+              --file=/restore/anonymised-dump.sql
           
           echo "Staging database restored successfully"
 
@@ -133,19 +133,19 @@ jobs:
         run: |
           echo "Verifying staging database..."
           
-          PGPASSWORD="${{ secrets.STAGING_DB_PASSWORD }}" psql \
-            --host="${STAGING_DB_HOST}" \
-            --port="${STAGING_DB_PORT}" \
-            --username="${STAGING_DB_USER}" \
-            --dbname="${STAGING_DB_NAME}" \
-            -c "SELECT COUNT(*) as user_count FROM users;" || true
-          
-          PGPASSWORD="${{ secrets.STAGING_DB_PASSWORD }}" psql \
-            --host="${STAGING_DB_HOST}" \
-            --port="${STAGING_DB_PORT}" \
-            --username="${STAGING_DB_USER}" \
-            --dbname="${STAGING_DB_NAME}" \
-            -c "SELECT COUNT(*) as deal_count FROM trade_deals;" || true
+          docker run --rm --network host \
+            -e PGPASSWORD="${{ secrets.STAGING_DB_PASSWORD }}" \
+            postgres:17-alpine \
+            psql \
+              --host="${STAGING_DB_HOST}" \
+              --port="${STAGING_DB_PORT}" \
+              --username="${STAGING_DB_USER}" \
+              --dbname="${STAGING_DB_NAME}" \
+              --set ON_ERROR_STOP=on \
+              --command="SELECT COUNT(*) AS user_count FROM users;" \
+              --command="SELECT COUNT(*) AS deal_count FROM trade_deals;" \
+              --command="SELECT extname FROM pg_extension ORDER BY extname;" \
+              --command="SELECT COUNT(*) AS rls_tables FROM pg_class WHERE relrowsecurity;"
 
       - name: Notify team
         if: success()

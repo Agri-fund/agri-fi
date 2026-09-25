@@ -15,10 +15,11 @@ jobs:
     strategy:
       matrix:
         node-version: [20]
+        postgres-version: [16, 17]
 
     services:
       postgres:
-        image: postgres:15
+        image: postgres:${{ matrix.postgres-version }}
         env:
           POSTGRES_USER: agri
           POSTGRES_PASSWORD: agri

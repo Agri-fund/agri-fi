@@ -22,6 +22,17 @@ spec:
         target:
           type: Utilization
           averageUtilization: 80
+    - type: Object
+      object:
+        describedObject:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: agri-fi-backend-blue
+        metric:
+          name: queue_depth
+        target:
+          type: Value
+          value: "500"
 ---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
