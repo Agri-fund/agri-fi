@@ -23,6 +23,7 @@ import {
   Operation,
   SorobanDataBuilder,
 } from '@stellar/stellar-sdk';
+import { MAX_FEE_BPS } from '../database/entities/fee-configuration.entity';
 
 export interface CampaignConfig {
   admin: string;
@@ -301,19 +302,30 @@ export class SorobanService {
 
   // ── ProjectFactory contract methods ─────────────────────────────────────────
 
-  /**
-   * Deploys a new FarmCampaign contract through the ProjectFactory (#830).
-   * Returns the deployed campaign contract address.
-   */
   async deployFarmCampaign(
     dealId: string,
     params: {
       farmerAddress: string;
-      targetAmount: bigint; // USDC stroops
-      durationLedgers: number;
-      commodityCode: string;
+      targetAmount: bigint;
+      deadline: number;
+      feeBps: number;
     },
   ): Promise<string> {
+    const now = Math.floor(Date.now() / 1000);
+    if (typeof params.targetAmount !== 'bigint' || params.targetAmount <= 0n) {
+      throw new Error('Campaign target must be greater than zero');
+    }
+    if (!Number.isSafeInteger(params.deadline) || params.deadline <= now) {
+      throw new Error('Campaign deadline must be in the future');
+    }
+    if (
+      !Number.isSafeInteger(params.feeBps) ||
+      params.feeBps < 0 ||
+      params.feeBps > MAX_FEE_BPS
+    ) {
+      throw new Error(`Campaign fee must be between 0 and ${MAX_FEE_BPS} bps`);
+    }
+
     const factoryContractId = this.config.get<string>(
       'SOROBAN_FACTORY_CONTRACT_ID',
     );
@@ -325,13 +337,13 @@ export class SorobanService {
       new Address(this.platformKeypair.publicKey()).toScVal(),
       new Address(params.farmerAddress).toScVal(),
       nativeToScVal(params.targetAmount, { type: 'i128' }),
-      nativeToScVal(params.durationLedgers, { type: 'u32' }),
-      nativeToScVal(params.commodityCode, { type: 'symbol' }),
+      nativeToScVal(params.deadline, { type: 'u64' }),
+      nativeToScVal(params.feeBps, { type: 'u32' }),
     ];
 
     const { hash, result } = await this.invokeContractWithResult(
       factoryContractId,
-      'deploy',
+      'create_campaign',
       args,
     );
 

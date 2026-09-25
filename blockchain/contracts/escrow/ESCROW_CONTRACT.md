@@ -6,7 +6,8 @@ The Escrow Smart Contract is a Soroban WASM contract that manages the automatic 
 
 ## Issue
 
-**Issue #345**: Design Soroban smart contract for automatic escrow settlement
+- **Issue #345**: Design Soroban smart contract for automatic escrow settlement
+- **Issue #1089**: Replay and reentrancy idempotency guarantees
 
 The contract enables automatic, trustless payout execution when milestones are verified, eliminating the need for platform-managed escrow accounts.
 
@@ -23,8 +24,9 @@ The contract maintains the following state data:
 - **Funding Deadline**: Unix timestamp for funding deadline
 
 ### Investor Information
-- **Investors**: List of investor wallet addresses funding the deal
+- **Investors**: Map of investor wallet addresses to their cumulative contributions
 - **Total Funded**: Cumulative USDC received from investors
+- **Refunded**: Map indicating which contributors have already claimed a refund
 
 ### Milestone Tracking
 - **Milestones Count**: Total number of milestones required for completion
@@ -32,8 +34,20 @@ The contract maintains the following state data:
 - **Milestone Data**: Map storing completion status and timestamp for each milestone
 
 ### Release State
-- **Released**: Flag indicating if funds have been distributed
+- **Released**: Boolean flag indicating if funds have been distributed
 - **Delivery Approved**: Legacy flag for delivery approval (deprecated in favor of milestone system)
+- **OperationInProgress**: Guard set while a contract operation invokes a token transfer
+
+## Idempotency and Replay Guarantees
+
+The contract uses separate guards for initialization, refund eligibility, claims, and external transfers:
+
+- **Initialization:** `initialize` checks for the existing `Admin` key and returns `AlreadyInitialized` on every subsequent call without overwriting the original configuration.
+- **Funding:** `fund` is the existing add-shareholder/funding operation and the only funding entrypoint. Each successful positive call transfers the amount and adds it to both `TotalFunded` and the caller's contribution. Repeated positive calls are additive rather than replay no-ops; they do not overwrite the original contribution. Funding after `Released` returns `AlreadyReleased`, and a previously refunded caller has its refund marker cleared by a new successful contribution.
+- **Timestamp and investor checks:** `refund_after_expiry` and `refund_all_after_expiry` require `now > funding_deadline`, reject a released or target-met deal, and inspect the caller's positive contribution before claiming it. `fund` does not enforce the funding deadline or target, so it can be used after the deadline and can exceed the deal value in this version.
+- **Single-claim state:** `record_milestone` rejects an already recorded milestone ID. `release` and `settle_escrow` set `Released` before their token transfers, so a replay returns `AlreadyReleased` without paying either recipient again. `Refunded` provides the corresponding per-contributor single-refund check.
+- **Operation lock and reentrancy:** `OperationInProgress` is set around token transfers. Reentrant state-changing calls return `OperationInProgress`; active reentrant refund calls return success without transferring funds.
+- **Close and funding lifecycle:** This version has no `set_funding_closed`, `close`, `add_shareholder`, `EscoFunded`, or `Cancelled` entrypoint or state. `Released` is a boolean set by `release` and `settle_escrow`, not a named lifecycle enum. `refund_all_after_expiry` is a batch-refund operation, not a close operation. Repeated batch refunds are successful no-ops when no pending claims remain; there is no repeated `close` call to document.
 
 ## Data Structures
 
@@ -65,6 +79,7 @@ pub enum DataKey {
     FundingDeadline,         // Unix timestamp for funding deadline
     Refunded,                // Map of investor addresses to their refund status
     FrozenContributors,      // Map of frozen contributor addresses
+    OperationInProgress,
 }
 ```
 
@@ -160,6 +175,7 @@ Settles the escrow by distributing funds to farmer and platform. Can only be cal
 - All milestones must be recorded (InsufficientMilestonesCompleted error)
 - Total funded must be >= deal value (BalanceInsufficient error)
 - Funds must not already be released (AlreadyReleased error)
+- No transfer operation may be active (OperationInProgress error)
 
 **Fund Distribution:**
 - Farmer: 98% of total funded amount
@@ -190,10 +206,13 @@ Allows investors to deposit USDC into the escrow contract.
 **Validation:**
 - Amount must be positive (InvalidAmount error)
 - Contract must be initialized (NotInitialized error)
+- Funds must not be released (AlreadyReleased error)
+- No other transfer operation may be active (OperationInProgress error)
 
 **Behavior:**
 - Transfers USDC from caller to contract
 - Increments total_funded balance
+- Repeated funding for the same contributor is additive
 - Does NOT check if deal is fully funded (can fund beyond deal_value)
 
 **Events:**
@@ -219,7 +238,7 @@ Legacy milestone submission. Deprecated in favor of record_milestone.
 pub fn release(env: Env, caller: Address) -> Result<(), Error>
 ```
 
-Legacy fund release. Deprecated in favor of settle_escrow.
+Legacy fund release. Deprecated in favor of settle_escrow. It shares the same `Released` guard and transfer-operation guard as settlement, so replay calls cannot pay twice.
 
 ---
 
@@ -297,15 +316,16 @@ Allows a contributor to request a refund after the funding deadline has passed a
 
 **Validation:**
 - Deadline must have passed (DeadlineNotPassed error)
+- Funds must not have been released (AlreadyReleased error), checked before the target
 - Target must not be met (TargetMet error)
-- Funds must not have been released (AlreadyReleased error)
 - Contributor must have funds to refund (NothingToRefund error)
 
 **Behavior:**
 - Marks contributor as refunded to prevent double refunds
-- Transfers contributor's investment back to their address
-- Updates total funded amount
-- Returns success if already refunded (idempotent)
+- Sets the contributor's recorded contribution to zero before transfer
+- Updates total funded amount before transfer
+- Returns success if already refunded, including when the contribution is now zero
+- Active reentrant refund calls are no-ops
 
 **Events:**
 - `refund`: Emits (contributor_address, refund_amount)
@@ -328,13 +348,15 @@ Allows the admin to batch refund all contributors after the funding deadline has
 
 **Validation:**
 - Deadline must have passed (DeadlineNotPassed error)
+- Funds must not have been released (AlreadyReleased error), checked before the target
 - Target must not be met (TargetMet error)
-- Funds must not have been released (AlreadyReleased error)
 
 **Behavior:**
 - Refunds all contributors who haven't been refunded yet
 - Skips contributors who have already been refunded
+- Persists each contributor's refunded state and reduced total before transfer
 - Updates total funded amount
+- Returns success without duplicate transfers when no contributors remain pending
 - Efficiently processes multiple refunds in one transaction
 
 **Events:**
@@ -359,6 +381,12 @@ Allows the admin to batch refund all contributors after the funding deadline has
 | MilestoneAlreadyRecorded | 10 | Milestone already recorded |
 | InsufficientMilestonesCompleted | 11 | Not all milestones completed |
 | NoInvestors | 12 | No investors provided |
+| DeadlineNotPassed | 13 | Funding deadline has not passed |
+| TargetMet | 14 | Funding target is already met |
+| NothingToRefund | 15 | Contributor has no funds to refund |
+| ContributorFrozen | 16 | Contributor is frozen by compliance rules |
+| NotFrozen | 17 | Contributor is not frozen |
+| OperationInProgress | 18 | Another transfer operation is active |
 
 ## Compliance Features
 
@@ -525,6 +553,8 @@ EscrowContract::unfreeze_contributor(env, admin_address, cleared_address);
 - Funds transferred using standard USDC token contract
 - Distribution percentages (98/2) are hardcoded and cannot be changed
 - Double-settlement is prevented (AlreadyReleased error)
+- Funding after settlement is rejected (AlreadyReleased error)
+- Reentrant token calls cannot mutate escrow state while `OperationInProgress` is set
 
 ### Validation
 - Deal value must be positive
@@ -546,6 +576,9 @@ EscrowContract::unfreeze_contributor(env, admin_address, cleared_address);
 - Target met/not met scenarios
 - Individual refund after expiry (idempotent behavior)
 - Batch refund after expiry (admin-only)
+- Replayed release and settlement calls do not double-pay
+- Repeated funding remains additive and is blocked after release
+- Reentrant operation guard behavior
 - Deadline boundary conditions
 - Refund blocking when target is met
 - Refund blocking after funds are released

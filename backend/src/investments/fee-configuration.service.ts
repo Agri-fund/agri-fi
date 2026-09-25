@@ -5,11 +5,18 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import {
+  IsNull,
+  LessThanOrEqual,
+  MoreThan,
+  Repository,
+} from 'typeorm';
 import {
   FeeConfiguration,
   FeeType,
   InvestorTier,
+  MAX_FEE_BPS,
+  MAX_FEE_PERCENT,
 } from '../database/entities/fee-configuration.entity';
 import {
   CreateFeeConfigurationDto,
@@ -47,8 +54,10 @@ export class FeeConfigurationService {
     }
 
     // Validate rate is between 0-100
-    if (dto.ratePercent < 0 || dto.ratePercent > 100) {
-      throw new BadRequestException('Rate percent must be between 0 and 100');
+    if (dto.ratePercent < 0 || dto.ratePercent > MAX_FEE_PERCENT) {
+      throw new BadRequestException(
+        `Rate percent must be between 0 and ${MAX_FEE_PERCENT}`,
+      );
     }
 
     // If effectiveTo is provided, ensure it's after effectiveFrom
@@ -121,9 +130,11 @@ export class FeeConfigurationService {
     // Validate rate if provided
     if (
       dto.ratePercent !== undefined &&
-      (dto.ratePercent < 0 || dto.ratePercent > 100)
+      (dto.ratePercent < 0 || dto.ratePercent > MAX_FEE_PERCENT)
     ) {
-      throw new BadRequestException('Rate percent must be between 0 and 100');
+      throw new BadRequestException(
+        `Rate percent must be between 0 and ${MAX_FEE_PERCENT}`,
+      );
     }
 
     // If effectiveTo is being updated, validate
@@ -155,6 +166,48 @@ export class FeeConfigurationService {
     }
 
     await this.feeConfigRepo.remove(config);
+  }
+
+  async getPlatformOriginationFeeBps(
+    dealType: string,
+    referenceDate = new Date(),
+  ): Promise<number> {
+    const configs = await this.feeConfigRepo.find({
+      where: [
+        {
+          dealType,
+          investorTier: InvestorTier.RETAIL,
+          feeType: FeeType.PLATFORM_ORIGINATION,
+          effectiveFrom: LessThanOrEqual(referenceDate),
+          effectiveTo: MoreThan(referenceDate),
+        },
+        {
+          dealType,
+          investorTier: InvestorTier.RETAIL,
+          feeType: FeeType.PLATFORM_ORIGINATION,
+          effectiveFrom: LessThanOrEqual(referenceDate),
+          effectiveTo: IsNull(),
+        },
+      ],
+      order: { effectiveFrom: 'DESC', createdAt: 'DESC' },
+      take: 1,
+    });
+
+    const config = configs[0];
+    if (!config) {
+      throw new NotFoundException(
+        `No active platform origination fee configuration found for ${dealType}`,
+      );
+    }
+
+    const feeBps = Math.round(Number(config.ratePercent) * 100);
+    if (!Number.isFinite(feeBps) || feeBps < 0 || feeBps > MAX_FEE_BPS) {
+      throw new BadRequestException(
+        `Platform origination fee must be between 0 and ${MAX_FEE_BPS} bps`,
+      );
+    }
+
+    return feeBps;
   }
 
   async getAllDealTypes(): Promise<string[]> {

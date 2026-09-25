@@ -5,7 +5,7 @@
  * SETUP: Run against testnet with a live Soroban RPC
  * - Requires STELLAR_PLATFORM_SECRET and SOROBAN_FACTORY_CONTRACT_ID env vars
  *   (the factory must be initialized with set_campaign_wasm_hash already set)
- * - Submits a real `deploy` invocation to Stellar testnet
+ * - Submits a real `create_campaign` invocation to Stellar testnet
  *
  * SKIP: Set SKIP_INTEGRATION_TESTS=true to skip in CI
  */
@@ -15,7 +15,7 @@ import { ConfigService } from '@nestjs/config';
 import { PinoLogger } from 'nestjs-pino';
 import { SorobanService } from './soroban.service';
 
-describe('Soroban ProjectFactory deploy integration (testnet)', () => {
+describe('Soroban ProjectFactory create_campaign integration (testnet)', () => {
   let service: SorobanService;
 
   beforeAll(async () => {
@@ -72,9 +72,9 @@ describe('Soroban ProjectFactory deploy integration (testnet)', () => {
 
     const address = await service.deployFarmCampaign('deal-integration-830', {
       farmerAddress: service.platformPublicKey(),
-      targetAmount: BigInt(Math.round(100 * 1e7)), // 100 USDC in stroops
-      durationLedgers: 1000,
-      commodityCode: 'COCOA',
+      targetAmount: BigInt(Math.round(100 * 1e7)),
+      deadline: Math.floor(Date.now() / 1000) + 86400,
+      feeBps: 200,
     });
 
     expect(address).toMatch(/^C[A-Z2-7]{55}$/);

@@ -13,6 +13,7 @@ import { DealCoFarmer } from './entities/deal-co-farmer.entity';
 import { Document } from './entities/document.entity';
 import { DealHealthAlert } from './entities/deal-health-alert.entity';
 import { Investment } from '../investments/entities/investment.entity';
+import { InvestmentsModule } from '../investments/investments.module';
 import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.entity';
 import { User } from '../auth/entities/user.entity';
 import { StellarModule } from '../stellar/stellar.module';
@@ -56,6 +57,7 @@ const DEALS_CACHE_TTL_MS = 30_000;
     SorobanModule,
     WebhooksModule,
     HttpModule,
+    InvestmentsModule,
     /**
      * #743 — Cache active deals list in Redis.
      *
