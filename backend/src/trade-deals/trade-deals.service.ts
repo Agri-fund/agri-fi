@@ -218,8 +218,10 @@ export class TradeDealsService {
     maxRoi?: number;
     duration?: DealDurationBucket;
     riskRating?: 'Low' | 'Medium' | 'High';
+    minEsgScore?: number;
+    esgRating?: string;
     status?: 'open' | 'almost funded' | 'fully funded';
-    sortBy?: DealSearchSortBy;
+    sortBy?: DealSearchSortBy | 'highest_esg';
     q?: string;
     page?: number;
     limit?: number;
@@ -259,6 +261,12 @@ export class TradeDealsService {
         'deal.traderId',
         'deal.riskScore',
         'deal.riskRating',
+        'deal.esgScore',
+        'deal.environmentalScore',
+        'deal.socialScore',
+        'deal.governanceScore',
+        'deal.esgRating',
+        'deal.esgStatus',
       ])
       .skip(skip)
       .take(limit);
@@ -351,7 +359,25 @@ export class TradeDealsService {
       );
     }
 
+    if (typeof query.minEsgScore === 'number' && Number.isFinite(query.minEsgScore)) {
+      qb.andWhere('COALESCE(deal.esg_score, 0) >= :minEsgScore', {
+        minEsgScore: query.minEsgScore,
+      });
+    }
+
+    if (query.esgRating) {
+      qb.andWhere('deal.esg_rating = :esgRating', {
+        esgRating: query.esgRating,
+      });
+    }
+
     switch (query.sortBy) {
+      case 'highest_esg':
+        qb.orderBy('COALESCE(deal.esg_score, 0)', 'DESC').addOrderBy(
+          'deal.created_at',
+          'DESC',
+        );
+        break;
       case 'highest_roi':
         qb.orderBy('COALESCE(deal.expected_roi, 0)', 'DESC').addOrderBy(
           'deal.created_at',

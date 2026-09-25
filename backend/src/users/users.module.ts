@@ -14,6 +14,8 @@ import { PaymentDistribution } from '../escrow/entities/payment-distribution.ent
 import { KycSubmission } from '../auth/entities/kyc-submission.entity';
 import { Document } from '../trade-deals/entities/document.entity';
 import { AuditLog } from '../database/entities/audit-log.entity';
+import { FarmerCreditScoreHistory } from './entities/farmer-credit-score-history.entity';
+import { FarmerCreditScoringService } from './farmer-credit-scoring.service';
 import { TradeDealsModule } from '../trade-deals/trade-deals.module';
 import { redisCacheStore } from '../config/redis-cache.store';
 
@@ -31,12 +33,9 @@ const REPUTATION_CACHE_TTL_MS = 15 * 60 * 1_000;
       KycSubmission,
       Document,
       AuditLog,
+      FarmerCreditScoreHistory,
     ]),
     TradeDealsModule,
-    /**
-     * Redis cache for reputation scores (#838).
-     * Falls back to in-memory cache when REDIS_URL is not set (local dev / CI).
-     */
     CacheModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -54,7 +53,7 @@ const REPUTATION_CACHE_TTL_MS = 15 * 60 * 1_000;
     }),
   ],
   controllers: [UsersController, PublicUsersController, EmailPreferencesController],
-  providers: [UsersService],
-  exports: [UsersService],
+  providers: [UsersService, FarmerCreditScoringService],
+  exports: [UsersService, FarmerCreditScoringService],
 })
 export class UsersModule {}

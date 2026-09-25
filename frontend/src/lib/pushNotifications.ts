@@ -95,17 +95,26 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
   return Notification.requestPermission();
 }
 
+export const CONCRETE_PUSH_EVENT_TYPES = [
+  'investment.confirmed',
+  'escrow.released',
+  'kyc.approved',
+] as const;
+
+export type ConcretePushEventType = (typeof CONCRETE_PUSH_EVENT_TYPES)[number];
+
 // ── Subscribe to push ─────────────────────────────────────────────────────────
 
 /**
  * Subscribes the browser to the push service using the provided VAPID public
- * key, then persists the `PushSubscription` object to the backend.
+ * key, then persists the `PushSubscription` object to the backend with registered event types.
  *
  * When `vapidPublicKey` is not supplied the function reads
  * `NEXT_PUBLIC_VAPID_PUBLIC_KEY` from the environment.
  */
 export async function subscribeToPush(
   vapidPublicKey?: string,
+  eventTypes: string[] = [...CONCRETE_PUSH_EVENT_TYPES],
 ): Promise<PushSubscription | null> {
   const key =
     vapidPublicKey ??
@@ -128,8 +137,8 @@ export async function subscribeToPush(
   try {
     const existingSubscription = await registration.pushManager.getSubscription();
     if (existingSubscription) {
-      // Already subscribed — ensure it is stored on the backend
-      await saveSubscriptionToServer(existingSubscription);
+      // Already subscribed — ensure it is stored on the backend with latest eventTypes
+      await saveSubscriptionToServer(existingSubscription, eventTypes);
       return existingSubscription;
     }
 
@@ -138,7 +147,7 @@ export async function subscribeToPush(
       applicationServerKey: urlBase64ToUint8Array(key),
     });
 
-    await saveSubscriptionToServer(subscription);
+    await saveSubscriptionToServer(subscription, eventTypes);
     return subscription;
   } catch (err) {
     console.error('[PushNotifications] Push subscription failed:', err);
@@ -151,20 +160,22 @@ export async function subscribeToPush(
 /**
  * Unsubscribes the current push subscription and removes it from the backend.
  */
-export async function unsubscribeFromPush(): Promise<void> {
-  if (!isPushSupported()) return;
+export async function unsubscribeFromPush(): Promise<boolean> {
+  if (!isPushSupported()) return false;
 
   const registration = await navigator.serviceWorker.getRegistration(SW_PATH);
-  if (!registration) return;
+  if (!registration) return false;
 
   const subscription = await registration.pushManager.getSubscription();
-  if (!subscription) return;
+  if (!subscription) return false;
 
   try {
     await removeSubscriptionFromServer(subscription);
-    await subscription.unsubscribe();
+    const unsubscribed = await subscription.unsubscribe();
+    return unsubscribed;
   } catch (err) {
     console.error('[PushNotifications] Unsubscribe failed:', err);
+    return false;
   }
 }
 
@@ -172,22 +183,29 @@ export async function unsubscribeFromPush(): Promise<void> {
 
 /**
  * Sends the serialised PushSubscription to `POST /notifications/push/subscribe`
- * so the backend can deliver Web Push messages to this endpoint.
+ * so the backend can deliver Web Push messages for enabled event types.
  */
 async function saveSubscriptionToServer(
   subscription: PushSubscription,
+  eventTypes: string[] = [...CONCRETE_PUSH_EVENT_TYPES],
 ): Promise<void> {
   const token = getAuthToken();
   if (!token) return; // user is not logged in; nothing to persist
 
   try {
+    const payload = {
+      ...subscription.toJSON(),
+      eventTypes,
+      userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
+    };
+
     const res = await fetch(`${API_BASE}/notifications/push/subscribe`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify(subscription.toJSON()),
+      body: JSON.stringify(payload),
     });
 
     if (!res.ok) {
@@ -235,16 +253,35 @@ async function removeSubscriptionFromServer(
  * 2. Requests notification permission (prompt shown once; subsequent calls
  *    respect the stored browser preference).
  * 3. Registers the service worker.
- * 4. Subscribes to push and persists the subscription to the backend.
+ * 4. Subscribes to push and persists the subscription with concrete event types to the backend.
  *
  * Returns `true` if the user is now subscribed, `false` otherwise.
  */
-export async function registerPushNotifications(): Promise<boolean> {
+export async function registerPushNotifications(
+  eventTypes: string[] = [...CONCRETE_PUSH_EVENT_TYPES],
+): Promise<boolean> {
   if (!isPushSupported()) return false;
 
   const permission = await requestNotificationPermission();
   if (permission !== 'granted') return false;
 
-  const subscription = await subscribeToPush();
+  const subscription = await subscribeToPush(undefined, eventTypes);
   return subscription !== null;
+}
+
+/**
+ * Explicit user opt-in handler. Registers service worker, requests permission,
+ * and sets up subscription for concrete event types.
+ */
+export async function optInToPush(
+  eventTypes: string[] = [...CONCRETE_PUSH_EVENT_TYPES],
+): Promise<boolean> {
+  return registerPushNotifications(eventTypes);
+}
+
+/**
+ * Explicit user opt-out handler. Removes subscription on backend and browser.
+ */
+export async function optOutOfPush(): Promise<boolean> {
+  return unsubscribeFromPush();
 }

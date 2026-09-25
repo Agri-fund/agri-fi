@@ -92,8 +92,40 @@ export interface Deal {
   funding_status?: "open" | "almost funded" | "fully funded";
   created_at: string;
   documents?: Document[];
-  milestones?: Milestone[];
   cover_image_url?: string | null;
+  esg_score?: number | null;
+  environmental_score?: number | null;
+  social_score?: number | null;
+  governance_score?: number | null;
+  esg_rating?: string | null;
+  esg_status?: string | null;
+  esg_breakdown?: Record<string, any> | null;
+}
+
+export interface CreditScoreDisclosure {
+  score: number;
+  tier: "Excellent" | "Good" | "Fair" | "Poor";
+  maxDealSizeUsdc: number;
+  factors: {
+    onTimeRepaymentRate: number;
+    dealCompletionRate: number;
+    dealDefaultRate: number;
+    shipmentMilestoneComplianceRate: number;
+    kycVerificationAgeDays: number;
+  };
+  breakdown: Record<
+    string,
+    {
+      name: string;
+      weightPercent: string;
+      scorePercent: number;
+      description: string;
+      impact: "positive" | "neutral" | "negative";
+    }
+  >;
+  tips: string[];
+  lastUpdated: string;
+  cached: boolean;
 }
 
 export type TradeDeal = Deal;
@@ -218,6 +250,33 @@ function normalizeDeal(raw: any): Deal {
     documents: raw.documents,
     milestones: raw.milestones,
     cover_image_url: raw.cover_image_url ?? raw.coverImageUrl ?? null,
+    esg_score:
+      raw.esg_score != null
+        ? Number(raw.esg_score)
+        : raw.esgScore != null
+        ? Number(raw.esgScore)
+        : null,
+    environmental_score:
+      raw.environmental_score != null
+        ? Number(raw.environmental_score)
+        : raw.environmentalScore != null
+        ? Number(raw.environmentalScore)
+        : null,
+    social_score:
+      raw.social_score != null
+        ? Number(raw.social_score)
+        : raw.socialScore != null
+        ? Number(raw.socialScore)
+        : null,
+    governance_score:
+      raw.governance_score != null
+        ? Number(raw.governance_score)
+        : raw.governanceScore != null
+        ? Number(raw.governanceScore)
+        : null,
+    esg_rating: raw.esg_rating ?? raw.esgRating ?? null,
+    esg_status: raw.esg_status ?? raw.esgStatus ?? null,
+    esg_breakdown: raw.esg_breakdown ?? raw.esgBreakdown ?? null,
   };
 }
 
@@ -400,6 +459,24 @@ export const apiClient = {
       // Always clear local auth state, even if logout request fails
       this.clearAuth();
     }
+  },
+
+  // GET /users/me/credit-score — Farmer Credit Score Disclosure (#1016)
+  async getCreditScore(): Promise<CreditScoreDisclosure> {
+    return apiFetch("/users/me/credit-score");
+  },
+
+  // POST /trade-deals/:id/esg-questionnaire — ESG impact scoring (#1012)
+  async submitEsgQuestionnaire(dealId: string, data: any): Promise<Deal> {
+    return apiFetch(`/trade-deals/${dealId}/esg-questionnaire`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  // GET /trade-deals/:id/esg-score
+  async getDealEsgScore(dealId: string): Promise<any> {
+    return apiFetch(`/trade-deals/${dealId}/esg-score`);
   },
 };
 
