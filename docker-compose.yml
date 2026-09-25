@@ -156,8 +156,22 @@ services:
       - '--storage.tsdb.path=/prometheus'
       - '--web.console.libraries=/usr/share/prometheus/console_libraries'
       - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--alertmanager.url=http://alertmanager:9093'
     depends_on:
       - rabbitmq
+      - alertmanager
+    restart: unless-stopped
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    ports:
+      - '9093:9093'
+    volumes:
+      - ./devops/prometheus/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
     restart: unless-stopped
 
   grafana:
@@ -180,4 +194,5 @@ volumes:
   pgdata:
   pgadmin_data:
   prometheus_data:
+  alertmanager_data:
   grafana_data:

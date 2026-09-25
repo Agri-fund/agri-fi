@@ -1,6 +1,6 @@
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
-import { AppController } from './app.controller';
+import { AppController, PublicController } from './app.controller';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { LoggerModule } from 'nestjs-pino';
@@ -35,6 +35,8 @@ import { APP_FILTER } from '@nestjs/core';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { AuditModule } from './audit/audit.module';
 import { GraphQLApiModule } from './graphql/graphql.module';
+import { TradeDeal } from './trade-deals/entities/trade-deal.entity';
+import { Investment } from './investments/entities/investment.entity';
 
 import { AchievementModule } from './achievements/achievement.module';
 import { EmailSequenceModule } from './email-sequence/email-sequence.module';
@@ -44,12 +46,13 @@ import { UpgradeModule } from './upgrade/upgrade.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 
 @Module({
-  controllers: [AppController],
+  controllers: [AppController, PublicController],
   imports: [
     // Register ClsModule globally — no auto-mount; we mount manually below
     // to guarantee ordering: ClsMiddleware runs before CorrelationIdMiddleware
     ClsModule.forRoot({ global: true }),
     ScheduleModule.forRoot(),
+    TypeOrmModule.forFeature([TradeDeal, Investment]),
     ThrottlerModule.forRoot([
       {
         name: 'default',
@@ -70,6 +73,11 @@ import { WebhooksModule } from './webhooks/webhooks.module';
         name: 'marketplace',
         ttl: 60000,
         limit: 60,
+      },
+      {
+        name: 'public-market',
+        ttl: 60000,
+        limit: 120,
       },
     ]),
     LoggerModule.forRoot(loggingConfig),

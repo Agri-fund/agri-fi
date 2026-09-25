@@ -42,6 +42,7 @@ import { TradeDealsGuard } from '../trade-deals/trade-deals.guard';
 import { IdempotencyService } from '../queue/idempotency.service';
 import { InvestmentEventStore } from './investment-event-store.service';
 import { ReceiptService } from './receipt.service';
+import { InvoiceService } from './invoice.service';
 import { CancelInvestmentDto } from './dto/cancel-investment.dto';
 import { AuditInterceptor } from '../audit/audit.interceptor';
 
@@ -57,6 +58,7 @@ export class InvestmentsController {
     private readonly eventStore: InvestmentEventStore,
     private readonly taxReportService: TaxReportService,
     private readonly receiptService: ReceiptService,
+    private readonly invoiceService: InvoiceService,
   ) {}
 
   @Post()
@@ -569,5 +571,62 @@ export class InvestmentsController {
     }
 
     return this.eventStore.getEvents(id);
+  }
+
+  /**
+   * Issue #1026 — Invoice download per disbursement for institutional investors.
+   * Generates a PDF invoice with platform fee line items.
+   */
+  @Get('disbursements/:paymentDistributionId/invoice')
+  @ApiOperation({
+    summary:
+      'Download PDF invoice for a payment distribution (investor only, #1026)',
+  })
+  @ApiParam({
+    name: 'paymentDistributionId',
+    description: 'Payment Distribution UUID',
+  })
+  @ApiQuery({
+    name: 'locale',
+    required: false,
+    example: 'en',
+    description: 'Localization for invoice text',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'PDF invoice file download',
+    content: {
+      'application/pdf': {},
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - investor role required and must own the disbursement',
+  })
+  @ApiResponse({ status: 404, description: 'Payment distribution not found' })
+  @UseGuards(RolesGuard)
+  @Roles('investor')
+  async getInvoice(
+    @Request() req: { user: { id: string } },
+    @Param('paymentDistributionId') paymentDistributionId: string,
+    @Query('locale') locale: string = 'en',
+    @Res() res: Response,
+  ) {
+    const invoiceData = await this.invoiceService.getInvoiceData(
+      paymentDistributionId,
+      req.user.id,
+    );
+
+    const pdfBuffer = this.invoiceService.generateInvoicePdf(invoiceData, locale);
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="invoice-${invoiceData.invoiceNumber}.pdf"`,
+    );
+    res.setHeader('Content-Length', pdfBuffer.length);
+
+    return res.send(pdfBuffer);
   }
 }
