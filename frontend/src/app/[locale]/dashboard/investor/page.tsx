@@ -87,6 +87,27 @@ export default function InvestorDashboard() {
     }
   }, [router]);
 
+  useEffect(() => {
+    let active = true;
+
+    (async () => {
+      try {
+        const res = await fetch('/api/referrals/analytics');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (active) setReferralData(data);
+      } catch {
+        // Ignore analytics fetch errors and let the dashboard keep rendering.
+      } finally {
+        if (active) setReferralLoading(false);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
   // Once we know who the user is (from cache or a fresh fetch), make sure
   // they're on the dashboard for their actual role.
   useEffect(() => {
@@ -259,6 +280,8 @@ export default function InvestorDashboard() {
             trendUp={totalExpected > totalInvested}
           />
         </div>
+
+        <ReferralDashboard data={referralData} loading={referralLoading} />
 
         {/* Tabs */}
         <div className="flex gap-1 bg-slate-100 rounded-xl p-1 w-fit">

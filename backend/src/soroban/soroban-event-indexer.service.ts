@@ -341,6 +341,10 @@ export class SorobanEventIndexer implements OnModuleInit, OnModuleDestroy {
         await this.handleMilestoneCompleted(value as any, transactionHash);
         break;
 
+      case 'partial_release':
+        await this.handlePartialRelease(value as any, transactionHash);
+        break;
+
       case 'funding_received':
         await this.handleFundingReceived(value as any, transactionHash);
         break;
@@ -433,6 +437,41 @@ export class SorobanEventIndexer implements OnModuleInit, OnModuleDestroy {
       this.logger.error(
         { error, txHash },
         'Error handling milestone_completed event',
+      );
+    }
+  }
+
+  /**
+   * Handle partial release event
+   */
+  private async handlePartialRelease(data: any, txHash: string) {
+    try {
+      const { dealId, amountBps, amount } = data;
+
+      await this.txLogRepo.update(
+        { txHash },
+        {
+          status: TxStatus.SUCCESS,
+          dealId,
+        },
+      );
+
+      this.queueService.emit('milestone.partial_release', {
+        dealId,
+        amountBps,
+        amount,
+        txHash,
+        timestamp: new Date(),
+      });
+
+      this.logger.info(
+        { dealId, amountBps, amount, txHash },
+        'Partial release executed on-chain',
+      );
+    } catch (error) {
+      this.logger.error(
+        { error, txHash },
+        'Error handling partial_release event',
       );
     }
   }

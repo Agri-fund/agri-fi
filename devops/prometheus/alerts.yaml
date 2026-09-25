@@ -126,6 +126,8 @@ groups:
         labels:
           severity: warning
           team: backend
+          owner: backend-oncall
+          runbook: "https://runbooks.internal/agri-fi/db-pool"
         annotations:
           summary: "Database connection pool usage above 80%"
           description: >
@@ -145,6 +147,8 @@ groups:
         labels:
           severity: critical
           team: backend
+          owner: backend-oncall
+          runbook: "https://runbooks.internal/agri-fi/db-pool"
           pagerduty: "true"
         annotations:
           summary: "Database connection pool usage above 90% — API requests at risk"
@@ -162,6 +166,8 @@ groups:
         labels:
           severity: warning
           team: backend
+          owner: backend-oncall
+          runbook: "https://runbooks.internal/agri-fi/db-pool"
         annotations:
           summary: "High number of idle-in-transaction connections"
           description: >
@@ -178,6 +184,8 @@ groups:
         labels:
           severity: critical
           team: backend
+          owner: backend-oncall
+          runbook: "https://runbooks.internal/agri-fi/db-pool"
           pagerduty: "true"
         annotations:
           summary: "Database connection pool exhausted — new connections will be rejected"
@@ -192,6 +200,8 @@ groups:
         labels:
           severity: warning
           team: platform
+          owner: platform-oncall
+          runbook: "https://runbooks.internal/agri-fi/postgres-exporter"
         annotations:
           summary: "Postgres exporter is down — DB pool metrics unavailable"
           description: >
@@ -208,6 +218,8 @@ groups:
         labels:
           severity: warning
           team: backend
+          owner: backend-oncall
+          runbook: "https://runbooks.internal/agri-fi/replica-lag"
         annotations:
           summary: "Read replica lag above 5 seconds"
           description: >
@@ -222,6 +234,8 @@ groups:
         labels:
           severity: critical
           team: backend
+          owner: backend-oncall
+          runbook: "https://runbooks.internal/agri-fi/replica-lag"
           pagerduty: "true"
         annotations:
           summary: "Read replica lag critically high"

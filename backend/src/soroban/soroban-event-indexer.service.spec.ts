@@ -170,6 +170,38 @@ describe('SorobanEventIndexer', () => {
     });
   });
 
+  describe('handlePartialRelease', () => {
+    it('should emit the partial release queue event', async () => {
+      const handleMethod = (service as any).handlePartialRelease;
+      const data = {
+        dealId: 'deal-001',
+        amountBps: 2500,
+        amount: 25000,
+      };
+      const txHash = 'tx-partial-001';
+
+      await handleMethod.call(service, data, txHash);
+
+      expect(txLogRepo.update).toHaveBeenCalledWith(
+        { txHash },
+        {
+          status: TxStatus.SUCCESS,
+          dealId: 'deal-001',
+        },
+      );
+
+      expect(queueService.emit).toHaveBeenCalledWith(
+        'milestone.partial_release',
+        expect.objectContaining({
+          dealId: 'deal-001',
+          amountBps: 2500,
+          amount: 25000,
+          txHash,
+        }),
+      );
+    });
+  });
+
   describe('handleFundingReceived', () => {
     it('should update transaction log and emit investment confirmed event', async () => {
       const handleMethod = (service as any).handleFundingReceived;
