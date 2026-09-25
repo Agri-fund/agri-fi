@@ -26,6 +26,8 @@ import { UsersService } from './users.service';
 import { TradeDealsService } from '../trade-deals/trade-deals.service';
 import { User } from '../auth/entities/user.entity';
 
+import { FarmerCreditScoringService } from './farmer-credit-scoring.service';
+
 interface AuthRequest extends Request {
   user: User;
 }
@@ -38,6 +40,7 @@ export class UsersController {
   constructor(
     private readonly usersService: UsersService,
     private readonly tradeDealsService: TradeDealsService,
+    private readonly creditScoringService: FarmerCreditScoringService,
   ) {}
 
   @Get('me')
@@ -50,6 +53,21 @@ export class UsersController {
   @ApiResponse({ status: 404, description: 'User not found' })
   async getCurrentUser(@Request() req: AuthRequest) {
     return this.usersService.getProfile(req.user.id);
+  }
+
+  @Get('me/credit-score')
+  @ApiOperation({
+    summary: "Get farmer credit score, weighted factor breakdown, and improvement tips (#1016)",
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Farmer credit score disclosure with factor breakdown and tips',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden - only accessible by farmers' })
+  @ApiResponse({ status: 404, description: 'User not found' })
+  async getMyCreditScore(@Request() req: AuthRequest) {
+    return this.creditScoringService.getCreditScoreDisclosure(req.user.id);
   }
   @Delete('me')
   @HttpCode(HttpStatus.NO_CONTENT)

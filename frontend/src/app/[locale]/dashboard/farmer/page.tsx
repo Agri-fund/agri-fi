@@ -11,6 +11,7 @@ import OnboardingChecklist from "../../../../components/OnboardingChecklist";
 import { useToast } from "../../../../components/ui/ToastProvider";
 import { usePushNotifications } from "../../../../hooks/usePushNotifications";
 import dynamic from "next/dynamic";
+import FarmerCreditScoreWidget from "../../../../components/dashboard/FarmerCreditScoreWidget";
 
 // CreateDealForm pulls in react-hook-form + zod validation + heavy form logic.
 // Load it only when the user explicitly opens the "Create Deal" panel.
@@ -141,6 +142,11 @@ export default function FarmerDashboard() {
             </div>
           </div>
         )}
+
+        {/* Farmer Credit Score & Improvement Tips */}
+        <div className="mt-4">
+          <FarmerCreditScoreWidget />
+        </div>
 
         {/* Recent Deals List */}
         <div className="mt-6">

@@ -176,18 +176,48 @@ export class ComplianceReportService {
     totalPayouts = deals.reduce((s, d) => s + Number(d.totalValue ?? 0), 0);
     const avgDealSize = deals.length > 0 ? totalVolume / deals.length : 0;
 
+    // #1012 ESG Impact metrics across completed deals
+    const esgRatedDeals = deals.filter((d) => d.esgScore != null);
+    const avgEsgScore =
+      esgRatedDeals.length > 0
+        ? esgRatedDeals.reduce((sum, d) => sum + Number(d.esgScore), 0) /
+          esgRatedDeals.length
+        : 0;
+    const avgEnvScore =
+      esgRatedDeals.length > 0
+        ? esgRatedDeals.reduce((sum, d) => sum + Number(d.environmentalScore ?? 0), 0) /
+          esgRatedDeals.length
+        : 0;
+    const avgSocScore =
+      esgRatedDeals.length > 0
+        ? esgRatedDeals.reduce((sum, d) => sum + Number(d.socialScore ?? 0), 0) /
+          esgRatedDeals.length
+        : 0;
+    const avgGovScore =
+      esgRatedDeals.length > 0
+        ? esgRatedDeals.reduce((sum, d) => sum + Number(d.governanceScore ?? 0), 0) /
+          esgRatedDeals.length
+        : 0;
+
     const data = {
       volumeByCountry,
       totalVolume,
       totalPayouts,
       avgDealSize,
       dealsCompleted: deals.length,
+      esgRatedDealsCount: esgRatedDeals.length,
+      esgMetrics: {
+        averageEsgScore: Math.round(avgEsgScore * 10) / 10,
+        averageEnvironmental: Math.round(avgEnvScore * 10) / 10,
+        averageSocial: Math.round(avgSocScore * 10) / 10,
+        averageGovernance: Math.round(avgGovScore * 10) / 10,
+      },
       period: { start, end },
     };
     const title = `Quarterly Transaction Report — ${this.formatPeriod(start, end)}`;
 
     const rows: [string, string][] = [
-      ['Report Type', 'Quarterly Transaction Report'],
+      ['Report Type', 'Quarterly Transaction & ESG Report'],
       ['Period', this.formatPeriod(start, end)],
       ['Generated At', new Date().toUTCString()],
       ['', ''],
@@ -195,6 +225,13 @@ export class ComplianceReportService {
       ['Deals Completed', String(deals.length)],
       ['Average Deal Size (USD)', `$${avgDealSize.toFixed(2)}`],
       ['Total Payout Volume (USD)', `$${totalPayouts.toLocaleString()}`],
+      ['', ''],
+      ['Institutional ESG Impact Summary', ''],
+      ['  Deals with Verified ESG Rating', `${esgRatedDeals.length} / ${deals.length}`],
+      ['  Platform Average ESG Score', `${(Math.round(avgEsgScore * 10) / 10).toFixed(1)} / 100`],
+      ['  Average Environmental Sub-score', `${(Math.round(avgEnvScore * 10) / 10).toFixed(1)} / 100`],
+      ['  Average Social Impact Sub-score', `${(Math.round(avgSocScore * 10) / 10).toFixed(1)} / 100`],
+      ['  Average Governance Sub-score', `${(Math.round(avgGovScore * 10) / 10).toFixed(1)} / 100`],
       ['', ''],
       ['Investment Volume by Country', ''],
       ...Object.entries(volumeByCountry).map(([c, v]): [string, string] => [
@@ -209,6 +246,54 @@ export class ComplianceReportService {
       title,
       pdf,
       data,
+      start,
+      end,
+    );
+  }
+
+  async generateEsgImpactReport(start: Date, end: Date): Promise<ComplianceReport> {
+    const deals = await this.dealRepo.find({
+      where: { updatedAt: Between(start, end) as any },
+      relations: ['farmer'],
+    });
+
+    const esgDeals = deals.filter((d) => d.esgScore != null);
+    const avgScore =
+      esgDeals.length > 0
+        ? esgDeals.reduce((sum, d) => sum + Number(d.esgScore), 0) / esgDeals.length
+        : 0;
+
+    const ratingDistribution: Record<string, number> = {
+      AAA: 0, AA: 0, A: 0, BBB: 0, BB: 0, B: 0, CCC: 0,
+    };
+    for (const d of esgDeals) {
+      if (d.esgRating && ratingDistribution[d.esgRating] !== undefined) {
+        ratingDistribution[d.esgRating]++;
+      }
+    }
+
+    const title = `Institutional ESG Impact Report — ${this.formatPeriod(start, end)}`;
+    const rows: [string, string][] = [
+      ['Report Type', 'Institutional ESG & Impact Disclosure'],
+      ['Period', this.formatPeriod(start, end)],
+      ['Generated At', new Date().toUTCString()],
+      ['', ''],
+      ['Total Evaluated Deals', String(esgDeals.length)],
+      ['Average Composite ESG Score', `${(Math.round(avgScore * 10) / 10).toFixed(1)} / 100`],
+      ['', ''],
+      ['Rating Tier Distribution', ''],
+      ...Object.entries(ratingDistribution).map(([tier, count]): [string, string] => [
+        `  Rating ${tier}`,
+        `${count} deals`,
+      ]),
+    ];
+
+    const pdf = await this.buildPdf(title, rows);
+    return this.uploadAndPersist(
+      'quarterly_transaction',
+      title,
+      pdf,
+      { totalEvaluated: esgDeals.length, avgScore, ratingDistribution },
       start,
       end,
     );

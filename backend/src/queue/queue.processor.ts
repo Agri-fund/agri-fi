@@ -394,6 +394,28 @@ export class QueueProcessor implements OnApplicationShutdown {
           stellarTxId,
         });
 
+        // Push delivery channel fan-out (#1015)
+        if (current.investorId) {
+          this.notificationsService
+            .sendPush(current.investorId, {
+              eventType: 'investment.confirmed',
+              title: 'Investment Confirmed',
+              body: `Your investment of ${data.tokenAmount} tokens has been confirmed on-chain!`,
+              url: `/investments/${data.investmentId}`,
+              data: {
+                investmentId: data.investmentId,
+                stellarTxId,
+                tokenAmount: data.tokenAmount,
+              },
+            })
+            .catch((err) =>
+              this.logger.warn(
+                { error: err.message },
+                'Push delivery failed for investment.confirmed',
+              ),
+            );
+        }
+
         this.logger.info(
           { investmentId: data.investmentId, txId: stellarTxId },
           `Successfully funded investment ${data.investmentId} with txId ${stellarTxId}`,
@@ -609,6 +631,39 @@ export class QueueProcessor implements OnApplicationShutdown {
           { userId: data.userId },
           'No email address found for user notification',
         );
+      }
+
+      // ── Push channel fan-out (#1015) ──────────────────────────────────────
+      if (data.userId) {
+        let pushPayload: any = null;
+        if (data.type === 'deal_completed' || data.type === 'payment_distributed') {
+          const commodity = data.dealDetails?.commodity ?? 'Trade Deal';
+          pushPayload = {
+            eventType: 'escrow.released',
+            title: 'Escrow Released & Payment Distributed',
+            body: `Escrow has been successfully released for ${commodity}. Your payout is ready.`,
+            url: data.dealId ? `/marketplace/${data.dealId}` : '/dashboard',
+            data: { dealId: data.dealId, ...data.dealDetails },
+          };
+        } else if (data.type === 'kyc_verified' || data.type === 'kyc_approved') {
+          pushPayload = {
+            eventType: 'kyc.approved',
+            title: 'KYC Verification Approved',
+            body: 'Your identity documents have been approved. You now have full access to platform features.',
+            url: '/dashboard',
+          };
+        }
+
+        if (pushPayload) {
+          this.notificationsService
+            .sendPush(data.userId, pushPayload)
+            .catch((err) =>
+              this.logger.warn(
+                { error: err.message, eventType: pushPayload.eventType },
+                'Failed to fan-out push notification',
+              ),
+            );
+        }
       }
 
       await this.idempotency.markDone(idemKey);

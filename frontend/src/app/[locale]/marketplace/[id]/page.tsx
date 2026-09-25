@@ -172,7 +172,14 @@ export default async function DealDetailPage({ params }: { params: { id: string 
                   <p className="text-slate-400 font-mono text-sm mt-1">{deal.token_symbol}</p>
                 </div>
                 <div className="flex flex-col items-end gap-2">
-                  <StatusBadge status={deal.status} />
+                  <div className="flex items-center gap-2">
+                    {deal.esg_score != null && (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                        <span>🌱</span> ESG {deal.esg_rating ?? 'Rated'} · {deal.esg_score}
+                      </span>
+                    )}
+                    <StatusBadge status={deal.status} />
+                  </div>
                   <Link href={`/marketplace/${deal.id}/trade`} className="btn-secondary text-xs px-3 py-1.5">
                     Trade on DEX →
                   </Link>
@@ -193,6 +200,38 @@ export default async function DealDetailPage({ params }: { params: { id: string 
                   </div>
                 ))}
               </div>
+
+              {/* ESG Impact Highlight Card (#1012) */}
+              {deal.esg_score != null && (
+                <div className="mb-6 p-4 rounded-2xl bg-gradient-to-br from-emerald-50/60 to-teal-50/60 border border-emerald-100">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xl">🌍</span>
+                      <div>
+                        <h4 className="text-xs font-bold text-emerald-950 uppercase tracking-wider">Institutional Impact Score</h4>
+                        <p className="text-xs text-emerald-800">Verified environmental, social, and governance evaluation</p>
+                      </div>
+                    </div>
+                    <span className="text-sm font-extrabold px-2.5 py-1 rounded-xl bg-white shadow-sm text-emerald-700 border border-emerald-200">
+                      Tier {deal.esg_rating ?? 'A'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                    <div className="p-2.5 rounded-xl bg-white/80 border border-emerald-100">
+                      <p className="text-[10px] font-semibold text-slate-400 uppercase">Environmental</p>
+                      <p className="text-sm font-bold text-emerald-700 mt-0.5">{deal.environmental_score ?? '—'}/100</p>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-white/80 border border-emerald-100">
+                      <p className="text-[10px] font-semibold text-slate-400 uppercase">Social</p>
+                      <p className="text-sm font-bold text-teal-700 mt-0.5">{deal.social_score ?? '—'}/100</p>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-white/80 border border-emerald-100">
+                      <p className="text-[10px] font-semibold text-slate-400 uppercase">Governance</p>
+                      <p className="text-sm font-bold text-indigo-700 mt-0.5">{deal.governance_score ?? '—'}/100</p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Funding progress */}
               <FundingProgressBar

@@ -23,6 +23,7 @@ import { TradeDealsCronService } from './trade-deals-cron.service';
 import { DealFundingAlertService } from './deal-funding-alert.service';
 import { DealDigestService } from './deal-digest.service';
 import { RiskScoringService } from './risk-scoring.service';
+import { EsgScoringService } from './esg-scoring.service';
 import { DealHealthMonitorService } from './deal-health-monitor.service';
 import { ActivityFeedService } from './activity-feed.service';
 import { NotificationsModule } from '../notifications/notifications.module';
@@ -99,6 +100,7 @@ const DEALS_CACHE_TTL_MS = 30_000;
     DealFundingAlertService,
     DealDigestService,
     RiskScoringService,
+    EsgScoringService,
     DealHealthMonitorService,
     ActivityFeedService,
     makeGaugeProvider({
@@ -112,6 +114,7 @@ const DEALS_CACHE_TTL_MS = 30_000;
     DealCoFarmersService,
     DealDigestService,
     RiskScoringService,
+    EsgScoringService,
     ActivityFeedService,
   ],
 })

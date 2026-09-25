@@ -9,6 +9,9 @@ import {
   NotificationType,
 } from './entities/notification.entity';
 
+import { Optional, Inject } from '@nestjs/common';
+import { PushNotificationService, PushPayload } from './push-notification.service';
+
 @Injectable()
 export class NotificationsService {
   private transporter: nodemailer.Transporter | null = null;
@@ -19,6 +22,8 @@ export class NotificationsService {
     private readonly logger: PinoLogger,
     @InjectRepository(NotificationEntity)
     private readonly notificationRepo: Repository<NotificationEntity>,
+    @Optional()
+    private readonly pushNotificationService?: PushNotificationService,
   ) {
     (this.logger as any).setContext(NotificationsService.name);
 
@@ -42,6 +47,14 @@ export class NotificationsService {
         'Notifications are disabled (NOTIFICATIONS_ENABLED=false). Emails will only be logged.',
       );
     }
+  }
+
+  async sendPush(userId: string, payload: PushPayload): Promise<{ sent: number; failed: number }> {
+    if (!this.pushNotificationService) {
+      this.logger.debug(`PushNotificationService not available. Skipping push for user ${userId}`);
+      return { sent: 0, failed: 0 };
+    }
+    return this.pushNotificationService.sendPushNotification(userId, payload);
   }
 
   async createNotification(params: {

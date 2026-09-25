@@ -439,4 +439,99 @@ export class TradeDeal {
 
   @Column({ name: 'settled_at', type: 'timestamptz', nullable: true })
   settledAt: Date | null;
+
+  // #1012 — ESG / Impact scoring fields
+  @Column({
+    name: 'esg_score',
+    type: 'decimal',
+    precision: 5,
+    scale: 2,
+    nullable: true,
+  })
+  @ApiProperty({
+    description: 'Composite ESG score (0-100, higher = stronger impact/compliance)',
+    nullable: true,
+    example: 84.5,
+  })
+  esgScore: number | null;
+
+  @Column({
+    name: 'environmental_score',
+    type: 'decimal',
+    precision: 5,
+    scale: 2,
+    nullable: true,
+  })
+  @ApiProperty({
+    description: 'Environmental impact sub-score (0-100)',
+    nullable: true,
+    example: 88.0,
+  })
+  environmentalScore: number | null;
+
+  @Column({
+    name: 'social_score',
+    type: 'decimal',
+    precision: 5,
+    scale: 2,
+    nullable: true,
+  })
+  @ApiProperty({
+    description: 'Social and community impact sub-score (0-100)',
+    nullable: true,
+    example: 82.5,
+  })
+  socialScore: number | null;
+
+  @Column({
+    name: 'governance_score',
+    type: 'decimal',
+    precision: 5,
+    scale: 2,
+    nullable: true,
+  })
+  @ApiProperty({
+    description: 'Governance and supply-chain transparency sub-score (0-100)',
+    nullable: true,
+    example: 83.0,
+  })
+  governanceScore: number | null;
+
+  @Column({ name: 'esg_rating', type: 'varchar', length: 16, nullable: true })
+  @ApiProperty({
+    description: 'Derived institutional ESG rating tier',
+    enum: ['AAA', 'AA', 'A', 'BBB', 'BB', 'B', 'CCC'],
+    nullable: true,
+    example: 'AA',
+  })
+  esgRating: string | null;
+
+  @Column({ name: 'esg_breakdown', type: 'simple-json', nullable: true })
+  @ApiProperty({
+    description: 'Detailed factor question answers and score breakdown',
+    nullable: true,
+  })
+  esgBreakdown: Record<string, any> | null;
+
+  @Column({
+    name: 'esg_status',
+    type: 'varchar',
+    length: 32,
+    default: 'unrated',
+  })
+  @ApiProperty({
+    description: 'ESG review lifecycle state',
+    enum: ['unrated', 'pending_review', 'approved', 'rejected'],
+    example: 'approved',
+  })
+  esgStatus: 'unrated' | 'pending_review' | 'approved' | 'rejected';
+
+  @Column({ name: 'esg_reviewed_at', type: 'timestamptz', nullable: true })
+  esgReviewedAt: Date | null;
+
+  @Column({ name: 'esg_reviewed_by', type: 'varchar', nullable: true })
+  esgReviewedBy: string | null;
+
+  @Column({ name: 'esg_review_notes', type: 'text', nullable: true })
+  esgReviewNotes: string | null;
 }
