@@ -74,6 +74,8 @@ services:
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
       - CLAMAV_HOST=clamav
       - CLAMAV_PORT=3310
+      # SEP-10 Stellar Web Auth domain configuration (see docs/auth/sep10-flow.md)
+      - SEP10_DOMAIN=agri-fi.com
     depends_on:
       postgres:
         condition: service_healthy
