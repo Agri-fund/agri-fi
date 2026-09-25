@@ -17,6 +17,7 @@ Thanks for your interest in contributing. This guide covers everything you need 
 9. [Branching and Commits](#branching-and-commits)
 10. [Submitting a Pull Request](#submitting-a-pull-request)
 11. [Architecture Notes](#architecture-notes)
+12. [First Contribution Journey](#first-contribution-journey)
 
 ---
 
@@ -270,6 +271,20 @@ cd backend && npm run lint
 3. Open a PR against `main` with a clear description of what changed and why.
 4. Reference any related spec task (e.g. `Implements task 4.1 from .kiro/specs/agric-onchain-finance/tasks.md`).
 5. PRs require at least one review before merging.
+
+---
+
+## First Contribution Journey
+
+Use this short path to get oriented before taking a first issue:
+
+1. Choose a module: `backend/` owns the NestJS API, persistence, queues, and Stellar integrations; `frontend/` owns the Next.js user experience and API clients; `blockchain/` owns Soroban contracts and deployment scripts.
+2. Start with an issue labeled **good first issue** for a bounded, well-described entry point. **help wanted** marks work where maintainers are actively looking for outside help; confirm the intended approach in the issue before starting.
+3. Create a focused branch from `main` using the branch conventions above. Keep the change within the issue's module unless the issue explicitly requires a cross-module change.
+4. Run the relevant checks before opening a PR: `cd backend && npm test && npm run lint`, `cd frontend && npm test`, or `cd blockchain && cargo test` for contract changes.
+5. Open a PR against `main` that links the issue, explains the user-facing or technical outcome, and notes the checks you ran. CI runs after the PR opens; address its feedback, then request review. At least one approval is required before merge.
+
+For deeper context, read the [project overview](./README.md), [production-readiness guide](./docs/production-readiness.md), [Stellar contract guide](./blockchain/SOROBAN_DEVELOPMENT.md), and [incident-response runbook](./docs/runbooks/incident-response.md). Ask questions on the issue first so the decision stays visible to future contributors; use a new issue when no existing one fits.
 
 ---
 
