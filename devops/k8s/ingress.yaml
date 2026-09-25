@@ -19,6 +19,9 @@ metadata:
     nginx.ingress.kubernetes.io/hsts-preload: "true"
     nginx.ingress.kubernetes.io/enable-ocsp-stapling: "true"
     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/limit-rps: "60"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "2"
+    nginx.ingress.kubernetes.io/limit-rate-after: "1m"
 spec:
   ingressClassName: nginx
   tls:

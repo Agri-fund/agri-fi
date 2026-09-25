@@ -1,0 +1,101 @@
+name: Terraform Drift Detection
+
+on:
+  pull_request:
+    paths:
+      - 'devops/terraform/**'
+      - '.github/workflows/terraform-drift.yml'
+  schedule:
+    - cron: '30 2 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
+
+jobs:
+  plan:
+    name: ${{ matrix.provider }} Terraform plan
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - provider: aws
+            directory: devops/terraform
+          - provider: gcp
+            directory: devops/terraform/gcp
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+
+      - name: Configure AWS credentials
+        if: matrix.provider == 'aws'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.TF_AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Authenticate to Google Cloud
+        if: matrix.provider == 'gcp'
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_TERRAFORM_SERVICE_ACCOUNT }}
+
+      - name: Terraform init
+        working-directory: ${{ matrix.directory }}
+        env:
+          TF_STATE_BUCKET: ${{ secrets.TF_AWS_STATE_BUCKET }}
+          TF_STATE_KEY: ${{ secrets.TF_AWS_STATE_KEY }}
+          GCP_STATE_BUCKET: ${{ secrets.TF_GCP_STATE_BUCKET }}
+        run: |
+          if [ "${{ matrix.provider }}" = "aws" ]; then
+            terraform init -input=false \
+              -backend-config="bucket=${TF_STATE_BUCKET}" \
+              -backend-config="key=${TF_STATE_KEY:-agri-fi/terraform.tfstate}" \
+              -backend-config="region=${AWS_REGION:-us-east-1}" \
+              -backend-config="encrypt=true"
+          else
+            terraform init -input=false \
+              -backend-config="bucket=${GCP_STATE_BUCKET}" \
+              -backend-config="prefix=agri-fi/terraform"
+          fi
+
+      - name: Terraform plan
+        id: plan
+        continue-on-error: true
+        working-directory: ${{ matrix.directory }}
+        run: |
+          set +e
+          terraform plan -input=false -lock=true -detailed-exitcode -no-color
+          exit_code=$?
+          echo "exit_code=${exit_code}" >> "${GITHUB_OUTPUT}"
+          if [ "${exit_code}" -eq 1 ]; then
+            exit 1
+          fi
+
+      - name: Alert unexpected drift
+        if: always() && steps.plan.outputs.exit_code == '2' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          if [ -n "${SLACK_WEBHOOK_URL}" ]; then
+            curl --fail-with-body -X POST "${SLACK_WEBHOOK_URL}" \
+              -H 'Content-Type: application/json' \
+              --data "{\"text\":\"Terraform drift detected in ${{ matrix.provider }} for ${{ github.repository }}. Review ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}" || true
+          fi
+
+      - name: Fail on plan error or drift
+        if: always() && steps.plan.outputs.exit_code != '0'
+        run: |
+          echo "Terraform plan returned a non-zero result for ${{ matrix.provider }}."
+          echo "Scheduled runs alert Slack; PR runs require review of the plan."
+          exit 1
