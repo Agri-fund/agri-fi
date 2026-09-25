@@ -157,6 +157,8 @@ The marketplace pages (`src/app/marketplace/**`) are rendered on demand (`export
 
 Migrations live in `backend/src/database/migrations/`. TypeORM is configured with `synchronize: false` — always use migrations for schema changes.
 
+For complete authoring conventions, RLS security requirements, zero-downtime guidelines, and rollback verification, consult the [Migration Developer Guide](docs/development/migrations.md).
+
 ```bash
 # Run all pending migrations
 npm run migration:run
@@ -186,6 +188,8 @@ When in doubt, add the index — PostgreSQL query planner will choose the most e
 
 ## Testing
 
+For an end-to-end breakdown of test types, commands, fixtures, and CI-gated requirements, see the [Testing Strategy Overview](docs/testing/README.md).
+
 The backend uses **Jest** for unit/integration tests and **fast-check** for property-based tests.
 
 ```bash
@@ -208,7 +212,7 @@ npm run test:cov
   // Feature: agric-onchain-finance, Property 1: token_count = floor(total_value / 100)
   ```
 - Do not use mocks to make tests pass — tests must validate real logic.
-- All tests must pass before a PR can be merged.
+- All tests must pass before a PR can be merged. Refer to the [CI-gate list in Testing Strategy](docs/testing/README.md#5-ci-gated-pipelines--enforcement-rules).
 
 ---
 
