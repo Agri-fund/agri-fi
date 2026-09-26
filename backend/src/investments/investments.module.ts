@@ -8,6 +8,7 @@ import { CurrencyConverterService } from './currency-converter.service';
 import { Investment } from './entities/investment.entity';
 import { InvestmentEvent } from './entities/investment-event.entity';
 import { SecondaryTrade } from './entities/secondary-trade.entity';
+import { SecondaryOrder } from './entities/secondary-order.entity';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
 import { User } from '../auth/entities/user.entity';
 import { FeeConfiguration } from '../database/entities/fee-configuration.entity';
@@ -24,6 +25,7 @@ import { ReceiptService } from './receipt.service';
 import { InvoiceService } from './invoice.service';
 import { AuditModule } from '../audit/audit.module';
 import { PaymentDistribution } from '../escrow/entities/payment-distribution.entity';
+import { SecondaryOrderMatchingService } from './secondary-order-matching.service';
 
 @Module({
   imports: [
@@ -31,6 +33,7 @@ import { PaymentDistribution } from '../escrow/entities/payment-distribution.ent
       Investment,
       InvestmentEvent,
       SecondaryTrade,
+      SecondaryOrder,
       TradeDeal,
       User,
       FeeConfiguration,
@@ -57,6 +60,7 @@ import { PaymentDistribution } from '../escrow/entities/payment-distribution.ent
     TaxReportService,
     ReceiptService,
     InvoiceService,
+    SecondaryOrderMatchingService,
   ],
   exports: [
     InvestmentsService,
@@ -65,6 +69,7 @@ import { PaymentDistribution } from '../escrow/entities/payment-distribution.ent
     FeeConfigurationService,
     CurrencyConverterService,
     MarketplaceSettlementService,
+    SecondaryOrderMatchingService,
   ],
 })
 export class InvestmentsModule {}
