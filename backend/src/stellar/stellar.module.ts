@@ -15,6 +15,11 @@ import { StellarMonitorService } from './stellar-monitor.service';
 import { KmsService } from '../kms/kms.service';
 import { User } from '../auth/entities/user.entity';
 import { KycSubmission } from '../auth/entities/kyc-submission.entity';
+import { TokenIssuerService } from './token-issuer.service';
+import { EscrowReleaseService } from './escrow-release.service';
+import { InvestmentTxService } from './investment-tx.service';
+import { AnchorsService } from './anchors.service';
+import { StellarQueriesService } from './stellar-queries.service';
 
 const redisClientFactory = {
   provide: PRICE_REDIS_CLIENT,
@@ -54,6 +59,11 @@ const sequenceRedisClientFactory = {
   ],
   providers: [
     StellarService,
+    TokenIssuerService,
+    EscrowReleaseService,
+    InvestmentTxService,
+    AnchorsService,
+    StellarQueriesService,
     Sep12Service,
     Sep24Service,
     PricesService,
