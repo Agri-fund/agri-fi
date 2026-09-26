@@ -1,6 +1,8 @@
 import {
   Controller,
   Post,
+  Get,
+  Param,
   UseGuards,
   UseInterceptors,
   UploadedFile,
@@ -284,34 +286,30 @@ export class DocumentsController {
 
     const { fileId, chunkIndex, totalChunks } = dto;
 
-    if (chunkIndex >= totalChunks) {
-      throw new BadRequestException('chunkIndex must be less than totalChunks');
-    }
-
-    let session = this.chunkStore.get(fileId);
-    if (!session) {
-      session = {
-        chunks: new Array(totalChunks).fill(null),
-        totalChunks,
-        receivedCount: 0,
-      };
-      this.chunkStore.set(fileId, session);
-    }
-
-    if (session.chunks[chunkIndex] !== null) {
-      throw new BadRequestException(`Chunk ${chunkIndex} already received`);
-    }
-
-    session.chunks[chunkIndex] = file.buffer;
-    session.receivedCount += 1;
+    const result = this.documentsService.recordChunk(
+      fileId,
+      chunkIndex,
+      totalChunks,
+      file.buffer,
+    );
 
     return {
       fileId,
       chunkIndex,
-      received: session.receivedCount,
+      received: result.receivedCount,
       total: totalChunks,
-      complete: session.receivedCount === totalChunks,
+      complete: result.complete,
+      nextChunkIndex: result.nextChunkIndex,
+      cursor: result.cursor,
+      duplicate: result.duplicate,
     };
+  }
+
+  @Get('upload/:fileId/cursor')
+  @UseGuards(AuthGuard('jwt'))
+  @ApiOperation({ summary: 'Fetch resume cursor for an incomplete chunked upload' })
+  async getUploadCursor(@Param('fileId') fileId: string) {
+    return this.documentsService.getUploadCursor(fileId);
   }
 
   @Post('upload-complete')
@@ -331,19 +329,7 @@ export class DocumentsController {
   ) {
     const { fileId, docType, tradeDealId, fileName, mimeType } = dto;
 
-    const session = this.chunkStore.get(fileId);
-    if (!session) {
-      throw new BadRequestException('No upload session found for this fileId');
-    }
-
-    if (session.receivedCount < session.totalChunks) {
-      throw new BadRequestException(
-        `Missing chunks: received ${session.receivedCount}/${session.totalChunks}`,
-      );
-    }
-
-    const assembled = Buffer.concat(session.chunks);
-    this.chunkStore.delete(fileId);
+    const assembled = this.documentsService.assembleUploadedChunks(fileId);
 
     const file: Express.Multer.File = {
       fieldname: 'file',
