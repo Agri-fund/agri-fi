@@ -1,0 +1,26 @@
+# Redis Service — exposes port 6379 (redis) and 9121 (prometheus metrics)
+apiVersion: v1
+kind: Service
+metadata:
+  name: agri-fi-redis
+  namespace: agri-fi
+  labels:
+    app: agri-fi
+    component: redis
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9121"
+spec:
+  selector:
+    app: agri-fi
+    component: redis
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: 6379
+      protocol: TCP
+    - name: metrics
+      port: 9121
+      targetPort: 9121
+      protocol: TCP
+  type: ClusterIP

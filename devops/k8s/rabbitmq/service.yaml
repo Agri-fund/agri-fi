@@ -1,0 +1,53 @@
+# RabbitMQ Services
+#
+# Two services:
+#   agri-fi-rabbitmq         — ClusterIP for AMQP + management access by backend pods
+#   agri-fi-rabbitmq-headless — Headless service required by StatefulSet for DNS
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agri-fi-rabbitmq
+  namespace: agri-fi
+  labels:
+    app: agri-fi
+    component: rabbitmq
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "15692"
+spec:
+  selector:
+    app: agri-fi
+    component: rabbitmq
+  ports:
+    - name: amqp
+      port: 5672
+      targetPort: 5672
+      protocol: TCP
+    - name: management
+      port: 15672
+      targetPort: 15672
+      protocol: TCP
+    - name: metrics
+      port: 15692
+      targetPort: 15692
+      protocol: TCP
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agri-fi-rabbitmq-headless
+  namespace: agri-fi
+  labels:
+    app: agri-fi
+    component: rabbitmq
+spec:
+  clusterIP: None
+  selector:
+    app: agri-fi
+    component: rabbitmq
+  ports:
+    - name: amqp
+      port: 5672
+      targetPort: 5672

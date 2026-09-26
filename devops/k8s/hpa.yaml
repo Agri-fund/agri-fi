@@ -1,27 +1,62 @@
-# Backend HPA (#836) — scales the ACTIVE blue-green slot only. The CD pipeline
-# deploys to the inactive slot at a fixed replica count and flips the Service
-# selector; autoscaling the idle slot would fight that process, so this HPA
-# must always point at whichever slot the Service currently selects.
+# Backend HPA (#836, updated #1037)
+#
+# Scales the ACTIVE blue-green slot only. The CD pipeline deploys to the
+# inactive slot at a fixed replica count and flips the Service selector;
+# autoscaling the idle slot would fight that process, so this HPA must
+# always point at whichever slot the Service currently selects.
+#
+# ── Connection-budget constraint (#1037) ──────────────────────────────────
+# maxReplicas is a HARD CONNECTION BUDGET GUARD, not just a cost limit.
+# Each replica's pgbouncer sidecar opens up to pool_size=20 real Postgres
+# server connections.  The RDS instance (db.t3.small) has max_connections=200.
+#
+#   Budget math:
+#     max_connections          : 200
+#     Reserved (ops/admin/mig) :  30
+#     Usable budget            : 170
+#     pool_size per replica    :  20
+#     Max safe replicas        : 170 ÷ 20 = 8.5  →  floor = 8
+#
+#   At maxReplicas=8:  8 × 20 = 160 server connections  (10 spare)
+#   Alert threshold  : 85% × 200 = 170 connections
+#     → alert fires before hard exhaustion, giving time to react.
+#
+# !! If you increase maxReplicas you MUST also recalculate and update:
+#      pool_size / default_pool_size  in pgbouncer-configmap.yaml + pgbouncer.ini
+#      DATABASE_POOL_MAX              in configmap.yaml
+#    Formula: new_pool_size = floor(170 / new_maxReplicas)
+#
+# ── Scale-down stabilisation ──────────────────────────────────────────────
+# A 5-minute stabilisation window prevents thrashing under bursty load,
+# ensuring pgbouncer server connections are not rapidly opened and closed.
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: agri-fi-backend
+  namespace: agri-fi
   labels:
     app: agri-fi-backend
+    component: backend
+  annotations:
+    # Document the connection budget inline so kubectl describe shows it.
+    agri-fi/db-connection-budget: "pool_size=20, maxReplicas=8, max_server_conns=160, rds_max=200"
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
     name: agri-fi-backend-blue
   minReplicas: 2
-  maxReplicas: 10
+  # BUDGET-CONSTRAINED: 8 replicas × pool_size 20 = 160 server connections.
+  # Do not raise without recalculating pool_size. See comment above.
+  maxReplicas: 8
   metrics:
     - type: Resource
       resource:
         name: cpu
         target:
           type: Utilization
-          averageUtilization: 80
+          averageUtilization: 70  # lowered from 80 — leave headroom before
+                                  # new replicas open more DB connections
     - type: Object
       object:
         describedObject:
@@ -33,6 +68,20 @@ spec:
         target:
           type: Value
           value: "500"
+  behavior:
+    scaleDown:
+      # 5-minute stabilisation prevents thrashing and rapid pool churn.
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Replicas
+          value: 1
+          periodSeconds: 60  # drop at most 1 replica per minute on scale-down
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Replicas
+          value: 2
+          periodSeconds: 60  # add at most 2 replicas per minute on scale-up
 ---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler

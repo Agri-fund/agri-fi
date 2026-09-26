@@ -1,0 +1,60 @@
+# Child App — Redis (sync-wave -2)
+#
+# Redis is a hard dependency for:
+#   - Session caching
+#   - Rate-limiting counters
+#   - BullMQ job queues
+#
+# It must be fully healthy before rabbitmq (wave -1) or backend (wave 0)
+# are allowed to start syncing.  ArgoCD waits for all wave -2 resources
+# to reach Healthy before advancing to wave -1.
+#
+# Kubernetes manifests live at: devops/k8s/redis/
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: agri-fi-redis
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: agri-fi
+    app.kubernetes.io/component: redis
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    # Wave -2: deploy first, before any other workload.
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  project: agri-fi
+
+  source:
+    repoURL: https://github.com/Agri-fund/agri-fi.git
+    targetRevision: main
+    path: devops/k8s/redis
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: agri-fi
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+      - CreateNamespace=true
+      - ApplyOutOfSyncOnly=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 15s
+        factor: 2
+        maxDuration: 5m
+
+  # Health checks ArgoCD evaluates before advancing to the next wave.
+  # The Deployment must report Available before wave -1 starts.
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        # Ignore HPA-managed replica count drift.
+        - /spec/replicas

@@ -111,87 +111,128 @@ groups:
             more than 1 minute. Session caching and rate-limiting are
             degraded. The application will fall back to in-memory cache.
 
+  # ── PostgreSQL server-level connection alerts (#1037) ────────────────────────
+  # These rules target the postgres_exporter (pg_stat_activity / pg_settings_*)
+  # metrics that reflect real server connections on the RDS instance.
+  #
+  # Budget reference (db.t3.small, max_connections=200):
+  #   Usable budget  : 170  (200 − 30 reserved)
+  #   HPA maxReplicas: 8
+  #   pool_size/pod  : 20
+  #   Worst-case     : 160 connections  (10 spare before alert fires)
+  #
+  # Alert threshold : 85% of max_connections
+  #   85% × 200 = 170 — triggers exactly at the usable budget ceiling,
+  #   giving the on-call team time to act before hard exhaustion.
   - name: agri_fi_database_pool
     interval: 30s
     rules:
-      # ── Active connections approaching pool capacity (warning at 80%) ──────
-      - alert: DatabasePoolHighUsage
+      # ── Recording rule: % of max_connections in use (#1037) ───────────────
+      # Pre-compute the ratio so all threshold alerts share one expression.
+      # Metric: agri_fi:pg_connections_pct
+      - record: agri_fi:pg_connections_pct
         expr: |
           (
-            pg_stat_activity_count{datname="agri",state!="idle"}
+            sum by (instance, datname) (
+              pg_stat_activity_count{datname="agric_onchain", state!="idle"}
+            )
             /
             pg_settings_max_connections
-          ) * 100 > 80
+          ) * 100
+
+      # ── Warning at 85% of max_connections (#1037) ─────────────────────────
+      - alert: DatabaseConnectionSaturationWarning
+        expr: agri_fi:pg_connections_pct > 85
         for: 2m
         labels:
           severity: warning
           team: backend
           owner: backend-oncall
           runbook: "https://runbooks.internal/agri-fi/db-pool"
+          component: database
         annotations:
-          summary: "Database connection pool usage above 80%"
+          summary: "DB connections above 85% of max_connections"
           description: >
-            Active (non-idle) connections on instance {{ $labels.instance }} have
-            been above 80% of max_connections for more than 2 minutes.
+            Active (non-idle) connections to agric_onchain on
+            {{ $labels.instance }} have exceeded 85% of max_connections
+            for more than 2 minutes.
             Current usage: {{ $value | printf "%.1f" }}%.
+            Budget: {{ $value | printf "%.0f" }} / 200 connections used.
+            At 8 replicas × pool_size 20 the ceiling is 160 (80%).
+            Investigate: unexpected replica scale-up, long-running queries,
+            or idle-in-transaction connections holding slots.
+            Runbook: https://runbooks.internal/agri-fi/db-pool
 
-      # ── Active connections exceeding 90% of pool capacity (critical) ───────
-      - alert: DatabasePoolCriticalUsage
-        expr: |
-          (
-            pg_stat_activity_count{datname="agri",state!="idle"}
-            /
-            pg_settings_max_connections
-          ) * 100 > 90
+      # ── Critical at 95% of max_connections ────────────────────────────────
+      - alert: DatabaseConnectionSaturationCritical
+        expr: agri_fi:pg_connections_pct > 95
         for: 1m
         labels:
           severity: critical
           team: backend
           owner: backend-oncall
           runbook: "https://runbooks.internal/agri-fi/db-pool"
+          component: database
           pagerduty: "true"
         annotations:
-          summary: "Database connection pool usage above 90% — API requests at risk"
+          summary: "DB connections above 95% — imminent exhaustion"
           description: >
-            Active (non-idle) connections on instance {{ $labels.instance }} have
-            exceeded 90% of max_connections for more than 1 minute.
+            Active (non-idle) connections to agric_onchain on
+            {{ $labels.instance }} have exceeded 95% of max_connections
+            for more than 1 minute.
             Current usage: {{ $value | printf "%.1f" }}%.
-            Immediate action required to prevent connection exhaustion.
+            New connections will be rejected when 100% is reached.
+            Immediate actions:
+              1. Check HPA replica count — scale down if > 8 replicas
+              2. Kill idle-in-transaction sessions older than 30s
+              3. Verify pgbouncer pool_size has not drifted from 20
+            Runbook: https://runbooks.internal/agri-fi/db-pool
 
       # ── Idle-in-transaction connections (long-running uncommitted txns) ────
       - alert: DatabaseIdleInTransactionConnections
         expr: |
-          pg_stat_activity_count{datname="agri",state="idle in transaction"} > 5
+          pg_stat_activity_count{datname="agric_onchain", state="idle in transaction"} > 5
         for: 3m
         labels:
           severity: warning
           team: backend
           owner: backend-oncall
           runbook: "https://runbooks.internal/agri-fi/db-pool"
+          component: database
         annotations:
           summary: "High number of idle-in-transaction connections"
           description: >
             {{ $value }} connections on {{ $labels.instance }} are in
             'idle in transaction' state for more than 3 minutes.
-            These hold locks and count against max_connections.
+            These hold row locks and consume slots from the 200-connection
+            budget without doing useful work. Check for uncommitted
+            TypeORM transactions and ensure statement_timeout is set.
 
       # ── Connection pool fully exhausted ────────────────────────────────────
       - alert: DatabaseConnectionPoolExhausted
         expr: |
-          pg_stat_activity_count{datname="agri",state!="idle"}
-          >= pg_settings_max_connections
+          sum by (instance, datname) (
+            pg_stat_activity_count{datname="agric_onchain", state!="idle"}
+          ) >= pg_settings_max_connections
         for: 30s
         labels:
           severity: critical
           team: backend
           owner: backend-oncall
           runbook: "https://runbooks.internal/agri-fi/db-pool"
+          component: database
           pagerduty: "true"
         annotations:
           summary: "Database connection pool exhausted — new connections will be rejected"
           description: >
             All {{ $value }} connections on {{ $labels.instance }} are in use.
             New API requests requiring a DB connection will fail immediately.
+            Emergency steps:
+              1. SELECT pg_terminate_backend(pid) for idle-in-transaction
+                 sessions: SELECT pid FROM pg_stat_activity WHERE state =
+                 'idle in transaction' AND now() - state_change > interval '30s';
+              2. Manually scale down the backend HPA if replicas > 8
+              3. Restart pgbouncer sidecars to flush stale connections
 
       # ── Exporter down (no metrics from postgres_exporter) ──────────────────
       - alert: DatabaseExporterDown
@@ -202,11 +243,141 @@ groups:
           team: platform
           owner: platform-oncall
           runbook: "https://runbooks.internal/agri-fi/postgres-exporter"
+          component: database
         annotations:
           summary: "Postgres exporter is down — DB pool metrics unavailable"
           description: >
             The postgres_exporter instance {{ $labels.instance }} has been
-            unreachable for more than 1 minute. Connection pool alerts may not fire.
+            unreachable for more than 1 minute. Connection pool saturation
+            alerts (DatabaseConnectionSaturationWarning / Critical) will
+            not fire until the exporter is restored.
+
+  # ── PgBouncer sidecar pool alerts (#1037) ────────────────────────────────────
+  # These rules use metrics from the pgbouncer_exporter sidecar (port 9127).
+  # They reflect the per-pod pool state BEFORE connections reach Postgres and
+  # are the earliest signal of impending server connection exhaustion.
+  #
+  # Key metrics (from pgbouncer_exporter):
+  #   pgbouncer_pools_server_active_connections  — server conns currently in use
+  #   pgbouncer_pools_server_idle_connections    — server conns idle in pool
+  #   pgbouncer_pools_client_waiting_connections — app clients queued for a conn
+  #   pgbouncer_pools_maxwait_seconds            — longest wait time in queue
+  #   pgbouncer_databases_pool_size              — configured pool_size per db
+  - name: agri_fi_pgbouncer_pool
+    interval: 15s
+    rules:
+      # ── Recording rule: per-pod server pool utilisation % (#1037) ──────────
+      # agri_fi:pgbouncer_server_pool_pct  =
+      #   active_server_conns / configured_pool_size × 100
+      - record: agri_fi:pgbouncer_server_pool_pct
+        expr: |
+          (
+            pgbouncer_pools_server_active_connections{database="agric_onchain"}
+            /
+            pgbouncer_databases_pool_size{database="agric_onchain"}
+          ) * 100
+
+      # ── Warning: per-pod pool above 85% utilised (#1037) ──────────────────
+      - alert: PgBouncerServerPoolHighUsage
+        expr: agri_fi:pgbouncer_server_pool_pct > 85
+        for: 2m
+        labels:
+          severity: warning
+          team: backend
+          owner: backend-oncall
+          runbook: "https://runbooks.internal/agri-fi/pgbouncer"
+          component: pgbouncer
+        annotations:
+          summary: "PgBouncer server pool above 85% on {{ $labels.instance }}"
+          description: >
+            The pgbouncer sidecar on {{ $labels.instance }} is using
+            {{ $value | printf "%.1f" }}% of its configured pool_size (20)
+            for the agric_onchain database.
+            At 85% × 20 = 17 active server connections per pod.
+            If multiple pods are saturated simultaneously, RDS
+            max_connections will be breached.
+            Check: active query count, slow queries, replica count.
+            Runbook: https://runbooks.internal/agri-fi/pgbouncer
+
+      # ── Critical: per-pod pool above 95% (#1037) ──────────────────────────
+      - alert: PgBouncerServerPoolCritical
+        expr: agri_fi:pgbouncer_server_pool_pct > 95
+        for: 1m
+        labels:
+          severity: critical
+          team: backend
+          owner: backend-oncall
+          runbook: "https://runbooks.internal/agri-fi/pgbouncer"
+          component: pgbouncer
+          pagerduty: "true"
+        annotations:
+          summary: "PgBouncer server pool above 95% on {{ $labels.instance }}"
+          description: >
+            The pgbouncer sidecar on {{ $labels.instance }} is using
+            {{ $value | printf "%.1f" }}% of its pool_size (20) for
+            agric_onchain. New client connections will queue or be rejected.
+            Immediate action:
+              1. Check for long-running queries blocking server connections
+              2. Review HPA — scale down if replicas > 8
+              3. Reload pgbouncer config if pool_size has drifted from 20:
+                 kubectl exec <pod> -c pgbouncer -- pgbouncer -R
+
+      # ── Clients queuing for a connection (#1037) ───────────────────────────
+      - alert: PgBouncerClientWaiting
+        expr: |
+          pgbouncer_pools_client_waiting_connections{database="agric_onchain"} > 10
+        for: 1m
+        labels:
+          severity: warning
+          team: backend
+          owner: backend-oncall
+          runbook: "https://runbooks.internal/agri-fi/pgbouncer"
+          component: pgbouncer
+        annotations:
+          summary: "PgBouncer has {{ $value }} clients queued on {{ $labels.instance }}"
+          description: >
+            More than 10 application clients are waiting for a server
+            connection from the pgbouncer pool on {{ $labels.instance }}.
+            Queued clients: {{ $value }}.
+            This indicates the pool_size (20) is fully consumed and requests
+            are stacking up. API latency will spike. Check for slow queries
+            holding server connections.
+
+      # ── Client wait time spike (#1037) ────────────────────────────────────
+      - alert: PgBouncerMaxWaitHigh
+        expr: |
+          pgbouncer_pools_maxwait_seconds{database="agric_onchain"} > 5
+        for: 1m
+        labels:
+          severity: warning
+          team: backend
+          owner: backend-oncall
+          runbook: "https://runbooks.internal/agri-fi/pgbouncer"
+          component: pgbouncer
+        annotations:
+          summary: "PgBouncer client wait time above 5s on {{ $labels.instance }}"
+          description: >
+            The longest queued client on {{ $labels.instance }} has been
+            waiting {{ $value | printf "%.1f" }}s for a server connection.
+            API requests will appear to hang. At 30s+ TypeORM will time out.
+            Check active queries and pool utilisation.
+
+      # ── PgBouncer exporter down ────────────────────────────────────────────
+      - alert: PgBouncerExporterDown
+        expr: up{job="pgbouncer"} == 0
+        for: 1m
+        labels:
+          severity: warning
+          team: platform
+          owner: platform-oncall
+          component: pgbouncer
+        annotations:
+          summary: "PgBouncer exporter unreachable on {{ $labels.instance }}"
+          description: >
+            The pgbouncer_exporter sidecar on {{ $labels.instance }} has been
+            unreachable for more than 1 minute. Per-pod pool utilisation
+            alerts will not fire until restored. Verify the pgbouncer sidecar
+            container is running: kubectl describe pod <pod> -n agri-fi
 
   - name: agri_fi_database_replication
     interval: 30s

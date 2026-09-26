@@ -1,0 +1,34 @@
+# RabbitMQ ConfigMap — rabbitmq.conf and enabled_plugins
+#
+# Sourced from devops/rabbitmq/rabbitmq.conf; migrated here so ArgoCD
+# can manage the full RabbitMQ workload from a single path.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agri-fi-rabbitmq-config
+  namespace: agri-fi
+  labels:
+    app: agri-fi
+    component: rabbitmq
+data:
+  rabbitmq.conf: |
+    # Prometheus metrics endpoint
+    prometheus.tcp.port = 15692
+    prometheus.path = /metrics
+    prometheus.return_per_object_metrics = true
+
+    # Default vhost
+    default_vhost = /
+
+    # Management plugin
+    management.tcp.port = 15672
+    management.tcp.ip = 0.0.0.0
+
+    # Logging
+    log.console = true
+    log.console.level = info
+    log.file = /var/log/rabbitmq/rabbit.log
+    log.file.level = info
+
+  enabled_plugins: |
+    [rabbitmq_management,rabbitmq_prometheus,rabbitmq_peer_discovery_k8s].
