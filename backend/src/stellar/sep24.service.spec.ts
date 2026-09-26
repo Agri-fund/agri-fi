@@ -8,6 +8,7 @@ import {
   Sep24TxKind,
   Sep24TxStatus,
 } from './entities/sep24-transaction.entity';
+import { User } from '../auth/entities/user.entity';
 
 const STELLAR_ACCOUNT =
   'GCEZWKCA5VLDNRLN3RPRJMRZOX3Z6G5CHCGWKX2ZVBFGCNX5J3MHAQX';
@@ -19,6 +20,9 @@ describe('Sep24Service', () => {
     save: jest.Mock;
     findOne: jest.Mock;
     find: jest.Mock;
+  };
+  let userRepo: {
+    findOne: jest.Mock;
   };
 
   const configValues: Record<string, string | number> = {
@@ -52,10 +56,15 @@ describe('Sep24Service', () => {
       find: jest.fn(),
     };
 
+    userRepo = {
+      findOne: jest.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         Sep24Service,
         { provide: getRepositoryToken(Sep24Transaction), useValue: txRepo },
+        { provide: getRepositoryToken(User), useValue: userRepo },
         { provide: ConfigService, useValue: configService },
         { provide: PinoLogger, useValue: logger },
       ],
@@ -252,6 +261,134 @@ describe('Sep24Service', () => {
           status: Sep24TxStatus.COMPLETED,
         }),
       ).rejects.toThrow('not found');
+    });
+
+    it('#984: rejects withdrawal completion with foreign destination account', async () => {
+      const foreignAccount = 'GFOREIGNACCOUNT123456789012345678901234';
+      const userWallet = 'GCEZWKCA5VLDNRLN3RPRJMRZOX3Z6G5CHCGWKX2ZVBFGCNX5J3MHAQX';
+
+      const tx: Sep24Transaction = {
+        id: 'withdraw-123',
+        stellarAccount: userWallet,
+        userId: 'user-1',
+        kind: Sep24TxKind.WITHDRAW,
+        assetCode: 'USDC',
+        amountIn: '100',
+        amountOut: null,
+        status: Sep24TxStatus.PENDING_ANCHOR,
+        message: null,
+        dest: foreignAccount,
+        destExtra: null,
+        externalTxId: null,
+        stellarTransactionId: null,
+        destinationVerified: false,
+        startedAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      txRepo.findOne!.mockResolvedValue(tx);
+      userRepo.findOne!.mockResolvedValue({
+        id: 'user-1',
+        walletAddress: userWallet,
+      } as User);
+
+      await expect(
+        service.handleStatusCallback({
+          transaction_id: 'withdraw-123',
+          status: Sep24TxStatus.COMPLETED,
+        }),
+      ).rejects.toThrow('does not belong to the authenticated user');
+    });
+
+    it('#984: allows withdrawal completion when destination matches user wallet', async () => {
+      const userWallet = 'GCEZWKCA5VLDNRLN3RPRJMRZOX3Z6G5CHCGWKX2ZVBFGCNX5J3MHAQX';
+
+      const tx: Sep24Transaction = {
+        id: 'withdraw-123',
+        stellarAccount: userWallet,
+        userId: 'user-1',
+        kind: Sep24TxKind.WITHDRAW,
+        assetCode: 'USDC',
+        amountIn: '100',
+        amountOut: null,
+        status: Sep24TxStatus.PENDING_ANCHOR,
+        message: null,
+        dest: userWallet,
+        destExtra: null,
+        externalTxId: null,
+        stellarTransactionId: null,
+        destinationVerified: false,
+        startedAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      txRepo.findOne!.mockResolvedValue(tx);
+      userRepo.findOne!.mockResolvedValue({
+        id: 'user-1',
+        walletAddress: userWallet,
+      } as User);
+
+      await service.handleStatusCallback({
+        transaction_id: 'withdraw-123',
+        status: Sep24TxStatus.COMPLETED,
+      });
+
+      expect(txRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: Sep24TxStatus.COMPLETED,
+          destinationVerified: true,
+        }),
+      );
+    });
+
+    it('#984: allows withdrawal completion when destination is in allowed institution list', async () => {
+      const userWallet = 'GCEZWKCA5VLDNRLN3RPRJMRZOX3Z6G5CHCGWKX2ZVBFGCNX5J3MHAQX';
+      const institutionAccount = 'GINSTITUTION123456789012345678901234';
+
+      const tx: Sep24Transaction = {
+        id: 'withdraw-123',
+        stellarAccount: userWallet,
+        userId: 'user-1',
+        kind: Sep24TxKind.WITHDRAW,
+        assetCode: 'USDC',
+        amountIn: '100',
+        amountOut: null,
+        status: Sep24TxStatus.PENDING_ANCHOR,
+        message: null,
+        dest: institutionAccount,
+        destExtra: null,
+        externalTxId: null,
+        stellarTransactionId: null,
+        destinationVerified: false,
+        startedAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      txRepo.findOne!.mockResolvedValue(tx);
+      userRepo.findOne!.mockResolvedValue({
+        id: 'user-1',
+        walletAddress: userWallet,
+      } as User);
+
+      // Add institution address to config
+      configService.get = jest.fn((key: string, defaultValue?: string | number) => {
+        if (key === 'ALLOWED_INSTITUTION_ADDRS') {
+          return institutionAccount;
+        }
+        return configValues[key] ?? defaultValue;
+      });
+
+      await service.handleStatusCallback({
+        transaction_id: 'withdraw-123',
+        status: Sep24TxStatus.COMPLETED,
+      });
+
+      expect(txRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: Sep24TxStatus.COMPLETED,
+          destinationVerified: true,
+        }),
+      );
     });
   });
 

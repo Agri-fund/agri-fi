@@ -40,11 +40,8 @@ import {
   generateBatchMemo,
 } from './utils/transaction-chunker';
 import { HorizonFailoverClient } from './horizon-failover';
-import { TokenIssuerService } from './token-issuer.service';
-import { EscrowReleaseService } from './escrow-release.service';
-import { InvestmentTxService } from './investment-tx.service';
-import { AnchorsService } from './anchors.service';
-import { StellarQueriesService } from './stellar-queries.service';
+import { InjectMetric } from '@willsoto/nestjs-prometheus';
+import { Counter } from 'prom-client';
 
 export const SEQUENCE_REDIS_CLIENT = 'SEQUENCE_REDIS_CLIENT';
 const SEQUENCE_CACHE_TTL = 5; // seconds
@@ -106,6 +103,9 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     @Optional()
     @Inject(SEQUENCE_REDIS_CLIENT)
     private readonly sequenceRedis: RedisClientType | null,
+    @Optional()
+    @InjectMetric('horizon_status_stale_fallbacks_total')
+    private readonly horizonStaleFallbackCounter: Counter<string> | null,
   ) {
     this.localSequenceCache = new Map();
     this.enableSequenceCache = true;
@@ -2465,10 +2465,13 @@ const anchorsService = this.anchorsService ?? new AnchorsService();
    * Terminal states ('success' | 'failed') are cached in Redis for
    * TX_STATUS_CACHE_TTL_SECONDS (1 hour) to avoid redundant Horizon API calls.
    * Pending transactions are never cached because their state can still change.
+   *
+   * On Horizon error, returns the last cached status (if any) with a stale: true flag
+   * instead of throwing, allowing consumers to proceed with last-known state.
    */
   async getTransactionStatus(
     txId: string,
-  ): Promise<'success' | 'failed' | 'pending'> {
+  ): Promise<'success' | 'failed' | 'pending' | { status: 'success' | 'failed'; stale: true }> {
     // 1. Cache read — skip Horizon if we already have a terminal result.
     const cached = await this.getCachedTxStatus(txId);
     if (cached) {
@@ -2492,8 +2495,39 @@ const anchorsService = this.anchorsService ?? new AnchorsService();
       if (err?.response?.status === 404) {
         return 'pending';
       }
+
+      // Horizon error - try stale fallback
+      this.logger.warn(
+        { txId, error: (err as Error).message },
+        'Horizon error during transaction status check, attempting stale fallback',
+      );
+
+      // Check if we have a cached value to fall back to
+      const staleCached = await this.getCachedTxStatus(txId);
+      if (staleCached) {
+        this.logger.info(
+          { txId, status: staleCached },
+          'Returning stale cached status due to Horizon error',
+        );
+        // Increment metrics counter for stale fallbacks
+        this.incrementHorizonStaleFallbackCounter();
+        return { status: staleCached, stale: true };
+      }
+
+      // No cache available - rethrow the error
       throw err;
     }
+  }
+
+  /**
+   * Increment the counter for Horizon stale fallbacks.
+   * This is a no-op if metrics are not configured.
+   */
+  private incrementHorizonStaleFallbackCounter(): void {
+    if (this.horizonStaleFallbackCounter) {
+      this.horizonStaleFallbackCounter.inc();
+    }
+    this.logger.info('horizon_status_stale_fallbacks incremented');
   }
 
   /** Build the Redis key for a transaction hash. */

@@ -23,7 +23,7 @@ import {
   ListFeeConfigurationQueryDto,
 } from './dto/fee-configuration.dto';
 import { FeeConfiguration } from '../database/entities/fee-configuration.entity';
-import { AdminGuard } from '../auth/guards/admin.guard';
+import { AdminGuard } from '../common/guards';
 import {
   normalizePagination,
   PaginatedResult,

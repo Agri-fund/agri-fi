@@ -224,6 +224,16 @@ npm run test:cov
 - Entities use TypeORM decorators; no raw SQL outside migrations.
 - Keep services free of HTTP concerns (`HttpException` is fine, but no `Request`/`Response` imports in services).
 - Stellar interactions go through `StellarService` only — never call the SDK directly from other services.
+- **Import guards only from the shared barrel**: Always import guards from `@/common/guards` (or `../common/guards`) instead of module-internal paths. This prevents import path errors and ensures consistency across the codebase.
+
+  ```typescript
+  // ✅ Correct
+  import { RolesGuard, JwtAuthGuard, OptionalJwtGuard } from '@/common/guards';
+
+  // ❌ Incorrect
+  import { RolesGuard } from '../auth/guards/roles.guard';
+  import { OptionalJwtGuard } from '../auth/optional-jwt.guard';
+  ```
 
 ### Logging Conventions
 

@@ -1,4 +1,4 @@
-import { Controller, Get, Version } from '@nestjs/common';
+import { Controller, Get, Version, UseGuards } from '@nestjs/common';
 import {
   HealthCheckService,
   HealthCheck,
@@ -10,6 +10,8 @@ import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { SkipThrottle } from '@nestjs/throttler';
 import { RabbitmqHealthIndicator } from './rabbitmq.health-indicator';
 import { StellarHealthIndicator } from './stellar.health-indicator';
+import { RedisHealthIndicator } from './redis.health-indicator';
+import { MetricsIpGuard } from '../metrics/metrics-ip.guard';
 
 @ApiTags('health')
 @Controller({ path: 'health', version: '1' })
@@ -20,6 +22,7 @@ export class HealthController {
     private db: TypeOrmHealthIndicator,
     private rabbitmq: RabbitmqHealthIndicator,
     private stellar: StellarHealthIndicator,
+    private redis: RedisHealthIndicator,
     private memory: MemoryHealthIndicator,
     private disk: DiskHealthIndicator,
   ) {}
@@ -118,5 +121,39 @@ export class HealthController {
   })
   async checkStellarActive() {
     return this.health.check([() => this.stellar.checkAllNodes('stellar')]);
+  }
+
+  @Get('detail')
+  @UseGuards(MetricsIpGuard)
+  @HealthCheck()
+  @ApiOperation({
+    summary: 'Detailed health check for all dependencies',
+    description:
+      'Returns per-dependency status for Postgres, RabbitMQ, Redis, Stellar Horizon, ' +
+      'and system resources. Requires authentication via IP allowlist (same as /metrics). ' +
+      'Does not expose internal topology details to the public.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'All dependencies healthy',
+  })
+  @ApiResponse({
+    status: 503,
+    description: 'One or more dependencies unhealthy',
+  })
+  async checkDetail() {
+    return this.health.check([
+      () => this.db.pingCheck('database'),
+      () => this.rabbitmq.isHealthy('rabbitmq'),
+      () => this.redis.isHealthy('redis'),
+      () => this.stellar.isHealthy('stellar'),
+      () => this.memory.checkHeap('memory_heap', 150 * 1024 * 1024),
+      () => this.memory.checkRSS('memory_rss', 150 * 1024 * 1024),
+      () =>
+        this.disk.checkStorage('disk', {
+          path: '/',
+          thresholdPercent: 0.05,
+        }),
+    ]);
   }
 }
