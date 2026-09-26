@@ -19,7 +19,7 @@ import {
 } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { EmailSequenceService } from './email-sequence.service';
-import { RolesGuard } from '../auth/roles.guard';
+import { RolesGuard } from '../common/guards';
 import { Roles } from '../auth/decorators/roles.decorator';
 
 @ApiTags('email-sequence')

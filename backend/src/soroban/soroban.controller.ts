@@ -10,8 +10,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
-import { RolesGuard } from '../auth/roles.guard';
-import { MfaGuard } from '../auth/guards/mfa.guard';
+import { RolesGuard, MfaGuard } from '../common/guards';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { SorobanService } from './soroban.service';
 import { ReleaseMilestoneDto } from './dto/release-milestone.dto';
