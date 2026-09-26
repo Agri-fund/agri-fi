@@ -1,5 +1,6 @@
 'use client';
 
+import { getAuthToken } from '@/lib/auth-token';
 import { useEffect, useState } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import { apiClient, User } from '@/lib/api';
@@ -40,7 +41,7 @@ export default function ReferralsPage() {
 
   const fetchStats = async () => {
     try {
-      const token = localStorage.getItem('auth_token');
+      const token = getAuthToken();
       const res = await fetch('http://localhost:3001/v1/users/me/referrals', {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });

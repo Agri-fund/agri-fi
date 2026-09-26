@@ -8,6 +8,7 @@
  * post-connect API call to link the wallet to the user account.
  */
 
+import { getAuthToken } from '@/lib/auth-token';
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { useWallet, WalletProvider } from '../hooks/useWallet';
@@ -47,7 +48,7 @@ export const WalletButton: React.FC<WalletButtonProps> = ({ onWalletLinked }) =>
       const connectedPublicKey = await connect(selectedProvider);
 
       // Optionally link wallet to user account via API
-      const token = localStorage.getItem('auth_token');
+      const token = getAuthToken();
       if (token) {
         const response = await fetch('/api/auth/wallet', {
           method: 'POST',

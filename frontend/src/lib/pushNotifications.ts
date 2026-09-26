@@ -10,6 +10,8 @@
  *   await registerPushNotifications();
  */
 
+import { getAuthToken } from './auth-token';
+
 const SW_PATH = '/sw.js';
 const API_BASE = 'http://localhost:3001';
 
@@ -46,14 +48,6 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
   const rawData = window.atob(base64);
   return Uint8Array.from([...rawData].map((char) => char.charCodeAt(0)));
-}
-
-/**
- * Retrieves the auth token stored by the login flow.
- */
-function getAuthToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem('auth_token');
 }
 
 // ── Service Worker registration ───────────────────────────────────────────────

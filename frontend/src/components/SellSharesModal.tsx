@@ -1,5 +1,6 @@
 'use client';
 
+import { getAuthToken } from '@/lib/auth-token';
 import { useState } from 'react';
 import { useWallet } from '../hooks/useWallet';
 import { useTransactionProgress } from '../hooks/useTransactionProgress';
@@ -63,7 +64,7 @@ export const SellSharesModal: React.FC<SellSharesModalProps> = ({
     txProgress.setSimulating();
     
     try {
-      const token = localStorage.getItem('auth_token');
+      const token = getAuthToken();
       if (!token) throw new Error('Please log in first.');
 
       // Step 1: Get unsigned XDR for the sell offer from backend (simulating)

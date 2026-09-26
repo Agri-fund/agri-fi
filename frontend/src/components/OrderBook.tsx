@@ -1,5 +1,6 @@
 'use client';
 
+import { getAuthToken } from '@/lib/auth-token';
 import { useEffect, useState } from 'react';
 import { useCurrencyFormat } from '../hooks/useCurrencyFormat';
 import { useNumberFormat } from '../hooks/useNumberFormat';
@@ -38,7 +39,7 @@ export const OrderBook: React.FC<OrderBookProps> = ({
   useEffect(() => {
     // Resolve auth state client-side (localStorage is not available during SSR).
     const token =
-      typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+      getAuthToken();
 
     setIsAuthenticated(!!token);
 
