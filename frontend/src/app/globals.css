@@ -82,6 +82,12 @@
 }
 
 @layer components {
+  /* ── Keyboard focus ring for modal controls (#976) ───────────────────── */
+  .focus-ring {
+    @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500
+           focus-visible:ring-offset-2;
+  }
+
   /* ── PDF Viewer toolbar button (#721) ────────────────────────────────── */
   .toolbar-btn {
     @apply inline-flex items-center justify-center rounded-lg p-1.5 text-slate-500

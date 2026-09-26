@@ -178,4 +178,75 @@ describe('ModalWrapper', () => {
 
     await expect(user.tab()).resolves.not.toThrow();
   });
+
+  it('labels the dialog via ariaLabel when no labelledBy is given', () => {
+    render(
+      <ModalWrapper isOpen onClose={vi.fn()} ariaLabel="Invest">
+        <ModalContent />
+      </ModalWrapper>,
+    );
+
+    expect(screen.getByRole('dialog', { name: 'Invest' })).toBeInTheDocument();
+  });
+
+  it('focuses the element marked data-autofocus instead of the first focusable', () => {
+    render(
+      <ModalWrapper isOpen onClose={vi.fn()}>
+        <button>Close</button>
+        <input aria-label="Amount" data-autofocus />
+      </ModalWrapper>,
+    );
+
+    expect(screen.getByLabelText('Amount')).toHaveFocus();
+  });
+
+  describe('nested modals', () => {
+    function Nested({ onOuterClose, onInnerClose, innerOpen = true }: {
+      onOuterClose: () => void;
+      onInnerClose: () => void;
+      innerOpen?: boolean;
+    }) {
+      return (
+        <ModalWrapper isOpen onClose={onOuterClose} ariaLabel="Outer">
+          <button>Outer action</button>
+          <ModalWrapper isOpen={innerOpen} onClose={onInnerClose} ariaLabel="Inner">
+            <button>Inner first</button>
+            <button>Inner last</button>
+          </ModalWrapper>
+        </ModalWrapper>
+      );
+    }
+
+    it('Escape closes only the top-most modal', async () => {
+      const onOuterClose = vi.fn();
+      const onInnerClose = vi.fn();
+      const user = userEvent.setup();
+      render(<Nested onOuterClose={onOuterClose} onInnerClose={onInnerClose} />);
+
+      await user.keyboard('{Escape}');
+
+      expect(onInnerClose).toHaveBeenCalledTimes(1);
+      expect(onOuterClose).not.toHaveBeenCalled();
+    });
+
+    it('traps Tab inside the top-most modal only', async () => {
+      const user = userEvent.setup();
+      render(<Nested onOuterClose={vi.fn()} onInnerClose={vi.fn()} />);
+
+      expect(screen.getByText('Inner first')).toHaveFocus();
+      await user.tab();
+      expect(screen.getByText('Inner last')).toHaveFocus();
+      await user.tab();
+      expect(screen.getByText('Inner first')).toHaveFocus();
+    });
+
+    it('returns focus to the parent modal when the inner trigger has unmounted', () => {
+      const { rerender } = render(
+        <Nested onOuterClose={vi.fn()} onInnerClose={vi.fn()} innerOpen />,
+      );
+      rerender(<Nested onOuterClose={vi.fn()} onInnerClose={vi.fn()} innerOpen={false} />);
+
+      expect(screen.getByText('Outer action')).toHaveFocus();
+    });
+  });
 });
