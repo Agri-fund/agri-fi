@@ -1,0 +1,39 @@
+{
+  "deal": {
+    "id": "deal-e2e-1",
+    "title": "E2E Arabica Coffee",
+    "commodity": "coffee",
+    "country": "Kenya",
+    "region": "Nyeri",
+    "quantity": 20,
+    "quantityUnit": "tons",
+    "totalValue": 10000,
+    "totalInvested": 2000,
+    "tokenCount": 100,
+    "tokensRemaining": 80,
+    "tokenSymbol": "COFE2E",
+    "status": "open",
+    "deliveryDate": "2027-06-30",
+    "annualRoi": 0.12,
+    "termDays": 120,
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "documents": [],
+    "milestones": []
+  },
+  "investor": {
+    "id": "user-e2e-investor",
+    "email": "investor@e2e.test",
+    "role": "investor",
+    "kycStatus": "verified",
+    "kyc_status": "verified"
+  },
+  "wallet": {
+    "publicKey": "GBE2EMOCKINVESTORPUBLICKEYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "signedXdr": "AAAAAgAAAABE2E-SIGNED-XDR"
+  },
+  "investment": {
+    "id": "inv-e2e-1",
+    "unsignedXdr": "AAAAAgAAAABE2E-UNSIGNED-XDR",
+    "stellarTxId": "e2e0000000000000000000000000000000000000000000000000000000000001"
+  }
+}
