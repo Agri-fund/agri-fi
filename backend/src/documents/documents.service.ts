@@ -26,10 +26,20 @@ import { PDFDocument } from 'pdf-lib';
 
 const ALLOWED_MIME_TYPES = ['application/pdf', 'image/png', 'image/jpeg'];
 
+interface UploadChunkSession {
+  fileId: string;
+  totalChunks: number;
+  nextChunkIndex: number;
+  receivedChunks: Map<number, Buffer>;
+  expiresAt: number;
+}
+
 @Injectable()
 export class DocumentsService {
   private storageServicePromise: Promise<StorageService> | null = null;
   private readonly scannedFiles = new WeakSet<object>();
+  private readonly uploadChunkSessions = new Map<string, UploadChunkSession>();
+  private readonly uploadChunkSessionTtlMs = 60 * 60 * 1000;
 
   constructor(
     private readonly lazyModuleLoader: LazyModuleLoader,
@@ -88,6 +98,196 @@ export class DocumentsService {
         .then((moduleRef) => moduleRef.get(StorageService));
     }
     return this.storageServicePromise;
+  }
+
+  private pruneExpiredUploadSessions(): void {
+    const now = Date.now();
+    for (const [fileId, session] of this.uploadChunkSessions.entries()) {
+      if (session.expiresAt <= now) {
+        this.uploadChunkSessions.delete(fileId);
+      }
+    }
+  }
+
+  private getOrCreateUploadSession(fileId: string, totalChunks: number) {
+    this.pruneExpiredUploadSessions();
+
+    const existing = this.uploadChunkSessions.get(fileId);
+    if (existing) {
+      if (existing.totalChunks !== totalChunks) {
+        throw new BadRequestException({
+          code: 'UPLOAD_SESSION_MISMATCH',
+          message:
+            'Upload session already exists with different totalChunks. Resume or restart the upload.',
+          fileId,
+          expectedTotalChunks: existing.totalChunks,
+          receivedTotalChunks: totalChunks,
+        });
+      }
+      existing.expiresAt = Date.now() + this.uploadChunkSessionTtlMs;
+      return existing;
+    }
+
+    const session: UploadChunkSession = {
+      fileId,
+      totalChunks,
+      nextChunkIndex: 0,
+      receivedChunks: new Map(),
+      expiresAt: Date.now() + this.uploadChunkSessionTtlMs,
+    };
+
+    this.uploadChunkSessions.set(fileId, session);
+    return session;
+  }
+
+  recordChunk(
+    fileId: string,
+    chunkIndex: number,
+    totalChunks: number,
+    chunk: Buffer,
+  ): {
+    fileId: string;
+    chunkIndex: number;
+    receivedCount: number;
+    totalChunks: number;
+    complete: boolean;
+    nextChunkIndex: number;
+    cursor: { fileId: string; nextChunkIndex: number; totalChunks: number };
+    duplicate: boolean;
+  } {
+    const session = this.getOrCreateUploadSession(fileId, totalChunks);
+
+    if (chunkIndex < 0 || chunkIndex >= totalChunks) {
+      throw new BadRequestException({
+        code: 'INVALID_CHUNK_INDEX',
+        message: 'Chunk index is outside the valid range.',
+        fileId,
+        chunkIndex,
+        totalChunks,
+      });
+    }
+
+    if (session.receivedChunks.has(chunkIndex)) {
+      return {
+        fileId,
+        chunkIndex,
+        receivedCount: session.receivedChunks.size,
+        totalChunks,
+        complete: session.receivedChunks.size === totalChunks,
+        nextChunkIndex: session.nextChunkIndex,
+        cursor: {
+          fileId,
+          nextChunkIndex: session.nextChunkIndex,
+          totalChunks,
+        },
+        duplicate: true,
+      };
+    }
+
+    if (chunkIndex !== session.nextChunkIndex) {
+      throw new BadRequestException({
+        code: 'CHUNK_OUT_OF_ORDER',
+        message: 'Chunk ordering is invalid or a chunk gap exists.',
+        fileId,
+        chunkIndex,
+        expectedNextChunkIndex: session.nextChunkIndex,
+        totalChunks,
+      });
+    }
+
+    session.receivedChunks.set(chunkIndex, chunk);
+    session.expiresAt = Date.now() + this.uploadChunkSessionTtlMs;
+    while (session.receivedChunks.has(session.nextChunkIndex)) {
+      session.nextChunkIndex += 1;
+    }
+
+    const complete = session.receivedChunks.size === totalChunks;
+
+    return {
+      fileId,
+      chunkIndex,
+      receivedCount: session.receivedChunks.size,
+      totalChunks,
+      complete,
+      nextChunkIndex: session.nextChunkIndex,
+      cursor: {
+        fileId,
+        nextChunkIndex: session.nextChunkIndex,
+        totalChunks,
+      },
+      duplicate: false,
+    };
+  }
+
+  getUploadCursor(fileId: string): {
+    fileId: string;
+    totalChunks: number;
+    nextChunkIndex: number;
+    receivedCount: number;
+    complete: boolean;
+    expiresAt: number;
+  } {
+    this.pruneExpiredUploadSessions();
+
+    const session = this.uploadChunkSessions.get(fileId);
+    if (!session) {
+      throw new BadRequestException({
+        code: 'UPLOAD_SESSION_NOT_FOUND',
+        message: 'No upload session found for this fileId.',
+        fileId,
+      });
+    }
+
+    const complete = session.receivedChunks.size === session.totalChunks;
+
+    return {
+      fileId,
+      totalChunks: session.totalChunks,
+      nextChunkIndex: session.nextChunkIndex,
+      receivedCount: session.receivedChunks.size,
+      complete,
+      expiresAt: session.expiresAt,
+    };
+  }
+
+  assembleUploadedChunks(fileId: string): Buffer {
+    this.pruneExpiredUploadSessions();
+
+    const session = this.uploadChunkSessions.get(fileId);
+    if (!session) {
+      throw new BadRequestException({
+        code: 'UPLOAD_SESSION_NOT_FOUND',
+        message: 'No upload session found for this fileId.',
+        fileId,
+      });
+    }
+
+    if (session.receivedChunks.size < session.totalChunks) {
+      throw new BadRequestException({
+        code: 'MISSING_CHUNKS',
+        message: 'The upload is incomplete and cannot be assembled yet.',
+        fileId,
+        receivedCount: session.receivedChunks.size,
+        totalChunks: session.totalChunks,
+        nextChunkIndex: session.nextChunkIndex,
+      });
+    }
+
+    const orderedChunks = Array.from({ length: session.totalChunks }, (_, index) => {
+      const chunk = session.receivedChunks.get(index);
+      if (!chunk) {
+        throw new BadRequestException({
+          code: 'MISSING_CHUNKS',
+          message: 'A required chunk is missing from the upload session.',
+          fileId,
+          missingChunkIndex: index,
+        });
+      }
+      return chunk;
+    });
+
+    this.uploadChunkSessions.delete(fileId);
+    return Buffer.concat(orderedChunks);
   }
 
   async handleUpload({
