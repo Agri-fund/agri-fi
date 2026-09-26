@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module';
 import { NotificationsGateway } from './notifications.gateway';
@@ -13,6 +13,12 @@ import { NotificationPreference } from './entities/notification-preference.entit
 import { PushSubscriptionEntity } from './entities/push-subscription.entity';
 import { PushNotificationService } from './push-notification.service';
 import { WsJwtGuard } from './ws-jwt.guard';
+import { SmsRateLimiterService } from './sms-rate-limiter.service';
+import { SMS_PROVIDER_TOKEN } from './providers/sms.provider';
+import { AfricasTalkingProvider } from './providers/africas-talking.provider';
+import { TwilioProvider } from './providers/twilio.provider';
+import { FakeSmsProvider } from './providers/fake-sms.provider';
+import { SmsNotificationHelper } from './sms-notification-helper';
 
 @Module({
   imports: [
@@ -31,13 +37,35 @@ import { WsJwtGuard } from './ws-jwt.guard';
     NotificationsGateway,
     NotificationPreferencesService,
     PushNotificationService,
+    SmsRateLimiterService,
+    SmsNotificationHelper,
     WsJwtGuard,
+    {
+      provide: SMS_PROVIDER_TOKEN,
+      useFactory: (configService: ConfigService) => {
+        const provider = configService.get<string>(
+          'NOTIFICATIONS_SMS_PROVIDER',
+          'fake',
+        );
+
+        if (provider === 'africas_talking') {
+          return new AfricasTalkingProvider(configService);
+        } else if (provider === 'twilio') {
+          return new TwilioProvider(configService);
+        }
+        // Default to fake provider for testing
+        return new FakeSmsProvider();
+      },
+      inject: [ConfigService],
+    },
   ],
   exports: [
     NotificationsService,
     EmailTemplateService,
     NotificationPreferencesService,
     PushNotificationService,
+    SmsRateLimiterService,
+    SmsNotificationHelper,
   ],
 })
 export class NotificationsModule {}

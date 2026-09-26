@@ -39,6 +39,7 @@ export class NotificationPreferencesService {
       emailEnabled?: boolean;
       pushEnabled?: boolean;
       inAppEnabled?: boolean;
+      smsEnabled?: boolean;
     },
   ): Promise<NotificationPreference> {
     let pref = await this.preferenceRepo.findOne({
@@ -52,11 +53,13 @@ export class NotificationPreferencesService {
         emailEnabled: dto.emailEnabled ?? true,
         pushEnabled: dto.pushEnabled ?? true,
         inAppEnabled: dto.inAppEnabled ?? true,
+        smsEnabled: dto.smsEnabled ?? true,
       });
     } else {
       if (dto.emailEnabled !== undefined) pref.emailEnabled = dto.emailEnabled;
       if (dto.pushEnabled !== undefined) pref.pushEnabled = dto.pushEnabled;
       if (dto.inAppEnabled !== undefined) pref.inAppEnabled = dto.inAppEnabled;
+      if (dto.smsEnabled !== undefined) pref.smsEnabled = dto.smsEnabled;
     }
 
     return this.preferenceRepo.save(pref);
@@ -65,7 +68,7 @@ export class NotificationPreferencesService {
   async isChannelEnabled(
     userId: string,
     notificationType: string,
-    channel: 'email' | 'push' | 'inApp',
+    channel: 'email' | 'push' | 'inApp' | 'sms',
   ): Promise<boolean> {
     const pref = await this.preferenceRepo.findOne({
       where: { userId, notificationType },
@@ -80,6 +83,8 @@ export class NotificationPreferencesService {
         return pref.pushEnabled;
       case 'inApp':
         return pref.inAppEnabled;
+      case 'sms':
+        return pref.smsEnabled;
       default:
         return true;
     }
@@ -95,6 +100,7 @@ export class NotificationPreferencesService {
         emailEnabled: true,
         pushEnabled: true,
         inAppEnabled: true,
+        smsEnabled: true,
       }),
     );
     return this.preferenceRepo.save(prefs);

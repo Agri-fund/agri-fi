@@ -10,12 +10,19 @@ import {
 } from './entities/notification.entity';
 
 import { Optional, Inject } from '@nestjs/common';
-import { PushNotificationService, PushPayload } from './push-notification.service';
+import {
+  PushNotificationService,
+  PushPayload,
+} from './push-notification.service';
+import { SmsProvider, SMS_PROVIDER_TOKEN } from './providers/sms.provider';
+import { SmsRateLimiterService } from './sms-rate-limiter.service';
+import { NotificationPreferencesService } from './notification-preferences.service';
 
 @Injectable()
 export class NotificationsService {
   private transporter: nodemailer.Transporter | null = null;
   private isEnabled: boolean;
+  private smsEnabled: boolean;
 
   constructor(
     private readonly configService: ConfigService,
@@ -24,11 +31,21 @@ export class NotificationsService {
     private readonly notificationRepo: Repository<NotificationEntity>,
     @Optional()
     private readonly pushNotificationService?: PushNotificationService,
+    @Optional()
+    @Inject(SMS_PROVIDER_TOKEN)
+    private readonly smsProvider?: SmsProvider,
+    @Optional()
+    private readonly smsRateLimiter?: SmsRateLimiterService,
+    @Optional()
+    private readonly notificationPreferencesService?: NotificationPreferencesService,
   ) {
     (this.logger as any).setContext(NotificationsService.name);
 
     this.isEnabled =
       this.configService.get<string>('NOTIFICATIONS_ENABLED') !== 'false';
+
+    this.smsEnabled =
+      this.configService.get<string>('NOTIFICATIONS_SMS_ENABLED') !== 'false';
 
     if (this.isEnabled) {
       this.transporter = nodemailer.createTransport({
@@ -49,9 +66,14 @@ export class NotificationsService {
     }
   }
 
-  async sendPush(userId: string, payload: PushPayload): Promise<{ sent: number; failed: number }> {
+  async sendPush(
+    userId: string,
+    payload: PushPayload,
+  ): Promise<{ sent: number; failed: number }> {
     if (!this.pushNotificationService) {
-      this.logger.debug(`PushNotificationService not available. Skipping push for user ${userId}`);
+      this.logger.debug(
+        `PushNotificationService not available. Skipping push for user ${userId}`,
+      );
       return { sent: 0, failed: 0 };
     }
     return this.pushNotificationService.sendPushNotification(userId, payload);
@@ -173,5 +195,76 @@ export class NotificationsService {
         'AUTH ***',
       )
       .replace(/[a-zA-Z0-9+/]{20,}=*/g, '***');
+  }
+
+  async sendSMS(
+    userId: string,
+    phone: string,
+    message: string,
+    metadata?: Record<string, unknown>,
+  ): Promise<void> {
+    if (!this.smsEnabled || !this.smsProvider) {
+      this.logger.info(
+        { phone: this.maskPhone(phone), userId },
+        `[Test Mode] Simulated sending SMS: "${message.substring(0, 50)}..."`,
+      );
+      return;
+    }
+
+    // Check daily rate limit
+    if (this.smsRateLimiter) {
+      const withinLimit = await this.smsRateLimiter.isWithinDailyLimit(userId);
+      if (!withinLimit) {
+        this.logger.warn(
+          { phone: this.maskPhone(phone), userId },
+          `SMS daily cap reached for user ${userId}`,
+        );
+        return;
+      }
+    }
+
+    // Check user preference
+    const notificationType = metadata?.notificationType as string;
+    if (
+      this.notificationPreferencesService &&
+      notificationType &&
+      !(await this.notificationPreferencesService.isChannelEnabled(
+        userId,
+        notificationType,
+        'sms',
+      ))
+    ) {
+      this.logger.debug(
+        { phone: this.maskPhone(phone), userId, notificationType },
+        `SMS notifications disabled for user ${userId}, type ${notificationType}`,
+      );
+      return;
+    }
+
+    try {
+      await this.smsProvider.sendSMS({
+        phone,
+        message,
+        metadata,
+      });
+
+      this.logger.info(
+        { phone: this.maskPhone(phone), userId },
+        `Successfully sent SMS to ${this.maskPhone(phone)}`,
+      );
+    } catch (error: any) {
+      const maskedPhone = this.maskPhone(phone);
+      const sanitisedError = this.sanitiseErrorMessage(error.message);
+      this.logger.error(
+        { phone: maskedPhone, userId, error: sanitisedError },
+        `Failed to send SMS to ${maskedPhone}: ${sanitisedError}`,
+      );
+      throw error;
+    }
+  }
+
+  private maskPhone(phone: string): string {
+    if (!phone || phone.length < 4) return '***';
+    return `***${phone.slice(-4)}`;
   }
 }

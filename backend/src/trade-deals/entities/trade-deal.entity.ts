@@ -26,7 +26,10 @@ export type TradeDealStatus =
   | 'expired';
 
 export type SettlementStatus =
-  'pending' | 'settling' | 'settled' | 'settlement_failed';
+  | 'pending'
+  | 'settling'
+  | 'settled'
+  | 'settlement_failed';
 
 @Entity('trade_deals')
 @Index(['farmerId', 'status'])
@@ -235,7 +238,6 @@ export class TradeDeal {
   })
   // `riskRating` was consolidated later in the file with the full enum
   // and larger varchar length. Keep a single declaration below.
-
   @Column({ name: 'farm_location', nullable: true })
   @ApiProperty({
     description: 'Textual farm location description',
@@ -406,6 +408,20 @@ export class TradeDeal {
   lotStep: number;
 
   @Column({
+    name: 'milestone_release_pct',
+    type: 'decimal',
+    precision: 5,
+    scale: 2,
+    default: 0,
+  })
+  @ApiProperty({
+    description:
+      'Percentage of 98% escrow pool to release per completed milestone (0 = release at completion only)',
+    example: 20,
+  })
+  milestoneReleasePct: number;
+
+  @Column({
     name: 'settlement_status',
     type: 'varchar',
     length: 32,
@@ -449,7 +465,8 @@ export class TradeDeal {
     nullable: true,
   })
   @ApiProperty({
-    description: 'Composite ESG score (0-100, higher = stronger impact/compliance)',
+    description:
+      'Composite ESG score (0-100, higher = stronger impact/compliance)',
     nullable: true,
     example: 84.5,
   })
