@@ -8,7 +8,7 @@ SELECT
     indexname,
     indexdef
 FROM pg_indexes 
-WHERE tablename IN ('investments', 'shipment_milestones', 'payment_distributions')
+WHERE tablename IN ('investments', 'shipment_milestones', 'payment_distributions', 'api_keys')
     AND indexname LIKE 'idx_%'
 ORDER BY tablename, indexname;
 
@@ -30,12 +30,18 @@ SELECT * FROM shipment_milestones
 WHERE trade_deal_id = '00000000-0000-0000-0000-000000000000'::uuid
 ORDER BY recorded_at ASC;
 
--- 5. Verify payment distribution queries use trade_deal_id index
+-- 5. Verify payment distribution queries use composite trade_deal_id + status index
 EXPLAIN (ANALYZE, BUFFERS)
 SELECT * FROM payment_distributions 
-WHERE trade_deal_id = '00000000-0000-0000-0000-000000000000'::uuid;
+WHERE trade_deal_id = '00000000-0000-0000-0000-000000000000'::uuid
+    AND status = 'confirmed';
 
--- 6. Verify dashboard queries use partial indexes
+-- 6. Verify API key prefix lookups use the prefix index
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT * FROM api_keys
+WHERE prefix = 'agfi_live_123456';
+
+-- 7. Verify dashboard queries use partial indexes
 EXPLAIN (ANALYZE, BUFFERS)
 SELECT * FROM trade_deals 
 WHERE status = 'open';
