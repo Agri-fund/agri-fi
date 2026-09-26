@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { PublicApiController } from './public-api.controller';
 import { TradeDealsService } from '../trade-deals/trade-deals.service';
 import { WebhooksService } from '../webhooks/webhooks.service';
-import { ApiKeyGuard } from '../auth/guards/api-key.guard';
+import { ApiKeyGuard } from '../common/guards';
 import { ApiKeyThrottlerGuard } from '../common/throttler/api-key-throttler.guard';
 
 describe('PublicApiController (Issue #1014)', () => {

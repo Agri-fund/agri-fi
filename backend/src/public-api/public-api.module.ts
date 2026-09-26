@@ -5,7 +5,7 @@ import { AuthModule } from '../auth/auth.module';
 import { TradeDealsModule } from '../trade-deals/trade-deals.module';
 import { WebhooksModule } from '../webhooks/webhooks.module';
 import { ApiKey } from '../auth/entities/api-key.entity';
-import { ApiKeyGuard } from '../auth/guards/api-key.guard';
+import { ApiKeyGuard } from '../common/guards';
 import { ApiKeyThrottlerGuard } from '../common/throttler/api-key-throttler.guard';
 
 @Module({

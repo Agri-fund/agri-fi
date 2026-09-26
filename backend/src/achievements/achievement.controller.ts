@@ -18,7 +18,7 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { AchievementService } from './achievement.service';
 import { BadgeType } from './entities/achievement.entity';
-import { RolesGuard } from '../auth/roles.guard';
+import { RolesGuard } from '../common/guards';
 import { Roles } from '../auth/decorators/roles.decorator';
 
 @ApiTags('achievements')

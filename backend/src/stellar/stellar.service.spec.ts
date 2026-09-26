@@ -475,6 +475,68 @@ describe('StellarService', () => {
         );
       });
     });
+
+    describe('stale fallback on Horizon error', () => {
+      it('should return stale cached status when Horizon errors and cache exists', async () => {
+        const mockCounter = { inc: jest.fn() };
+        (service as any).horizonStaleFallbackCounter = mockCounter;
+        (service as any).sequenceRedis = {
+          get: jest.fn().mockResolvedValue('success'),
+          setEx: jest.fn().mockResolvedValue('OK'),
+          isOpen: true,
+        };
+        Object.defineProperty((service as any).horizonClient, 'activeServer', {
+          get: () =>
+            makeHorizonServer(undefined, { response: { status: 503 } }),
+          configurable: true,
+        });
+
+        const status = await service.getTransactionStatus('cached-tx-with-horizon-error');
+
+        expect(status).toEqual({ status: 'success', stale: true });
+        expect(mockCounter.inc).toHaveBeenCalled();
+      });
+
+      it('should throw when Horizon errors and no cache exists', async () => {
+        const mockCounter = { inc: jest.fn() };
+        (service as any).horizonStaleFallbackCounter = mockCounter;
+        (service as any).sequenceRedis = {
+          get: jest.fn().mockResolvedValue(null),
+          setEx: jest.fn().mockResolvedValue('OK'),
+          isOpen: true,
+        };
+        Object.defineProperty((service as any).horizonClient, 'activeServer', {
+          get: () =>
+            makeHorizonServer(undefined, { response: { status: 503 } }),
+          configurable: true,
+        });
+
+        await expect(
+          service.getTransactionStatus('uncached-tx-with-horizon-error'),
+        ).rejects.toThrow();
+        expect(mockCounter.inc).not.toHaveBeenCalled();
+      });
+
+      it('should return stale failed status when Horizon errors and cache has failed', async () => {
+        const mockCounter = { inc: jest.fn() };
+        (service as any).horizonStaleFallbackCounter = mockCounter;
+        (service as any).sequenceRedis = {
+          get: jest.fn().mockResolvedValue('failed'),
+          setEx: jest.fn().mockResolvedValue('OK'),
+          isOpen: true,
+        };
+        Object.defineProperty((service as any).horizonClient, 'activeServer', {
+          get: () =>
+            makeHorizonServer(undefined, { response: { status: 503 } }),
+          configurable: true,
+        });
+
+        const status = await service.getTransactionStatus('cached-failed-tx-with-horizon-error');
+
+        expect(status).toEqual({ status: 'failed', stale: true });
+        expect(mockCounter.inc).toHaveBeenCalled();
+      });
+    });
   });
 
   describe('validateTransactionSignatures', () => {

@@ -17,7 +17,7 @@ import {
   ApiBearerAuth,
   ApiQuery,
 } from '@nestjs/swagger';
-import { KycGuard } from '../auth/kyc.guard';
+import { KycGuard } from '../common/guards';
 import {
   MarketplaceSettlementService,
   CreateSecondaryTradeDto,

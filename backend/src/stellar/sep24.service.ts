@@ -14,6 +14,7 @@ import {
   Sep24TxKind,
   Sep24TxStatus,
 } from './entities/sep24-transaction.entity';
+import { User } from '../auth/entities/user.entity';
 
 export interface Sep24InfoResponse {
   deposit: Record<string, Sep24AssetInfo>;
@@ -92,6 +93,8 @@ export class Sep24Service {
   constructor(
     @InjectRepository(Sep24Transaction)
     private readonly txRepo: Repository<Sep24Transaction>,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
     private readonly config: ConfigService,
     private readonly logger: PinoLogger,
   ) {
@@ -244,6 +247,11 @@ export class Sep24Service {
       return;
     }
 
+    // #984: For withdrawals, verify destination account ownership before completing
+    if (tx.kind === Sep24TxKind.WITHDRAW && status === Sep24TxStatus.COMPLETED) {
+      await this.verifyDestinationOwnership(tx);
+    }
+
     tx.status = status;
     if (payload.message) tx.message = payload.message;
     if (payload.amount_in) tx.amountIn = payload.amount_in;
@@ -260,6 +268,86 @@ export class Sep24Service {
     this.logger.info(
       { id: transaction_id, status },
       'SEP-24 transaction status updated via callback',
+    );
+  }
+
+  /**
+   * #984: Verify that the withdrawal destination account belongs to the authenticated user.
+   * This prevents forged-but-HMAC-valid callbacks from crediting foreign accounts.
+   *
+   * The destination must match either:
+   * 1. The user's linked wallet address (walletAddress in User entity)
+   * 2. An allowed institution address (configured via ALLOWED_INSTITUTION_ADDRS env var)
+   */
+  private async verifyDestinationOwnership(tx: Sep24Transaction): Promise<void> {
+    if (!tx.dest) {
+      this.logger.warn(
+        { id: tx.id },
+        'Withdrawal transaction has no destination address; skipping ownership check',
+      );
+      return;
+    }
+
+    // Get the user associated with this transaction
+    if (!tx.userId) {
+      this.logger.error(
+        { id: tx.id },
+        'Withdrawal transaction has no userId; cannot verify ownership',
+      );
+      throw new ForbiddenException(
+        'Cannot verify destination ownership: transaction has no associated user',
+      );
+    }
+
+    const user = await this.userRepo.findOne({ where: { id: tx.userId } });
+    if (!user) {
+      this.logger.error(
+        { id: tx.id, userId: tx.userId },
+        'User not found for withdrawal transaction',
+      );
+      throw new ForbiddenException(
+        'Cannot verify destination ownership: user not found',
+      );
+    }
+
+    // Check if destination matches user's linked wallet
+    if (tx.dest === user.walletAddress) {
+      tx.destinationVerified = true;
+      this.logger.info(
+        { id: tx.id, dest: tx.dest, userId: tx.userId },
+        'Destination account matches user wallet; ownership verified',
+      );
+      return;
+    }
+
+    // Check if destination is in allowed institution addresses
+    const allowedInstitutionAddrs = this.config
+      .get<string>('ALLOWED_INSTITUTION_ADDRS', '')
+      .split(',')
+      .map((addr) => addr.trim())
+      .filter(Boolean);
+
+    if (allowedInstitutionAddrs.includes(tx.dest)) {
+      tx.destinationVerified = true;
+      this.logger.info(
+        { id: tx.id, dest: tx.dest },
+        'Destination account is in allowed institution list; ownership verified',
+      );
+      return;
+    }
+
+    // Destination does not match user wallet or allowed institutions
+    this.logger.error(
+      {
+        id: tx.id,
+        dest: tx.dest,
+        userId: tx.userId,
+        userWallet: user.walletAddress,
+      },
+      'Destination account does not match user wallet or allowed institutions',
+    );
+    throw new ForbiddenException(
+      'Destination account does not belong to the authenticated user or allowed institutions',
     );
   }
 

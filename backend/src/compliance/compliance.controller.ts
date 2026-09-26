@@ -26,7 +26,7 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
-import { RolesGuard } from '../auth/roles.guard';
+import { RolesGuard } from '../common/guards';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { AuditInterceptor } from '../audit/audit.interceptor';
 import { ComplianceReportService } from './compliance-report.service';

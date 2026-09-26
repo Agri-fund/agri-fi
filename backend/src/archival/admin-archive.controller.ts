@@ -16,7 +16,7 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between } from 'typeorm';
-import { RolesGuard } from '../auth/roles.guard';
+import { RolesGuard } from '../common/guards';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { TradeDealArchive } from './entities/trade-deal-archive.entity';
 import { InvestmentArchive } from './entities/investment-archive.entity';

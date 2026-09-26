@@ -18,7 +18,7 @@ import {
   ApiSecurity,
   ApiParam,
 } from '@nestjs/swagger';
-import { ApiKeyGuard } from '../auth/guards/api-key.guard';
+import { ApiKeyGuard } from '../common/guards';
 import { ApiKeyThrottlerGuard } from '../common/throttler/api-key-throttler.guard';
 import { RequireApiKeyScopes } from '../auth/decorators/api-key-scopes.decorator';
 import { PublicDealQueryDto } from './dto/public-deal-query.dto';

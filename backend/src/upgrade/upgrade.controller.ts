@@ -15,7 +15,7 @@ import {
 } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { Roles } from '../auth/decorators/roles.decorator';
-import { RolesGuard } from '../auth/roles.guard';
+import { RolesGuard } from '../common/guards';
 import { UpgradeService } from './upgrade.service';
 import { IsString, MinLength } from 'class-validator';
 

@@ -3,7 +3,7 @@ import { ExecutionContext } from '@nestjs/common';
 import { TradeDealsController } from './trade-deals.controller';
 import { TradeDealsService } from './trade-deals.service';
 import { DealDeploymentService } from './deal-deployment.service';
-import { OptionalJwtGuard } from '../auth/optional-jwt.guard';
+import { OptionalJwtGuard } from '../common/guards';
 import { TradeDealsGuard } from './trade-deals.guard';
 
 const mockDeal = { id: 'deal-uuid', commodity: 'Cocoa', status: 'open' };

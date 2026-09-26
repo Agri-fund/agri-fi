@@ -37,7 +37,7 @@ import {
   ValidateIf,
 } from 'class-validator';
 import { Roles } from './decorators/roles.decorator';
-import { RolesGuard } from './roles.guard';
+import { RolesGuard } from '../common/guards';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
