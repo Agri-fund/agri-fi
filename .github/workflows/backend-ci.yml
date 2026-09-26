@@ -98,9 +98,14 @@ jobs:
         run: npm run check:env
         working-directory: backend
 
+      - name: Verify production seed safety
+        run: npm run check:seed-safety
+        working-directory: backend
+
       - name: Build
         run: npm run build
         working-directory: backend
+
 
       - name: Generate OpenAPI spec
         run: node generate-openapi.js

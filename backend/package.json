@@ -30,10 +30,9 @@
     "db:seed:batch": "ts-node -r tsconfig-paths/register scripts/batch-seed.ts",
     "queue:retry-dlq": "ts-node scripts/retry-dlq.ts",
     "check:env": "node scripts/check-env-coverage.js",
-    "pii:reencrypt": "ts-node -r tsconfig-paths/register scripts/reencrypt-pii.ts",
-    "pii:reencrypt:dry": "ts-node -r tsconfig-paths/register scripts/reencrypt-pii.ts --dry-run",
-    "pii:verify": "ts-node -r tsconfig-paths/register scripts/reencrypt-pii.ts --verify-only"
+    "check:seed-safety": "bash scripts/verify-seed-safety.sh"
   },
+
   "dependencies": {
     "@apollo/server": "^4.11.0",
     "@as-integrations/express5": "^1.0.0",

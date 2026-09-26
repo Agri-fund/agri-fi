@@ -51,17 +51,21 @@ scrape_configs:
       - targets:
           - localhost:9090
 
-  # ── Postgres exporter (#1037) ─────────────────────────────────────────────
-  # postgres_exporter exposes pg_stat_activity, pg_settings_max_connections,
-  # and replication lag metrics used by the agri_fi_database_pool alert group.
-  # In-cluster the exporter runs as a separate Deployment and is discovered via
-  # pod annotations; the static config below covers local docker-compose dev.
-  #
-  # Required env vars for the exporter:
-  #   DATA_SOURCE_NAME=postgresql://<user>:<pass>@agri-fi-postgres:5432/agric_onchain?sslmode=disable
-  - job_name: postgres_exporter
-    static_configs:
-      - targets:
-          - postgres-exporter:9187
-    metrics_path: /metrics
-    scrape_interval: 15s
+# ── Remote-Write Configuration (Thanos / Cortex / Grafana Cloud) ───────────
+# Mirrors all scraped metrics to a long-term storage backend for historical analysis.
+# Queue config is tuned for high throughput with backoff retries and buffering.
+remote_write:
+  - url: http://thanos-receive:19291/api/v1/receive
+    remote_timeout: 30s
+    queue_config:
+      capacity: 10000
+      max_shards: 10
+      min_shards: 1
+      max_samples_per_send: 2000
+      batch_send_deadline: 5s
+      min_backoff: 100ms
+      max_backoff: 5s
+    metadata_config:
+      send: true
+      send_interval: 1m
+
