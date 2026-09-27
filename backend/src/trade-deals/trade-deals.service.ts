@@ -647,7 +647,30 @@ export class TradeDealsService {
       signatureVerified: dto.signatureVerified ?? false,
     });
 
-    return this.documentRepo.save(doc);
+     return this.documentRepo.save(doc);
+  }
+
+  /**
+   * Retrieve a single document by id (used by the watermark regeneration
+   * flow — issue #1005).
+   */
+  async getDocument(documentId: string): Promise<Document | null> {
+    return this.documentRepo.findOne({ where: { id: documentId } });
+  }
+
+  /**
+   * Update the storage hash / URL of an existing document record.
+   * Used when a document is re-uploaded (e.g. watermarked regeneration).
+   */
+  async updateDocumentStorage(
+    documentId: string,
+    ipfsHash: string,
+    storageUrl: string,
+  ): Promise<void> {
+    await this.documentRepo.update(documentId, {
+      ipfsHash,
+      storageUrl,
+    });
   }
 
   async cancelDeal(dealId: string, traderId: string): Promise<TradeDeal> {

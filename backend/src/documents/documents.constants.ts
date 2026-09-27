@@ -1,0 +1,1 @@
+export const SIGNING_JWT_MODULE = 'SIGNING_JWT_MODULE';
