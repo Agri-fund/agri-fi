@@ -54,6 +54,21 @@ jobs:
           NEXT_PUBLIC_API_URL: https://api.example.invalid
           BACKEND_URL: https://api.example.invalid
 
+      - name: Audit raw auth-token storage access
+        # All auth-token reads/writes must go through src/lib/auth-token.ts (#975).
+        run: |
+          pattern="(local|session)Storage\.(get|set|remove)Item\(\s*['\"](auth_token|authToken|token)['\"]"
+          matches=$(grep -rnE "$pattern" src \
+            --include='*.ts' --include='*.tsx' \
+            | grep -vE '^src/lib/auth-token\.ts:|/__tests__/|\.(test|spec)\.tsx?:' || true)
+          if [ -n "$matches" ]; then
+            echo "$matches" | while IFS=: read -r file line _; do
+              echo "::error file=frontend/$file,line=$line::Use getAuthToken/setAuthToken/clearAuthToken from @/lib/auth-token instead of raw storage access."
+            done
+            exit 1
+          fi
+        working-directory: frontend
+
       - name: Notify on failure
         if: failure()
         run: |
@@ -112,3 +127,53 @@ jobs:
                 ]
               }' || true
           fi
+
+  investment-flow:
+    name: Frontend — unit + investment-flow E2E
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: frontend
+
+      - name: Unit tests (auth token, modal a11y)
+        run: >
+          pnpm exec vitest run
+          src/lib/__tests__/auth-token.test.ts
+          src/components/__tests__/ModalWrapper.test.tsx
+          src/components/__tests__/WalletSelectionModal.test.tsx
+          src/components/marketplace/__tests__/InvestmentModal.a11y.test.tsx
+        working-directory: frontend
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+        working-directory: frontend
+
+      - name: Investment-flow E2E (mocked Freighter/Albedo + backend, axe)
+        run: pnpm test:e2e:invest
+        working-directory: frontend
+        env:
+          CI: true
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: investment-flow-playwright-report
+          path: |
+            frontend/playwright-report
+            frontend/test-results
+          retention-days: 7

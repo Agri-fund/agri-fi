@@ -2,6 +2,7 @@
 
 import { useId } from 'react';
 import CopyButton from '@/components/ui/CopyButton';
+import { ModalWrapper } from '@/components/ui/ModalWrapper';
 
 export interface TxOperation {
   type?: string;
@@ -106,26 +107,25 @@ export default function TxReceiptModal({
       : 'https://horizon-testnet.stellar.org/transactions';
   const horizonUrl = `${horizonBaseUrl}/${encodeURIComponent(transaction.hash)}`;
 
-  if (!isOpen) return null;
-
   return (
-    <div
-      className="modal-overlay"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby={titleId}
-      onClick={(event) => event.target === event.currentTarget && onClose()}
+    <ModalWrapper
+      isOpen={isOpen}
+      onClose={onClose}
+      labelledBy={titleId}
+      unstyled
+      zIndexClassName="z-[110]"
+      className="modal-panel w-full max-w-lg max-h-[90vh] overflow-y-auto"
+      panelTestId="tx-receipt-modal"
     >
-      <div className="modal-panel w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="modal-header">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-emerald-600">Transaction complete</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-emerald-700">Transaction complete</p>
             <h2 id={titleId} className="text-lg font-bold text-slate-900">Stellar transaction receipt</h2>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-xl text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+            className="focus-ring flex h-8 w-8 items-center justify-center rounded-lg text-xl text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
             aria-label="Close transaction receipt"
           >
             ×
@@ -179,7 +179,7 @@ export default function TxReceiptModal({
               href={explorerUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="btn-secondary flex flex-1 items-center justify-center gap-2"
+              className="btn-secondary focus-ring flex flex-1 items-center justify-center gap-2"
             >
               StellarExpert
               <span aria-hidden="true">↗</span>
@@ -188,15 +188,14 @@ export default function TxReceiptModal({
               href={horizonUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="btn-secondary flex flex-1 items-center justify-center gap-2"
+              className="btn-secondary focus-ring flex flex-1 items-center justify-center gap-2"
             >
               Stellar Horizon
               <span aria-hidden="true">↗</span>
             </a>
           </div>
         </div>
-      </div>
-    </div>
+    </ModalWrapper>
   );
 }
 

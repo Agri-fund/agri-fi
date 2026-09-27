@@ -1,5 +1,6 @@
 "use client";
 
+import { getAuthToken } from "@/lib/auth-token";
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { apiClient, User } from "@/lib/api";
@@ -91,7 +92,7 @@ export default function SettingsPage() {
 
       // Fetch notification preferences
       try {
-        const token = localStorage.getItem("auth_token");
+        const token = getAuthToken();
         const notifRes = await fetch("/api/v1/users/me/notification-preferences", {
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -109,7 +110,7 @@ export default function SettingsPage() {
     setSaving(true);
     setSaveMsg(null);
     try {
-      const token = localStorage.getItem("auth_token");
+      const token = getAuthToken();
       const res = await fetch("/api/users/me", {
         method: "PATCH",
         headers: {
@@ -136,7 +137,7 @@ export default function SettingsPage() {
     setUnlinking(true);
     setUnlinkMsg(null);
     try {
-      const token = localStorage.getItem("auth_token");
+      const token = getAuthToken();
       const res = await fetch("/api/users/me/wallet", {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
@@ -156,7 +157,7 @@ export default function SettingsPage() {
     setSavingCurrency(true);
     setCurrencyMsg(null);
     try {
-      const token = localStorage.getItem("auth_token");
+      const token = getAuthToken();
       const res = await fetch("/api/users/me", {
         method: "PATCH",
         headers: {
@@ -192,7 +193,7 @@ export default function SettingsPage() {
     setSavingNotif(true);
     setNotifMsg(null);
     try {
-      const token = localStorage.getItem("auth_token");
+      const token = getAuthToken();
       const res = await fetch("/api/v1/users/me/notification-preferences", {
         method: "PATCH",
         headers: {

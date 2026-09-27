@@ -1,5 +1,6 @@
 'use client';
 
+import { getAuthToken } from '@/lib/auth-token';
 import { useCallback, useState, useRef, type ReactNode } from 'react';
 import { useDropzone, FileRejection } from 'react-dropzone';
 
@@ -74,7 +75,7 @@ export function ChunkedUpload({
     formData.append('docType', docType);
     formData.append('tradeDealId', tradeDealId);
 
-    const token = localStorage.getItem('auth_token');
+    const token = getAuthToken();
     const res = await fetch('http://localhost:3001/v1/documents/upload-chunk', {
       method: 'POST',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -148,7 +149,7 @@ export function ChunkedUpload({
         prev.map((u) => (u.fileId === fileId ? { ...u, status: 'assembling', progress: 100 } : u)),
       );
 
-      const token = localStorage.getItem('auth_token');
+      const token = getAuthToken();
       const res = await fetch('http://localhost:3001/v1/documents/upload-complete', {
         method: 'POST',
         headers: {

@@ -1,5 +1,6 @@
 'use client';
 
+import { getAuthToken } from '@/lib/auth-token';
 import React, { useState, useEffect, useCallback } from 'react';
 
 interface Milestone {
@@ -48,7 +49,7 @@ export const ShipmentTimeline: React.FC<ShipmentTimelineProps> = ({
   const fetchMilestones = useCallback(async () => {
     try {
       setLoading(true); setError(null);
-      const token = localStorage.getItem('auth_token');
+      const token = getAuthToken();
       if (!token) throw new Error('Authentication required');
       const res = await fetch(`/api/shipments/${tradeDealId}`, {
         headers: { Authorization: `Bearer ${token}` },

@@ -1,3 +1,5 @@
+import { getAuthToken, setAuthToken, clearAuthToken } from "./auth-token";
+
 const API_BASE = "http://localhost:3001";
 const API_VERSION = "/v1";
 
@@ -283,8 +285,7 @@ function normalizeDeal(raw: any): Deal {
 // ── Auth-aware fetch helper ───────────────────────────────────────────────────
 
 export function getStoredToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem("auth_token");
+  return getAuthToken();
 }
 
 function authHeaders(): Record<string, string> {
@@ -327,7 +328,7 @@ export const apiClient = {
         body: JSON.stringify({ email, password }),
       },
     );
-    localStorage.setItem("auth_token", accessToken);
+    setAuthToken(accessToken);
     return accessToken;
   },
 
@@ -339,12 +340,12 @@ export const apiClient = {
   },
 
   setAuth(token: string, user: User) {
-    localStorage.setItem("auth_token", token);
+    setAuthToken(token);
     localStorage.setItem("auth_user", JSON.stringify(user));
   },
 
   clearAuth() {
-    localStorage.removeItem("auth_token");
+    clearAuthToken();
     localStorage.removeItem("auth_user");
   },
 

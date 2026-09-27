@@ -1,13 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useWallet } from '../hooks/useWallet';
+import { useState, useEffect, useRef } from 'react';
+import { useWallet, WalletProvider } from '../hooks/useWallet';
 import { useTransactionProgress } from '../hooks/useTransactionProgress';
 import { getStoredToken } from '../lib/api';
 import { useToast } from './ui/ToastProvider';
 import { OnChainProgressIndicator } from './OnChainProgressIndicator';
 import { useCurrencyFormat } from '../hooks/useCurrencyFormat';
 import { useNumberFormat } from '../hooks/useNumberFormat';
+import { WalletSelectionModal } from './wallet/WalletSelectionModal';
+import TxReceiptModal from './wallet/TxReceiptModal';
 
 interface InvestmentFormProps {
   dealId: string;
@@ -20,6 +22,8 @@ interface InvestmentFormProps {
   onSuccess?: (investment: any) => void;
   onError?: (error: string) => void;
   onQuantityChange?: (quantity: number) => void;
+  /** Reports whether a transaction is in flight so a parent modal can block dismissal. */
+  onBusyChange?: (busy: boolean) => void;
 }
 
 interface InvestmentResponse {
@@ -48,9 +52,18 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
   onSuccess,
   onError,
   onQuantityChange,
+  onBusyChange,
 }) => {
   const { toast, promise } = useToast();
-  const { isConnected, publicKey, signTransaction } = useWallet();
+  const {
+    isConnected,
+    publicKey,
+    signTransaction,
+    connect,
+    availableWallets,
+    configuredNetwork,
+    detectedNetwork,
+  } = useWallet();
   const txProgress = useTransactionProgress();
   const { formatCurrency } = useCurrencyFormat();
   const { formatNumber } = useNumberFormat();
@@ -60,6 +73,46 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
   const [success, setSuccess] = useState<SuccessState | null>(null);
   const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null);
   const [showProgress, setShowProgress] = useState(false);
+  const [showWalletModal, setShowWalletModal] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [connectError, setConnectError] = useState<string | null>(null);
+  const [showReceipt, setShowReceipt] = useState(false);
+  const stepHeadingRef = useRef<HTMLHeadingElement>(null);
+
+  useEffect(() => {
+    onBusyChange?.(isSubmitting);
+  }, [isSubmitting, onBusyChange]);
+
+  const view: 'connect' | 'progress' | 'success' | 'form' = !isConnected
+    ? 'connect'
+    : showProgress && txProgress.state !== 'confirmed'
+      ? 'progress'
+      : success
+        ? 'success'
+        : 'form';
+
+  // Keyboard/screen-reader users lose their place when the submit button
+  // unmounts, so move focus to the heading of each new step.
+  const previousView = useRef(view);
+  useEffect(() => {
+    if (previousView.current !== view && (view === 'progress' || view === 'success')) {
+      stepHeadingRef.current?.focus();
+    }
+    previousView.current = view;
+  }, [view]);
+
+  const handleConnectWallet = async (provider: WalletProvider) => {
+    setConnectError(null);
+    setIsConnecting(true);
+    try {
+      await connect(provider);
+      setShowWalletModal(false);
+    } catch (err) {
+      setConnectError(err instanceof Error ? err.message : 'Failed to connect wallet');
+    } finally {
+      setIsConnecting(false);
+    }
+  };
 
   // Cleanup polling interval on unmount
   useEffect(() => {
@@ -258,20 +311,46 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
     setPollingInterval(interval);
   };
 
-  if (!isConnected) {
-    return (
-      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+  const stepAnnouncement =
+    view === 'progress'
+      ? txProgress.state === 'simulating'
+        ? 'Step 1 of 3: preparing your investment.'
+        : 'Step 2 of 3: approve the transaction in your wallet. It will be submitted to the Stellar network once signed.'
+      : view === 'success' && success
+        ? success.isQueued
+          ? 'Step 3 of 3: investment submitted and queued for confirmation.'
+          : 'Step 3 of 3: investment confirmed on the Stellar network.'
+        : '';
+
+  let body: React.ReactNode;
+
+  if (view === 'connect') {
+    body = (
+      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 space-y-3">
         <p className="text-yellow-800 text-sm">
           Please connect your Stellar wallet to invest in this deal.
         </p>
+        <button
+          type="button"
+          data-autofocus
+          onClick={() => setShowWalletModal(true)}
+          className="focus-ring w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-md font-medium transition-colors"
+        >
+          Connect wallet
+        </button>
       </div>
     );
-  }
-
-  // Show progress indicator while transaction is in-flight
-  if (showProgress && txProgress.state !== 'confirmed') {
-    return (
+  } else if (view === 'progress') {
+    // Show progress indicator while transaction is in-flight
+    body = (
       <div className="space-y-4">
+        <h3
+          ref={stepHeadingRef}
+          tabIndex={-1}
+          className="text-base font-semibold text-slate-900 outline-none"
+        >
+          {txProgress.state === 'simulating' ? 'Preparing investment…' : 'Waiting for wallet signature…'}
+        </h3>
         <OnChainProgressIndicator
           state={txProgress.state}
           txHash={txProgress.txHash ?? undefined}
@@ -281,22 +360,24 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
         </p>
       </div>
     );
-  }
-
-  if (success) {
-    return (
-      <div className="space-y-4">
+  } else if (view === 'success' && success) {
+    const confirmedHash =
+      success.transactionId !== 'Processing... (queued)'
+        ? success.transactionId
+        : txProgress.txHash ?? undefined;
+    body = (
+      <div className="space-y-4" data-testid="investment-receipt">
         {/* Show the progress indicator in confirmed state */}
         {txProgress.state === 'confirmed' && (
           <OnChainProgressIndicator
             state="confirmed"
-            txHash={success.transactionId !== 'Processing... (queued)' ? success.transactionId : txProgress.txHash ?? undefined}
+            txHash={confirmedHash}
           />
         )}
         
         <div className={`${success.isQueued ? 'bg-blue-50 border-blue-200' : 'bg-green-50 border-green-200'} border rounded-lg p-6`}>
           <div className="flex items-center mb-4">
-            <div className={`w-8 h-8 ${success.isQueued ? 'bg-blue-500' : 'bg-green-500'} rounded-full flex items-center justify-center mr-3`}>
+            <div className={`w-8 h-8 ${success.isQueued ? 'bg-blue-500' : 'bg-green-500'} rounded-full flex items-center justify-center mr-3`} aria-hidden="true">
               {success.isQueued ? (
                 <svg className="w-5 h-5 text-white animate-spin" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -308,7 +389,11 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
                 </svg>
               )}
             </div>
-            <h3 className={`text-lg font-semibold ${success.isQueued ? 'text-blue-800' : 'text-green-800'}`}>
+            <h3
+              ref={stepHeadingRef}
+              tabIndex={-1}
+              className={`text-lg font-semibold outline-none ${success.isQueued ? 'text-blue-800' : 'text-green-800'}`}
+            >
               {success.isQueued ? 'Investment Processing...' : 'Investment Successful!'}
             </h3>
           </div>
@@ -330,22 +415,40 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
             )}
           </div>
           
-          <button
-            onClick={() => {
-              setSuccess(null);
-              setShowProgress(false);
-              txProgress.reset();
-            }}
-            className={`mt-4 text-sm ${success.isQueued ? 'text-blue-600 hover:text-blue-800' : 'text-green-600 hover:text-green-800'} underline`}
-          >
-            Make Another Investment
-          </button>
+          <div className="mt-4 flex flex-wrap items-center gap-4">
+            {!success.isQueued && confirmedHash && (
+              <button
+                type="button"
+                onClick={() => setShowReceipt(true)}
+                className="focus-ring text-sm font-medium text-green-800 underline rounded"
+              >
+                View receipt
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setSuccess(null);
+                setShowProgress(false);
+                txProgress.reset();
+              }}
+              className={`focus-ring text-sm ${success.isQueued ? 'text-blue-700 hover:text-blue-800' : 'text-green-700 hover:text-green-800'} underline rounded`}
+            >
+              Make Another Investment
+            </button>
+          </div>
         </div>
+
+        {showReceipt && confirmedHash && (
+          <TxReceiptModal
+            transaction={{ hash: confirmedHash, createdAt: new Date() }}
+            onClose={() => setShowReceipt(false)}
+          />
+        )}
       </div>
     );
-  }
-
-  return (
+  } else {
+    body = (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
         <label htmlFor="tokenQuantity" className="block text-sm font-medium text-gray-700 mb-2">
@@ -357,13 +460,14 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
             aria-label="Decrease lot size"
             onClick={() => adjustLot(-1)}
             disabled={isSubmitting || safeQuantity <= minTokens}
-            className="w-10 h-10 flex items-center justify-center border border-gray-300 rounded-md text-lg font-semibold hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="focus-ring w-10 h-10 flex items-center justify-center border border-gray-300 rounded-md text-lg font-semibold hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             &minus;
           </button>
           <input
             type="number"
             id="tokenQuantity"
+            data-autofocus
             min={minTokens}
             step={tokensPerLot}
             max={maxTokens}
@@ -374,6 +478,7 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
               setTokenQuantity(isNaN(val) ? '' : val);
               onQuantityChange?.(qty);
             }}
+            aria-describedby="tokenQuantity-hint"
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-center"
             disabled={isSubmitting}
           />
@@ -382,12 +487,12 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
             aria-label="Increase lot size"
             onClick={() => adjustLot(1)}
             disabled={isSubmitting || safeQuantity + tokensPerLot > maxTokens}
-            className="w-10 h-10 flex items-center justify-center border border-gray-300 rounded-md text-lg font-semibold hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="focus-ring w-10 h-10 flex items-center justify-center border border-gray-300 rounded-md text-lg font-semibold hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             +
           </button>
         </div>
-        <p className="text-xs text-gray-500 mt-1">
+        <p id="tokenQuantity-hint" className="text-xs text-gray-500 mt-1">
           Maximum available: {formatNumber(maxTokens)} tokens
         </p>
       </div>
@@ -412,7 +517,7 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-md p-3">
+        <div role="alert" className="bg-red-50 border border-red-200 rounded-md p-3">
           <p className="text-red-800 text-sm">{error}</p>
         </div>
       )}
@@ -420,7 +525,7 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
       <button
         type="submit"
         disabled={isSubmitting || safeQuantity < minTokens || safeQuantity > maxTokens}
-        className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white py-2 px-4 rounded-md font-medium transition-colors"
+        className="focus-ring w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white py-2 px-4 rounded-md font-medium transition-colors"
       >
         {isSubmitting ? 'Processing Investment...' : `Invest ${formatCurrency(totalAmount, 'USD')}`}
       </button>
@@ -429,5 +534,29 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
         This will open Freighter to sign the transaction. Make sure you&apos;re on Stellar testnet.
       </p>
     </form>
+    );
+  }
+
+  return (
+    <>
+      {/* Persistent live region: mounted once so step changes are announced. */}
+      <p role="status" aria-live="polite" aria-atomic="true" className="sr-only" data-testid="investment-step-announcer">
+        {stepAnnouncement}
+      </p>
+      {body}
+      <WalletSelectionModal
+        isOpen={view === 'connect' && showWalletModal}
+        onClose={() => {
+          setShowWalletModal(false);
+          setConnectError(null);
+        }}
+        onConnect={handleConnectWallet}
+        availableWallets={availableWallets ?? []}
+        isConnecting={isConnecting}
+        error={connectError}
+        expectedNetwork={configuredNetwork}
+        detectedNetwork={detectedNetwork}
+      />
+    </>
   );
 };
