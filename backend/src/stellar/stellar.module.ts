@@ -20,6 +20,9 @@ import { EscrowReleaseService } from './escrow-release.service';
 import { InvestmentTxService } from './investment-tx.service';
 import { AnchorsService } from './anchors.service';
 import { StellarQueriesService } from './stellar-queries.service';
+import { UnrecognisedPayment } from './entities/unrecognised-payment.entity';
+import { Investment } from '../investments/entities/investment.entity';
+import { AccountMergeRecovery } from './entities/account-merge-recovery.entity';
 
 const redisClientFactory = {
   provide: PRICE_REDIS_CLIENT,
@@ -55,6 +58,9 @@ const sequenceRedisClientFactory = {
       Sep24Transaction,
       User,
       KycSubmission,
+      UnrecognisedPayment,
+      Investment,
+      AccountMergeRecovery,
     ]),
   ],
   providers: [
@@ -75,8 +81,6 @@ const sequenceRedisClientFactory = {
     fxRedisClientFactory,
     sequenceRedisClientFactory,
     KmsService,
-    StellarArchiverService,
-    StellarMonitorService,
   ],
   exports: [
     StellarService,
