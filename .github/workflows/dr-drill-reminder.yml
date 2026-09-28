@@ -1,0 +1,35 @@
+name: Quarterly disaster-recovery drill reminder
+
+on:
+  schedule:
+    - cron: '0 9 1 1,4,7,10 *'
+
+permissions:
+  issues: write
+
+jobs:
+  create-reminder:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create quarterly DR drill issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const quarter = new Date().toISOString().slice(0, 10);
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Quarterly disaster-recovery drill (${quarter})`,
+              body: [
+                'Run the staging multi-region disaster-recovery drill.',
+                '',
+                '- [ ] Record Route 53 health detection time.',
+                '- [ ] Record RDS and Redis promotion completion times.',
+                '- [ ] Run a write-load test and measure recovered-write loss.',
+                '- [ ] Record worker readiness, application recovery, and DNS convergence.',
+                '- [ ] Confirm measured RTO is under 15 minutes and measured RPO under 1 minute.',
+                '- [ ] Document issues and follow-up actions.',
+                '',
+                'Run only in staging; do not fail over production for this drill.'
+              ].join('\n')
+            });
