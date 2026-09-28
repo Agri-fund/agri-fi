@@ -1,5 +1,54 @@
 'use client';
 
+// =============================================================================
+// Issue #979 — quality(frontend): Consolidate date formatting via useDateFormat
+// https://github.com/Agri-fund/agri-fi/issues/979
+//
+// ─── AFFECTED CODE IN THIS FILE ──────────────────────────────────────────────
+//
+// The `formatShortDate` helper defined at the module level (around line 63):
+//
+//   function formatShortDate(date: string) {
+//     const value = new Date(date);
+//     if (Number.isNaN(value.getTime())) return date;
+//     return value.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+//   }
+//
+// This is a plain function — it is called both inside the Recharts
+// XAxis `tickFormatter` and inside the Tooltip `labelFormatter`.
+// Because it calls toLocaleDateString(undefined, ...) it uses the
+// browser's default locale, not the active next-intl locale.
+//
+// ─── REQUIRED CHANGE ─────────────────────────────────────────────────────────
+//
+// Since this is a client component, the useDateFormat hook can be used.
+// The refactor requires moving the formatting call inside the component
+// so the hook's locale is in scope:
+//
+//   // 1. Import the hook
+//   import { useDateFormat } from '@/hooks/useDateFormat';
+//
+//   // 2. Inside the ReferralDashboard component body:
+//   const { formatDate } = useDateFormat();
+//
+//   // 3. Replace the module-level formatShortDate function calls:
+//   // BEFORE (in XAxis tickFormatter and Tooltip labelFormatter):
+//   tickFormatter={formatShortDate}
+//   labelFormatter={(label) => formatShortDate(String(label))}
+//
+//   // AFTER:
+//   tickFormatter={(date) => formatDate(date, { month: 'short', day: 'numeric' })}
+//   labelFormatter={(label) => formatDate(String(label), { month: 'short', day: 'numeric' })}
+//
+//   // 4. Delete the module-level formatShortDate function entirely.
+//
+// Note: the Recharts Tooltip labelFormatter receives either a string or
+// number depending on the dataKey type.  Wrapping in String() before
+// passing to formatDate() is safe — useDateFormat's formatDate() accepts
+// Date | string | number.
+//
+// =============================================================================
+
 import {
   Bar,
   BarChart,

@@ -1,5 +1,53 @@
 'use client';
 
+// =============================================================================
+// Issue #979 — quality(frontend): Consolidate date formatting via useDateFormat
+// https://github.com/Agri-fund/agri-fi/issues/979
+//
+// ─── AFFECTED LINES IN THIS FILE ─────────────────────────────────────────────
+//
+// This component contains two inline date calls that bypass the active locale:
+//
+//   Line ~137 (milestone timestamp in the standard sequence):
+//     new Date(m.recordedAt).toLocaleDateString('en', {
+//       month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+//     })
+//
+//   Line ~165 (timestamp for extra / non-standard milestones):
+//     new Date(m.recordedAt).toLocaleDateString()
+//
+// Both hardcode 'en' or use the browser default locale instead of the
+// next-intl active locale.  For French (fr) or Swahili (sw) users these
+// produce English-formatted dates.
+//
+// ─── REQUIRED CHANGE ─────────────────────────────────────────────────────────
+//
+//   // 1. Import the hook at the top of the file
+//   import { useDateFormat } from '@/hooks/useDateFormat';
+//
+//   // 2. Destructure inside the component body
+//   const { formatDate } = useDateFormat();
+//
+//   // 3. Replace line ~137
+//   // BEFORE:
+//   {new Date(m.recordedAt).toLocaleDateString('en', {
+//     month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+//   })}
+//
+//   // AFTER (also uses formatDateTime once the hook is extended per #979):
+//   {formatDate(m.recordedAt, { month: 'short', day: 'numeric',
+//                               hour: '2-digit', minute: '2-digit' })}
+//
+//   // 4. Replace line ~165
+//   // BEFORE:
+//   {new Date(m.recordedAt).toLocaleDateString()}
+//
+//   // AFTER:
+//   {formatDate(m.recordedAt)}
+//
+// No other logic in this file needs to change.
+// =============================================================================
+
 import { getAuthToken } from '@/lib/auth-token';
 import React, { useState, useEffect, useCallback } from 'react';
 

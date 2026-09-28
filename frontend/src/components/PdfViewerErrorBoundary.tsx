@@ -1,5 +1,57 @@
 'use client';
 
+// =============================================================================
+// Issue #978 — perf(frontend): lazy-load PDF viewer + bundle budget
+// https://github.com/Agri-fund/agri-fi/issues/978
+//
+// ─── ROLE OF THIS FILE ───────────────────────────────────────────────────────
+//
+// PdfViewerErrorBoundary wraps <PdfViewer> and catches any uncaught runtime
+// exceptions thrown by react-pdf / pdf.js during rendering (WASM init errors,
+// corrupted PDF streams, memory allocation failures, etc.).
+//
+// ─── REQUIRED CHANGE FOR #978 ────────────────────────────────────────────────
+//
+// Because PdfViewer will be loaded via next/dynamic (ssr: false), this boundary
+// will only ever execute in the browser.  However, to be explicit and safe
+// against any future SSR regression, add a server-side null-guard at the top
+// of the render() method:
+//
+//   public render() {
+//     // Guard: this component should never run server-side after the
+//     // next/dynamic migration (ssr: false), but be explicit for safety.
+//     if (typeof window === 'undefined') return null;
+//
+//     const { caught, error } = this.state;
+//     // ... rest of render
+//   }
+//
+// This ensures that if the component is ever accidentally server-rendered
+// (e.g. via generateMetadata or a route that bypasses the dynamic flag),
+// the boundary returns null instead of trying to access browser-only APIs.
+//
+// ─── USAGE PATTERN (post #978 fix) ───────────────────────────────────────────
+//
+//   import dynamic from 'next/dynamic';
+//   import { PdfViewerErrorBoundary } from '@/components/PdfViewerErrorBoundary';
+//
+//   // Only the inner viewer is lazy-loaded; the boundary can stay static
+//   // because it renders nothing until the viewer throws.
+//   const PdfViewer = dynamic(
+//     () => import('@/components/PdfViewer').then(m => ({ default: m.PdfViewer })),
+//     { ssr: false }
+//   );
+//
+//   // In JSX:
+//   <PdfViewerErrorBoundary url={url} fileName={fileName} onError={captureException}>
+//     <PdfViewer url={url} fileName={fileName} isSensitive={isSensitive} />
+//   </PdfViewerErrorBoundary>
+//
+// The boundary itself is lightweight (no pdf.js dependency) so it can remain
+// a static import without contributing meaningfully to bundle size.
+//
+// =============================================================================
+
 /**
  * PdfViewerErrorBoundary
  *

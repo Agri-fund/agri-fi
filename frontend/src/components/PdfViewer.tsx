@@ -1,5 +1,55 @@
 'use client';
 
+// =============================================================================
+// Issue #978 — perf(frontend): lazy-load PDF viewer + bundle budget
+// https://github.com/Agri-fund/agri-fi/issues/978
+//
+// ─── WHY THIS FILE MATTERS ───────────────────────────────────────────────────
+//
+// This component is the react-pdf (PDF.js / WASM) rendering engine.
+// pdfjs-dist is ~670 KB minified and is the single largest dependency in the
+// frontend bundle.  It must NEVER be part of the initial JS payload.
+//
+// ─── WHAT NEEDS TO CHANGE ────────────────────────────────────────────────────
+//
+// Every import site of this component must be converted from a static import
+// to a next/dynamic import with `ssr: false`.
+//
+// Pattern to apply at every call site (pages / parent components):
+//
+//   // BEFORE
+//   import { PdfViewer } from '@/components/PdfViewer';
+//
+//   // AFTER
+//   import dynamic from 'next/dynamic';
+//   const PdfViewer = dynamic(
+//     () => import('@/components/PdfViewer').then(m => ({ default: m.PdfViewer })),
+//     { ssr: false, loading: () => <PdfViewerSkeleton /> }
+//   );
+//
+// This component itself does NOT need to change its own internal logic.
+// The fix is purely at the import site (caller responsibility).
+//
+// ─── SSR SAFETY ──────────────────────────────────────────────────────────────
+//
+// With `ssr: false` on the dynamic import, Next.js guarantees this component
+// is never executed during server-side rendering.  The `useWasmSupport` hook
+// already guards against SSR by returning `null` on first render, which
+// renders <DetectionSkeleton> — safe in all environments.
+//
+// ─── BUNDLE VERIFICATION ─────────────────────────────────────────────────────
+//
+// After the dynamic import change, run `next build` and confirm:
+//   1. No "pdfjs-dist" chunk appears in the _app or main chunk.
+//   2. A separate async chunk containing "pdfjs-dist" is created
+//      (visible in .next/static/chunks/).
+//   3. The CI bundle-budget script (scripts/check-bundle-size.mjs) passes.
+//
+// See ui/PdfViewer.tsx for the full implementation plan including the CI
+// bundle-budget step.
+//
+// =============================================================================
+
 /**
  * PdfViewer – cross-browser PDF viewer with graceful iOS Safari fallback.
  *
