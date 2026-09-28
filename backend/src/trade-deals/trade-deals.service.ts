@@ -7,7 +7,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository, QueryRunner } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { PinoLogger } from 'nestjs-pino';
 import { TradeDeal, TradeDealStatus } from './entities/trade-deal.entity';
 import { Document, DocumentType } from './entities/document.entity';
@@ -32,8 +32,10 @@ const VALID_DOC_TYPES: DocumentType[] = [
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
 const PUBLIC_STATUSES: TradeDealStatus[] = ['open', 'funded'];
 
-type DealSearchSortBy = 'newest' | 'highest_roi' | 'closing_soon' | 'most_funded';
-type DealDurationBucket = '<3 months' | '3-6 months' | '6-12 months' | '>12 months';
+type DealSearchSortBy =
+  'newest' | 'highest_roi' | 'closing_soon' | 'most_funded';
+type DealDurationBucket =
+  '<3 months' | '3-6 months' | '6-12 months' | '>12 months';
 
 export interface TradeDealSearchQuery {
   commodity?: string;
@@ -51,7 +53,9 @@ export interface TradeDealSearchQuery {
   q?: string;
 }
 
-function bucketToDayRange(bucket?: DealDurationBucket): [number, number] | null {
+function bucketToDayRange(
+  bucket?: DealDurationBucket,
+): [number, number] | null {
   if (!bucket) return null;
   if (bucket === '<3 months') return [0, 90];
   if (bucket === '3-6 months') return [91, 180];
@@ -182,7 +186,7 @@ export class TradeDealsService {
       issuerPublicKey: null,
       issuerSecretKey: null,
       stellarAssetTxId: null,
-    });
+    } as any);
 
     const savedDeal = await this.tradeDealRepo.save(tradeDeal);
 
@@ -195,7 +199,10 @@ export class TradeDealsService {
 
     // #828 — compute initial risk score (non-blocking)
     this.riskScoringService.computeAndPersist(saved.id).catch((err) => {
-      this.logger.warn({ dealId: saved.id, error: err.message }, 'Failed to compute initial risk score');
+      this.logger.warn(
+        { dealId: saved.id, error: err.message },
+        'Failed to compute initial risk score',
+      );
     });
 
     return saved;
@@ -211,8 +218,10 @@ export class TradeDealsService {
     maxRoi?: number;
     duration?: DealDurationBucket;
     riskRating?: 'Low' | 'Medium' | 'High';
+    minEsgScore?: number;
+    esgRating?: string;
     status?: 'open' | 'almost funded' | 'fully funded';
-    sortBy?: DealSearchSortBy;
+    sortBy?: DealSearchSortBy | 'highest_esg';
     q?: string;
     page?: number;
     limit?: number;
@@ -252,6 +261,12 @@ export class TradeDealsService {
         'deal.traderId',
         'deal.riskScore',
         'deal.riskRating',
+        'deal.esgScore',
+        'deal.environmentalScore',
+        'deal.socialScore',
+        'deal.governanceScore',
+        'deal.esgRating',
+        'deal.esgStatus',
       ])
       .skip(skip)
       .take(limit);
@@ -267,24 +282,30 @@ export class TradeDealsService {
     }
 
     if (query.country) {
-      qb.andWhere('LOWER(COALESCE(deal.country, \'\')) LIKE LOWER(:country)', {
+      qb.andWhere("LOWER(COALESCE(deal.country, '')) LIKE LOWER(:country)", {
         country: `%${query.country}%`,
       });
     }
 
     if (query.region) {
-      qb.andWhere('LOWER(COALESCE(deal.region, \'\')) LIKE LOWER(:region)', {
+      qb.andWhere("LOWER(COALESCE(deal.region, '')) LIKE LOWER(:region)", {
         region: `%${query.region}%`,
       });
     }
 
-    if (typeof query.minAmount === 'number' && Number.isFinite(query.minAmount)) {
+    if (
+      typeof query.minAmount === 'number' &&
+      Number.isFinite(query.minAmount)
+    ) {
       qb.andWhere('COALESCE(deal.min_investment_lot, 0) >= :minAmount', {
         minAmount: query.minAmount,
       });
     }
 
-    if (typeof query.maxAmount === 'number' && Number.isFinite(query.maxAmount)) {
+    if (
+      typeof query.maxAmount === 'number' &&
+      Number.isFinite(query.maxAmount)
+    ) {
       qb.andWhere('COALESCE(deal.min_investment_lot, 0) <= :maxAmount', {
         maxAmount: query.maxAmount,
       });
@@ -338,17 +359,39 @@ export class TradeDealsService {
       );
     }
 
+    if (typeof query.minEsgScore === 'number' && Number.isFinite(query.minEsgScore)) {
+      qb.andWhere('COALESCE(deal.esg_score, 0) >= :minEsgScore', {
+        minEsgScore: query.minEsgScore,
+      });
+    }
+
+    if (query.esgRating) {
+      qb.andWhere('deal.esg_rating = :esgRating', {
+        esgRating: query.esgRating,
+      });
+    }
+
     switch (query.sortBy) {
+      case 'highest_esg':
+        qb.orderBy('COALESCE(deal.esg_score, 0)', 'DESC').addOrderBy(
+          'deal.created_at',
+          'DESC',
+        );
+        break;
       case 'highest_roi':
-        qb.orderBy('COALESCE(deal.expected_roi, 0)', 'DESC')
-          .addOrderBy('deal.created_at', 'DESC');
+        qb.orderBy('COALESCE(deal.expected_roi, 0)', 'DESC').addOrderBy(
+          'deal.created_at',
+          'DESC',
+        );
         break;
       case 'closing_soon':
         qb.orderBy('deal.delivery_date', 'ASC');
         break;
       case 'most_funded':
-        qb.orderBy('deal.total_invested', 'DESC')
-          .addOrderBy('deal.created_at', 'DESC');
+        qb.orderBy('deal.total_invested', 'DESC').addOrderBy(
+          'deal.created_at',
+          'DESC',
+        );
         break;
       case 'newest':
       default:
@@ -604,7 +647,30 @@ export class TradeDealsService {
       signatureVerified: dto.signatureVerified ?? false,
     });
 
-    return this.documentRepo.save(doc);
+     return this.documentRepo.save(doc);
+  }
+
+  /**
+   * Retrieve a single document by id (used by the watermark regeneration
+   * flow — issue #1005).
+   */
+  async getDocument(documentId: string): Promise<Document | null> {
+    return this.documentRepo.findOne({ where: { id: documentId } });
+  }
+
+  /**
+   * Update the storage hash / URL of an existing document record.
+   * Used when a document is re-uploaded (e.g. watermarked regeneration).
+   */
+  async updateDocumentStorage(
+    documentId: string,
+    ipfsHash: string,
+    storageUrl: string,
+  ): Promise<void> {
+    await this.documentRepo.update(documentId, {
+      ipfsHash,
+      storageUrl,
+    });
   }
 
   async cancelDeal(dealId: string, traderId: string): Promise<TradeDeal> {

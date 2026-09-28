@@ -1,0 +1,119 @@
+# RabbitMQ StatefulSet — agri-fi namespace
+#
+# Runs a single-node RabbitMQ broker with:
+#   - management plugin (port 15672)
+#   - prometheus plugin (port 15692) for scraping by prometheus-operator
+#   - persistent volume for message durability
+#
+# In a future HA iteration this can be scaled to 3 replicas with
+# peer discovery via the rabbitmq_peer_discovery_k8s plugin.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: agri-fi-rabbitmq
+  namespace: agri-fi
+  labels:
+    app: agri-fi
+    component: rabbitmq
+spec:
+  serviceName: agri-fi-rabbitmq-headless
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agri-fi
+      component: rabbitmq
+  template:
+    metadata:
+      labels:
+        app: agri-fi
+        component: rabbitmq
+      annotations:
+        # Scrape the Prometheus plugin endpoint.
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "15692"
+        prometheus.io/path: "/metrics"
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: rabbitmq
+          image: rabbitmq:3.13-management-alpine
+          ports:
+            - name: amqp
+              containerPort: 5672
+            - name: management
+              containerPort: 15672
+            - name: metrics
+              containerPort: 15692
+          env:
+            - name: RABBITMQ_DEFAULT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: agri-fi-rabbitmq-credentials
+                  key: username
+            - name: RABBITMQ_DEFAULT_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: agri-fi-rabbitmq-credentials
+                  key: password
+            - name: RABBITMQ_DEFAULT_VHOST
+              value: "/"
+            # Persist Erlang cookie across pod restarts for cluster stability.
+            - name: RABBITMQ_ERLANG_COOKIE
+              valueFrom:
+                secretKeyRef:
+                  name: agri-fi-rabbitmq-credentials
+                  key: erlang-cookie
+          volumeMounts:
+            - name: rabbitmq-data
+              mountPath: /var/lib/rabbitmq
+            - name: rabbitmq-config
+              mountPath: /etc/rabbitmq/rabbitmq.conf
+              subPath: rabbitmq.conf
+              readOnly: true
+            - name: rabbitmq-plugins
+              mountPath: /etc/rabbitmq/enabled_plugins
+              subPath: enabled_plugins
+              readOnly: true
+          readinessProbe:
+            exec:
+              command: [rabbitmq-diagnostics, -q, ping]
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command: [rabbitmq-diagnostics, -q, status]
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            failureThreshold: 3
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+
+      volumes:
+        - name: rabbitmq-config
+          configMap:
+            name: agri-fi-rabbitmq-config
+        - name: rabbitmq-plugins
+          configMap:
+            name: agri-fi-rabbitmq-config
+            items:
+              - key: enabled_plugins
+                path: enabled_plugins
+
+  volumeClaimTemplates:
+    - metadata:
+        name: rabbitmq-data
+        labels:
+          app: agri-fi
+          component: rabbitmq
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: 2Gi
+        storageClassName: standard

@@ -2,6 +2,8 @@
 
 import { useId } from 'react';
 import CopyButton from '@/components/ui/CopyButton';
+import { ModalWrapper } from '@/components/ui/ModalWrapper';
+import { useNumberFormat } from '@/hooks/useNumberFormat';
 
 export interface TxOperation {
   type?: string;
@@ -56,7 +58,11 @@ function timestampAttribute(value: TxReceipt['timestamp']): string | undefined {
   return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
 }
 
-function formatOperation(operation: TxOperation | string, index: number): string {
+function formatOperation(
+  operation: TxOperation | string,
+  index: number,
+  formatNumber: (value: number | string, options?: { decimalPlaces?: number }) => string,
+): string {
   if (typeof operation === 'string') return operation;
 
   const type = (operation.type ?? 'operation').replace(/_/g, ' ');
@@ -66,7 +72,7 @@ function formatOperation(operation: TxOperation | string, index: number): string
   const counterparty = destination ? ` to ${shortHash(destination)}` : '';
 
   if (amount !== undefined && (operation.type === 'payment' || operation.type === 'path_payment_strict_send' || operation.type === 'path_payment_strict_receive')) {
-    return `${capitalize(type)} ${amount} ${asset}${counterparty}`;
+    return `${capitalize(type)} ${formatNumber(amount, { decimalPlaces: 7 })} ${asset}${counterparty}`;
   }
 
   return `${index + 1}. ${capitalize(type)}${counterparty}`;
@@ -96,6 +102,7 @@ export default function TxReceiptModal({
   explorerBaseUrl = DEFAULT_EXPLORER,
 }: TxReceiptModalProps) {
   const titleId = useId();
+  const { formatNumber } = useNumberFormat();
   const operations = transaction.operations ?? [];
   const timestamp = transaction.createdAt ?? transaction.timestamp;
   const fee = transaction.feeCharged ?? transaction.fee;
@@ -106,26 +113,25 @@ export default function TxReceiptModal({
       : 'https://horizon-testnet.stellar.org/transactions';
   const horizonUrl = `${horizonBaseUrl}/${encodeURIComponent(transaction.hash)}`;
 
-  if (!isOpen) return null;
-
   return (
-    <div
-      className="modal-overlay"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby={titleId}
-      onClick={(event) => event.target === event.currentTarget && onClose()}
+    <ModalWrapper
+      isOpen={isOpen}
+      onClose={onClose}
+      labelledBy={titleId}
+      unstyled
+      zIndexClassName="z-[110]"
+      className="modal-panel w-full max-w-lg max-h-[90vh] overflow-y-auto"
+      panelTestId="tx-receipt-modal"
     >
-      <div className="modal-panel w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="modal-header">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-emerald-600">Transaction complete</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-emerald-700">Transaction complete</p>
             <h2 id={titleId} className="text-lg font-bold text-slate-900">Stellar transaction receipt</h2>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-xl text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+            className="focus-ring flex h-8 w-8 items-center justify-center rounded-lg text-xl text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
             aria-label="Close transaction receipt"
           >
             ×
@@ -152,7 +158,7 @@ export default function TxReceiptModal({
                 {formatTimestamp(timestamp)}
               </time>
             </DetailRow>
-            <DetailRow label="Fee">{fee !== undefined ? `${fee} stroops` : 'Unavailable'}</DetailRow>
+            <DetailRow label="Fee">{fee !== undefined ? `${formatNumber(fee, { decimalPlaces: 0 })} stroops` : 'Unavailable'}</DetailRow>
             <DetailRow label="Ledger">{transaction.ledger ?? 'Unavailable'}</DetailRow>
             <DetailRow label="Memo">
               <span className="break-all">{transaction.memo || 'None'}</span>
@@ -165,7 +171,7 @@ export default function TxReceiptModal({
               <ol className="space-y-2">
                 {operations.map((operation, index) => (
                   <li key={`${index}-${typeof operation === 'string' ? operation : operation.type ?? 'operation'}`} className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                    {formatOperation(operation, index)}
+                    {formatOperation(operation, index, formatNumber)}
                   </li>
                 ))}
               </ol>
@@ -179,7 +185,7 @@ export default function TxReceiptModal({
               href={explorerUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="btn-secondary flex flex-1 items-center justify-center gap-2"
+              className="btn-secondary focus-ring flex flex-1 items-center justify-center gap-2"
             >
               StellarExpert
               <span aria-hidden="true">↗</span>
@@ -188,15 +194,14 @@ export default function TxReceiptModal({
               href={horizonUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="btn-secondary flex flex-1 items-center justify-center gap-2"
+              className="btn-secondary focus-ring flex flex-1 items-center justify-center gap-2"
             >
               Stellar Horizon
               <span aria-hidden="true">↗</span>
             </a>
           </div>
         </div>
-      </div>
-    </div>
+    </ModalWrapper>
   );
 }
 

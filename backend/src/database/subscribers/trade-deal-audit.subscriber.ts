@@ -53,8 +53,7 @@ export class TradeDealAuditSubscriber implements EntitySubscriberInterface<Trade
 
   async afterInsert(event: InsertEvent<TradeDeal>): Promise<void> {
     const entity = event.entity as unknown as
-      | Record<string, unknown>
-      | undefined;
+      Record<string, unknown> | undefined;
     await event.manager.save(AuditLog, {
       entityName: 'TradeDeal',
       entityId: entity?.['id'] ? String(entity['id']) : null,
@@ -68,11 +67,9 @@ export class TradeDealAuditSubscriber implements EntitySubscriberInterface<Trade
 
   async afterUpdate(event: UpdateEvent<TradeDeal>): Promise<void> {
     const entity = event.entity as unknown as
-      | Record<string, unknown>
-      | undefined;
+      Record<string, unknown> | undefined;
     const databaseEntity = event.databaseEntity as unknown as
-      | Record<string, unknown>
-      | undefined;
+      Record<string, unknown> | undefined;
     const updatedColumns = (event.updatedColumns ?? []).map(
       (col) => col.propertyName,
     );

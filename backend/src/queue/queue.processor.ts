@@ -8,7 +8,7 @@ import { StellarService } from '../stellar/stellar.service';
 import { SorobanService } from '../soroban/soroban.service';
 import { TradeDealsService } from '../trade-deals/trade-deals.service';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
-import { Investment } from '../investments/entities/investment.entity';
+import { Investment, InvestmentStatus } from '../investments/entities/investment.entity';
 import { User } from '../auth/entities/user.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import {
@@ -57,7 +57,7 @@ export class QueueProcessor implements OnApplicationShutdown {
     private readonly logger: PinoLogger,
     private readonly idempotency: IdempotencyService,
   ) {
-    this.logger.setContext(QueueProcessor.name);
+    (this.logger as any).setContext(QueueProcessor.name);
   }
 
   // ── Shutdown hook (#696) ────────────────────────────────────────────────────
@@ -343,6 +343,23 @@ export class QueueProcessor implements OnApplicationShutdown {
       return;
     }
 
+    // #788 — the investor may have cancelled during the cooling-off window
+    // between when this job was enqueued and now. Refuse to submit a real
+    // on-chain transfer for an investment that is no longer PENDING, rather
+    // than blindly overwriting whatever status a cancel (or any other path)
+    // already set.
+    const current = await this.investmentRepo.findOne({
+      where: { id: data.investmentId },
+    });
+    if (!current || current.status !== InvestmentStatus.PENDING) {
+      this.logger.info(
+        { investmentId: data.investmentId, status: current?.status },
+        'investment.fund skipped — investment is no longer pending (likely cancelled)',
+      );
+      channel.ack(originalMsg);
+      return;
+    }
+
     this.logger.info(
       { investmentId: data.investmentId },
       `Processing investment.fund for investment ${data.investmentId}`,
@@ -376,6 +393,28 @@ export class QueueProcessor implements OnApplicationShutdown {
           status: 'confirmed' as any,
           stellarTxId,
         });
+
+        // Push delivery channel fan-out (#1015)
+        if (current.investorId) {
+          this.notificationsService
+            .sendPush(current.investorId, {
+              eventType: 'investment.confirmed',
+              title: 'Investment Confirmed',
+              body: `Your investment of ${data.tokenAmount} tokens has been confirmed on-chain!`,
+              url: `/investments/${data.investmentId}`,
+              data: {
+                investmentId: data.investmentId,
+                stellarTxId,
+                tokenAmount: data.tokenAmount,
+              },
+            })
+            .catch((err) =>
+              this.logger.warn(
+                { error: err.message },
+                'Push delivery failed for investment.confirmed',
+              ),
+            );
+        }
 
         this.logger.info(
           { investmentId: data.investmentId, txId: stellarTxId },
@@ -531,8 +570,7 @@ export class QueueProcessor implements OnApplicationShutdown {
     // Derive a stable idempotency key: prefer an explicit messageId on the
     // payload; fall back to userId+type for notification events.
     const businessId =
-      data.messageId ??
-      `${data.userId ?? 'unknown'}-${data.type ?? 'unknown'}`;
+      data.messageId ?? `${data.userId ?? 'unknown'}-${data.type ?? 'unknown'}`;
     const idemKey = IdempotencyService.buildKey(
       'email.notification',
       businessId,
@@ -595,6 +633,39 @@ export class QueueProcessor implements OnApplicationShutdown {
         );
       }
 
+      // ── Push channel fan-out (#1015) ──────────────────────────────────────
+      if (data.userId) {
+        let pushPayload: any = null;
+        if (data.type === 'deal_completed' || data.type === 'payment_distributed') {
+          const commodity = data.dealDetails?.commodity ?? 'Trade Deal';
+          pushPayload = {
+            eventType: 'escrow.released',
+            title: 'Escrow Released & Payment Distributed',
+            body: `Escrow has been successfully released for ${commodity}. Your payout is ready.`,
+            url: data.dealId ? `/marketplace/${data.dealId}` : '/dashboard',
+            data: { dealId: data.dealId, ...data.dealDetails },
+          };
+        } else if (data.type === 'kyc_verified' || data.type === 'kyc_approved') {
+          pushPayload = {
+            eventType: 'kyc.approved',
+            title: 'KYC Verification Approved',
+            body: 'Your identity documents have been approved. You now have full access to platform features.',
+            url: '/dashboard',
+          };
+        }
+
+        if (pushPayload) {
+          this.notificationsService
+            .sendPush(data.userId, pushPayload)
+            .catch((err) =>
+              this.logger.warn(
+                { error: err.message, eventType: pushPayload.eventType },
+                'Failed to fan-out push notification',
+              ),
+            );
+        }
+      }
+
       await this.idempotency.markDone(idemKey);
     } catch (e: any) {
       this.logger.error(
@@ -621,7 +692,8 @@ export class QueueProcessor implements OnApplicationShutdown {
       data.userName ??
       details.farmerName ??
       details.investorName ??
-      (user?.fullName ?? deriveNameFromEmail(user?.email ?? data.email ?? ''));
+      user?.fullName ??
+      deriveNameFromEmail(user?.email ?? data.email ?? '');
 
     const vars: Record<string, unknown> = {
       userName: displayName,
@@ -695,7 +767,7 @@ export class QueueProcessor implements OnApplicationShutdown {
       };
     }
     if (data.type === 'deal_completed') {
-      let subject = `Deal Completed: ${data.dealDetails?.commodity}`;
+      const subject = `Deal Completed: ${data.dealDetails?.commodity}`;
       let text = `The deal you participated in (${data.dealDetails?.commodity}) has been completed.`;
       let html = `<h3>Deal Completed</h3><p>The deal you participated in (<strong>${data.dealDetails?.commodity}</strong>) has been completed.</p>`;
 

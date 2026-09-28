@@ -39,7 +39,9 @@ export class UpgradeService {
     this.logger.setContext(UpgradeService.name);
   }
 
-  async getDeploymentHistory(contractName?: string): Promise<SorobanContractDeployment[]> {
+  async getDeploymentHistory(
+    contractName?: string,
+  ): Promise<SorobanContractDeployment[]> {
     const where = contractName ? { contractName } : {};
     return this.deploymentRepo.find({
       where,
@@ -64,15 +66,21 @@ export class UpgradeService {
       order: { deployedAt: 'DESC' },
     });
     if (!active) {
-      throw new NotFoundException(`No active deployment for contract: ${contractName}`);
+      throw new NotFoundException(
+        `No active deployment for contract: ${contractName}`,
+      );
     }
 
     if (active.wasmHash === newWasmHash) {
-      throw new BadRequestException('New WASM hash matches the currently deployed version');
+      throw new BadRequestException(
+        'New WASM hash matches the currently deployed version',
+      );
     }
 
     const network = this.config.get<string>('STELLAR_NETWORK', 'testnet');
-    const testnetValidated = network === 'testnet' || await this.validateOnTestnet(contractName, newWasmPath);
+    const testnetValidated =
+      network === 'testnet' ||
+      (await this.validateOnTestnet(contractName, newWasmPath));
 
     const plan = this.planRepo.create({
       contractName,
@@ -139,7 +147,10 @@ export class UpgradeService {
     return plan;
   }
 
-  async executeUpgrade(planId: string, executedBy: string): Promise<SorobanContractDeployment> {
+  async executeUpgrade(
+    planId: string,
+    executedBy: string,
+  ): Promise<SorobanContractDeployment> {
     const plan = await this.planRepo.findOne({ where: { id: planId } });
     if (!plan) throw new NotFoundException('Upgrade plan not found');
 
@@ -156,7 +167,9 @@ export class UpgradeService {
     }
 
     if (plan.status !== 'approved') {
-      throw new BadRequestException('Upgrade plan must be approved before execution');
+      throw new BadRequestException(
+        'Upgrade plan must be approved before execution',
+      );
     }
 
     plan.status = 'executing';
@@ -166,7 +179,10 @@ export class UpgradeService {
     await this.drainContractQueue(plan.contractId);
 
     // Snapshot contract state before upgrade
-    const stateSnapshot = await this.captureStateSnapshot(plan.contractId, plan.contractName);
+    const stateSnapshot = await this.captureStateSnapshot(
+      plan.contractId,
+      plan.contractName,
+    );
     plan.stateSnapshot = stateSnapshot;
     await this.planRepo.save(plan);
 
@@ -176,11 +192,20 @@ export class UpgradeService {
         plan.newWasmHash,
       );
 
-      const smokeTestPassed = await this.runSmokeTest(plan.contractId, plan.contractName);
+      const smokeTestPassed = await this.runSmokeTest(
+        plan.contractId,
+        plan.contractName,
+      );
 
       if (!smokeTestPassed) {
-        await this.rollback(planId, executedBy, 'Smoke test failed after upgrade');
-        throw new BadRequestException('Upgrade verification failed; rollback initiated');
+        await this.rollback(
+          planId,
+          executedBy,
+          'Smoke test failed after upgrade',
+        );
+        throw new BadRequestException(
+          'Upgrade verification failed; rollback initiated',
+        );
       }
 
       // Mark previous deployment as superseded
@@ -231,7 +256,11 @@ export class UpgradeService {
     }
   }
 
-  async rollback(planId: string, executedBy: string, reason?: string): Promise<SorobanContractDeployment> {
+  async rollback(
+    planId: string,
+    executedBy: string,
+    reason?: string,
+  ): Promise<SorobanContractDeployment> {
     const plan = await this.planRepo.findOne({ where: { id: planId } });
     if (!plan) throw new NotFoundException('Upgrade plan not found');
 
@@ -291,12 +320,18 @@ export class UpgradeService {
     wasmPath: string,
   ): Promise<boolean> {
     // In production this runs the contract test suite against testnet WASM upload.
-    this.logger.info({ contractName, wasmPath }, 'Testnet WASM validation recorded');
+    this.logger.info(
+      { contractName, wasmPath },
+      'Testnet WASM validation recorded',
+    );
     return true;
   }
 
   private async drainContractQueue(contractId: string): Promise<void> {
-    this.logger.info({ contractId }, 'Draining pending queue jobs for contract');
+    this.logger.info(
+      { contractId },
+      'Draining pending queue jobs for contract',
+    );
     // Queue drain is best-effort; Soroban upgrades require no in-flight invocations.
   }
 
@@ -306,27 +341,45 @@ export class UpgradeService {
   ): Promise<Record<string, unknown>> {
     try {
       if (contractName === 'farm_campaign' || contractName === 'escrow') {
-        const state = await this.sorobanService.readContract(contractId, 'get_state', []);
+        const state = await this.sorobanService.readContract(
+          contractId,
+          'get_state',
+          [],
+        );
         return { contractId, state, capturedAt: new Date().toISOString() };
       }
       return { contractId, capturedAt: new Date().toISOString() };
     } catch {
-      return { contractId, capturedAt: new Date().toISOString(), note: 'snapshot_partial' };
+      return {
+        contractId,
+        capturedAt: new Date().toISOString(),
+        note: 'snapshot_partial',
+      };
     }
   }
 
-  private async runSmokeTest(contractId: string, contractName: string): Promise<boolean> {
+  private async runSmokeTest(
+    contractId: string,
+    contractName: string,
+  ): Promise<boolean> {
     try {
       if (contractName === 'farm_campaign') {
         await this.sorobanService.readContract(contractId, 'get_config', []);
       } else if (contractName === 'escrow') {
-        await this.sorobanService.readContract(contractId, 'get_total_funded', []);
+        await this.sorobanService.readContract(
+          contractId,
+          'get_total_funded',
+          [],
+        );
       } else {
         await this.sorobanService.readContract(contractId, 'version', []);
       }
       return true;
     } catch (err) {
-      this.logger.error({ contractId, contractName, err }, 'Post-upgrade smoke test failed');
+      this.logger.error(
+        { contractId, contractName, err },
+        'Post-upgrade smoke test failed',
+      );
       return false;
     }
   }

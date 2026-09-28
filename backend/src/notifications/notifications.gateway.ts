@@ -4,14 +4,11 @@ import {
   OnGatewayConnection,
   OnGatewayDisconnect,
   OnGatewayInit,
-  SubscribeMessage,
   WebSocketGateway,
   WebSocketServer,
-  MessageBody,
-  ConnectedSocket,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { WsJwtGuard, WS_AUTH_ERROR_CODE } from './ws-jwt.guard';
+import { WsJwtGuard } from './ws-jwt.guard';
 
 @WebSocketGateway({
   cors: { origin: true, credentials: true },
@@ -55,7 +52,9 @@ export class NotificationsGateway
     this.logger.debug(`Client connected: ${client.id}`);
     const user = (client as any).user;
     if (user?.id) {
-      const unreadCount = await this.notificationsService.getUnreadCount(user.id);
+      const unreadCount = await this.notificationsService.getUnreadCount(
+        user.id,
+      );
       client.emit('handshake_response', { unreadCount });
       client.emit('unread_count', { count: unreadCount });
     }

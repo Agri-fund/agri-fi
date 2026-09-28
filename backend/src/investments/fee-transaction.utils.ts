@@ -2,7 +2,7 @@ import { FeeBreakdown } from './fee-calculator.service';
 
 /**
  * Utility for encoding and decoding fee information in Stellar transactions.
- * 
+ *
  * Fees are encoded in the transaction memo to ensure they're included atomically
  * with the investment transaction. This allows the backend to verify that fees
  * were correctly applied when the transaction is confirmed on-chain.
@@ -41,14 +41,16 @@ export function encodeFeeData(feeBreakdown: FeeBreakdown): EncodedFeeData {
   const feeHash = Buffer.from(feeString).toString('base64').substring(0, 16);
 
   // Compress the breakdown
-  const compressed = Buffer.from(JSON.stringify({
-    t: feeBreakdown.totalFees,
-    n: feeBreakdown.netInvestmentAmount,
-    pof: feeBreakdown.platformOriginationFee?.ratePercent || 0,
-    psf: feeBreakdown.platformSuccessFee?.ratePercent || 0,
-    ief: feeBreakdown.investorEntryFee?.ratePercent || 0,
-    eef: feeBreakdown.earlyExitFee?.ratePercent || 0,
-  })).toString('base64');
+  const compressed = Buffer.from(
+    JSON.stringify({
+      t: feeBreakdown.totalFees,
+      n: feeBreakdown.netInvestmentAmount,
+      pof: feeBreakdown.platformOriginationFee?.ratePercent || 0,
+      psf: feeBreakdown.platformSuccessFee?.ratePercent || 0,
+      ief: feeBreakdown.investorEntryFee?.ratePercent || 0,
+      eef: feeBreakdown.earlyExitFee?.ratePercent || 0,
+    }),
+  ).toString('base64');
 
   return {
     feeHash,

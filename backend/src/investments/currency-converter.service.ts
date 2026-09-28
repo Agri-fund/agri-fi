@@ -17,7 +17,7 @@ export class CurrencyConverterService {
     private readonly fxRateService: FxRateService,
     private readonly logger: PinoLogger,
   ) {
-    this.logger.setContext(CurrencyConverterService.name);
+    (this.logger as any).setContext(CurrencyConverterService.name);
   }
 
   /**
@@ -52,7 +52,10 @@ export class CurrencyConverterService {
       };
     } catch (error) {
       this.logger.warn(
-        { error: error instanceof Error ? error.message : String(error), targetCurrency },
+        {
+          error: error instanceof Error ? error.message : String(error),
+          targetCurrency,
+        },
         'Failed to convert amount to local currency',
       );
       return null;
@@ -108,10 +111,14 @@ export class CurrencyConverterService {
     netUsd: number,
     localCurrency?: SupportedCurrency,
   ): Promise<FeeBreakdownWithCurrencyDto> {
-    const grossLocal =
-      await this.convertToLocalEquivalent(grossUsd, localCurrency);
-    const totalFeesLocal =
-      await this.convertToLocalEquivalent(totalFeesUsd, localCurrency);
+    const grossLocal = await this.convertToLocalEquivalent(
+      grossUsd,
+      localCurrency,
+    );
+    const totalFeesLocal = await this.convertToLocalEquivalent(
+      totalFeesUsd,
+      localCurrency,
+    );
     const netLocal = await this.convertToLocalEquivalent(netUsd, localCurrency);
 
     return {

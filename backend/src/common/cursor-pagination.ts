@@ -26,7 +26,9 @@ export function encodeCursor(payload: CursorPayload): string {
 
 export function decodeCursor(cursor: string): CursorPayload | null {
   try {
-    return JSON.parse(Buffer.from(cursor, 'base64url').toString('utf-8')) as CursorPayload;
+    return JSON.parse(
+      Buffer.from(cursor, 'base64url').toString('utf-8'),
+    ) as CursorPayload;
   } catch {
     return null;
   }
@@ -41,7 +43,12 @@ export function decodeCursor(cursor: string): CursorPayload | null {
 export async function applyCursorPagination<T extends { id: string }>(
   qb: SelectQueryBuilder<T>,
   alias: string,
-  options: { limit?: number; cursor?: string; sortField?: string; sortDir?: 'ASC' | 'DESC' },
+  options: {
+    limit?: number;
+    cursor?: string;
+    sortField?: string;
+    sortDir?: 'ASC' | 'DESC';
+  },
 ): Promise<CursorPaginatedResult<T>> {
   const limit = Math.min(options.limit ?? 20, 100);
   const sortField = options.sortField ?? 'createdAt';
@@ -72,7 +79,12 @@ export async function applyCursorPagination<T extends { id: string }>(
 
   const nextCursor =
     hasMore && data.length > 0
-      ? encodeCursor({ id: data[data.length - 1].id, sortValue: (data[data.length - 1] as Record<string, unknown>)[sortField] })
+      ? encodeCursor({
+          id: data[data.length - 1].id,
+          sortValue: (data[data.length - 1] as Record<string, unknown>)[
+            sortField
+          ],
+        })
       : null;
 
   return {
@@ -81,9 +93,15 @@ export async function applyCursorPagination<T extends { id: string }>(
   };
 }
 
-export function normalizeCursorQuery(query: CursorPaginationQuery): { limit: number; cursor?: string } {
+export function normalizeCursorQuery(query: CursorPaginationQuery): {
+  limit: number;
+  cursor?: string;
+} {
   return {
-    limit: Math.min(Number.isFinite(query.limit) && query.limit > 0 ? query.limit : 20, 100),
+    limit: Math.min(
+      Number.isFinite(query.limit) && query.limit > 0 ? query.limit : 20,
+      100,
+    ),
     cursor: query.cursor,
   };
 }

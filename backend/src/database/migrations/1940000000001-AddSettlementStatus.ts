@@ -23,7 +23,9 @@ export class AddSettlementStatus1940000000001 implements MigrationInterface {
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`DROP INDEX IF EXISTS "idx_trade_deals_settlement_status"`);
+    await queryRunner.query(
+      `DROP INDEX IF EXISTS "idx_trade_deals_settlement_status"`,
+    );
     await queryRunner.query(`
       ALTER TABLE "trade_deals"
       DROP COLUMN IF EXISTS "settled_at",

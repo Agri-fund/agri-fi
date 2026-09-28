@@ -1,5 +1,6 @@
 'use client';
 
+import { getAuthToken } from '@/lib/auth-token';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useTranslations } from 'next-intl';
 import { motion, useReducedMotion } from 'framer-motion';
@@ -103,7 +104,7 @@ export default function FundingProgressBar({
     const connect = async () => {
       try {
         const { io } = await import('socket.io-client');
-        const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+        const token = getAuthToken();
 
         socket = io({
           path: '/api/socket.io',

@@ -18,7 +18,7 @@ export class OutboxService {
     @InjectMetric('outbox_publish_errors_total')
     private readonly publishErrorsCounter: Counter<string>,
   ) {
-    this.logger.setContext(OutboxService.name);
+    (this.logger as any).setContext(OutboxService.name);
   }
 
   /**
@@ -178,10 +178,12 @@ export class OutboxService {
    * Get events that have failed too many times (for DLQ/monitoring).
    */
   async getDeadLetterEvents(maxRetries: number = 10): Promise<OutboxEntity[]> {
-    return this.outboxRepo.find({
-      where: { processed: false },
-      order: { createdAt: 'ASC' },
-    }).then((events) => events.filter((e) => e.retryCount >= maxRetries));
+    return this.outboxRepo
+      .find({
+        where: { processed: false },
+        order: { createdAt: 'ASC' },
+      })
+      .then((events) => events.filter((e) => e.retryCount >= maxRetries));
   }
 
   /**

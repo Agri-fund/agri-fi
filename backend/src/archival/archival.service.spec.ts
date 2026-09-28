@@ -68,7 +68,8 @@ describe('ArchivalService', () => {
           find: jest.fn((entity: any) => {
             if (entity === TradeDeal) return Promise.resolve([mockDeal]);
             if (entity === Investment) return Promise.resolve([mockInvestment]);
-            if (entity === ShipmentMilestone) return Promise.resolve([mockMilestone]);
+            if (entity === ShipmentMilestone)
+              return Promise.resolve([mockMilestone]);
             return Promise.resolve([]);
           }),
           create: jest.fn((entity: any, dto: any) => dto),
@@ -85,10 +86,22 @@ describe('ArchivalService', () => {
         ArchivalService,
         { provide: getRepositoryToken(TradeDeal), useValue: tradeDealRepo },
         { provide: getRepositoryToken(Investment), useValue: investmentRepo },
-        { provide: getRepositoryToken(ShipmentMilestone), useValue: milestoneRepo },
-        { provide: getRepositoryToken(TradeDealArchive), useValue: tradeDealArchiveRepo },
-        { provide: getRepositoryToken(InvestmentArchive), useValue: investmentArchiveRepo },
-        { provide: getRepositoryToken(ShipmentMilestoneArchive), useValue: milestoneArchiveRepo },
+        {
+          provide: getRepositoryToken(ShipmentMilestone),
+          useValue: milestoneRepo,
+        },
+        {
+          provide: getRepositoryToken(TradeDealArchive),
+          useValue: tradeDealArchiveRepo,
+        },
+        {
+          provide: getRepositoryToken(InvestmentArchive),
+          useValue: investmentArchiveRepo,
+        },
+        {
+          provide: getRepositoryToken(ShipmentMilestoneArchive),
+          useValue: milestoneArchiveRepo,
+        },
         { provide: DataSource, useValue: dataSource },
       ],
     }).compile();
@@ -161,7 +174,9 @@ describe('ArchivalService', () => {
         primaryHash: 'abc',
         archiveHash: 'abc',
       });
-      tradeDealRepo.find.mockResolvedValue([{ id: 'deal-uuid-1', deletedAt: new Date('2020-01-01') }]);
+      tradeDealRepo.find.mockResolvedValue([
+        { id: 'deal-uuid-1', deletedAt: new Date('2020-01-01') },
+      ]);
 
       const count = await service.hardDeleteValidatedArchives(30);
 

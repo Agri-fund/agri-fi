@@ -38,7 +38,7 @@ export class ShipmentsService {
     private readonly config: ConfigService,
     private readonly dataSource: DataSource,
   ) {
-    this.logger.setContext(ShipmentsService.name);
+    (this.logger as any).setContext(ShipmentsService.name);
   }
 
   async recordMilestone(
@@ -116,8 +116,10 @@ export class ShipmentsService {
         notes: dto.notes ?? null,
         stellarTxId,
         memoText,
-        latitude: dto.latitude ?? null,
-        longitude: dto.longitude ?? null,
+        // Prefer structured location object; fall back to legacy top-level fields
+        latitude: dto.location?.lat ?? dto.latitude ?? null,
+        longitude: dto.location?.lng ?? dto.longitude ?? null,
+        evidenceDocumentIds: dto.evidence?.length ? dto.evidence : null,
       });
 
       const savedMilestone = await manager.save(milestone);

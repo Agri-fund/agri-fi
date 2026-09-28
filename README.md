@@ -139,6 +139,36 @@ The backend uses **Jest** for unit tests and **fast-check** for property-based t
 - Platform fee = `total_value * 0.02`
 - Milestones always follow the sequence: Farm → Warehouse → Port → Importer
 
+### Load & Performance Testing
+Performance benchmarks and stress tests are automated with **k6**. See the **[Load Testing Guide](docs/testing/load-testing.md)** for scenario details, latency thresholds (p95 budgets), reading test output, and CI gating.
+
+---
+
+## Security & Hardening
+
+Platform defensive controls, verification procedures, and monitoring coverage are tracked in the **[Security Hardening Checklist](docs/security/hardening.md)**.
+- **Implemented Controls**: Row-Level Security (RLS), ClamAV virus scanning, rate limiting/throttling, helmet security headers, AES-256 envelope encryption, audit interceptor, DNS rebinding defense, and multi-sig escrow wallets.
+- **Threat Mapping**: Mapped against the OWASP Top 10 and SRIOT supply chain threat models.
+
+---
+
+## Documentation
+
+- ⚙️ **[Environment Variable Reference](docs/develop/environment.md)**: Full reference table of backend and frontend configuration variables, types, defaults, and secrets.
+- 🎨 **[Frontend Component Library](frontend/docs/component-library.md)**: Reusable UI component inventory, props conventions, custom hooks catalog, and API client patterns.
+- 📱 **[PWA & Offline Architecture](frontend/docs/PWA_GUIDE.md)**: Service worker caching and offline transaction synchronization.
+- 🛡️ **[Security Hardening Checklist](docs/security/hardening.md)**: Implemented vs. monitored controls, gap analysis, and threat mapping.
+- 🚀 **[Load Testing Guide](docs/testing/load-testing.md)**: k6 scenarios, performance thresholds, and result interpretation.
+
+---
+
+## Documentation
+
+- [Webhooks & Partner Integration Guide](./docs/webhooks/getting-started.md) — Self-serve guide for API keys (`agfi_live_*`), scopes, webhook registration, and HMAC signature verification.
+- [SEP-10 Web Auth Flow](./docs/auth/sep10-flow.md) — Sequence diagram, wallet authentication (Freighter/Albedo), signature verification, and error recovery.
+- [Database Schema Diagram](./docs/database/schema.md) — Rendered ER diagram generated automatically from entities (`npm run doc:diagram`).
+- [Architecture Decision Records (ADRs)](./docs/adr/README.md) — Index of ADRs covering escrow 98/2 settlement, outbox DLQ, RLS, queue encryption, and per-deal keypairs.
+
 ---
 
 ## Contributing

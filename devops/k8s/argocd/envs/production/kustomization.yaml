@@ -1,0 +1,76 @@
+# Production environment overlay
+#
+# Inherits all child Application manifests from the base apps/ directory.
+# Patches namespace references to agri-fi-production.
+#
+# selfHeal is disabled for backend and frontend (set in the child app
+# manifests and reinforced by the ApplicationSet template) to require
+# explicit human approval for production drift reversion.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: argocd
+
+resources:
+  - ../../apps/redis.yaml
+  - ../../apps/rabbitmq.yaml
+  - ../../apps/backend.yaml
+  - ../../apps/frontend.yaml
+
+patches:
+  # ── Redis ────────────────────────────────────────────────────────────────
+  - patch: |-
+      - op: replace
+        path: /metadata/name
+        value: agri-fi-redis-production
+      - op: replace
+        path: /spec/destination/namespace
+        value: agri-fi-production
+      - op: replace
+        path: /spec/syncPolicy/automated/selfHeal
+        value: false
+    target:
+      kind: Application
+      name: agri-fi-redis
+
+  # ── RabbitMQ ─────────────────────────────────────────────────────────────
+  - patch: |-
+      - op: replace
+        path: /metadata/name
+        value: agri-fi-rabbitmq-production
+      - op: replace
+        path: /spec/destination/namespace
+        value: agri-fi-production
+      - op: replace
+        path: /spec/syncPolicy/automated/selfHeal
+        value: false
+    target:
+      kind: Application
+      name: agri-fi-rabbitmq
+
+  # ── Backend ──────────────────────────────────────────────────────────────
+  - patch: |-
+      - op: replace
+        path: /metadata/name
+        value: agri-fi-backend-production
+      - op: replace
+        path: /spec/destination/namespace
+        value: agri-fi-production
+    target:
+      kind: Application
+      name: agri-fi-backend
+
+  # ── Frontend ─────────────────────────────────────────────────────────────
+  - patch: |-
+      - op: replace
+        path: /metadata/name
+        value: agri-fi-frontend-production
+      - op: replace
+        path: /spec/destination/namespace
+        value: agri-fi-production
+    target:
+      kind: Application
+      name: agri-fi-frontend
+
+commonLabels:
+  app.kubernetes.io/environment: production

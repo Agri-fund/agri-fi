@@ -105,9 +105,7 @@ export class FxRateService implements OnModuleInit, OnModuleDestroy {
     const rate = rates[targetCurrency];
 
     if (!rate || rate <= 0) {
-      throw new Error(
-        `Invalid exchange rate for ${targetCurrency}: ${rate}`,
-      );
+      throw new Error(`Invalid exchange rate for ${targetCurrency}: ${rate}`);
     }
 
     return Number((usdAmount * rate).toFixed(2));
@@ -208,8 +206,7 @@ export class FxRateService implements OnModuleInit, OnModuleDestroy {
     }
 
     const rawValue = (await this.redisClient.get(FX_RATES_CACHE_KEY)) as
-      | string
-      | null;
+      string | null;
     if (!rawValue) {
       return null;
     }

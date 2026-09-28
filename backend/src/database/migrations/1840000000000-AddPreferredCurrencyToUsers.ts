@@ -23,7 +23,9 @@ export class AddPreferredCurrencyToUsers1840000000000 implements MigrationInterf
 
   public async down(queryRunner: QueryRunner): Promise<void> {
     // Drop index
-    await queryRunner.query(`DROP INDEX IF EXISTS "idx_users_preferred_currency"`);
+    await queryRunner.query(
+      `DROP INDEX IF EXISTS "idx_users_preferred_currency"`,
+    );
 
     // Drop column
     await queryRunner.dropColumn('users', 'preferred_currency');

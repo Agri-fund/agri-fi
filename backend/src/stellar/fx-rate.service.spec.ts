@@ -2,7 +2,11 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { PinoLogger } from 'nestjs-pino';
 import axios from 'axios';
-import { FxRateService, FX_RATES_CACHE_KEY, SUPPORTED_CURRENCIES } from './fx-rate.service';
+import {
+  FxRateService,
+  FX_RATES_CACHE_KEY,
+  SUPPORTED_CURRENCIES,
+} from './fx-rate.service';
 import { RedisClientType } from 'redis';
 
 jest.mock('axios');
@@ -206,9 +210,9 @@ describe('FxRateService', () => {
     });
 
     it('should throw error for negative amount', async () => {
-      await expect(
-        service.convertUsdToLocal(-100, 'KES'),
-      ).rejects.toThrow('Amount must be non-negative');
+      await expect(service.convertUsdToLocal(-100, 'KES')).rejects.toThrow(
+        'Amount must be non-negative',
+      );
     });
 
     it('should handle zero amount', async () => {
@@ -434,13 +438,11 @@ describe('FxRateService', () => {
 
   describe('config parsing', () => {
     it('should parse numeric config values from strings', async () => {
-      (configService.get as jest.Mock).mockImplementation(
-        (key: string) => {
-          if (key === 'FX_API_TIMEOUT_MS') return '5000'; // String
-          if (key === 'FX_CACHE_TTL_SECONDS') return '7200'; // String
-          return mockRates[key as keyof typeof mockRates];
-        },
-      );
+      (configService.get as jest.Mock).mockImplementation((key: string) => {
+        if (key === 'FX_API_TIMEOUT_MS') return '5000'; // String
+        if (key === 'FX_CACHE_TTL_SECONDS') return '7200'; // String
+        return mockRates[key as keyof typeof mockRates];
+      });
 
       mockedAxios.get.mockResolvedValueOnce(mockApiResponse);
       (redisClient.get as jest.Mock).mockResolvedValueOnce(null);

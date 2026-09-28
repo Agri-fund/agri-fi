@@ -11,7 +11,10 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { WebhooksService } from './webhooks.service';
-import { CreateWebhookSubscriptionDto, UpdateWebhookSubscriptionDto } from './dto/create-webhook-subscription.dto';
+import {
+  CreateWebhookSubscriptionDto,
+  UpdateWebhookSubscriptionDto,
+} from './dto/create-webhook-subscription.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AdminGuard } from '../auth/admin.guard';
 
@@ -36,7 +39,10 @@ export class WebhooksController {
   }
 
   @Patch(':id')
-  async update(@Param('id') id: string, @Body() dto: UpdateWebhookSubscriptionDto) {
+  async update(
+    @Param('id') id: string,
+    @Body() dto: UpdateWebhookSubscriptionDto,
+  ) {
     return await this.webhooksService.updateSubscription(id, dto);
   }
 

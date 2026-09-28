@@ -49,7 +49,7 @@ jobs:
                 "username": "GitHub Actions"
               }' || true
           fi
-          
+
           # Slack notification
           if [ -n "${{ secrets.SLACK_WEBHOOK_URL }}" ]; then
             curl -X POST ${{ secrets.SLACK_WEBHOOK_URL }} \
@@ -134,6 +134,49 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.component }}
           cache-to: type=gha,mode=max,scope=${{ matrix.component }}
 
+      - name: Generate SBOM with syft
+        run: |
+          # Install syft
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+
+          # Generate SBOM in SPDX JSON format
+          syft "${{ needs.prepare.outputs.image_prefix }}/${{ matrix.component }}:${{ needs.prepare.outputs.tag }}" \
+            -o spdx-json > /tmp/sbom-${{ matrix.component }}.spdx.json
+
+          # Attach SBOM to image via annotation
+          echo "SBOM generated for ${{ matrix.component }}: /tmp/sbom-${{ matrix.component }}.spdx.json"
+
+      - name: Sign image and attach SBOM with cosign
+        env:
+          COSIGN_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+        run: |
+          # Install cosign
+          curl -sSfL https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64 -o /usr/local/bin/cosign
+          chmod +x /usr/local/bin/cosign
+
+          # Write private key to temp file
+          echo "$COSIGN_KEY" > /tmp/cosign.key
+
+          IMAGE="${{ needs.prepare.outputs.image_prefix }}/${{ matrix.component }}:${{ needs.prepare.outputs.tag }}"
+
+          # Sign the image
+          cosign sign --key /tmp/cosign.key "$IMAGE"
+
+          # Attach SBOM as attestation
+          cosign attach attestation --attestation /tmp/sbom-${{ matrix.component }}.spdx.json "$IMAGE" || true
+
+          # Clean up
+          rm -f /tmp/cosign.key /tmp/sbom-${{ matrix.component }}.spdx.json
+
+      - name: Upload SBOM artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ matrix.component }}
+          path: /tmp/sbom-${{ matrix.component }}.spdx.json
+          retention-days: 90
+
       - name: Notify on failure
         if: failure()
         run: |
@@ -146,7 +189,7 @@ jobs:
                 "username": "GitHub Actions"
               }' || true
           fi
-          
+
           # Slack notification
           if [ -n "${{ secrets.SLACK_WEBHOOK_URL }}" ]; then
             curl -X POST ${{ secrets.SLACK_WEBHOOK_URL }} \
@@ -250,23 +293,23 @@ jobs:
                 ]
               }
             }'
-          
+
           # Wait for the migration pod to complete
           kubectl -n default wait pod/migration-runner-${GITHUB_SHA::12} \
             --for=condition=complete \
             --timeout=300s
-          
+
           # Check if migration was successful
           MIGRATION_STATUS=$(kubectl -n default get pod/migration-runner-${GITHUB_SHA::12} -o jsonpath='{.status.phase}')
-          
+
           # Clean up the migration pod
           kubectl -n default delete pod migration-runner-${GITHUB_SHA::12} --ignore-not-found=true
-          
+
           if [ "$MIGRATION_STATUS" != "Succeeded" ]; then
             echo "Migration failed with status: $MIGRATION_STATUS"
             exit 1
           fi
-          
+
           echo "Database migrations completed successfully"
 
       # ── Blue-green deployment for the backend (#836) ────────────────────────
@@ -352,7 +395,7 @@ jobs:
                 "username": "GitHub Actions"
               }' || true
           fi
-          
+
           # Slack notification
           if [ -n "${{ secrets.SLACK_WEBHOOK_URL }}" ]; then
             curl -X POST ${{ secrets.SLACK_WEBHOOK_URL }} \

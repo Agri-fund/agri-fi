@@ -12,6 +12,7 @@
     "test:a11y": "playwright test frontend/tests/accessibility.spec.ts",
     "test:a11y:report": "playwright test frontend/tests/accessibility.spec.ts --reporter=html",
     "test:pwa": "node scripts/lighthouse-audit.js",
+    "test:e2e:invest": "playwright test -c playwright.invest.config.ts",
     "prepare": "husky"
   },
   "dependencies": {

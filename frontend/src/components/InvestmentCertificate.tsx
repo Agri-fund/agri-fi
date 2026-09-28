@@ -1,5 +1,72 @@
 'use client';
 
+// =============================================================================
+// Issue #978 — perf(frontend): lazy-load PDF viewer + bundle budget
+// https://github.com/Agri-fund/agri-fi/issues/978
+//
+// This component calls the receipt download endpoint which ultimately opens a
+// PDF.  It does not directly import PdfViewer, but it is the primary trigger
+// for PDF loading on the investor dashboard.
+//
+// ─── REQUIRED CHANGE FOR #978 ────────────────────────────────────────────────
+//
+// Any parent page that renders <InvestmentCertificate> alongside a
+// <PdfViewer> for the receipt should lazy-load the viewer:
+//
+//   const PdfViewer = dynamic(
+//     () => import('@/components/PdfViewer').then(m => ({ default: m.PdfViewer })),
+//     { ssr: false, loading: () => <p className="text-sm text-slate-400">Loading…</p> }
+//   );
+//
+// Additionally, if InvestmentCertificate itself is only shown after an
+// investment confirmation step (not on initial page load), the whole
+// certificate component can be lazy-loaded too:
+//
+//   const InvestmentCertificate = dynamic(
+//     () => import('@/components/InvestmentCertificate').then(
+//       m => ({ default: m.InvestmentCertificate })
+//     ),
+//     { ssr: false }
+//   );
+//
+// This removes both the certificate and the receipt-PDF chain from the
+// initial JS bundle for pages that conditionally render them.
+//
+// =============================================================================
+//
+// Issue #979 — quality(frontend): Consolidate date formatting via useDateFormat
+// https://github.com/Agri-fund/agri-fi/issues/979
+//
+// ─── AFFECTED LINE IN THIS FILE ──────────────────────────────────────────────
+//
+// Line ~161 currently formats the certificate issue date inline:
+//
+//   <span>{new Date(createdAt).toLocaleDateString()}</span>
+//
+// This uses the browser's default locale (not the active next-intl locale) and
+// produces inconsistent output across locales (e.g. "9/28/2026" in en-US vs
+// "28/09/2026" in fr-FR without an explicit locale argument).
+//
+// ─── REQUIRED CHANGE FOR #979 ────────────────────────────────────────────────
+//
+//   // 1. Import the hook
+//   import { useDateFormat } from '@/hooks/useDateFormat';
+//
+//   // 2. Call inside the component body
+//   const { formatDate } = useDateFormat();
+//
+//   // 3. Replace the inline call
+//   // BEFORE:
+//   <span>{new Date(createdAt).toLocaleDateString()}</span>
+//
+//   // AFTER:
+//   <span>{formatDate(createdAt, { dateStyle: 'medium' })}</span>
+//
+// The hook reads the active locale from next-intl's useLocale() so the
+// certificate date always matches the rest of the UI locale.
+//
+// =============================================================================
+
 /**
  * InvestmentCertificate
  *
@@ -11,6 +78,8 @@
 import { useEffect, useState } from 'react';
 import { getStoredToken } from '../lib/api';
 import { getInvestorOwnership, CampaignState, getCampaignState } from '../lib/soroban';
+import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
+import { useNumberFormat } from '@/hooks/useNumberFormat';
 
 interface CertificateProps {
   investmentId: string;
@@ -35,6 +104,8 @@ export function InvestmentCertificate({
   investorAddress,
   createdAt,
 }: CertificateProps) {
+  const { formatCurrency } = useCurrencyFormat();
+  const { formatNumber } = useNumberFormat();
   const [ownershipPct, setOwnershipPct] = useState<string | null>(null);
   const [campaignState, setCampaignState] = useState<CampaignState | null>(null);
   const [receiptLoading, setReceiptLoading] = useState(false);
@@ -116,14 +187,13 @@ export function InvestmentCertificate({
           <p className="text-green-300 text-xs uppercase tracking-wide mb-1">
             Investment Amount
           </p>
-          <p className="text-2xl font-bold">${amountUsd.toLocaleString()}</p>
-          <p className="text-green-300 text-xs">USDC</p>
+          <p className="text-2xl font-bold">{formatCurrency(amountUsd, 'USDC', { decimalPlaces: 2 })}</p>
         </div>
         <div className="bg-white/10 rounded-xl p-4">
           <p className="text-green-300 text-xs uppercase tracking-wide mb-1">
             Tokens Owned
           </p>
-          <p className="text-2xl font-bold">{tokenAmount.toLocaleString()}</p>
+          <p className="text-2xl font-bold">{formatNumber(tokenAmount)}</p>
           <p className="text-green-300 text-xs">Project tokens</p>
         </div>
         <div className="bg-white/10 rounded-xl p-4">

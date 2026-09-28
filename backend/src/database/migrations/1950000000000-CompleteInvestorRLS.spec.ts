@@ -5,7 +5,9 @@ describe('CompleteInvestorRLS1950000000000', () => {
   const migration = new CompleteInvestorRLS1950000000000();
 
   function createMockQueryRunner() {
-    return { query: jest.fn().mockResolvedValue(undefined) } as unknown as QueryRunner;
+    return {
+      query: jest.fn().mockResolvedValue(undefined),
+    } as unknown as QueryRunner;
   }
 
   it('creates a company context and policies for every investor-owned table', async () => {
@@ -52,8 +54,14 @@ describe('CompleteInvestorRLS1950000000000', () => {
       .map(([statement]) => statement as string)
       .join('\n');
 
-    expect(sql).toContain('DROP FUNCTION IF EXISTS app.user_in_current_company(UUID)');
-    expect(sql).toContain('ALTER TABLE "users" DROP COLUMN IF EXISTS "company_id"');
-    expect(sql).toContain('DROP POLICY IF EXISTS "investments_company_isolation"');
+    expect(sql).toContain(
+      'DROP FUNCTION IF EXISTS app.user_in_current_company(UUID)',
+    );
+    expect(sql).toContain(
+      'ALTER TABLE "users" DROP COLUMN IF EXISTS "company_id"',
+    );
+    expect(sql).toContain(
+      'DROP POLICY IF EXISTS "investments_company_isolation"',
+    );
   });
 });

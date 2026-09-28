@@ -323,11 +323,13 @@ describe('QueueProcessor', () => {
 
       // Make issueTradeToken block until we release the barrier
       stellarService.decryptSecret.mockResolvedValue('secret');
-      stellarService.issueTradeToken.mockReturnValue(jobBarrier.then(() => ({
-        txId: 'tx-slow',
-        issuerPublicKey: 'GPUB',
-        issuerSecret: 'issuer-secret',
-      })));
+      stellarService.issueTradeToken.mockReturnValue(
+        jobBarrier.then(() => ({
+          txId: 'tx-slow',
+          issuerPublicKey: 'GPUB',
+          issuerSecret: 'issuer-secret',
+        })),
+      );
       stellarService.encryptSecret.mockResolvedValue('enc-issuer-secret');
       tradeDealRepo.update.mockResolvedValue({ affected: 1 });
 

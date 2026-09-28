@@ -19,7 +19,7 @@ import {
 } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { EmailSequenceService } from './email-sequence.service';
-import { RolesGuard } from '../auth/roles.guard';
+import { RolesGuard } from '../common/guards';
 import { Roles } from '../auth/decorators/roles.decorator';
 
 @ApiTags('email-sequence')
@@ -37,8 +37,14 @@ export class EmailSequenceController {
    * Redirects to a confirmation page on the frontend app.
    */
   @Get('email-sequence/unsubscribe')
-  @ApiOperation({ summary: 'One-click unsubscribe from investor drip email sequence' })
-  @ApiQuery({ name: 'token', description: 'Base64url-encoded user ID', required: true })
+  @ApiOperation({
+    summary: 'One-click unsubscribe from investor drip email sequence',
+  })
+  @ApiQuery({
+    name: 'token',
+    description: 'Base64url-encoded user ID',
+    required: true,
+  })
   @HttpCode(HttpStatus.FOUND)
   @Redirect()
   async unsubscribe(@Query('token') token: string) {
@@ -83,7 +89,9 @@ export class EmailSequenceController {
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Roles('admin')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get drip sequence status for a specific investor (admin)' })
+  @ApiOperation({
+    summary: 'Get drip sequence status for a specific investor (admin)',
+  })
   @ApiParam({ name: 'userId', description: 'Investor user UUID' })
   async getSequenceForUser(@Param('userId') userId: string) {
     return this.sequenceService.getSequenceStatus(userId);

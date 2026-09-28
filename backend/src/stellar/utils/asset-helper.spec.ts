@@ -50,7 +50,9 @@ describe('parseAsset', () => {
   });
 
   it('throws on empty string', () => {
-    expect(() => parseAsset('')).toThrow('Asset descriptor must be a non-empty string');
+    expect(() => parseAsset('')).toThrow(
+      'Asset descriptor must be a non-empty string',
+    );
   });
 
   it('throws when descriptor has no hyphen and is not native/XLM', () => {
@@ -64,15 +66,21 @@ describe('parseAsset', () => {
   });
 
   it('throws on invalid asset code (empty before hyphen)', () => {
-    expect(() => parseAsset(`-${VALID_ISSUER}`)).toThrow(/Asset code must be a non-empty string/);
+    expect(() => parseAsset(`-${VALID_ISSUER}`)).toThrow(
+      /Asset code must be a non-empty string/,
+    );
   });
 
   it('throws on invalid issuer public key', () => {
-    expect(() => parseAsset('USDC-NOTAVALIDKEY')).toThrow(/Invalid asset issuer/);
+    expect(() => parseAsset('USDC-NOTAVALIDKEY')).toThrow(
+      /Invalid asset issuer/,
+    );
   });
 
   it('throws on missing issuer (trailing hyphen)', () => {
-    expect(() => parseAsset('USDC-')).toThrow(/Asset issuer must be a non-empty string/);
+    expect(() => parseAsset('USDC-')).toThrow(
+      /Asset issuer must be a non-empty string/,
+    );
   });
 
   it('returns an Asset equal to one constructed directly', () => {
@@ -88,19 +96,27 @@ describe('validateAsset', () => {
   });
 
   it('throws for empty code', () => {
-    expect(() => validateAsset('', VALID_ISSUER)).toThrow('Asset code must be a non-empty string');
+    expect(() => validateAsset('', VALID_ISSUER)).toThrow(
+      'Asset code must be a non-empty string',
+    );
   });
 
   it('throws for code longer than 12 characters', () => {
-    expect(() => validateAsset('ABCDEFGHIJKLM', VALID_ISSUER)).toThrow(/Invalid asset code/);
+    expect(() => validateAsset('ABCDEFGHIJKLM', VALID_ISSUER)).toThrow(
+      /Invalid asset code/,
+    );
   });
 
   it('throws for code with special characters', () => {
-    expect(() => validateAsset('US-DC', VALID_ISSUER)).toThrow(/Invalid asset code/);
+    expect(() => validateAsset('US-DC', VALID_ISSUER)).toThrow(
+      /Invalid asset code/,
+    );
   });
 
   it('throws for invalid issuer', () => {
-    expect(() => validateAsset('USDC', 'bad-key')).toThrow(/Invalid asset issuer/);
+    expect(() => validateAsset('USDC', 'bad-key')).toThrow(
+      /Invalid asset issuer/,
+    );
   });
 });
 

@@ -1,5 +1,6 @@
 'use client';
 
+import { clearAuthToken } from '@/lib/auth-token';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
@@ -51,8 +52,7 @@ interface SessionTimeoutProps {
 
 function clearAuthTokens() {
   if (typeof window === 'undefined') return;
-  localStorage.removeItem('auth_token');
-  sessionStorage.removeItem('auth_token');
+  clearAuthToken();
   sessionStorage.removeItem('stellar_wallet');
 }
 

@@ -73,7 +73,9 @@ export function planTransactionBatches(
   maxSize: number = MAX_OPERATIONS_PER_TX,
 ): ChunkedTransactionPlan {
   if (totalOperations < 0) {
-    throw new Error(`totalOperations cannot be negative, got ${totalOperations}`);
+    throw new Error(
+      `totalOperations cannot be negative, got ${totalOperations}`,
+    );
   }
 
   if (totalOperations === 0) {

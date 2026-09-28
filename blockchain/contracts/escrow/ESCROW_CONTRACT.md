@@ -6,7 +6,8 @@ The Escrow Smart Contract is a Soroban WASM contract that manages the automatic 
 
 ## Issue
 
-**Issue #345**: Design Soroban smart contract for automatic escrow settlement
+- **Issue #345**: Design Soroban smart contract for automatic escrow settlement
+- **Issue #1089**: Replay and reentrancy idempotency guarantees
 
 The contract enables automatic, trustless payout execution when milestones are verified, eliminating the need for platform-managed escrow accounts.
 
@@ -20,10 +21,12 @@ The contract maintains the following state data:
 - **Platform**: Recipient of 2% fee from escrow funds
 - **USDC Token**: ERC-20 compatible token contract address
 - **Deal Value**: Total deal amount in USDC stroops
+- **Funding Deadline**: Unix timestamp for funding deadline
 
 ### Investor Information
-- **Investors**: List of investor wallet addresses funding the deal
+- **Investors**: Map of investor wallet addresses to their cumulative contributions
 - **Total Funded**: Cumulative USDC received from investors
+- **Refunded**: Map indicating which contributors have already claimed a refund
 
 ### Milestone Tracking
 - **Milestones Count**: Total number of milestones required for completion
@@ -31,8 +34,20 @@ The contract maintains the following state data:
 - **Milestone Data**: Map storing completion status and timestamp for each milestone
 
 ### Release State
-- **Released**: Flag indicating if funds have been distributed
+- **Released**: Boolean flag indicating if funds have been distributed
 - **Delivery Approved**: Legacy flag for delivery approval (deprecated in favor of milestone system)
+- **OperationInProgress**: Guard set while a contract operation invokes a token transfer
+
+## Idempotency and Replay Guarantees
+
+The contract uses separate guards for initialization, refund eligibility, claims, and external transfers:
+
+- **Initialization:** `initialize` checks for the existing `Admin` key and returns `AlreadyInitialized` on every subsequent call without overwriting the original configuration.
+- **Funding:** `fund` is the existing add-shareholder/funding operation and the only funding entrypoint. Each successful positive call transfers the amount and adds it to both `TotalFunded` and the caller's contribution. Repeated positive calls are additive rather than replay no-ops; they do not overwrite the original contribution. Funding after `Released` returns `AlreadyReleased`, and a previously refunded caller has its refund marker cleared by a new successful contribution.
+- **Timestamp and investor checks:** `refund_after_expiry` and `refund_all_after_expiry` require `now > funding_deadline`, reject a released or target-met deal, and inspect the caller's positive contribution before claiming it. `fund` does not enforce the funding deadline or target, so it can be used after the deadline and can exceed the deal value in this version.
+- **Single-claim state:** `record_milestone` rejects an already recorded milestone ID. `release` and `settle_escrow` set `Released` before their token transfers, so a replay returns `AlreadyReleased` without paying either recipient again. `Refunded` provides the corresponding per-contributor single-refund check.
+- **Operation lock and reentrancy:** `OperationInProgress` is set around token transfers. Reentrant state-changing calls return `OperationInProgress`; active reentrant refund calls return success without transferring funds.
+- **Close and funding lifecycle:** This version has no `set_funding_closed`, `close`, `add_shareholder`, `EscoFunded`, or `Cancelled` entrypoint or state. `Released` is a boolean set by `release` and `settle_escrow`, not a named lifecycle enum. `refund_all_after_expiry` is a batch-refund operation, not a close operation. Repeated batch refunds are successful no-ops when no pending claims remain; there is no repeated `close` call to document.
 
 ## Data Structures
 
@@ -59,8 +74,12 @@ pub enum DataKey {
     DeliveryApproved,        // Legacy delivery flag
     MilestonesCount,         // Total milestones required
     MilestonesCompleted,     // Milestones recorded
-    Investors,               // List of investor addresses
+    Investors,               // Map of investor addresses to their investment amounts
     MilestoneData,           // Map of milestone records
+    FundingDeadline,         // Unix timestamp for funding deadline
+    Refunded,                // Map of investor addresses to their refund status
+    FrozenContributors,      // Map of frozen contributor addresses
+    OperationInProgress,
 }
 ```
 
@@ -156,6 +175,7 @@ Settles the escrow by distributing funds to farmer and platform. Can only be cal
 - All milestones must be recorded (InsufficientMilestonesCompleted error)
 - Total funded must be >= deal value (BalanceInsufficient error)
 - Funds must not already be released (AlreadyReleased error)
+- No transfer operation may be active (OperationInProgress error)
 
 **Fund Distribution:**
 - Farmer: 98% of total funded amount
@@ -186,10 +206,13 @@ Allows investors to deposit USDC into the escrow contract.
 **Validation:**
 - Amount must be positive (InvalidAmount error)
 - Contract must be initialized (NotInitialized error)
+- Funds must not be released (AlreadyReleased error)
+- No other transfer operation may be active (OperationInProgress error)
 
 **Behavior:**
 - Transfers USDC from caller to contract
 - Increments total_funded balance
+- Repeated funding for the same contributor is additive
 - Does NOT check if deal is fully funded (can fund beyond deal_value)
 
 **Events:**
@@ -215,7 +238,7 @@ Legacy milestone submission. Deprecated in favor of record_milestone.
 pub fn release(env: Env, caller: Address) -> Result<(), Error>
 ```
 
-Legacy fund release. Deprecated in favor of settle_escrow.
+Legacy fund release. Deprecated in favor of settle_escrow. It shares the same `Released` guard and transfer-operation guard as settlement, so replay calls cannot pay twice.
 
 ---
 
@@ -266,6 +289,80 @@ pub fn is_delivery_approved(env: Env) -> bool
 ```
 Returns legacy delivery approval status.
 
+```rust
+pub fn get_funding_deadline(env: Env) -> u64
+```
+Returns the funding deadline as a Unix timestamp.
+
+```rust
+pub fn target_met(env: Env) -> bool
+```
+Returns whether the funding target has been met (total_funded >= deal_value).
+
+---
+
+## Refund Functions
+
+### Individual Refund After Expiry
+
+```rust
+pub fn refund_after_expiry(env: Env, contributor: Address) -> Result<(), Error>
+```
+
+Allows a contributor to request a refund after the funding deadline has passed and the target has not been met. This function is idempotent - calling it multiple times for the same contributor will succeed after the first successful refund.
+
+**Parameters:**
+- `contributor` - The address of the contributor requesting a refund
+
+**Validation:**
+- Deadline must have passed (DeadlineNotPassed error)
+- Funds must not have been released (AlreadyReleased error), checked before the target
+- Target must not be met (TargetMet error)
+- Contributor must have funds to refund (NothingToRefund error)
+
+**Behavior:**
+- Marks contributor as refunded to prevent double refunds
+- Sets the contributor's recorded contribution to zero before transfer
+- Updates total funded amount before transfer
+- Returns success if already refunded, including when the contribution is now zero
+- Active reentrant refund calls are no-ops
+
+**Events:**
+- `refund`: Emits (contributor_address, refund_amount)
+
+---
+
+### Batch Refund After Expiry
+
+```rust
+pub fn refund_all_after_expiry(env: Env, caller: Address) -> Result<(), Error>
+```
+
+Allows the admin to batch refund all contributors after the funding deadline has passed and the target has not been met. This is an optional convenience function for processing multiple refunds at once.
+
+**Parameters:**
+- `caller` - The admin account calling this function
+
+**Authorization:**
+- Only admin can call (Unauthorized error)
+
+**Validation:**
+- Deadline must have passed (DeadlineNotPassed error)
+- Funds must not have been released (AlreadyReleased error), checked before the target
+- Target must not be met (TargetMet error)
+
+**Behavior:**
+- Refunds all contributors who haven't been refunded yet
+- Skips contributors who have already been refunded
+- Persists each contributor's refunded state and reduced total before transfer
+- Updates total funded amount
+- Returns success without duplicate transfers when no contributors remain pending
+- Efficiently processes multiple refunds in one transaction
+
+**Events:**
+- `refund`: Emits (contributor_address, refund_amount) for each refund
+- `batch_refund`: Emits total_refunded_amount
+
 ---
 
 ## Error Codes
@@ -284,6 +381,78 @@ Returns legacy delivery approval status.
 | MilestoneAlreadyRecorded | 10 | Milestone already recorded |
 | InsufficientMilestonesCompleted | 11 | Not all milestones completed |
 | NoInvestors | 12 | No investors provided |
+| DeadlineNotPassed | 13 | Funding deadline has not passed |
+| TargetMet | 14 | Funding target is already met |
+| NothingToRefund | 15 | Contributor has no funds to refund |
+| ContributorFrozen | 16 | Contributor is frozen by compliance rules |
+| NotFrozen | 17 | Contributor is not frozen |
+| OperationInProgress | 18 | Another transfer operation is active |
+
+## Compliance Features
+
+### Contributor Freezing
+
+The escrow contract includes compliance features to prevent payouts to frozen addresses, ensuring regulatory compliance and risk management.
+
+```rust
+pub fn freeze_contributor(env: Env, caller: Address, contributor: Address) -> Result<(), Error>
+```
+
+Freezes a contributor to prevent them from receiving refunds or settlements. Only the admin can freeze contributors.
+
+**Parameters:**
+- `caller` - The admin account calling this function
+- `contributor` - The address to freeze
+
+**Authorization:**
+- Only admin can freeze (Unauthorized error)
+
+**Events:**
+- `frozen`: Emits the frozen contributor address
+
+---
+
+```rust
+pub fn unfreeze_contributor(env: Env, caller: Address, contributor: Address) -> Result<(), Error>
+```
+
+Unfreezes a contributor to allow them to receive refunds or settlements. Only the admin can unfreeze contributors.
+
+**Parameters:**
+- `caller` - The admin account calling this function
+- `contributor` - The address to unfreeze
+
+**Authorization:**
+- Only admin can unfreeze (Unauthorized error)
+- Contributor must be frozen (NotFrozen error)
+
+**Events:**
+- `unfrozen`: Emits the unfrozen contributor address
+
+---
+
+```rust
+pub fn is_contributor_frozen(env: Env, contributor: Address) -> bool
+```
+
+Returns whether a contributor is currently frozen.
+
+---
+
+### Compliance Halt Events
+
+When a payout is refused due to a frozen address, the contract emits a `compliance_halt` event that can be indexed and surfaced in UI/notifications.
+
+**Event Emission:**
+- `compliance_halt`: Emits the address that was blocked from receiving funds
+
+**Paths that check frozen status:**
+- `refund_after_expiry()` - Blocks refunds to frozen contributors
+- `refund_all_after_expiry()` - Skips frozen contributors in batch refunds
+- `settle_escrow()` - Blocks settlement if farmer or platform is frozen
+- `release()` - Blocks legacy release if farmer or platform is frozen
+
+---
 
 ## Usage Flow
 
@@ -299,6 +468,7 @@ EscrowContract::initialize(
     10_000_000_000,  // 1000 USDC (7 decimal places)
     3,               // 3 milestones required
     vec![investor1, investor2, investor3],
+    1234567890,      // Funding deadline (Unix timestamp)
 )
 ```
 
@@ -333,6 +503,39 @@ EscrowContract::settle_escrow(env, admin);
 // Transfers 980 USDC to farmer, 20 USDC to platform
 ```
 
+### 5. Handle Failed Funding (Refund Flow)
+
+If the funding deadline passes without meeting the target:
+
+```rust
+// Check if deadline has passed
+let deadline = EscrowContract::get_funding_deadline(env);
+let now = env.ledger().timestamp();
+
+if now > deadline && !EscrowContract::target_met(env) {
+    // Individual contributor refund
+    EscrowContract::refund_after_expiry(env, contributor_address);
+
+    // Or batch refund all contributors (admin only)
+    EscrowContract::refund_all_after_expiry(env, admin_address);
+}
+```
+
+### 6. Compliance Management (Freeze/Unfreeze)
+
+For regulatory compliance and risk management:
+
+```rust
+// Freeze a contributor (admin only)
+EscrowContract::freeze_contributor(env, admin_address, suspicious_address);
+
+// Check if contributor is frozen
+let is_frozen = EscrowContract::is_contributor_frozen(env, suspicious_address);
+
+// Unfreeze a contributor (admin only)
+EscrowContract::unfreeze_contributor(env, admin_address, cleared_address);
+```
+
 ## Security Considerations
 
 ### Authorization
@@ -350,6 +553,8 @@ EscrowContract::settle_escrow(env, admin);
 - Funds transferred using standard USDC token contract
 - Distribution percentages (98/2) are hardcoded and cannot be changed
 - Double-settlement is prevented (AlreadyReleased error)
+- Funding after settlement is rejected (AlreadyReleased error)
+- Reentrant token calls cannot mutate escrow state while `OperationInProgress` is set
 
 ### Validation
 - Deal value must be positive
@@ -367,6 +572,22 @@ EscrowContract::settle_escrow(env, admin);
 - Settlement authorization and requirements
 - Fund distribution percentages
 - Error conditions and validation
+- Funding deadline queries and validation
+- Target met/not met scenarios
+- Individual refund after expiry (idempotent behavior)
+- Batch refund after expiry (admin-only)
+- Replayed release and settlement calls do not double-pay
+- Repeated funding remains additive and is blocked after release
+- Reentrant operation guard behavior
+- Deadline boundary conditions
+- Refund blocking when target is met
+- Refund blocking after funds are released
+- Contributor freeze/unfreeze functionality
+- Frozen contributor refund blocking
+- Frozen settlement recipient blocking
+- Batch refund skipping frozen contributors
+- Compliance halt event emission
+- Unfreeze allowing subsequent operations
 
 ### Test Files
 - `src/test.rs` - Comprehensive unit tests using Soroban SDK test utilities

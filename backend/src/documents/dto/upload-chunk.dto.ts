@@ -1,4 +1,4 @@
-import { IsString, IsInt, IsUUID, Min, Max } from 'class-validator';
+import { IsString, IsInt, IsUUID, Min, IsBoolean, IsOptional } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class UploadChunkDto {
@@ -26,7 +26,9 @@ export class UploadChunkDto {
 }
 
 export class UploadCompleteDto {
-  @ApiProperty({ description: 'Unique file identifier matching the chunked upload session' })
+  @ApiProperty({
+    description: 'Unique file identifier matching the chunked upload session',
+  })
   @IsString()
   fileId: string;
 
@@ -45,4 +47,13 @@ export class UploadCompleteDto {
   @ApiProperty({ description: 'MIME type of the file' })
   @IsString()
   mimeType: string;
+
+  @ApiProperty({
+    description: 'Apply a PDF watermark overlay before storage (issue #1005)',
+    required: false,
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  watermark?: boolean;
 }

@@ -7,7 +7,7 @@ export class AddDocumentExpiresAtToKycSubmissions1800000000000 implements Migrat
     await queryRunner.query(`
       ALTER TABLE "kyc_submissions" ADD COLUMN "document_expires_at" TIMESTAMPTZ;
     `);
-    
+
     await queryRunner.query(`
       ALTER TABLE "kyc_submissions" DROP CONSTRAINT IF EXISTS "kyc_submissions_status_check";
       ALTER TABLE "kyc_submissions" ADD CONSTRAINT "kyc_submissions_status_check" CHECK (status IN ('pending_review', 'approved', 'rejected', 'expired'));

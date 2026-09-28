@@ -1,5 +1,6 @@
 'use client';
 
+import { getAuthToken } from '@/lib/auth-token';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import 'leaflet/dist/leaflet.css';
@@ -64,7 +65,7 @@ export const ShipmentMap: React.FC<ShipmentMapProps> = ({
       setLoading(true);
       setError(null);
 
-      const token = localStorage.getItem('auth_token');
+      const token = getAuthToken();
       if (!token) throw new Error('Authentication required');
 
       const res = await fetch(`/api/shipments/${tradeDealId}`, {

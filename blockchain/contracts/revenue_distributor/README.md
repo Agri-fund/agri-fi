@@ -1,6 +1,6 @@
 # RevenueDistributor Soroban Contract
 
-**Issue #873** — Pro-rata revenue distribution to on-chain token holders when a deal completes.
+**Issues #873 and #1085** — Pro-rata revenue distribution to on-chain token holders when a deal completes.
 
 ## Overview
 
@@ -25,11 +25,28 @@ get_holders() -> Map<Address, i128>
 
 ## Pro-Rata Logic
 
+The registered `HolderBalances` map is iterated in its stable, key-ordered sequence. For every
+holder except the final map entry, the contract uses integer floor division:
+
 ```
-holder_share = holder_balance / total_supply * total_amount
+floor_share = floor(holder_balance * total_amount / total_supply)
 ```
 
-The last holder in the map receives the remainder (avoiding 1-stroop dust from integer division).
+The final registered holder in that sequence receives any nonzero remainder in addition to its
+floor share:
+
+```
+remainder_units = total_amount - sum(all floor_share payouts)
+final_share = final_floor_share + remainder_units
+```
+
+A nonzero remainder is transferred to the final registered holder. A zero remainder means there is
+no remainder transfer; it does not mean that holder gets zero, because the holder still receives its
+floor share. The sum of all payout amounts and the sum of all token transfers each equal
+`total_amount`, so no dust is retained or left claimable by the contract. A holder whose total payout
+is zero is omitted from transfers and the returned payout map.
+
+The deterministic regression suite covers 3, 5, 7, and 11 holders with prime-valued allocations.
 
 ## Events
 
@@ -52,6 +69,7 @@ The last holder in the map receives the remainder (avoiding 1-stroop dust from i
 | 6 | HolderExists | Holder already registered (currently overwrite-allowed) |
 | 7 | NoHolders | No holders registered |
 | 8 | ZeroSupply | total_supply is 0 — cannot compute shares |
+| 9 | ArithmeticOverflow | Distribution arithmetic exceeded the i128 range |
 
 ## Gas Cost Estimate
 

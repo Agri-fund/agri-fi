@@ -1,0 +1,15 @@
+# Kustomization for the frontend React SPA workload.
+# ArgoCD uses this as the entry-point when syncing the agri-fi-frontend app.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: agri-fi
+
+resources:
+  - deployment.yaml
+  - service.yaml
+  - ingress.yaml
+
+commonLabels:
+  app.kubernetes.io/part-of: agri-fi
+  app.kubernetes.io/managed-by: argocd

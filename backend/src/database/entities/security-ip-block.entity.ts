@@ -32,7 +32,12 @@ export class SecurityIpBlock {
   @Column({ type: 'text' })
   @ApiProperty({
     description: 'Block type',
-    enum: ['captcha_email', 'email_ratelimit', 'subnet_pending', 'subnet_active'],
+    enum: [
+      'captcha_email',
+      'email_ratelimit',
+      'subnet_pending',
+      'subnet_active',
+    ],
     example: 'subnet_pending',
   })
   type: SecurityBlockType;
@@ -43,11 +48,16 @@ export class SecurityIpBlock {
    * - CIDR notation (e.g. "203.0.113.0/16") for subnet blocks
    */
   @Column({ name: 'cidr', type: 'text' })
-  @ApiProperty({ description: 'Email address or CIDR range this block applies to' })
+  @ApiProperty({
+    description: 'Email address or CIDR range this block applies to',
+  })
   cidr: string;
 
   @Column({ type: 'text' })
-  @ApiProperty({ description: 'Why this block was created', example: 'credential_stuffing' })
+  @ApiProperty({
+    description: 'Why this block was created',
+    example: 'credential_stuffing',
+  })
   reason: string;
 
   /** Free-form detection metadata: signal thresholds hit, sample IPs, etc. */
@@ -56,11 +66,17 @@ export class SecurityIpBlock {
   metadata: Record<string, unknown> | null;
 
   @Column({ nullable: true })
-  @ApiProperty({ description: 'Admin who approved the block (subnet blocks)', required: false })
+  @ApiProperty({
+    description: 'Admin who approved the block (subnet blocks)',
+    required: false,
+  })
   approvedBy: string | null;
 
   @Column({ name: 'expires_at', type: 'timestamptz', nullable: true })
-  @ApiProperty({ description: 'When the block automatically expires', required: false })
+  @ApiProperty({
+    description: 'When the block automatically expires',
+    required: false,
+  })
   expiresAt: Date | null;
 
   @Column({ default: true })

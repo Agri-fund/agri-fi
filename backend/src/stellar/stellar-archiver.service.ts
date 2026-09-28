@@ -23,13 +23,18 @@ export class StellarArchiverService {
     );
     this.server = new Horizon.Server(horizonUrl);
 
-    const platformSecret = this.config.get<string>('STELLAR_PLATFORM_SECRET', '');
+    const platformSecret = this.config.get<string>(
+      'STELLAR_PLATFORM_SECRET',
+      '',
+    );
     if (platformSecret) {
       try {
         const keypair = Keypair.fromSecret(platformSecret);
         this.platformAccountId = keypair.publicKey();
       } catch (err) {
-        this.logger.warn('Failed to parse STELLAR_PLATFORM_SECRET for archiver');
+        this.logger.warn(
+          'Failed to parse STELLAR_PLATFORM_SECRET for archiver',
+        );
       }
     }
   }
@@ -48,12 +53,12 @@ export class StellarArchiverService {
       const lastRecord = await this.stellarHistoryRepo.findOne({
         order: { ledgerCreatedAt: 'DESC' },
       });
-      
+
       let cursor = lastRecord?.payload?.paging_token || '0';
 
       let hasMore = true;
       let pagesProcessed = 0;
-      
+
       // Fetch up to 10 pages per cron run to avoid keeping the process busy for too long
       while (hasMore && pagesProcessed < 10) {
         const response = await this.server
@@ -65,13 +70,17 @@ export class StellarArchiverService {
           .call();
 
         if (response.records.length === 0) {
-          this.logger.log('No new transactions found. Caught up to current ledger.');
+          this.logger.log(
+            'No new transactions found. Caught up to current ledger.',
+          );
           break;
         }
 
         const newRecords: StellarHistory[] = [];
         for (const record of response.records) {
-          const exists = await this.stellarHistoryRepo.findOne({ where: { txHash: record.hash } });
+          const exists = await this.stellarHistoryRepo.findOne({
+            where: { txHash: record.hash },
+          });
           if (!exists) {
             const history = this.stellarHistoryRepo.create({
               txHash: record.hash,
@@ -90,7 +99,7 @@ export class StellarArchiverService {
         }
 
         pagesProcessed++;
-        
+
         // If we received fewer than 200 records, we've likely hit the end of the history
         if (response.records.length < 200) {
           hasMore = false;

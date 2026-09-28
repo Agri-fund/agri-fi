@@ -1,0 +1,23 @@
+# Kustomization for the backend NestJS API workload.
+# ArgoCD uses this as the entry-point when syncing the agri-fi-backend app.
+#
+# The canonical deployment manifests live in backend/k8s/ (co-located with
+# the application source).  They are referenced here by relative path so
+# ArgoCD only needs to point at this directory.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: agri-fi
+
+resources:
+  # Blue/green Deployments + PgBouncer sidecars + ConfigMap
+  - ../../../backend/k8s/deployment.yaml
+  - ../../../backend/k8s/service.yaml
+  - ../../../backend/k8s/ingress.yaml
+  - ../../../backend/k8s/network-policy.yaml
+  # Least-privilege egress NetworkPolicy for backend/escrow worker pods (#1039)
+  - network-policy.yaml
+
+commonLabels:
+  app.kubernetes.io/part-of: agri-fi
+  app.kubernetes.io/managed-by: argocd

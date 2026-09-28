@@ -9,10 +9,7 @@ import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt.strategy';
 import { User } from './entities/user.entity';
 import { KycSubmission } from './entities/kyc-submission.entity';
-import { ReferralCode } from './entities/referral-code.entity';
-import { Referral } from './entities/referral.entity';
-import { KycGuard } from './kyc.guard';
-import { RolesGuard } from './roles.guard';
+import { KycGuard, RolesGuard } from '../common/guards';
 import { QueueModule } from '../queue/queue.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { AuditModule } from '../audit/audit.module';
@@ -26,10 +23,12 @@ import { KycCronService } from './kyc-cron.service';
 import { RedisConfig } from '../config/redis.config';
 import { TokenBlocklistService } from './token-blocklist.service';
 import { SecurityThreatService } from './security-threat.service';
-import { MfaGuard } from './guards/mfa.guard';
+import { MfaGuard } from '../common/guards';
 import { EscrowModule } from '../escrow/escrow.module';
 import { SettlementModule } from '../settlement/settlement.module';
 import { DocumentsModule } from '../documents/documents.module';
+import { AuditModule } from '../audit/audit.module';
+import { EmailSequenceModule } from '../email-sequence/email-sequence.module';
 
 @Module({
   imports: [
@@ -104,6 +103,7 @@ export class AuthModule {}
     PassportModule,
     EscrowModule,
     EmailSequenceModule,
+    AuditModule,
     SettlementModule,
     DocumentsModule,
     JwtModule.registerAsync({

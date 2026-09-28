@@ -1,5 +1,6 @@
 'use client';
 
+import { getAuthToken } from '@/lib/auth-token';
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
@@ -52,7 +53,7 @@ export default function FeeConfigurationsPage() {
       if (filters.active !== undefined) params.set('active', String(filters.active));
 
       const res = await fetch(`/api/admin/fee-configurations?${params}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+        headers: { Authorization: `Bearer ${getAuthToken()}` },
       });
 
       if (!res.ok) throw new Error('Failed to fetch fee configurations');
@@ -64,7 +65,7 @@ export default function FeeConfigurationsPage() {
     queryKey: ['dealTypes'],
     queryFn: async () => {
       const res = await fetch('/api/admin/fee-configurations/deal-types', {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+        headers: { Authorization: `Bearer ${getAuthToken()}` },
       });
       if (!res.ok) throw new Error('Failed to fetch deal types');
       return res.json() as Promise<string[]>;

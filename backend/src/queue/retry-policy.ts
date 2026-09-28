@@ -33,7 +33,7 @@ export function isTransientQueueError(error: unknown): boolean {
 /**
  * Calculates exponential backoff with random jitter for queue retry operations.
  * Formula: base_delay * 2^(attempt - 1) + random_jitter (or base_delay * 2^attempt + random_jitter).
- * 
+ *
  * @param attempt The current attempt count (1-indexed).
  * @param baseDelayMs Base delay in milliseconds (default 1000ms).
  * @param maxJitterMs Maximum random jitter in milliseconds to add (default 500ms).

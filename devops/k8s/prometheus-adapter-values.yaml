@@ -1,0 +1,14 @@
+# Prometheus Adapter values for the backend queue-depth HPA.
+# Install with the prometheus-community/prometheus-adapter chart.
+prometheus:
+  url: http://prometheus.monitoring.svc.cluster.local
+  port: 9090
+rules:
+  default: false
+  custom:
+    - seriesQuery: 'rabbitmq_queue_messages{queue="escrow.process"}'
+      resources: {}
+      name:
+        matches: '^rabbitmq_queue_messages$'
+        as: queue_depth
+      metricsQuery: 'sum(rabbitmq_queue_messages{queue="escrow.process"})'

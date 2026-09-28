@@ -29,10 +29,16 @@ const MAX_LIMIT = 50;
 
 // Audit route patterns that map to activity event types
 const ROUTE_TO_EVENT: Array<{ pattern: RegExp; type: ActivityEventType }> = [
-  { pattern: /POST \/v1\/investments/i,                  type: 'investor_joined' },
-  { pattern: /POST \/v1\/trade-deals\/[^/]+\/documents/i, type: 'document_uploaded' },
-  { pattern: /PATCH \/v1\/trade-deals\/[^/]+\/status/i,  type: 'deal_status_changed' },
-  { pattern: /POST \/v1\/payments\/distribute/i,         type: 'payment_distributed' },
+  { pattern: /POST \/v1\/investments/i, type: 'investor_joined' },
+  {
+    pattern: /POST \/v1\/trade-deals\/[^/]+\/documents/i,
+    type: 'document_uploaded',
+  },
+  {
+    pattern: /PATCH \/v1\/trade-deals\/[^/]+\/status/i,
+    type: 'deal_status_changed',
+  },
+  { pattern: /POST \/v1\/payments\/distribute/i, type: 'payment_distributed' },
 ];
 
 @Injectable()
@@ -162,10 +168,13 @@ export class ActivityFeedService {
 
   private logBelongsToDeal(log: SystemAuditLog, dealId: string): boolean {
     if (!log.requestDetails) return false;
-    const params = log.requestDetails['params'] as Record<string, string> | undefined;
+    const params = log.requestDetails['params'] as
+      Record<string, string> | undefined;
     if (params?.['id'] === dealId) return true;
-    const body = log.requestDetails['body'] as Record<string, unknown> | undefined;
-    if (body?.['trade_deal_id'] === dealId || body?.['tradeDealId'] === dealId) return true;
+    const body = log.requestDetails['body'] as
+      Record<string, unknown> | undefined;
+    if (body?.['trade_deal_id'] === dealId || body?.['tradeDealId'] === dealId)
+      return true;
     return false;
   }
 
@@ -202,7 +211,8 @@ export class ActivityFeedService {
     type: ActivityEventType,
     log: SystemAuditLog,
   ): Record<string, unknown> {
-    const body = (log.requestDetails?.['body'] as Record<string, unknown>) ?? {};
+    const body =
+      (log.requestDetails?.['body'] as Record<string, unknown>) ?? {};
     switch (type) {
       case 'investor_joined':
         return {

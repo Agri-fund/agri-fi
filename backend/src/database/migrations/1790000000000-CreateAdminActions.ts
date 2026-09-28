@@ -15,8 +15,12 @@ export class CreateAdminActions1790000000000 implements MigrationInterface {
         "created_at"     TIMESTAMPTZ NOT NULL DEFAULT now()
       )
     `);
-    await queryRunner.query(`CREATE INDEX "idx_admin_actions_admin_id" ON "admin_actions" ("admin_id")`);
-    await queryRunner.query(`CREATE INDEX "idx_admin_actions_target_user_id" ON "admin_actions" ("target_user_id")`);
+    await queryRunner.query(
+      `CREATE INDEX "idx_admin_actions_admin_id" ON "admin_actions" ("admin_id")`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "idx_admin_actions_target_user_id" ON "admin_actions" ("target_user_id")`,
+    );
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {

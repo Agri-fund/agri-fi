@@ -5,15 +5,20 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
+  workflow_dispatch: {}
 
 jobs:
   backend:
-    name: Backend — lint, build, test
+    name: Backend — lint, build, test (Node.js ${{ matrix.node-version }})
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [20, 22]
+        postgres-version: [16, 17]
 
     services:
       postgres:
-        image: postgres:15
+        image: postgres:${{ matrix.postgres-version }}
         env:
           POSTGRES_USER: agri
           POSTGRES_PASSWORD: agri
@@ -44,9 +49,13 @@ jobs:
       STELLAR_HORIZON_URL: https://horizon-testnet.stellar.org
       STELLAR_PLATFORM_SECRET: ${{ secrets.STELLAR_PLATFORM_SECRET_TESTNET }}
       STELLAR_INTEGRATION_TESTS: ${{ secrets.STELLAR_PLATFORM_SECRET_TESTNET != '' && 'true' || 'false' }}
+      SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       ENCRYPTION_KEY: ci-test-encryption-key-32chars!!
       RABBITMQ_URL: amqp://localhost:5672
       NOTIFICATIONS_ENABLED: "false"
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
 
     steps:
       - uses: actions/checkout@v4
@@ -61,7 +70,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: ${{ matrix.node-version }}
           cache: npm
           cache-dependency-path: backend/package-lock.json
 
@@ -85,9 +94,185 @@ jobs:
         run: npm run lint -- --max-warnings=0
         working-directory: backend
 
+      - name: Verify .env.example coverage
+        run: npm run check:env
+        working-directory: backend
+
+      - name: Verify production seed safety
+        run: npm run check:seed-safety
+        working-directory: backend
+
       - name: Build
         run: npm run build
         working-directory: backend
+
+
+      - name: Generate OpenAPI spec
+        run: node generate-openapi.js
+        working-directory: backend
+        env:
+          NODE_ENV: development
+          PORT: '0'
+          DATABASE_URL: postgresql://localhost/dummy
+          JWT_SECRET: dummy-secret-for-spec-generation
+          RABBITMQ_URL: amqp://localhost:5672
+          LOG_LEVEL: error
+
+      - name: Check OpenAPI spec drift (PR only)
+        if: github.event_name == 'pull_request'
+        run: |
+          if ! diff -u backend/openapi.json <(git show HEAD:backend/openapi.json) > /tmp/openapi.diff 2>/dev/null; then
+            echo "::error::OpenAPI spec drift detected. Run 'npm run generate-openapi' and commit changes."
+            cat /tmp/openapi.diff
+            exit 1
+          fi
+
+      - name: Upload OpenAPI spec artifact
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openapi-spec-pr-${{ github.event.pull_request.number }}
+          path: backend/openapi.json
+          retention-days: 30
+
+      - name: Comment PR with OpenAPI changes
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+
+            // Get the diff
+            let diff = '';
+            try {
+              const { execSync } = require('child_process');
+              diff = execSync(`diff -u backend/openapi.json <(git show HEAD:backend/openapi.json) 2>/dev/null || true`, {
+                cwd: process.env.GITHUB_WORKSPACE,
+                encoding: 'utf-8',
+                shell: '/bin/bash'
+              }).trim();
+            } catch (e) {
+              // If diff fails (file doesn't exist in HEAD), that's OK
+            }
+
+            if (!diff) {
+              core.info('No OpenAPI changes detected');
+              return;
+            }
+
+            // Parse diff to count additions/deletions
+            const lines = diff.split('\n');
+            const additions = lines.filter(l => l.startsWith('+')).length;
+            const deletions = lines.filter(l => l.startsWith('-')).length;
+
+            // Extract breaking changes (removed paths or changed methods)
+            const breaking = [];
+            const added = [];
+            const modified = [];
+
+            for (let i = 0; i < lines.length; i++) {
+              const line = lines[i];
+              if (line.startsWith('-    "/') && !lines[i+1]?.startsWith('+')) {
+                breaking.push(line.slice(6, -3)); // extract path
+              } else if (line.startsWith('+    "/')) {
+                added.push(line.slice(6, -3));
+              }
+            }
+
+            let comment = '## 📋 OpenAPI Spec Changes\n\n';
+            comment += `**Additions:** ${additions} | **Deletions:** ${deletions}\n\n`;
+
+            if (breaking.length > 0) {
+              comment += '### ⚠️ Breaking Changes\n';
+              breaking.forEach(p => comment += `- \`${p}\`\n`);
+              comment += '\n';
+            }
+
+            if (added.length > 0) {
+              comment += '### ✨ New Endpoints\n';
+              added.forEach(p => comment += `- \`${p}\`\n`);
+              comment += '\n';
+            }
+
+            comment += '[View full spec diff](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})\n';
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+
+      # ── Network policy CI check (#1039) ───────────────────────────────────
+      # Validates that backend/escrow pod NetworkPolicy manifests satisfy the
+      # least-privilege egress rules defined in devops/policy/k8s/.
+      #
+      # Two tools are used in sequence:
+      #   1. OPA  — runs the Rego unit tests in network_policy_test.rego to
+      #             verify the policy logic itself is correct.
+      #   2. conftest — evaluates the live NetworkPolicy manifests in
+      #             devops/k8s/backend/ against the Rego policy.
+      #
+      # Both are installed as pre-built binaries from their GitHub releases;
+      # no additional package manager or Docker daemon is needed.
+      - name: Install OPA
+        run: |
+          OPA_VERSION="v0.68.0"
+          curl -sSfL \
+            "https://github.com/open-policy-agent/opa/releases/download/${OPA_VERSION}/opa_linux_amd64_static" \
+            -o /usr/local/bin/opa
+          chmod +x /usr/local/bin/opa
+          opa version
+
+      - name: Install conftest
+        run: |
+          CONFTEST_VERSION="0.55.0"
+          curl -sSfL \
+            "https://github.com/open-policy-agent/conftest/releases/download/v${CONFTEST_VERSION}/conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz" \
+            | tar -xz -C /usr/local/bin conftest
+          chmod +x /usr/local/bin/conftest
+          conftest --version
+
+      - name: OPA unit-test the Rego policy
+        # Runs network_policy_test.rego against network_policy.rego to verify
+        # the policy logic before applying it to real manifests.
+        run: |
+          opa test devops/policy/k8s/ -v --exit-zero-on-skipped
+        env:
+          # Suppress OPA's colour output for cleaner CI logs
+          NO_COLOR: "1"
+
+      - name: conftest — validate backend NetworkPolicy manifests
+        # Evaluates every YAML document in devops/k8s/backend/ against the
+        # Rego policy. Exits non-zero if any `deny` rule fires.
+        # `--all-namespaces` ensures multi-document YAML files are all checked.
+        run: |
+          conftest test \
+            --policy devops/policy/k8s \
+            --namespace main \
+            --all-namespaces \
+            --output github \
+            devops/k8s/backend/network-policy.yaml
+        env:
+          NO_COLOR: "1"
+
+      - name: conftest — validate existing devops NetworkPolicy manifests
+        # Also run against the older policy files to catch regressions.
+        run: |
+          conftest test \
+            --policy devops/policy/k8s \
+            --namespace main \
+            --all-namespaces \
+            --output github \
+            --ignore "restrict-database-ingress|allow-redis-ingress" \
+            devops/k8s/network-policy.yaml \
+            devops/k8s/redis-network-policy.yaml \
+            backend/k8s/network-policy.yaml \
+          || true
+          # `|| true` because legacy policies pre-date this enforcement;
+          # they produce warnings but are not required to be fully compliant
+          # until migrated to the agri-fi namespace in a follow-up.
 
       - name: Run database migrations
         run: npm run migration:run
@@ -114,10 +299,10 @@ jobs:
 
       - name: SonarQube scan
         uses: SonarSource/sonarqube-scan-action@v6
-        if: ${{ always() && secrets.SONAR_HOST_URL != '' }}
+        if: ${{ always() && env.SONAR_HOST_URL != '' }}
         env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+          SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ env.SONAR_HOST_URL }}
         with:
           args: >
             -Dsonar.projectKey=agri-fi-backend

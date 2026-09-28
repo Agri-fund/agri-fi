@@ -11,9 +11,9 @@
  * - Full i18n via next-intl
  */
 
-import { useEffect, useRef } from 'react';
 import { useTranslations } from 'next-intl';
 import { WalletProvider } from '@/hooks/useWallet';
+import { ModalWrapper } from '@/components/ui/ModalWrapper';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -61,7 +61,7 @@ function WalletOption({
   disabled = false,
   comingSoon = false,
   onClick,
-  accentClass = 'hover:border-blue-400 focus:ring-blue-400',
+  accentClass = 'hover:border-blue-400 focus-visible:ring-blue-500',
   testId,
 }: WalletOptionProps) {
   if (comingSoon) {
@@ -99,13 +99,13 @@ function WalletOption({
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`w-full flex items-center gap-3 border border-gray-200 rounded-xl px-4 py-3 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 ${accentClass}`}
+      className={`w-full flex items-center gap-3 border border-gray-200 rounded-xl px-4 py-3 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${accentClass}`}
       data-testid={testId}
     >
       <span className="text-2xl flex-shrink-0" aria-hidden="true">{icon}</span>
       <div className="text-left min-w-0">
         <p className="text-sm font-medium text-gray-800">{name}</p>
-        <p className="text-xs text-gray-400 truncate">{description}</p>
+        <p className="text-xs text-gray-500 truncate">{description}</p>
       </div>
       {badge && <span className="ml-auto flex-shrink-0">{badge}</span>}
     </button>
@@ -125,8 +125,6 @@ export function WalletSelectionModal({
   detectedNetwork,
 }: WalletSelectionModalProps) {
   const t = useTranslations('wallet');
-  const panelRef = useRef<HTMLDivElement>(null);
-  const previousFocusRef = useRef<HTMLElement | null>(null);
 
   const freighterInstalled = availableWallets.includes('freighter');
   const showNetworkMismatch =
@@ -134,80 +132,21 @@ export function WalletSelectionModal({
     !!detectedNetwork &&
     detectedNetwork.toLowerCase() !== expectedNetwork.toLowerCase();
 
-  // ── Focus management ───────────────────────────────────────────────────────
-
-  useEffect(() => {
-    if (isOpen) {
-      previousFocusRef.current = document.activeElement as HTMLElement;
-      // Move focus into the panel after the DOM settles
-      requestAnimationFrame(() => {
-        const firstFocusable = panelRef.current?.querySelector<HTMLElement>(
-          'button:not([disabled]), a[href], input, [tabindex]:not([tabindex="-1"])',
-        );
-        firstFocusable?.focus();
-      });
-    } else {
-      previousFocusRef.current?.focus();
-    }
-  }, [isOpen]);
-
-  // ── Keyboard handling ──────────────────────────────────────────────────────
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        onClose();
-      }
-
-      // Focus trap
-      if (e.key === 'Tab' && panelRef.current) {
-        const focusable = Array.from(
-          panelRef.current.querySelectorAll<HTMLElement>(
-            'button:not([disabled]), a[href], input, [tabindex]:not([tabindex="-1"])',
-          ),
-        );
-        if (focusable.length === 0) return;
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-
-        if (e.shiftKey && document.activeElement === first) {
-          e.preventDefault();
-          last.focus();
-        } else if (!e.shiftKey && document.activeElement === last) {
-          e.preventDefault();
-          first.focus();
-        }
-      }
-    };
-
-    document.addEventListener('keydown', handleKey);
-    return () => document.removeEventListener('keydown', handleKey);
-  }, [isOpen, onClose]);
-
-  if (!isOpen) return null;
-
   // ── Render ─────────────────────────────────────────────────────────────────
+  // ModalWrapper owns focus trap, Escape, initial focus and focus restore.
+  // z-[110] keeps this above the investment modal when opened from inside it.
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-      role="presentation"
-      data-testid="wallet-selection-backdrop"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
+    <ModalWrapper
+      isOpen={isOpen}
+      onClose={onClose}
+      labelledBy="wsm-title"
+      describedBy="wsm-description"
+      zIndexClassName="z-[110]"
+      className="w-full max-w-sm"
+      backdropTestId="wallet-selection-backdrop"
+      panelTestId="wallet-selection-modal"
     >
-      <div
-        ref={panelRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="wsm-title"
-        aria-describedby="wsm-description"
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden"
-        data-testid="wallet-selection-modal"
-      >
         {/* ── Header ── */}
         <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-gray-100">
           <div>
@@ -220,7 +159,7 @@ export function WalletSelectionModal({
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors focus:outline-none focus:ring-2 focus:ring-gray-400"
+            className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors focus-ring"
             aria-label={t('closeDialog')}
             data-testid="wsm-close-btn"
           >
@@ -260,7 +199,7 @@ export function WalletSelectionModal({
         <div className="px-6 py-5 space-y-3">
 
           {/* Privacy notice */}
-          <p className="text-xs text-gray-400">{t('description')}</p>
+          <p className="text-xs text-gray-500">{t('description')}</p>
 
           {/* ── Freighter ── */}
           <WalletOption
@@ -269,18 +208,18 @@ export function WalletSelectionModal({
             description={t('freighter.type')}
             disabled={isConnecting}
             onClick={() => onConnect('freighter')}
-            accentClass="hover:border-blue-400 focus:ring-blue-400"
+            accentClass="hover:border-blue-400 focus-visible:ring-blue-500"
             testId="wsm-freighter-btn"
             badge={
               freighterInstalled ? (
-                <span className="text-xs text-green-600 font-medium">{t('detected')}</span>
+                <span className="text-xs text-green-700 font-medium">{t('detected')}</span>
               ) : (
                 <a
                   href="https://freighter.app/"
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={(e) => e.stopPropagation()}
-                  className="text-xs text-blue-500 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-400 rounded px-1"
+                  className="text-xs text-blue-700 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-400 rounded px-1"
                   data-testid="wsm-freighter-install-link"
                 >
                   {t('install')}
@@ -296,7 +235,7 @@ export function WalletSelectionModal({
               data-testid="wsm-freighter-install-guide"
             >
               <p className="font-medium">{t('onboarding.freighterGuide.title')}</p>
-              <ol className="list-decimal list-inside space-y-0.5 text-blue-600">
+              <ol className="list-decimal list-inside space-y-0.5 text-blue-700">
                 <li>{t('onboarding.freighterGuide.step1')}</li>
                 <li>{t('onboarding.freighterGuide.step2')}</li>
                 <li>{t('onboarding.freighterGuide.step3')}</li>
@@ -305,7 +244,7 @@ export function WalletSelectionModal({
                 href="https://freighter.app/"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 mt-1 font-medium text-blue-500 hover:underline focus:outline-none focus:ring-1 focus:ring-blue-400 rounded"
+                className="inline-flex items-center gap-1 mt-1 font-medium text-blue-700 hover:underline focus:outline-none focus:ring-1 focus:ring-blue-400 rounded"
                 data-testid="wsm-freighter-guide-link"
               >
                 {t('onboarding.freighterGuide.cta')}
@@ -323,10 +262,10 @@ export function WalletSelectionModal({
             description={t('albedo.type')}
             disabled={isConnecting}
             onClick={() => onConnect('albedo')}
-            accentClass="hover:border-purple-400 focus:ring-purple-400"
+            accentClass="hover:border-purple-400 focus-visible:ring-purple-500"
             testId="wsm-albedo-btn"
             badge={
-              <span className="text-xs text-green-600 font-medium">{t('alwaysAvailable')}</span>
+              <span className="text-xs text-green-700 font-medium">{t('alwaysAvailable')}</span>
             }
           />
 
@@ -374,11 +313,10 @@ export function WalletSelectionModal({
 
         {/* ── Footer ── */}
         <div className="px-6 pb-5">
-          <p className="text-[11px] text-gray-400 text-center leading-relaxed">
+          <p className="text-[11px] text-gray-500 text-center leading-relaxed">
             {t('onboarding.termsNote')}
           </p>
         </div>
-      </div>
-    </div>
+    </ModalWrapper>
   );
 }

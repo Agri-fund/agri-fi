@@ -17,6 +17,7 @@
 
 [workspace]
 members = [
+    "contracts/alert-registry",
     "contracts/escrow",
     "contracts/farm_campaign",
     "contracts/farm_campaign_settlement",

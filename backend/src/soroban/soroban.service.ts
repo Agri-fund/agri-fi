@@ -23,6 +23,7 @@ import {
   Operation,
   SorobanDataBuilder,
 } from '@stellar/stellar-sdk';
+import { MAX_FEE_BPS } from '../database/entities/fee-configuration.entity';
 
 export interface CampaignConfig {
   admin: string;
@@ -110,6 +111,10 @@ export class SorobanService {
     const tx = new TransactionBuilder(account, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
+      timebounds: {
+        minTime: 0,
+        maxTime: Math.floor(Date.now() / 1000) + 30,
+      },
     })
       .addOperation(contract.call(method, ...args))
       .setTimeout(30)
@@ -187,9 +192,12 @@ export class SorobanService {
     const tx = new TransactionBuilder(account, {
       fee: BASE_FEE,
       networkPassphrase: this.networkPassphrase,
+      timebounds: {
+        minTime: 0,
+        maxTime: Math.floor(Date.now() / 1000) + 30,
+      },
     })
       .addOperation(contract.call(method, ...args))
-      .setTimeout(30)
       .build();
 
     const simResult = await this.rpcServer.simulateTransaction(tx);
@@ -294,19 +302,30 @@ export class SorobanService {
 
   // ── ProjectFactory contract methods ─────────────────────────────────────────
 
-  /**
-   * Deploys a new FarmCampaign contract through the ProjectFactory (#830).
-   * Returns the deployed campaign contract address.
-   */
   async deployFarmCampaign(
     dealId: string,
     params: {
       farmerAddress: string;
-      targetAmount: bigint; // USDC stroops
-      durationLedgers: number;
-      commodityCode: string;
+      targetAmount: bigint;
+      deadline: number;
+      feeBps: number;
     },
   ): Promise<string> {
+    const now = Math.floor(Date.now() / 1000);
+    if (typeof params.targetAmount !== 'bigint' || params.targetAmount <= 0n) {
+      throw new Error('Campaign target must be greater than zero');
+    }
+    if (!Number.isSafeInteger(params.deadline) || params.deadline <= now) {
+      throw new Error('Campaign deadline must be in the future');
+    }
+    if (
+      !Number.isSafeInteger(params.feeBps) ||
+      params.feeBps < 0 ||
+      params.feeBps > MAX_FEE_BPS
+    ) {
+      throw new Error(`Campaign fee must be between 0 and ${MAX_FEE_BPS} bps`);
+    }
+
     const factoryContractId = this.config.get<string>(
       'SOROBAN_FACTORY_CONTRACT_ID',
     );
@@ -318,13 +337,13 @@ export class SorobanService {
       new Address(this.platformKeypair.publicKey()).toScVal(),
       new Address(params.farmerAddress).toScVal(),
       nativeToScVal(params.targetAmount, { type: 'i128' }),
-      nativeToScVal(params.durationLedgers, { type: 'u32' }),
-      nativeToScVal(params.commodityCode, { type: 'symbol' }),
+      nativeToScVal(params.deadline, { type: 'u64' }),
+      nativeToScVal(params.feeBps, { type: 'u32' }),
     ];
 
     const { hash, result } = await this.invokeContractWithResult(
       factoryContractId,
-      'deploy',
+      'create_campaign',
       args,
     );
 
@@ -626,8 +645,6 @@ export class SorobanService {
       );
     }
   }
-}
-
 
   // ── RevenueDistributor contract methods (Issue #873) ────────────────────────
 
@@ -669,7 +686,10 @@ export class SorobanService {
     usdcToken: string,
     totalAmount: bigint,
     expectedPayouts?: Map<string, bigint>,
-  ): Promise<{ hash: string; discrepancies: Array<{ holder: string; expected: bigint; actual: bigint }> }> {
+  ): Promise<{
+    hash: string;
+    discrepancies: Array<{ holder: string; expected: bigint; actual: bigint }>;
+  }> {
     const args = [
       new Address(this.platformKeypair.publicKey()).toScVal(),
       new Address(usdcToken).toScVal(),
@@ -677,30 +697,50 @@ export class SorobanService {
     ];
 
     const hash = await this.invokeContract(contractId, 'distribute', args);
-    this.logger.info({ contractId, totalAmount: totalAmount.toString(), hash }, 'Revenue distribution triggered');
+    this.logger.info(
+      { contractId, totalAmount: totalAmount.toString(), hash },
+      'Revenue distribution triggered',
+    );
 
-    const discrepancies: Array<{ holder: string; expected: bigint; actual: bigint }> = [];
+    const discrepancies: Array<{
+      holder: string;
+      expected: bigint;
+      actual: bigint;
+    }> = [];
 
     if (expectedPayouts && expectedPayouts.size > 0) {
       // Cross-check: read actual payouts from the contract
       try {
-        const actualMap = (await this.readContract(contractId, 'get_holders', [])) as Record<string, unknown> | null;
+        const actualMap = (await this.readContract(
+          contractId,
+          'get_holders',
+          [],
+        )) as Record<string, unknown> | null;
         if (actualMap) {
           const TOLERANCE_STROOPS = BigInt(1_000); // 0.001 USDC
           for (const [holder, expected] of expectedPayouts.entries()) {
             const actual = BigInt((actualMap as any)[holder] ?? 0);
-            const diff = expected > actual ? expected - actual : actual - expected;
+            const diff =
+              expected > actual ? expected - actual : actual - expected;
             if (diff > TOLERANCE_STROOPS) {
               discrepancies.push({ holder, expected, actual });
               this.logger.error(
-                { holder, expected: expected.toString(), actual: actual.toString(), diff: diff.toString() },
+                {
+                  holder,
+                  expected: expected.toString(),
+                  actual: actual.toString(),
+                  diff: diff.toString(),
+                },
                 'Revenue distribution discrepancy detected',
               );
             }
           }
         }
       } catch (err: any) {
-        this.logger.warn({ err: err.message }, 'Could not cross-check distribution payouts');
+        this.logger.warn(
+          { err: err.message },
+          'Could not cross-check distribution payouts',
+        );
       }
     }
 
@@ -711,6 +751,11 @@ export class SorobanService {
    * Returns the current distribution count from the revenue_distributor contract.
    */
   async getRevenueDistributionCount(contractId: string): Promise<number> {
-    const result = await this.readContract(contractId, 'get_distribution_count', []);
+    const result = await this.readContract(
+      contractId,
+      'get_distribution_count',
+      [],
+    );
     return Number(result ?? 0);
   }
+}

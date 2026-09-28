@@ -17,7 +17,10 @@ export class JsonBigIntInterceptor implements NestInterceptor {
     return next.handle().pipe(map((data) => this.serializeBigInts(data)));
   }
 
-  private serializeBigInts(value: unknown, seen = new WeakSet<object>()): unknown {
+  private serializeBigInts(
+    value: unknown,
+    seen = new WeakSet<object>(),
+  ): unknown {
     if (typeof value === 'bigint') {
       return value.toString();
     }

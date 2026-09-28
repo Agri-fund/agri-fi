@@ -7,12 +7,10 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
-  Version,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
-import { RolesGuard } from '../auth/roles.guard';
-import { MfaGuard } from '../auth/guards/mfa.guard';
+import { RolesGuard, MfaGuard } from '../common/guards';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { SorobanService } from './soroban.service';
 import { ReleaseMilestoneDto } from './dto/release-milestone.dto';
@@ -131,9 +129,7 @@ export class SorobanController {
   @UseGuards(AuthGuard('jwt'), RolesGuard, MfaGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Admin: process buyer refund with MFA protection' })
-  async refund(
-    @Body() dto: { contractId: string; orderId: string },
-  ) {
+  async refund(@Body() dto: { contractId: string; orderId: string }) {
     const txHash = await this.sorobanService.refundMarketplaceBuyer(
       dto.contractId,
       dto.orderId,
@@ -145,7 +141,9 @@ export class SorobanController {
   @Roles('admin')
   @UseGuards(AuthGuard('jwt'), RolesGuard, MfaGuard)
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Admin: refund buyer (dispute resolution) with MFA' })
+  @ApiOperation({
+    summary: 'Admin: refund buyer (dispute resolution) with MFA',
+  })
   async refundBuyer(
     @Param('contractId') contractId: string,
     @Body() dto: ConfirmDeliveryDto,

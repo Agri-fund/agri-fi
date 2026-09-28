@@ -8,6 +8,8 @@ import { CurrencyConverterService } from './currency-converter.service';
 import { Investment } from './entities/investment.entity';
 import { InvestmentEvent } from './entities/investment-event.entity';
 import { SecondaryTrade } from './entities/secondary-trade.entity';
+import { SecondaryOrder } from './entities/secondary-order.entity';
+import { AutoInvestPlan } from './entities/auto-invest-plan.entity';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
 import { User } from '../auth/entities/user.entity';
 import { FeeConfiguration } from '../database/entities/fee-configuration.entity';
@@ -29,9 +31,12 @@ import { AccreditationModule } from '../accreditation/accreditation.module';
       Investment,
       InvestmentEvent,
       SecondaryTrade,
+      SecondaryOrder,
+      AutoInvestPlan,
       TradeDeal,
       User,
       FeeConfiguration,
+      PaymentDistribution,
     ]),
     StellarModule,
     QueueModule,
@@ -43,6 +48,7 @@ import { AccreditationModule } from '../accreditation/accreditation.module';
     InvestmentsController,
     FeeConfigurationController,
     MarketplaceSettlementController,
+    AutoInvestController,
   ],
   providers: [
     InvestmentsService,
@@ -53,6 +59,10 @@ import { AccreditationModule } from '../accreditation/accreditation.module';
     MarketplaceSettlementService,
     TaxReportService,
     ReceiptService,
+    InvoiceService,
+    SecondaryOrderMatchingService,
+    AutoInvestService,
+    RiskScoringService,
   ],
   exports: [
     InvestmentsService,
@@ -61,6 +71,8 @@ import { AccreditationModule } from '../accreditation/accreditation.module';
     FeeConfigurationService,
     CurrencyConverterService,
     MarketplaceSettlementService,
+    SecondaryOrderMatchingService,
+    AutoInvestService,
   ],
 })
 export class InvestmentsModule {}

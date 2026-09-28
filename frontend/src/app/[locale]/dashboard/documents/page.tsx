@@ -1,5 +1,6 @@
 'use client';
 
+import { getAuthToken } from '@/lib/auth-token';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient, User, Document } from '@/lib/api';
@@ -44,7 +45,7 @@ export default function DocumentsPage() {
       setUser(u);
 
       try {
-        const token = localStorage.getItem('auth_token');
+        const token = getAuthToken();
         const res = await fetch('/api/documents', {
           headers: { Authorization: `Bearer ${token}` },
         });

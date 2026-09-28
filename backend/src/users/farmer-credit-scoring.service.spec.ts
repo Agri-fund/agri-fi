@@ -10,11 +10,15 @@ describe('FarmerCreditScoringService', () => {
 
   beforeEach(() => {
     userRepo = {
-      findOne: jest.fn().mockResolvedValue({ id: 'user-uuid', creditScore: null } as User),
+      findOne: jest
+        .fn()
+        .mockResolvedValue({ id: 'user-uuid', creditScore: null } as User),
       save: jest.fn().mockImplementation((u) => Promise.resolve(u)),
     };
     historyRepo = {
-      create: jest.fn().mockImplementation((dto) => dto as FarmerCreditScoreHistory),
+      create: jest
+        .fn()
+        .mockImplementation((dto) => dto as FarmerCreditScoreHistory),
       save: jest.fn().mockImplementation((h) => Promise.resolve(h)),
     };
 

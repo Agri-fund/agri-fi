@@ -1,9 +1,11 @@
 'use client';
 
+import { getAuthToken } from '@/lib/auth-token';
 import { useState } from 'react';
 import { useWallet } from '../hooks/useWallet';
 import { useTransactionProgress } from '../hooks/useTransactionProgress';
 import { OnChainProgressIndicator } from './OnChainProgressIndicator';
+import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
 
 interface SellSharesModalProps {
   tradeTokenCode: string;
@@ -26,6 +28,7 @@ export const SellSharesModal: React.FC<SellSharesModalProps> = ({
   onClose,
   onSuccess,
 }) => {
+  const { formatCurrency } = useCurrencyFormat();
   const { isConnected, publicKey, signTransaction } = useWallet();
   const txProgress = useTransactionProgress();
   const [tokenAmount, setTokenAmount] = useState<number | ''>(1);
@@ -63,7 +66,7 @@ export const SellSharesModal: React.FC<SellSharesModalProps> = ({
     txProgress.setSimulating();
     
     try {
-      const token = localStorage.getItem('auth_token');
+      const token = getAuthToken();
       if (!token) throw new Error('Please log in first.');
 
       // Step 1: Get unsigned XDR for the sell offer from backend (simulating)
@@ -232,7 +235,7 @@ export const SellSharesModal: React.FC<SellSharesModalProps> = ({
               <div className="bg-gray-50 rounded-lg px-3 py-2 text-sm text-gray-700">
                 You will receive up to{' '}
                 <span className="font-semibold text-gray-900">
-                  {totalValue.toFixed(2)} USDC
+                  {formatCurrency(totalValue, 'USDC', { decimalPlaces: 2 })}
                 </span>{' '}
                 when the offer fills.
               </div>

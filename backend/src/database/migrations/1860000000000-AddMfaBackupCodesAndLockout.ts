@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddMfaBackupCodesAndLockout1860000000000
-  implements MigrationInterface
-{
+export class AddMfaBackupCodesAndLockout1860000000000 implements MigrationInterface {
   name = 'AddMfaBackupCodesAndLockout1860000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {

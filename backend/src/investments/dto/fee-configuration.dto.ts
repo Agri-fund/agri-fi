@@ -10,7 +10,11 @@ import {
   IsBoolean,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { FeeType, InvestorTier } from '../../database/entities/fee-configuration.entity';
+import {
+  FeeType,
+  InvestorTier,
+  MAX_FEE_PERCENT,
+} from '../../database/entities/fee-configuration.entity';
 
 export class CreateFeeConfigurationDto {
   @ApiProperty({
@@ -47,7 +51,7 @@ export class CreateFeeConfigurationDto {
   })
   @IsNumber()
   @Min(0)
-  @Max(100)
+  @Max(MAX_FEE_PERCENT)
   ratePercent: number;
 
   @ApiProperty({
@@ -87,7 +91,7 @@ export class UpdateFeeConfigurationDto {
   @IsOptional()
   @IsNumber()
   @Min(0)
-  @Max(100)
+  @Max(MAX_FEE_PERCENT)
   ratePercent?: number;
 
   @ApiProperty({

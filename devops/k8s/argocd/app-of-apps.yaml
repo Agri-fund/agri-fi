@@ -1,0 +1,63 @@
+# Root App-of-Apps — agri-fi platform
+#
+# This is the single entry-point Application that ArgoCD bootstraps.
+# It points to devops/k8s/argocd/apps/, which contains one Application
+# manifest per child workload.  ArgoCD will discover and reconcile those
+# child Applications automatically.
+#
+# Sync-wave ordering encoded in child manifests (argocd.argoproj.io/sync-wave):
+#   Wave -2 : redis            (in-cluster cache; no upstream deps)
+#   Wave -1 : rabbitmq         (message broker; depends only on cluster)
+#   Wave  0 : backend          (NestJS API; requires redis + rabbitmq)
+#   Wave  1 : frontend         (React SPA; requires backend API)
+#
+# Bootstrap:
+#   kubectl apply -f devops/k8s/argocd/app-of-apps.yaml
+#
+# Ref: https://argo-cd.readthedocs.io/en/stable/operator-manual/cluster-bootstrapping/
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: agri-fi-app-of-apps
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: agri-fi
+    app.kubernetes.io/managed-by: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    # Wave 0 for the root itself — it must apply before any child wave fires.
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: agri-fi
+
+  source:
+    repoURL: https://github.com/Agri-fund/agri-fi.git
+    targetRevision: main
+    # ArgoCD watches this directory for child Application manifests.
+    path: devops/k8s/argocd/apps
+
+  destination:
+    # Child Application objects live in the argocd namespace.
+    server: https://kubernetes.default.svc
+    namespace: argocd
+
+  syncPolicy:
+    automated:
+      # Remove child Application objects that are deleted from git.
+      prune: true
+      # Revert any out-of-band changes to child Application objects.
+      selfHeal: true
+    syncOptions:
+      # Use server-side apply for cleaner field ownership tracking.
+      - ServerSideApply=true
+      # Create the argocd namespace if it doesn't exist yet.
+      - CreateNamespace=true
+      # Only sync resources that are actually out of sync (faster).
+      - ApplyOutOfSyncOnly=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m

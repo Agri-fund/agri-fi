@@ -107,13 +107,17 @@ export class EscrowConsumer implements OnApplicationShutdown {
         }
       }
 
-      const raw = typeof payload === 'string' ? payload : this.rawMessageContent(context);
+      const raw =
+        typeof payload === 'string' ? payload : this.rawMessageContent(context);
       if (!raw) {
         throw new Error('Empty payload');
       }
 
       const parsed = JSON.parse(raw) as Partial<DealDeliveredPayload>;
-      if (typeof parsed.tradeDealId !== 'string' || !parsed.tradeDealId.trim()) {
+      if (
+        typeof parsed.tradeDealId !== 'string' ||
+        !parsed.tradeDealId.trim()
+      ) {
         throw new Error('Missing tradeDealId');
       }
 

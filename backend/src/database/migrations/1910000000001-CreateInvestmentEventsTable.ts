@@ -38,8 +38,12 @@ export class CreateInvestmentEventsTable1910000000001 implements MigrationInterf
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`DROP TRIGGER IF EXISTS trg_investment_events_immutable ON "investment_events"`);
-    await queryRunner.query(`DROP FUNCTION IF EXISTS prevent_investment_event_mutation`);
+    await queryRunner.query(
+      `DROP TRIGGER IF EXISTS trg_investment_events_immutable ON "investment_events"`,
+    );
+    await queryRunner.query(
+      `DROP FUNCTION IF EXISTS prevent_investment_event_mutation`,
+    );
     await queryRunner.query(`DROP TABLE IF EXISTS "investment_events"`);
   }
 }

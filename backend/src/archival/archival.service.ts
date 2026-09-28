@@ -67,7 +67,9 @@ export class ArchivalService {
    */
   async copyToArchive(yearsCutoff: number = 2): Promise<ArchivalResult> {
     const cutoffDate = this.getCutoffDate(yearsCutoff);
-    this.logger.log(`Starting archival for deals closed before ${cutoffDate.toISOString()}`);
+    this.logger.log(
+      `Starting archival for deals closed before ${cutoffDate.toISOString()}`,
+    );
 
     let dealsArchived = 0;
     let investmentsArchived = 0;
@@ -201,7 +203,10 @@ export class ArchivalService {
     if (this.archivedCounter) {
       this.archivedCounter.inc({ table: 'trade_deals' }, dealsArchived);
       this.archivedCounter.inc({ table: 'investments' }, investmentsArchived);
-      this.archivedCounter.inc({ table: 'shipment_milestones' }, milestonesArchived);
+      this.archivedCounter.inc(
+        { table: 'shipment_milestones' },
+        milestonesArchived,
+      );
     }
     if (this.runsCounter) {
       this.runsCounter.inc({ status: 'success' });
@@ -231,8 +236,12 @@ export class ArchivalService {
     const primaryIds = softDeletedDeals.map((d) => d.id).sort();
     const archiveIds = archiveDeals.map((d) => d.id).sort();
 
-    const primaryHash = createHash('sha256').update(primaryIds.join(',')).digest('hex');
-    const archiveHash = createHash('sha256').update(archiveIds.join(',')).digest('hex');
+    const primaryHash = createHash('sha256')
+      .update(primaryIds.join(','))
+      .digest('hex');
+    const archiveHash = createHash('sha256')
+      .update(archiveIds.join(','))
+      .digest('hex');
 
     const countMatches = primaryIds.length === archiveIds.length;
     const hashMatches = primaryHash === archiveHash;
@@ -254,7 +263,9 @@ export class ArchivalService {
   /**
    * Hard deletes soft-deleted records from primary tables after 30 days of validation.
    */
-  async hardDeleteValidatedArchives(daysSoftDeletedCutoff: number = 30): Promise<number> {
+  async hardDeleteValidatedArchives(
+    daysSoftDeletedCutoff: number = 30,
+  ): Promise<number> {
     const validation = await this.validateArchive();
     if (!validation.valid) {
       this.logger.error('Archive validation failed. Hard delete aborted.');
@@ -278,12 +289,22 @@ export class ArchivalService {
     const dealIds = dealsToHardDelete.map((d) => d.id);
 
     await this.dataSource.transaction(async (manager) => {
-      await manager.query(`DELETE FROM "shipment_milestones" WHERE trade_deal_id = ANY($1)`, [dealIds]);
-      await manager.query(`DELETE FROM "investments" WHERE trade_deal_id = ANY($1)`, [dealIds]);
-      await manager.query(`DELETE FROM "trade_deals" WHERE id = ANY($1)`, [dealIds]);
+      await manager.query(
+        `DELETE FROM "shipment_milestones" WHERE trade_deal_id = ANY($1)`,
+        [dealIds],
+      );
+      await manager.query(
+        `DELETE FROM "investments" WHERE trade_deal_id = ANY($1)`,
+        [dealIds],
+      );
+      await manager.query(`DELETE FROM "trade_deals" WHERE id = ANY($1)`, [
+        dealIds,
+      ]);
     });
 
-    this.logger.log(`Hard deleted ${dealIds.length} trade deals and associated records from primary tables.`);
+    this.logger.log(
+      `Hard deleted ${dealIds.length} trade deals and associated records from primary tables.`,
+    );
     return dealIds.length;
   }
 }

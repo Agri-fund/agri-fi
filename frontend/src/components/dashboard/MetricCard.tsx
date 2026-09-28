@@ -1,6 +1,8 @@
 'use client';
 
 import React from 'react';
+import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
+import { useNumberFormat } from '@/hooks/useNumberFormat';
 
 interface MetricCardProps {
   label: string;
@@ -13,6 +15,9 @@ interface MetricCardProps {
   subtext?: string;
   loading?: boolean;
   colorTheme?: 'emerald' | 'blue' | 'amber' | 'purple';
+  isCurrency?: boolean;
+  currency?: string;
+  compact?: boolean;
 }
 
 const THEMES = {
@@ -50,8 +55,13 @@ export default function MetricCard({
   subtext,
   loading = false,
   colorTheme = 'emerald',
+  isCurrency = false,
+  currency = 'USD',
+  compact = true,
 }: MetricCardProps) {
   const theme = THEMES[colorTheme];
+  const { formatCurrency } = useCurrencyFormat();
+  const { formatNumber } = useNumberFormat();
 
   if (loading) {
     return (
@@ -70,6 +80,12 @@ export default function MetricCard({
     );
   }
 
+  const formattedValue = typeof value === 'number' || isCurrency
+    ? isCurrency
+      ? formatCurrency(value, currency, { compact })
+      : formatNumber(value, { compact })
+    : value;
+
   return (
     <div className={`card p-6 flex flex-col justify-between relative overflow-hidden transition-all duration-300 hover:shadow-card-md hover:-translate-y-0.5 ${theme.borderHover} ${theme.shadowGlow} group h-[135px]`}>
       {/* Decorative Top Accent Bar */}
@@ -86,7 +102,7 @@ export default function MetricCard({
 
       <div className="mt-2">
         <h3 className="text-2xl font-black text-slate-900 tracking-tight tabular-nums">
-          {value}
+          {formattedValue}
         </h3>
         
         <div className="flex items-center gap-1.5 mt-1 min-h-[16px]">

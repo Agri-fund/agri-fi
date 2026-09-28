@@ -31,14 +31,24 @@ describe('SettlementService', () => {
   } as Document;
 
   beforeEach(() => {
-    dealRepo = { findOne: jest.fn(), save: jest.fn().mockImplementation((d) => d) };
+    dealRepo = {
+      findOne: jest.fn(),
+      save: jest.fn().mockImplementation((d) => d),
+    };
     documentRepo = { findOne: jest.fn() };
-    sorobanService = { settleCampaign: jest.fn().mockResolvedValue('tx-hash-abc') };
-    stellarService = { getVerificationUrl: jest.fn().mockReturnValue('https://stellar.expert/tx/abc') };
+    sorobanService = {
+      settleCampaign: jest.fn().mockResolvedValue('tx-hash-abc'),
+    };
+    stellarService = {
+      getVerificationUrl: jest
+        .fn()
+        .mockReturnValue('https://stellar.expert/tx/abc'),
+    };
     notificationsService = { sendEmail: jest.fn() };
     config = {
       get: jest.fn((key: string, def?: string) => {
-        if (key === 'FARM_CAMPAIGN_SETTLEMENT_CONTRACT') return 'CSETTLEMENT123';
+        if (key === 'FARM_CAMPAIGN_SETTLEMENT_CONTRACT')
+          return 'CSETTLEMENT123';
         return def;
       }),
     };
@@ -69,7 +79,10 @@ describe('SettlementService', () => {
   });
 
   it('is idempotent — duplicate triggers do not re-settle', async () => {
-    dealRepo.findOne.mockResolvedValue({ ...baseDeal, settlementStatus: 'settled' });
+    dealRepo.findOne.mockResolvedValue({
+      ...baseDeal,
+      settlementStatus: 'settled',
+    });
 
     const result = await service.onDocumentApproved(harvestDoc);
 
@@ -89,9 +102,13 @@ describe('SettlementService', () => {
 
   it('marks deal as settlement_failed on contract error', async () => {
     dealRepo.findOne.mockResolvedValue({ ...baseDeal });
-    sorobanService.settleCampaign.mockRejectedValue(new Error('Contract rejected'));
+    sorobanService.settleCampaign.mockRejectedValue(
+      new Error('Contract rejected'),
+    );
 
-    await expect(service.onDocumentApproved(harvestDoc)).rejects.toThrow('Contract rejected');
+    await expect(service.onDocumentApproved(harvestDoc)).rejects.toThrow(
+      'Contract rejected',
+    );
     expect(dealRepo.save).toHaveBeenCalledWith(
       expect.objectContaining({ settlementStatus: 'settlement_failed' }),
     );

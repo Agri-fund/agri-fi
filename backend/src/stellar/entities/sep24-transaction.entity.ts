@@ -67,6 +67,9 @@ export class Sep24Transaction {
   @Column({ name: 'stellar_transaction_id', type: 'varchar', nullable: true })
   stellarTransactionId: string | null;
 
+  @Column({ name: 'destination_verified', type: 'boolean', default: false })
+  destinationVerified: boolean;
+
   @CreateDateColumn({ name: 'started_at' })
   startedAt: Date;
 

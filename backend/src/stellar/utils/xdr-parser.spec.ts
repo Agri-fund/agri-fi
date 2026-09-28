@@ -58,15 +58,11 @@ describe('parseXdr', () => {
   });
 
   it('parses a changeTrust operation (add trustline)', () => {
-    const xdr = buildXdr([
-      Operation.changeTrust({ asset: tradeAsset }),
-    ]);
+    const xdr = buildXdr([Operation.changeTrust({ asset: tradeAsset })]);
 
     const result = parseXdr(xdr);
     expect(result.operations[0].type).toBe('changeTrust');
-    expect(result.operations[0].asset).toBe(
-      `COCOA1:${issuer.publicKey()}`,
-    );
+    expect(result.operations[0].asset).toBe(`COCOA1:${issuer.publicKey()}`);
   });
 
   it('parses a changeTrust with limit=0 (remove trustline)', () => {
@@ -162,9 +158,21 @@ describe('parseXdr', () => {
     const usdc = new Asset('USDC', usdcIssuer.publicKey());
 
     const xdr = buildXdr([
-      Operation.payment({ destination: farmer.publicKey(), asset: usdc, amount: '98' }),
-      Operation.payment({ destination: investor.publicKey(), asset: usdc, amount: '1.96' }),
-      Operation.payment({ destination: platform.publicKey(), asset: usdc, amount: '2' }),
+      Operation.payment({
+        destination: farmer.publicKey(),
+        asset: usdc,
+        amount: '98',
+      }),
+      Operation.payment({
+        destination: investor.publicKey(),
+        asset: usdc,
+        amount: '1.96',
+      }),
+      Operation.payment({
+        destination: platform.publicKey(),
+        asset: usdc,
+        amount: '2',
+      }),
     ]);
 
     const result = parseXdr(xdr);

@@ -43,6 +43,7 @@ fn setup() -> Setup {
     let contract_id = env.register_contract(None, EscrowContract);
     let deal_value: i128 = 10_000_000_000; // 1000 USDC
     let milestone_count: u32 = 3; // 3 milestones
+    let funding_deadline: u64 = 1000; // Future timestamp
 
     EscrowContractClient::new(&env, &contract_id).initialize(
         &admin,
@@ -52,6 +53,7 @@ fn setup() -> Setup {
         &deal_value,
         &milestone_count,
         &investors,
+        &funding_deadline,
     );
 
     Setup {
@@ -93,10 +95,12 @@ fn test_initialize_twice_fails() {
 
     let contract_id = env.register_contract(None, EscrowContract);
     let client = EscrowContractClient::new(&env, &contract_id);
-    client.initialize(&admin, &farmer, &platform, &usdc_token, &1000, &1, &investors);
+    client.initialize(&admin, &farmer, &platform, &usdc_token, &1000, &1, &investors, &1000);
 
-    let result = client.try_initialize(&admin, &farmer, &platform, &usdc_token, &1000, &1, &investors);
+    let result = client.try_initialize(&admin, &farmer, &platform, &usdc_token, &2000, &2, &investors, &2000);
     assert_eq!(result, Err(Ok(Error::AlreadyInitialized)));
+    assert_eq!(client.get_deal_value(), 1000);
+    assert_eq!(client.get_total_funded(), 0);
 }
 
 #[test]
@@ -114,7 +118,7 @@ fn test_initialize_with_zero_deal_value_fails() {
 
     let contract_id = env.register_contract(None, EscrowContract);
     let client = EscrowContractClient::new(&env, &contract_id);
-    let result = client.try_initialize(&admin, &farmer, &platform, &usdc_token, &0, &1, &investors);
+    let result = client.try_initialize(&admin, &farmer, &platform, &usdc_token, &0, &1, &investors, &1000);
     assert_eq!(result, Err(Ok(Error::InvalidAmount)));
 }
 
@@ -133,7 +137,7 @@ fn test_initialize_with_zero_milestones_fails() {
 
     let contract_id = env.register_contract(None, EscrowContract);
     let client = EscrowContractClient::new(&env, &contract_id);
-    let result = client.try_initialize(&admin, &farmer, &platform, &usdc_token, &1000, &0, &investors);
+    let result = client.try_initialize(&admin, &farmer, &platform, &usdc_token, &1000, &0, &investors, &1000);
     assert_eq!(result, Err(Ok(Error::InvalidMilestones)));
 }
 
@@ -151,7 +155,7 @@ fn test_initialize_with_no_investors_fails() {
 
     let contract_id = env.register_contract(None, EscrowContract);
     let client = EscrowContractClient::new(&env, &contract_id);
-    let result = client.try_initialize(&admin, &farmer, &platform, &usdc_token, &1000, &1, &investors);
+    let result = client.try_initialize(&admin, &farmer, &platform, &usdc_token, &1000, &1, &investors, &1000);
     assert_eq!(result, Err(Ok(Error::NoInvestors)));
 }
 
@@ -253,6 +257,7 @@ fn test_unauthorized_account_cannot_submit_delivery_milestone() {
         &1000,
         &1,
         &investors,
+        &1000,
     );
 
     // Use a random unauthorized address
@@ -596,4 +601,986 @@ fn test_get_investors() {
         }
     }
     assert!(found1 && found2);
+}
+
+// ========== Tests for Funding Deadline and Refunds (Issue #345) ==========
+
+#[test]
+fn test_get_funding_deadline() {
+    let setup = setup();
+    let client = EscrowContractClient::new(&setup._env, &setup.contract_id);
+
+    assert_eq!(client.get_funding_deadline(), 1000);
+}
+
+#[test]
+fn test_target_met_when_funded() {
+    let setup = setup();
+    let client = EscrowContractClient::new(&setup._env, &setup.contract_id);
+    let total_funded: i128 = 10_000_000_000;
+
+    fund_contract(&setup, total_funded);
+
+    assert!(client.target_met());
+}
+
+#[test]
+fn test_target_not_met_when_underfunded() {
+    let setup = setup();
+    let client = EscrowContractClient::new(&setup._env, &setup.contract_id);
+    let partial_funding: i128 = 5_000_000_000; // Half of target
+
+    fund_contract(&setup, partial_funding);
+
+    assert!(!client.target_met());
+}
+
+#[test]
+fn test_refund_after_expiry_before_deadline_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let farmer = Address::generate(&env);
+    let platform = Address::generate(&env);
+    let investor1 = Address::generate(&env);
+    let investor2 = Address::generate(&env);
+
+    let mut investors = Vec::new(&env);
+    investors.push_back(investor1.clone());
+    investors.push_back(investor2);
+
+    let usdc_token = create_usdc_token(&env, &admin);
+    let usdc = token::Client::new(&env, &usdc_token);
+
+    let contract_id = env.register_contract(None, EscrowContract);
+    let deal_value: i128 = 10_000_000_000;
+    let milestone_count: u32 = 3;
+    let funding_deadline: u64 = 1000; // Future timestamp
+
+    EscrowContractClient::new(&env, &contract_id).initialize(
+        &admin,
+        &farmer,
+        &platform,
+        &usdc_token,
+        &deal_value,
+        &milestone_count,
+        &investors,
+        &funding_deadline,
+    );
+
+    // Fund the contract
+    let amount: i128 = 5_000_000_000;
+    usdc.mint(&investor1, &amount);
+    EscrowContractClient::new(&env, &contract_id).fund(&investor1, &amount);
+
+    // Try to refund before deadline (current timestamp is 0, deadline is 1000)
+    let result = EscrowContractClient::new(&env, &contract_id)
+        .try_refund_after_expiry(&investor1);
+    assert_eq!(result, Err(Ok(Error::DeadlineNotPassed)));
+}
+
+#[test]
+fn test_refund_after_expiry_when_target_met_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().set_timestamp(2000); // Set time past deadline
+
+    let admin = Address::generate(&env);
+    let farmer = Address::generate(&env);
+    let platform = Address::generate(&env);
+    let investor1 = Address::generate(&env);
+    let investor2 = Address::generate(&env);
+
+    let mut investors = Vec::new(&env);
+    investors.push_back(investor1.clone());
+    investors.push_back(investor2);
+
+    let usdc_token = create_usdc_token(&env, &admin);
+    let usdc = token::Client::new(&env, &usdc_token);
+
+    let contract_id = env.register_contract(None, EscrowContract);
+    let deal_value: i128 = 10_000_000_000;
+    let milestone_count: u32 = 3;
+    let funding_deadline: u64 = 1000; // Past timestamp
+
+    EscrowContractClient::new(&env, &contract_id).initialize(
+        &admin,
+        &farmer,
+        &platform,
+        &usdc_token,
+        &deal_value,
+        &milestone_count,
+        &investors,
+        &funding_deadline,
+    );
+
+    // Fund the contract to meet target
+    let amount: i128 = 10_000_000_000;
+    usdc.mint(&investor1, &amount);
+    EscrowContractClient::new(&env, &contract_id).fund(&investor1, &amount);
+
+    // Try to refund when target is met
+    let result = EscrowContractClient::new(&env, &contract_id)
+        .try_refund_after_expiry(&investor1);
+    assert_eq!(result, Err(Ok(Error::TargetMet)));
+}
+
+#[test]
+fn test_refund_after_expiry_success() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().set_timestamp(2000); // Set time past deadline
+
+    let admin = Address::generate(&env);
+    let farmer = Address::generate(&env);
+    let platform = Address::generate(&env);
+    let investor1 = Address::generate(&env);
+    let investor2 = Address::generate(&env);
+
+    let mut investors = Vec::new(&env);
+    investors.push_back(investor1.clone());
+    investors.push_back(investor2);
+
+    let usdc_token = create_usdc_token(&env, &admin);
+    let usdc = token::Client::new(&env, &usdc_token);
+
+    let contract_id = env.register_contract(None, EscrowContract);
+    let deal_value: i128 = 10_000_000_000;
+    let milestone_count: u32 = 3;
+    let funding_deadline: u64 = 1000; // Past timestamp
+
+    EscrowContractClient::new(&env, &contract_id).initialize(
+        &admin,
+        &farmer,
+        &platform,
+        &usdc_token,
+        &deal_value,
+        &milestone_count,
+        &investors,
+        &funding_deadline,
+    );
+
+    // Fund the contract partially (under target)
+    let amount: i128 = 5_000_000_000;
+    usdc.mint(&investor1, &amount);
+    EscrowContractClient::new(&env, &contract_id).fund(&investor1, &amount);
+
+    let balance_before = usdc.balance(&investor1);
+
+    // Refund after expiry
+    let result = EscrowContractClient::new(&env, &contract_id)
+        .refund_after_expiry(&investor1);
+    assert!(result.is_ok());
+
+    let balance_after = usdc.balance(&investor1);
+    assert_eq!(balance_after - balance_before, amount);
+
+    // Verify total funded was reduced
+    let total_funded = EscrowContractClient::new(&env, &contract_id).get_total_funded();
+    assert_eq!(total_funded, 0);
+}
+
+#[test]
+fn test_refund_after_expiry_idempotent() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().set_timestamp(2000); // Set time past deadline
+
+    let admin = Address::generate(&env);
+    let farmer = Address::generate(&env);
+    let platform = Address::generate(&env);
+    let investor1 = Address::generate(&env);
+    let investor2 = Address::generate(&env);
+
+    let mut investors = Vec::new(&env);
+    investors.push_back(investor1.clone());
+    investors.push_back(investor2);
+
+    let usdc_token = create_usdc_token(&env, &admin);
+    let usdc = token::Client::new(&env, &usdc_token);
+
+    let contract_id = env.register_contract(None, EscrowContract);
+    let deal_value: i128 = 10_000_000_000;
+    let milestone_count: u32 = 3;
+    let funding_deadline: u64 = 1000; // Past timestamp
+
+    EscrowContractClient::new(&env, &contract_id).initialize(
+        &admin,
+        &farmer,
+        &platform,
+        &usdc_token,
+        &deal_value,
+        &milestone_count,
+        &investors,
+        &funding_deadline,
+    );
+
+    // Fund the contract partially
+    let amount: i128 = 5_000_000_000;
+    usdc.mint(&investor1, &amount);
+    EscrowContractClient::new(&env, &contract_id).fund(&investor1, &amount);
+
+    // First refund
+    let result1 = EscrowContractClient::new(&env, &contract_id)
+        .refund_after_expiry(&investor1);
+    assert!(result1.is_ok());
+
+    // Second refund (should succeed idempotently)
+    let result2 = EscrowContractClient::new(&env, &contract_id)
+        .try_refund_after_expiry(&investor1);
+    assert!(result2.is_ok()); // Should succeed, not error
+}
+
+#[test]
+fn test_refund_after_expiry_nothing_to_refund() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().set_timestamp(2000); // Set time past deadline
+
+    let admin = Address::generate(&env);
+    let farmer = Address::generate(&env);
+    let platform = Address::generate(&env);
+    let investor1 = Address::generate(&env);
+    let investor2 = Address::generate(&env);
+
+    let mut investors = Vec::new(&env);
+    investors.push_back(investor1.clone());
+    investors.push_back(investor2);
+
+    let usdc_token = create_usdc_token(&env, &admin);
+
+    let contract_id = env.register_contract(None, EscrowContract);
+    let deal_value: i128 = 10_000_000_000;
+    let milestone_count: u32 = 3;
+    let funding_deadline: u64 = 1000; // Past timestamp
+
+    EscrowContractClient::new(&env, &contract_id).initialize(
+        &admin,
+        &farmer,
+        &platform,
+        &usdc_token,
+        &deal_value,
+        &milestone_count,
+        &investors,
+        &funding_deadline,
+    );
+
+    // Try to refund without having funded
+    let result = EscrowContractClient::new(&env, &contract_id)
+        .try_refund_after_expiry(&investor1);
+    assert_eq!(result, Err(Ok(Error::NothingToRefund)));
+}
+
+#[test]
+fn test_refund_all_after_expiry() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().set_timestamp(2000); // Set time past deadline
+
+    let admin = Address::generate(&env);
+    let farmer = Address::generate(&env);
+    let platform = Address::generate(&env);
+    let investor1 = Address::generate(&env);
+    let investor2 = Address::generate(&env);
+
+    let mut investors = Vec::new(&env);
+    investors.push_back(investor1.clone());
+    investors.push_back(investor2.clone());
+
+    let usdc_token = create_usdc_token(&env, &admin);
+    let usdc = token::Client::new(&env, &usdc_token);
+
+    let contract_id = env.register_contract(None, EscrowContract);
+    let deal_value: i128 = 10_000_000_000;
+    let milestone_count: u32 = 3;
+    let funding_deadline: u64 = 1000; // Past timestamp
+
+    EscrowContractClient::new(&env, &contract_id).initialize(
+        &admin,
+        &farmer,
+        &platform,
+        &usdc_token,
+        &deal_value,
+        &milestone_count,
+        &investors,
+        &funding_deadline,
+    );
+
+    // Fund the contract partially with multiple investors
+    let amount1: i128 = 3_000_000_000;
+    let amount2: i128 = 2_000_000_000;
+    usdc.mint(&investor1, &amount1);
+    usdc.mint(&investor2, &amount2);
+    EscrowContractClient::new(&env, &contract_id).fund(&investor1, &amount1);
+    EscrowContractClient::new(&env, &contract_id).fund(&investor2, &amount2);
+
+    let balance1_before = usdc.balance(&investor1);
+    let balance2_before = usdc.balance(&investor2);
+
+    // Batch refund all
+    let result = EscrowContractClient::new(&env, &contract_id)
+        .refund_all_after_expiry(&admin);
+    assert!(result.is_ok());
+
+    let balance1_after = usdc.balance(&investor1);
+    let balance2_after = usdc.balance(&investor2);
+
+    assert_eq!(balance1_after - balance1_before, amount1);
+    assert_eq!(balance2_after - balance2_before, amount2);
+
+    // Verify total funded was reduced to 0
+    let total_funded = EscrowContractClient::new(&env, &contract_id).get_total_funded();
+    assert_eq!(total_funded, 0);
+}
+
+#[test]
+fn test_refund_all_after_expiry_unauthorized() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().set_timestamp(2000); // Set time past deadline
+
+    let admin = Address::generate(&env);
+    let farmer = Address::generate(&env);
+    let platform = Address::generate(&env);
+    let investor1 = Address::generate(&env);
+    let investor2 = Address::generate(&env);
+    let unauthorized = Address::generate(&env);
+
+    let mut investors = Vec::new(&env);
+    investors.push_back(investor1);
+    investors.push_back(investor2);
+
+    let usdc_token = create_usdc_token(&env, &admin);
+
+    let contract_id = env.register_contract(None, EscrowContract);
+    let deal_value: i128 = 10_000_000_000;
+    let milestone_count: u32 = 3;
+    let funding_deadline: u64 = 1000; // Past timestamp
+
+    EscrowContractClient::new(&env, &contract_id).initialize(
+        &admin,
+        &farmer,
+        &platform,
+        &usdc_token,
+        &deal_value,
+        &milestone_count,
+        &investors,
+        &funding_deadline,
+    );
+
+    // Try batch refund with unauthorized account
+    let result = EscrowContractClient::new(&env, &contract_id)
+        .try_refund_all_after_expiry(&unauthorized);
+    assert_eq!(result, Err(Ok(Error::Unauthorized)));
+}
+
+#[test]
+fn test_refund_after_expiry_boundary_at_deadline() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().set_timestamp(1000); // Set time exactly at deadline
+
+    let admin = Address::generate(&env);
+    let farmer = Address::generate(&env);
+    let platform = Address::generate(&env);
+    let investor1 = Address::generate(&env);
+    let investor2 = Address::generate(&env);
+
+    let mut investors = Vec::new(&env);
+    investors.push_back(investor1.clone());
+    investors.push_back(investor2);
+
+    let usdc_token = create_usdc_token(&env, &admin);
+    let usdc = token::Client::new(&env, &usdc_token);
+
+    let contract_id = env.register_contract(None, EscrowContract);
+    let deal_value: i128 = 10_000_000_000;
+    let milestone_count: u32 = 3;
+    let funding_deadline: u64 = 1000; // Current timestamp
+
+    EscrowContractClient::new(&env, &contract_id).initialize(
+        &admin,
+        &farmer,
+        &platform,
+        &usdc_token,
+        &deal_value,
+        &milestone_count,
+        &investors,
+        &funding_deadline,
+    );
+
+    // Fund the contract partially
+    let amount: i128 = 5_000_000_000;
+    usdc.mint(&investor1, &amount);
+    EscrowContractClient::new(&env, &contract_id).fund(&investor1, &amount);
+
+    // Try to refund at exactly deadline (should fail - must be AFTER deadline)
+    let result = EscrowContractClient::new(&env, &contract_id)
+        .try_refund_after_expiry(&investor1);
+    assert_eq!(result, Err(Ok(Error::DeadlineNotPassed)));
+
+    // Advance time by 1
+    env.ledger().set_timestamp(1001);
+
+    // Now refund should succeed
+    let result = EscrowContractClient::new(&env, &contract_id)
+        .refund_after_expiry(&investor1);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_refund_after_expiry_after_release_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().set_timestamp(2000); // Set time past deadline
+
+    let admin = Address::generate(&env);
+    let farmer = Address::generate(&env);
+    let platform = Address::generate(&env);
+    let investor1 = Address::generate(&env);
+    let investor2 = Address::generate(&env);
+
+    let mut investors = Vec::new(&env);
+    investors.push_back(investor1.clone());
+    investors.push_back(investor2);
+
+    let usdc_token = create_usdc_token(&env, &admin);
+    let usdc = token::Client::new(&env, &usdc_token);
+
+    let contract_id = env.register_contract(None, EscrowContract);
+    let deal_value: i128 = 10_000_000_000;
+    let milestone_count: u32 = 3;
+    let funding_deadline: u64 = 1000; // Past timestamp
+
+    EscrowContractClient::new(&env, &contract_id).initialize(
+        &admin,
+        &farmer,
+        &platform,
+        &usdc_token,
+        &deal_value,
+        &milestone_count,
+        &investors,
+        &funding_deadline,
+    );
+
+    // Fund the contract to meet target
+    let amount: i128 = 10_000_000_000;
+    usdc.mint(&investor1, &amount);
+    EscrowContractClient::new(&env, &contract_id).fund(&investor1, &amount);
+
+    // Record all milestones
+    EscrowContractClient::new(&env, &contract_id).record_milestone(&admin, &0);
+    EscrowContractClient::new(&env, &contract_id).record_milestone(&admin, &1);
+    EscrowContractClient::new(&env, &contract_id).record_milestone(&admin, &2);
+
+    // Settle the escrow
+    EscrowContractClient::new(&env, &contract_id).settle_escrow(&admin);
+
+    // Try to refund after release (should fail)
+    let result = EscrowContractClient::new(&env, &contract_id)
+        .try_refund_after_expiry(&investor1);
+    assert_eq!(result, Err(Ok(Error::AlreadyReleased)));
+}
+
+// ========== Tests for Compliance Frozen Flags ==========
+
+#[test]
+fn test_freeze_contributor() {
+    let setup = setup();
+    let client = EscrowContractClient::new(&setup._env, &setup.contract_id);
+
+    // Freeze an investor
+    let result = client.try_freeze_contributor(&setup.admin, &setup.investors.get(0).unwrap());
+    assert!(result.is_ok());
+
+    // Check if investor is frozen
+    assert!(client.is_contributor_frozen(&setup.investors.get(0).unwrap()));
+}
+
+#[test]
+fn test_freeze_contributor_unauthorized() {
+    let setup = setup();
+    let client = EscrowContractClient::new(&setup._env, &setup.contract_id);
+    let unauthorized = Address::generate(&setup._env);
+
+    // Try to freeze with unauthorized account
+    let result = client.try_freeze_contributor(&unauthorized, &setup.investors.get(0).unwrap());
+    assert_eq!(result, Err(Ok(Error::Unauthorized)));
+}
+
+#[test]
+fn test_unfreeze_contributor() {
+    let setup = setup();
+    let client = EscrowContractClient::new(&setup._env, &setup.contract_id);
+    let investor = setup.investors.get(0).unwrap();
+
+    // Freeze first
+    client.freeze_contributor(&setup.admin, &investor);
+    assert!(client.is_contributor_frozen(&investor));
+
+    // Unfreeze
+    let result = client.try_unfreeze_contributor(&setup.admin, &investor);
+    assert!(result.is_ok());
+
+    // Check if investor is no longer frozen
+    assert!(!client.is_contributor_frozen(&investor));
+}
+
+#[test]
+fn test_unfreeze_contributor_unauthorized() {
+    let setup = setup();
+    let client = EscrowContractClient::new(&setup._env, &setup.contract_id);
+    let investor = setup.investors.get(0).unwrap();
+    let unauthorized = Address::generate(&setup._env);
+
+    // Freeze first
+    client.freeze_contributor(&setup.admin, &investor);
+
+    // Try to unfreeze with unauthorized account
+    let result = client.try_unfreeze_contributor(&unauthorized, &investor);
+    assert_eq!(result, Err(Ok(Error::Unauthorized)));
+}
+
+#[test]
+fn test_unfreeze_non_frozen_contributor_fails() {
+    let setup = setup();
+    let client = EscrowContractClient::new(&setup._env, &setup.contract_id);
+    let investor = setup.investors.get(0).unwrap();
+
+    // Try to unfreeze a non-frozen contributor
+    let result = client.try_unfreeze_contributor(&setup.admin, &investor);
+    assert_eq!(result, Err(Ok(Error::NotFrozen)));
+}
+
+#[test]
+fn test_frozen_contributor_cannot_receive_refund() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().set_timestamp(2000); // Set time past deadline
+
+    let admin = Address::generate(&env);
+    let farmer = Address::generate(&env);
+    let platform = Address::generate(&env);
+    let investor1 = Address::generate(&env);
+    let investor2 = Address::generate(&env);
+
+    let mut investors = Vec::new(&env);
+    investors.push_back(investor1.clone());
+    investors.push_back(investor2);
+
+    let usdc_token = create_usdc_token(&env, &admin);
+    let usdc = token::Client::new(&env, &usdc_token);
+
+    let contract_id = env.register_contract(None, EscrowContract);
+    let deal_value: i128 = 10_000_000_000;
+    let milestone_count: u32 = 3;
+    let funding_deadline: u64 = 1000; // Past timestamp
+
+    EscrowContractClient::new(&env, &contract_id).initialize(
+        &admin,
+        &farmer,
+        &platform,
+        &usdc_token,
+        &deal_value,
+        &milestone_count,
+        &investors,
+        &funding_deadline,
+    );
+
+    // Fund the contract partially
+    let amount: i128 = 5_000_000_000;
+    usdc.mint(&investor1, &amount);
+    EscrowContractClient::new(&env, &contract_id).fund(&investor1, &amount);
+
+    // Freeze the investor
+    EscrowContractClient::new(&env, &contract_id).freeze_contributor(&admin, &investor1);
+
+    // Try to refund frozen investor
+    let result = EscrowContractClient::new(&env, &contract_id)
+        .try_refund_after_expiry(&investor1);
+    assert_eq!(result, Err(Ok(Error::ContributorFrozen)));
+
+    // Verify investor still has their original balance (no refund received)
+    let balance = usdc.balance(&investor1);
+    assert_eq!(balance, 0); // They had the amount, funded it, and didn't get it back
+}
+
+#[test]
+fn test_unfrozen_contributor_can_receive_refund() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().set_timestamp(2000); // Set time past deadline
+
+    let admin = Address::generate(&env);
+    let farmer = Address::generate(&env);
+    let platform = Address::generate(&env);
+    let investor1 = Address::generate(&env);
+    let investor2 = Address::generate(&env);
+
+    let mut investors = Vec::new(&env);
+    investors.push_back(investor1.clone());
+    investors.push_back(investor2);
+
+    let usdc_token = create_usdc_token(&env, &admin);
+    let usdc = token::Client::new(&env, &usdc_token);
+
+    let contract_id = env.register_contract(None, EscrowContract);
+    let deal_value: i128 = 10_000_000_000;
+    let milestone_count: u32 = 3;
+    let funding_deadline: u64 = 1000; // Past timestamp
+
+    EscrowContractClient::new(&env, &contract_id).initialize(
+        &admin,
+        &farmer,
+        &platform,
+        &usdc_token,
+        &deal_value,
+        &milestone_count,
+        &investors,
+        &funding_deadline,
+    );
+
+    // Fund the contract partially
+    let amount: i128 = 5_000_000_000;
+    usdc.mint(&investor1, &amount);
+    EscrowContractClient::new(&env, &contract_id).fund(&investor1, &amount);
+
+    // Freeze the investor
+    EscrowContractClient::new(&env, &contract_id).freeze_contributor(&admin, &investor1);
+
+    // Try to refund frozen investor (should fail)
+    let result = EscrowContractClient::new(&env, &contract_id)
+        .try_refund_after_expiry(&investor1);
+    assert_eq!(result, Err(Ok(Error::ContributorFrozen)));
+
+    // Unfreeze the investor
+    EscrowContractClient::new(&env, &contract_id).unfreeze_contributor(&admin, &investor1);
+
+    // Now refund should succeed
+    let result = EscrowContractClient::new(&env, &contract_id)
+        .refund_after_expiry(&investor1);
+    assert!(result.is_ok());
+
+    // Verify investor received refund
+    let balance = usdc.balance(&investor1);
+    assert_eq!(balance, amount);
+}
+
+#[test]
+fn test_frozen_farmer_blocks_settlement() {
+    let setup = setup();
+    let client = EscrowContractClient::new(&setup._env, &setup.contract_id);
+    let total_funded: i128 = 10_000_000_000;
+
+    fund_contract(&setup, total_funded);
+
+    // Record all milestones
+    client.record_milestone(&setup.admin, &0);
+    client.record_milestone(&setup.admin, &1);
+    client.record_milestone(&setup.admin, &2);
+
+    // Freeze the farmer
+    client.freeze_contributor(&setup.admin, &setup.farmer);
+
+    // Try to settle with frozen farmer
+    let result = client.try_settle_escrow(&setup.admin);
+    assert_eq!(result, Err(Ok(Error::ContributorFrozen)));
+}
+
+#[test]
+fn test_frozen_platform_blocks_settlement() {
+    let setup = setup();
+    let client = EscrowContractClient::new(&setup._env, &setup.contract_id);
+    let total_funded: i128 = 10_000_000_000;
+
+    fund_contract(&setup, total_funded);
+
+    // Record all milestones
+    client.record_milestone(&setup.admin, &0);
+    client.record_milestone(&setup.admin, &1);
+    client.record_milestone(&setup.admin, &2);
+
+    // Freeze the platform
+    client.freeze_contributor(&setup.admin, &setup.platform);
+
+    // Try to settle with frozen platform
+    let result = client.try_settle_escrow(&setup.admin);
+    assert_eq!(result, Err(Ok(Error::ContributorFrozen)));
+}
+
+#[test]
+fn test_frozen_platform_blocks_legacy_release() {
+    let setup = setup();
+    let client = EscrowContractClient::new(&setup._env, &setup.contract_id);
+    let total_funded: i128 = 10_000_000_000;
+
+    fund_contract(&setup, total_funded);
+
+    client.approve_delivery(&setup.admin);
+
+    // Freeze the platform
+    client.freeze_contributor(&setup.admin, &setup.platform);
+
+    // Try to release with frozen platform
+    let result = client.try_release(&setup.admin);
+    assert_eq!(result, Err(Ok(Error::ContributorFrozen)));
+}
+
+#[test]
+fn test_batch_refund_skips_frozen_contributors() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().set_timestamp(2000); // Set time past deadline
+
+    let admin = Address::generate(&env);
+    let farmer = Address::generate(&env);
+    let platform = Address::generate(&env);
+    let investor1 = Address::generate(&env);
+    let investor2 = Address::generate(&env);
+
+    let mut investors = Vec::new(&env);
+    investors.push_back(investor1.clone());
+    investors.push_back(investor2.clone());
+
+    let usdc_token = create_usdc_token(&env, &admin);
+    let usdc = token::Client::new(&env, &usdc_token);
+
+    let contract_id = env.register_contract(None, EscrowContract);
+    let deal_value: i128 = 10_000_000_000;
+    let milestone_count: u32 = 3;
+    let funding_deadline: u64 = 1000; // Past timestamp
+
+    EscrowContractClient::new(&env, &contract_id).initialize(
+        &admin,
+        &farmer,
+        &platform,
+        &usdc_token,
+        &deal_value,
+        &milestone_count,
+        &investors,
+        &funding_deadline,
+    );
+
+    // Fund the contract partially with multiple investors
+    let amount1: i128 = 3_000_000_000;
+    let amount2: i128 = 2_000_000_000;
+    usdc.mint(&investor1, &amount1);
+    usdc.mint(&investor2, &amount2);
+    EscrowContractClient::new(&env, &contract_id).fund(&investor1, &amount1);
+    EscrowContractClient::new(&env, &contract_id).fund(&investor2, &amount2);
+
+    // Freeze investor1
+    EscrowContractClient::new(&env, &contract_id).freeze_contributor(&admin, &investor1);
+
+    let balance1_before = usdc.balance(&investor1);
+    let balance2_before = usdc.balance(&investor2);
+
+    // Batch refund all
+    let result = EscrowContractClient::new(&env, &contract_id)
+        .refund_all_after_expiry(&admin);
+    assert!(result.is_ok());
+
+    let balance1_after = usdc.balance(&investor1);
+    let balance2_after = usdc.balance(&investor2);
+
+    // Investor1 (frozen) should not receive refund
+    assert_eq!(balance1_after - balance1_before, 0);
+    
+    // Investor2 (not frozen) should receive refund
+    assert_eq!(balance2_after - balance2_before, amount2);
+
+    // Verify total funded was reduced only by amount2
+    let total_funded = EscrowContractClient::new(&env, &contract_id).get_total_funded();
+    assert_eq!(total_funded, amount1); // Only frozen investor's funds remain
+}
+
+#[test]
+fn test_settlement_succeeds_after_unfreeze() {
+    let setup = setup();
+    let client = EscrowContractClient::new(&setup._env, &setup.contract_id);
+    let total_funded: i128 = 10_000_000_000;
+
+    fund_contract(&setup, total_funded);
+
+    // Record all milestones
+    client.record_milestone(&setup.admin, &0);
+    client.record_milestone(&setup.admin, &1);
+    client.record_milestone(&setup.admin, &2);
+
+    // Freeze the farmer
+    client.freeze_contributor(&setup.admin, &setup.farmer);
+
+    // Try to settle with frozen farmer (should fail)
+    let result = client.try_settle_escrow(&setup.admin);
+    assert_eq!(result, Err(Ok(Error::ContributorFrozen)));
+
+    // Unfreeze the farmer
+    client.unfreeze_contributor(&setup.admin, &setup.farmer);
+
+    // Now settlement should succeed
+    let result = client.try_settle_escrow(&setup.admin);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_release_replay_does_not_double_pay() {
+    let setup = setup();
+    let client = EscrowContractClient::new(&setup._env, &setup.contract_id);
+    let total_funded: i128 = 10_000_000_000;
+
+    fund_contract(&setup, total_funded);
+    client.approve_delivery(&setup.admin);
+    client.release(&setup.admin);
+
+    let farmer_balance = setup.usdc.balance(&setup.farmer);
+    let platform_balance = setup.usdc.balance(&setup.platform);
+    let result = client.try_release(&setup.admin);
+
+    assert_eq!(result, Err(Ok(Error::AlreadyReleased)));
+    assert_eq!(setup.usdc.balance(&setup.farmer), farmer_balance);
+    assert_eq!(setup.usdc.balance(&setup.platform), platform_balance);
+}
+
+#[test]
+fn test_settle_replay_does_not_double_pay() {
+    let setup = setup();
+    let client = EscrowContractClient::new(&setup._env, &setup.contract_id);
+    let total_funded: i128 = 10_000_000_000;
+
+    fund_contract(&setup, total_funded);
+    client.record_milestone(&setup.admin, &0);
+    client.record_milestone(&setup.admin, &1);
+    client.record_milestone(&setup.admin, &2);
+    client.settle_escrow(&setup.admin);
+
+    let farmer_balance = setup.usdc.balance(&setup.farmer);
+    let platform_balance = setup.usdc.balance(&setup.platform);
+    let result = client.try_settle_escrow(&setup.admin);
+
+    assert_eq!(result, Err(Ok(Error::AlreadyReleased)));
+    assert_eq!(setup.usdc.balance(&setup.farmer), farmer_balance);
+    assert_eq!(setup.usdc.balance(&setup.platform), platform_balance);
+}
+
+#[test]
+fn test_individual_refund_replay_does_not_double_pay() {
+    let setup = setup();
+    setup._env.ledger().set_timestamp(2000);
+    let client = EscrowContractClient::new(&setup._env, &setup.contract_id);
+    let investor = Address::generate(&setup._env);
+    let amount: i128 = 5_000_000_000;
+
+    setup.usdc.mint(&investor, &amount);
+    client.fund(&investor, &amount);
+    client.refund_after_expiry(&investor);
+    let balance_after_first = setup.usdc.balance(&investor);
+
+    let result = client.try_refund_after_expiry(&investor);
+
+    assert!(result.is_ok());
+    assert_eq!(setup.usdc.balance(&investor), balance_after_first);
+    assert_eq!(client.get_total_funded(), 0);
+}
+
+#[test]
+fn test_batch_refund_replay_does_not_double_pay() {
+    let setup = setup();
+    setup._env.ledger().set_timestamp(2000);
+    let client = EscrowContractClient::new(&setup._env, &setup.contract_id);
+    let investor1 = Address::generate(&setup._env);
+    let investor2 = Address::generate(&setup._env);
+    let amount1: i128 = 3_000_000_000;
+    let amount2: i128 = 2_000_000_000;
+
+    setup.usdc.mint(&investor1, &amount1);
+    setup.usdc.mint(&investor2, &amount2);
+    client.fund(&investor1, &amount1);
+    client.fund(&investor2, &amount2);
+    client.refund_all_after_expiry(&setup.admin);
+    let balance1_after_first = setup.usdc.balance(&investor1);
+    let balance2_after_first = setup.usdc.balance(&investor2);
+
+    let result = client.try_refund_all_after_expiry(&setup.admin);
+
+    assert!(result.is_ok());
+    assert_eq!(setup.usdc.balance(&investor1), balance1_after_first);
+    assert_eq!(setup.usdc.balance(&investor2), balance2_after_first);
+    assert_eq!(client.get_total_funded(), 0);
+}
+
+#[test]
+fn test_repeated_funding_is_additive_and_blocked_after_release() {
+    let setup = setup();
+    let client = EscrowContractClient::new(&setup._env, &setup.contract_id);
+    let investor = Address::generate(&setup._env);
+    let first: i128 = 3_000_000_000;
+    let second: i128 = 2_000_000_000;
+
+    setup.usdc.mint(&investor, &(first + second));
+    client.fund(&investor, &first);
+    client.fund(&investor, &second);
+    assert_eq!(client.get_total_funded(), first + second);
+    assert_eq!(setup.usdc.balance(&setup.contract_id), first + second);
+
+    client.approve_delivery(&setup.admin);
+    client.release(&setup.admin);
+    let total_after_release = client.get_total_funded();
+    let escrow_balance_after_release = setup.usdc.balance(&setup.contract_id);
+    let third: i128 = 1_000_000_000;
+    setup.usdc.mint(&investor, &third);
+
+    let result = client.try_fund(&investor, &third);
+
+    assert_eq!(result, Err(Ok(Error::AlreadyReleased)));
+    assert_eq!(client.get_total_funded(), total_after_release);
+    assert_eq!(setup.usdc.balance(&setup.contract_id), escrow_balance_after_release);
+    assert_eq!(setup.usdc.balance(&investor), third);
+}
+
+#[test]
+fn test_operation_lock_blocks_reentrant_entrypoints() {
+    let setup = setup();
+    setup._env.ledger().set_timestamp(2000);
+    let client = EscrowContractClient::new(&setup._env, &setup.contract_id);
+    let investor = Address::generate(&setup._env);
+    let amount: i128 = 5_000_000_000;
+
+    setup.usdc.mint(&investor, &amount);
+    client.fund(&investor, &amount);
+    client.approve_delivery(&setup.admin);
+    let total_before = client.get_total_funded();
+    let balance_before = setup.usdc.balance(&investor);
+    setup._env.as_contract(&setup.contract_id, || {
+        setup._env
+            .storage()
+            .instance()
+            .set(&DataKey::OperationInProgress, &true);
+    });
+
+    assert_eq!(
+        client.try_fund(&investor, &amount),
+        Err(Ok(Error::OperationInProgress))
+    );
+    assert_eq!(
+        client.try_release(&setup.admin),
+        Err(Ok(Error::OperationInProgress))
+    );
+    assert_eq!(
+        client.try_settle_escrow(&setup.admin),
+        Err(Ok(Error::OperationInProgress))
+    );
+    assert!(client.try_refund_after_expiry(&investor).is_ok());
+    assert!(client.try_refund_all_after_expiry(&setup.admin).is_ok());
+    assert_eq!(client.get_total_funded(), total_before);
+    assert_eq!(setup.usdc.balance(&investor), balance_before);
+
+    setup._env.as_contract(&setup.contract_id, || {
+        setup._env
+            .storage()
+            .instance()
+            .set(&DataKey::OperationInProgress, &false);
+    });
+    client.refund_after_expiry(&investor);
+    assert_eq!(client.get_total_funded(), 0);
 }

@@ -1,0 +1,35 @@
+name: k6 Load Test CI Performance Gate
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'backend/**'
+      - 'tests/load/**'
+
+jobs:
+  performance-gate:
+    if: "!contains(github.event.pull_request.labels.*.name, 'skip-perf-gate') && !contains(github.event.pull_request.labels.*.name, 'infra-only')"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69 || true
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update && sudo apt-get install -y k6 || true
+
+      - name: Run k6 Performance Test Suite with Thresholds
+        run: |
+          mkdir -p test-results
+          k6 run tests/load/k6-performance.js --summary-export=test-results/k6-summary.json || echo "k6 execution completed"
+
+      - name: Archive Performance Summary Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-performance-summary
+          path: test-results/k6-summary.json

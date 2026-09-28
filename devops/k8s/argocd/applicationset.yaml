@@ -1,0 +1,114 @@
+# ApplicationSet — agri-fi multi-environment app-of-apps
+#
+# Generates one root App-of-Apps Application per environment (staging,
+# production) from a single template, eliminating per-env copy/paste.
+#
+# Each generated Application points at an environment-specific overlay
+# directory under devops/k8s/argocd/envs/<env>/, which kustomizes the
+# base child apps (sync waves remain intact inside each child app).
+#
+# Environment matrix:
+#   staging    → branch: main  → namespace: agri-fi-staging    → selfHeal: true
+#   production → branch: main  → namespace: agri-fi-production → selfHeal: false
+#
+# Ref: https://argo-cd.readthedocs.io/en/stable/operator-manual/applicationset/
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: agri-fi-environments
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: agri-fi
+    app.kubernetes.io/managed-by: argocd
+spec:
+  # ── Generators ──────────────────────────────────────────────────────────
+  # List generator: one entry per environment.  Add new environments here
+  # without touching any other manifest.
+  generators:
+    - list:
+        elements:
+          - env: staging
+            namespace: agri-fi-staging
+            targetRevision: main
+            # Staging syncs automatically and heals drift.
+            autoSyncEnabled: "true"
+            selfHeal: "true"
+            prune: "true"
+          - env: production
+            namespace: agri-fi-production
+            targetRevision: main
+            # Production auto-sync is on but selfHeal is off — a human
+            # must confirm unexpected drift before ArgoCD reverts it.
+            autoSyncEnabled: "true"
+            selfHeal: "false"
+            prune: "true"
+
+  # ── Template ─────────────────────────────────────────────────────────────
+  template:
+    metadata:
+      # e.g. agri-fi-app-of-apps-staging
+      name: "agri-fi-app-of-apps-{{env}}"
+      namespace: argocd
+      labels:
+        app.kubernetes.io/part-of: agri-fi
+        app.kubernetes.io/environment: "{{env}}"
+      annotations:
+        # All root app-of-apps objects deploy at wave 0 — they must exist
+        # before any child wave fires within the environment.
+        argocd.argoproj.io/sync-wave: "0"
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+
+    spec:
+      project: agri-fi
+
+      source:
+        repoURL: https://github.com/Agri-fund/agri-fi.git
+        targetRevision: "{{targetRevision}}"
+        # Each environment has a kustomize overlay that patches namespace,
+        # image tags, resource limits, and replica counts without altering
+        # the sync-wave annotations on child apps.
+        path: "devops/k8s/argocd/envs/{{env}}"
+
+      destination:
+        server: https://kubernetes.default.svc
+        # The generated app-of-apps object itself lives in argocd namespace;
+        # child apps it spawns target {{namespace}}.
+        namespace: argocd
+
+      syncPolicy:
+        automated:
+          prune: "{{prune}}"
+          selfHeal: "{{selfHeal}}"
+        syncOptions:
+          - ServerSideApply=true
+          - CreateNamespace=true
+          - ApplyOutOfSyncOnly=true
+        retry:
+          limit: 5
+          backoff:
+            duration: 10s
+            factor: 2
+            maxDuration: 3m
+
+  # ── Strategy ─────────────────────────────────────────────────────────────
+  # RollingSync ensures staging is always reconciled before production,
+  # acting as a promotion gate at the environment level.
+  strategy:
+    type: RollingSync
+    rollingSync:
+      steps:
+        - matchExpressions:
+            - key: app.kubernetes.io/environment
+              operator: In
+              values: [staging]
+        - matchExpressions:
+            - key: app.kubernetes.io/environment
+              operator: In
+              values: [production]
+
+  # ── Template patch ────────────────────────────────────────────────────────
+  # Prevent the ApplicationSet controller from deleting child Applications
+  # when the ApplicationSet itself is deleted (safety net for production).
+  syncPolicy:
+    preserveResourcesOnDeletion: true

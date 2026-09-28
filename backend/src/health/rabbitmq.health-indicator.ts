@@ -22,9 +22,7 @@ import { QUEUE_SERVICE } from '../queue/queue.constants';
 export class RabbitmqHealthIndicator extends HealthIndicator {
   private static readonly PROBE_TIMEOUT_MS = 3_000;
 
-  constructor(
-    @Inject(QUEUE_SERVICE) private readonly client: ClientProxy,
-  ) {
+  constructor(@Inject(QUEUE_SERVICE) private readonly client: ClientProxy) {
     super();
   }
 

@@ -15,7 +15,7 @@ import {
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
-import * as PDFDocument from 'pdfkit';
+import PDFDocument from 'pdfkit';
 import { Investment } from './entities/investment.entity';
 
 /** Pre-signed URL validity window: 15 minutes */
@@ -200,7 +200,8 @@ export class ReceiptService {
 
       const deal = investment.tradeDeal;
       const dealName = deal?.title ?? investment.tradeDealId;
-      const commodity = (deal as Record<string, unknown>)?.['commodity'] as string ?? 'N/A';
+      const commodity =
+        ((deal as Record<string, unknown>)?.['commodity'] as string) ?? 'N/A';
       const amountUsd = Number(investment.amountUsd ?? 0).toFixed(2);
       const tokenCount = investment.tokenAmount ?? 0;
       const investmentDate = (investment.createdAt ?? new Date())

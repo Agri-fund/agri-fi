@@ -31,9 +31,10 @@ function parsePositiveInt(value: unknown, fallback: number): number {
  * Opt-in via `@UseInterceptors(PaginationInterceptor)` on paginated routes.
  */
 @Injectable()
-export class PaginationInterceptor<T>
-  implements NestInterceptor<T[] | { data: T[]; total: number }, PaginatedResponse<T>>
-{
+export class PaginationInterceptor<T> implements NestInterceptor<
+  T[] | { data: T[]; total: number },
+  PaginatedResponse<T>
+> {
   intercept(
     context: ExecutionContext,
     next: CallHandler,

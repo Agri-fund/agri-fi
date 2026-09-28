@@ -20,7 +20,8 @@ describe('SorobanRentService', () => {
 
     configService = {
       get: jest.fn((key: string, defaultValue?: any) => {
-        if (key === 'SOROBAN_RPC_URL') return 'https://soroban-testnet.stellar.org';
+        if (key === 'SOROBAN_RPC_URL')
+          return 'https://soroban-testnet.stellar.org';
         if (key === 'RENT_TOP_UP_LEDGERS_THRESHOLD') return 50000;
         if (key === 'SOROBAN_FACTORY_CONTRACT_ID') return 'CFACTORY123';
         return defaultValue;
@@ -28,9 +29,9 @@ describe('SorobanRentService', () => {
     } as any;
 
     tradeDealRepo = {
-      find: jest.fn().mockResolvedValue([
-        { sorobanCampaignContractId: 'CCAMPAIGN456' },
-      ]),
+      find: jest
+        .fn()
+        .mockResolvedValue([{ sorobanCampaignContractId: 'CCAMPAIGN456' }]),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -79,6 +80,9 @@ describe('SorobanRentService', () => {
     const result = await service.bumpContractRent('CCAMPAIGN789');
 
     expect(result).toBe('txhash999');
-    expect(sorobanService.extendContractTtl).toHaveBeenCalledWith('CCAMPAIGN789', 535680);
+    expect(sorobanService.extendContractTtl).toHaveBeenCalledWith(
+      'CCAMPAIGN789',
+      535680,
+    );
   });
 });

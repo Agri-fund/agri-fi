@@ -1,5 +1,10 @@
-import { registerDecorator, ValidationOptions, ValidatorConstraint, ValidatorConstraintInterface } from 'class-validator';
-import * as zxcvbn from 'zxcvbn';
+import {
+  registerDecorator,
+  ValidationOptions,
+  ValidatorConstraint,
+  ValidatorConstraintInterface,
+} from 'class-validator';
+import zxcvbn from 'zxcvbn';
 
 @ValidatorConstraint({ name: 'isStrongPassword', async: false })
 export class IsStrongPasswordConstraint implements ValidatorConstraintInterface {
@@ -13,5 +18,10 @@ export class IsStrongPasswordConstraint implements ValidatorConstraintInterface 
 
 export function IsStrongPassword(options?: ValidationOptions) {
   return (object: object, propertyName: string) =>
-    registerDecorator({ target: object.constructor, propertyName, options, validator: IsStrongPasswordConstraint });
+    registerDecorator({
+      target: object.constructor,
+      propertyName,
+      options,
+      validator: IsStrongPasswordConstraint,
+    });
 }

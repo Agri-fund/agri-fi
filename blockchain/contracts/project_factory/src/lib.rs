@@ -8,8 +8,10 @@ mod test;
 
 use soroban_sdk::{
     contract, contractimpl, contracttype, contracterror, symbol_short,
-    Address, Bytes, BytesN, Env, String,
+    Address, Bytes, BytesN, Env, String, Symbol,
 };
+
+pub const MAX_FEE_BPS: u32 = 10_000;
 
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -20,6 +22,9 @@ pub enum Error {
     NotFound          = 3,
     NotInitialized    = 4,
     WasmHashNotSet    = 5,
+    InvalidTarget     = 6,
+    InvalidDeadline   = 7,
+    InvalidFeeBps     = 8,
 }
 
 #[contracttype]
@@ -110,19 +115,63 @@ impl ProjectFactoryContract {
         env.storage().instance().get(&DataKey::CampaignWasmHash).ok_or(Error::WasmHashNotSet)
     }
 
-    /// Deploys a new FarmCampaign contract and returns its address (#830).
+    pub fn create_campaign(
+        env: Env,
+        admin: Address,
+        farmer: Address,
+        target_amount: i128,
+        deadline: u64,
+        fee_bps: u32,
+    ) -> Result<Address, Error> {
+        Self::create_campaign_internal(
+            env,
+            admin,
+            farmer,
+            target_amount,
+            deadline,
+            fee_bps,
+        )
+    }
+
     pub fn deploy(
         env: Env,
         admin: Address,
         farmer: Address,
         target_amount: i128,
-        duration_ledgers: u32,
-        commodity_code: String,
+        deadline: u64,
+        fee_bps: u32,
+    ) -> Result<Address, Error> {
+        Self::create_campaign_internal(
+            env,
+            admin,
+            farmer,
+            target_amount,
+            deadline,
+            fee_bps,
+        )
+    }
+
+    fn create_campaign_internal(
+        env: Env,
+        admin: Address,
+        farmer: Address,
+        target_amount: i128,
+        deadline: u64,
+        fee_bps: u32,
     ) -> Result<Address, Error> {
         admin.require_auth();
         let stored_admin: Address = env.storage().instance().get(&DataKey::Admin)
             .ok_or(Error::NotInitialized)?;
         if admin != stored_admin { return Err(Error::Unauthorized); }
+
+        if target_amount <= 0 { return Err(Error::InvalidTarget); }
+        if deadline <= env.ledger().timestamp() { return Err(Error::InvalidDeadline); }
+        if fee_bps > MAX_FEE_BPS { return Err(Error::InvalidFeeBps); }
+
+        env.events().publish(
+            (Symbol::new(&env, "CampaignParamsValidated"),),
+            (target_amount, deadline, fee_bps),
+        );
 
         let wasm_hash: BytesN<32> = env.storage().instance()
             .get(&DataKey::CampaignWasmHash)
@@ -130,13 +179,12 @@ impl ProjectFactoryContract {
 
         let count: u32 = env.storage().instance().get(&DataKey::CampaignCount).unwrap_or(0);
 
-        // Unique salt derived from the campaign count, current ledger time and
-        // deal parameters so every deploy yields a fresh contract address.
         let mut seed = Bytes::new(&env);
         seed.extend_from_array(&count.to_be_bytes());
         seed.extend_from_array(&env.ledger().timestamp().to_be_bytes());
         seed.extend_from_array(&target_amount.to_be_bytes());
-        seed.extend_from_array(&duration_ledgers.to_be_bytes());
+        seed.extend_from_array(&deadline.to_be_bytes());
+        seed.extend_from_array(&fee_bps.to_be_bytes());
         let salt: BytesN<32> = env.crypto().sha256(&seed).into();
 
         let campaign_address: Address = env.deployer().create_contract(wasm_hash, salt);

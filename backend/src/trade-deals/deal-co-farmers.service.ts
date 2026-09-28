@@ -11,7 +11,10 @@ import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'crypto';
 import { PinoLogger } from 'nestjs-pino';
-import { DealCoFarmer, DealCoFarmerStatus } from './entities/deal-co-farmer.entity';
+import {
+  DealCoFarmer,
+  DealCoFarmerStatus,
+} from './entities/deal-co-farmer.entity';
 import { TradeDeal } from './entities/trade-deal.entity';
 import { User } from '../auth/entities/user.entity';
 import { QueueService } from '../queue/queue.service';
@@ -61,14 +64,16 @@ export class DealCoFarmersService {
     if (deal.farmerId !== inviterId && deal.traderId !== inviterId) {
       throw new ForbiddenException({
         code: 'NOT_DEAL_OWNER',
-        message: 'Only the lead farmer or assigned trader can invite co-farmers.',
+        message:
+          'Only the lead farmer or assigned trader can invite co-farmers.',
       });
     }
 
     if (deal.status !== 'draft' && deal.status !== 'open') {
       throw new UnprocessableEntityException({
         code: 'DEAL_NOT_MODIFIABLE',
-        message: 'Co-farmers can only be invited while the deal is draft or open.',
+        message:
+          'Co-farmers can only be invited while the deal is draft or open.',
       });
     }
 
@@ -102,7 +107,9 @@ export class DealCoFarmersService {
     }
 
     // Portions of all active co-farmers plus the new one must fit in 100%.
-    const rows = await this.coFarmerRepo.find({ where: { tradeDealId: dealId } });
+    const rows = await this.coFarmerRepo.find({
+      where: { tradeDealId: dealId },
+    });
     const committedPortions = rows
       .filter((r) => r.status !== 'removed' && r.farmerId !== target.id)
       .reduce((sum, r) => sum + Number(r.portionPercent), 0);
@@ -206,7 +213,8 @@ export class DealCoFarmersService {
     if (deal.farmerId !== requesterId && deal.traderId !== requesterId) {
       throw new ForbiddenException({
         code: 'NOT_DEAL_OWNER',
-        message: 'Only the lead farmer or assigned trader can remove co-farmers.',
+        message:
+          'Only the lead farmer or assigned trader can remove co-farmers.',
       });
     }
     if (deal.status === 'delivered' || deal.status === 'completed') {
@@ -248,7 +256,10 @@ export class DealCoFarmersService {
     for (const record of records) {
       if (record.status === 'removed') continue;
       if (record.status !== 'accepted') {
-        blocking.push({ farmerId: record.farmerId, reason: 'invitation_not_accepted' });
+        blocking.push({
+          farmerId: record.farmerId,
+          reason: 'invitation_not_accepted',
+        });
       } else if (record.farmer?.kycStatus !== 'verified') {
         blocking.push({
           farmerId: record.farmerId,
@@ -285,7 +296,9 @@ export class DealCoFarmersService {
     });
 
     if (!record || record.status === 'removed') {
-      throw new NotFoundException('No invitation found for this user on the deal.');
+      throw new NotFoundException(
+        'No invitation found for this user on the deal.',
+      );
     }
     if (record.status === 'accepted') {
       throw new ConflictException({

@@ -6,10 +6,7 @@ import { WebhooksService } from './webhooks.service';
 import { WebhooksController } from './webhooks.controller';
 
 @Module({
-  imports: [
-    TypeOrmModule.forFeature([WebhookSubscription]),
-    HttpModule,
-  ],
+  imports: [TypeOrmModule.forFeature([WebhookSubscription]), HttpModule],
   controllers: [WebhooksController],
   providers: [WebhooksService],
   exports: [WebhooksService],

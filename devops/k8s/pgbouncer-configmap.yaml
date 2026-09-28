@@ -1,4 +1,4 @@
-# PgBouncer configuration ConfigMap (#839)
+# PgBouncer configuration ConfigMap (#839, updated #1037)
 #
 # Mounts pgbouncer.ini into the pgbouncer sidecar container at:
 #   /bitnami/pgbouncer/conf/pgbouncer.ini
@@ -12,6 +12,20 @@
 # Create it with:
 #   kubectl create secret generic pgbouncer-userlist \
 #     --from-file=userlist.txt=devops/k8s/userlist.txt
+#
+# Pool sizing (#1037) — per-replica server connection budget:
+#   RDS max_connections (db.t3.small) : 200
+#   Reserved (ops/migrations/monitoring): 30
+#   Usable budget                      : 170
+#   HPA maxReplicas                    : 8
+#   pool_size per replica              : 20   (170 ÷ 8 = 21, rounded down)
+#   Worst-case total (8 × 20)          : 160  ≤ 170  ✓
+#   Safety headroom                    : 10 connections
+#
+#   If you change the RDS instance class, recalculate and update:
+#     pool_size / default_pool_size here
+#     DATABASE_POOL_MAX in configmap.yaml
+#     maxReplicas in hpa.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -40,7 +54,7 @@ data:
     ; Route the application database to the upstream Postgres service.
     ; POSTGRESQL_HOST, POSTGRESQL_PORT, PGBOUNCER_DATABASE env vars from the
     ; Bitnami image override host/port/dbname at runtime.
-    agric_onchain = host=postgres port=5432 dbname=agric_onchain pool_size=100
+    agric_onchain = host=postgres port=5432 dbname=agric_onchain pool_size=20
 
     ; Virtual database for pgbouncer_exporter stats queries — no real Postgres
     ; connection is opened for this entry.
@@ -58,9 +72,13 @@ data:
     ; ── Pooling ─────────────────────────────────────────────────────────────
     pool_mode = transaction
     max_client_conn = 200
-    default_pool_size = 100
-    min_pool_size = 5
-    reserve_pool_size = 5
+    ; Per-replica server connection limit (#1037).
+    ; Sized to fit the RDS connection budget: 170 usable ÷ 8 maxReplicas = 20.
+    ; Changing this value requires a matching update to hpa.yaml maxReplicas
+    ; and DATABASE_POOL_MAX in configmap.yaml.
+    default_pool_size = 20
+    min_pool_size = 2
+    reserve_pool_size = 2
     reserve_pool_timeout = 3.0
 
     ; ── Timeouts ────────────────────────────────────────────────────────────

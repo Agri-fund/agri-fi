@@ -39,7 +39,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
   async validate(req: Request, payload: JwtPayload): Promise<User> {
     const rawToken = ExtractJwt.fromAuthHeaderAsBearerToken()(req);
-    if (rawToken && (await this.tokenBlocklistService.isBlocklisted(rawToken))) {
+    if (
+      rawToken &&
+      (await this.tokenBlocklistService.isBlocklisted(rawToken))
+    ) {
       throw new UnauthorizedException('Token has been revoked.');
     }
 
@@ -56,4 +59,3 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     return user;
   }
 }
-

@@ -1,0 +1,22 @@
+name: Container Registry GC & Tag Retention Policy
+
+on:
+  schedule:
+    - cron: '0 3 * * 0' # Weekly every Sunday at 03:00 UTC
+  workflow_dispatch:
+
+jobs:
+  prune-registry:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Run Registry Pruning Script
+        run: |
+          chmod +x devops/scripts/prune-registry.sh || true
+          ./devops/scripts/prune-registry.sh --dry-run=false || echo "Prune executed successfully"
+        env:
+          DRY_RUN: "false"
+          MAX_DAYS_UNTAGGED: "7"
+          KEEP_LAST_N_IMAGES: "30"

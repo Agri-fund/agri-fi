@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "../globals.css";
 import * as Sentry from "@sentry/nextjs";
 import { ToastProvider } from "@/components/ui/ToastProvider";
-import OfflineBanner from "@/components/OfflineBanner";
+import { OfflineBanner } from "@/components/OfflineBanner";
 import { NextIntlClientProvider } from 'next-intl';
-import { getMessages } from 'next-intl/server';
+import { getMessages, setRequestLocale } from 'next-intl/server';
 
 export const metadata: Metadata = {
   title: "AgriFi — Agricultural Finance Platform",
@@ -18,6 +18,9 @@ export default async function RootLayout({
   children: React.ReactNode;
   params: { locale: string };
 }) {
+  // Required for statically rendered children (e.g. force-static deal pages),
+  // where next-intl can't read the locale from middleware headers.
+  setRequestLocale(locale);
   const messages = await getMessages();
 
   return (

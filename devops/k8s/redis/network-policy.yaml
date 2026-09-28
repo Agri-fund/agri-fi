@@ -1,0 +1,37 @@
+# NetworkPolicy for Redis — allow ingress only from backend pods and
+# prometheus-operator scrape pods; deny everything else.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agri-fi-redis-netpol
+  namespace: agri-fi
+spec:
+  podSelector:
+    matchLabels:
+      app: agri-fi
+      component: redis
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Backend NestJS pods connect on 6379
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: backend
+      ports:
+        - protocol: TCP
+          port: 6379
+    # Prometheus scrapes the redis-exporter sidecar on 9121
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 9121
+  egress:
+    # Allow DNS resolution
+    - ports:
+        - protocol: UDP
+          port: 53

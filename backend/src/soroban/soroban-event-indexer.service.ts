@@ -17,15 +17,19 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
 import { PinoLogger } from 'nestjs-pino';
 import { Repository } from 'typeorm';
+import { Horizon, Networks, rpc } from '@stellar/stellar-sdk';
 import {
-  Horizon,
-  Networks,
-  rpc,
-} from '@stellar/stellar-sdk';
-import { TransactionLog, TxStatus } from '../stellar/entities/transaction-log.entity';
+  TransactionLog,
+  TxStatus,
+} from '../stellar/entities/transaction-log.entity';
 import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.entity';
 import { QueueService } from '../queue/queue.service';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
+
+import {
+  normalizeContractEvent,
+  StandardizedEventPayload,
+} from './events/event-schema.registry';
 
 /**
  * Represents a processed event to prevent duplicate processing
@@ -61,12 +65,14 @@ export class SorobanEventIndexer implements OnModuleInit, OnModuleDestroy {
   private readonly processedEventsCache = new Map<string, ProcessedEvent>();
   private isRunning = false;
 
-  // Contract addresses (should be in config)
+  // Contract addresses across all 6 contracts
   private readonly contractAddresses = {
     farmCampaign: process.env.FARM_CAMPAIGN_CONTRACT || '',
     projectFactory: process.env.PROJECT_FACTORY_CONTRACT || '',
     revenueDistributor: process.env.REVENUE_DISTRIBUTOR_CONTRACT || '',
     marketplaceSettlement: process.env.MARKETPLACE_SETTLEMENT_CONTRACT || '',
+    escrow: process.env.ESCROW_CONTRACT || '',
+    farmCampaignSettlement: process.env.FARM_CAMPAIGN_SETTLEMENT_CONTRACT || '',
   };
 
   constructor(
@@ -80,7 +86,7 @@ export class SorobanEventIndexer implements OnModuleInit, OnModuleDestroy {
     private readonly dealRepo: Repository<TradeDeal>,
     private readonly queueService: QueueService,
   ) {
-    this.logger.setContext(SorobanEventIndexer.name);
+    (this.logger as any).setContext(SorobanEventIndexer.name);
 
     const rpcUrl = config.get<string>(
       'SOROBAN_RPC_URL',
@@ -138,10 +144,17 @@ export class SorobanEventIndexer implements OnModuleInit, OnModuleDestroy {
    */
   private async initializeLastLedger() {
     try {
-      const ledger = await this.horizonServer.ledgers().limit(1).order('desc').call();
+      const ledger = await this.horizonServer
+        .ledgers()
+        .limit(1)
+        .order('desc')
+        .call();
       if (ledger.records && ledger.records.length > 0) {
         this.lastLedger = ledger.records[0].sequence - 100; // Start 100 ledgers behind
-        this.logger.info({ ledger: this.lastLedger }, 'Event indexing started from ledger');
+        this.logger.info(
+          { ledger: this.lastLedger },
+          'Event indexing started from ledger',
+        );
       }
     } catch (error) {
       this.logger.warn(
@@ -172,10 +185,7 @@ export class SorobanEventIndexer implements OnModuleInit, OnModuleDestroy {
       });
     }, intervalMs);
 
-    this.logger.info(
-      { intervalMs },
-      'Soroban event polling started',
-    );
+    this.logger.info({ intervalMs }, 'Soroban event polling started');
   }
 
   /**
@@ -242,17 +252,15 @@ export class SorobanEventIndexer implements OnModuleInit, OnModuleDestroy {
         return [];
       }
 
-      return eventsResponse.events.map(
-        (event: any): ContractEvent => ({
-          id: `${event.id}`,
-          transactionHash: event.transactionHash,
-          ledger: event.ledger,
-          contractId: event.contractId,
-          type: event.type,
-          topic: event.topic || [],
-          value: event.value || {},
-        }),
-      );
+      return eventsResponse.events.map((event: any): ContractEvent => ({
+        id: `${event.id}`,
+        transactionHash: event.transactionHash,
+        ledger: event.ledger,
+        contractId: event.contractId,
+        type: event.type,
+        topic: event.topic || [],
+        value: event.value || {},
+      }));
     } catch (error) {
       this.logger.debug({ error }, 'Error querying events from RPC');
       return [];
@@ -266,9 +274,7 @@ export class SorobanEventIndexer implements OnModuleInit, OnModuleDestroy {
     const filters = [];
 
     // Filter for contract events from known contracts
-    for (const [contractName, contractId] of Object.entries(
-      this.contractAddresses,
-    )) {
+    for (const [, contractId] of Object.entries(this.contractAddresses)) {
       if (contractId) {
         filters.push({
           contractIds: [contractId],
@@ -291,17 +297,27 @@ export class SorobanEventIndexer implements OnModuleInit, OnModuleDestroy {
     }
 
     try {
-      // Route to appropriate handler based on contract and event type
-      if (event.contractId === this.contractAddresses.farmCampaign) {
-        await this.handleFarmCampaignEvent(event);
-      } else if (
-        event.contractId === this.contractAddresses.marketplaceSettlement
-      ) {
-        await this.handleMarketplaceSettlementEvent(event);
-      } else if (
-        event.contractId === this.contractAddresses.revenueDistributor
-      ) {
-        await this.handleRevenueDistributorEvent(event);
+      // Determine contract name if known
+      const contractName = Object.entries(this.contractAddresses).find(
+        ([, addr]) => addr && addr.toLowerCase() === event.contractId.toLowerCase(),
+      )?.[0];
+
+      const standardized = normalizeContractEvent(event, contractName);
+      if (standardized) {
+        await this.dispatchStandardizedEvent(standardized);
+      } else {
+        // Fallback to legacy routing
+        if (event.contractId === this.contractAddresses.farmCampaign) {
+          await this.handleFarmCampaignEvent(event);
+        } else if (
+          event.contractId === this.contractAddresses.marketplaceSettlement
+        ) {
+          await this.handleMarketplaceSettlementEvent(event);
+        } else if (
+          event.contractId === this.contractAddresses.revenueDistributor
+        ) {
+          await this.handleRevenueDistributorEvent(event);
+        }
       }
 
       // Mark as processed
@@ -340,6 +356,10 @@ export class SorobanEventIndexer implements OnModuleInit, OnModuleDestroy {
     switch (type) {
       case 'milestone_completed':
         await this.handleMilestoneCompleted(value as any, transactionHash);
+        break;
+
+      case 'partial_release':
+        await this.handlePartialRelease(value as any, transactionHash);
         break;
 
       case 'funding_received':
@@ -434,6 +454,41 @@ export class SorobanEventIndexer implements OnModuleInit, OnModuleDestroy {
       this.logger.error(
         { error, txHash },
         'Error handling milestone_completed event',
+      );
+    }
+  }
+
+  /**
+   * Handle partial release event
+   */
+  private async handlePartialRelease(data: any, txHash: string) {
+    try {
+      const { dealId, amountBps, amount } = data;
+
+      await this.txLogRepo.update(
+        { txHash },
+        {
+          status: TxStatus.SUCCESS,
+          dealId,
+        },
+      );
+
+      this.queueService.emit('milestone.partial_release', {
+        dealId,
+        amountBps,
+        amount,
+        txHash,
+        timestamp: new Date(),
+      });
+
+      this.logger.info(
+        { dealId, amountBps, amount, txHash },
+        'Partial release executed on-chain',
+      );
+    } catch (error) {
+      this.logger.error(
+        { error, txHash },
+        'Error handling partial_release event',
       );
     }
   }
@@ -554,7 +609,10 @@ export class SorobanEventIndexer implements OnModuleInit, OnModuleDestroy {
         timestamp: new Date(),
       });
     } catch (error) {
-      this.logger.error({ error, txHash }, 'Error handling trade_settled event');
+      this.logger.error(
+        { error, txHash },
+        'Error handling trade_settled event',
+      );
     }
   }
 
@@ -587,6 +645,152 @@ export class SorobanEventIndexer implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Dispatches a standardized schema v1 event to its corresponding DB handler
+   */
+  private async dispatchStandardizedEvent(event: StandardizedEventPayload) {
+    const { schemaTopic, data, transactionHash } = event;
+
+    switch (schemaTopic) {
+      case 'farm_campaign.milestone_completed':
+      case 'escrow.milestone_completed':
+        await this.handleMilestoneCompleted(data, transactionHash);
+        break;
+
+      case 'farm_campaign.partial_released':
+        await this.handlePartialRelease(data, transactionHash);
+        break;
+
+      case 'farm_campaign.invested':
+      case 'escrow.funded':
+        await this.handleFundingReceived(data, transactionHash);
+        break;
+
+      case 'farm_campaign.status_changed':
+        await this.handleCampaignStatusChanged(data, transactionHash);
+        break;
+
+      case 'farm_campaign_settlement.settlement_completed':
+        await this.handleSettlementCompleted(data, transactionHash);
+        break;
+
+      case 'marketplace_settlement.trade_settled':
+      case 'escrow.settled':
+        await this.handleTradeSettled(data, transactionHash);
+        break;
+
+      case 'marketplace_settlement.order_created':
+        await this.handleOrderCreated(data, transactionHash);
+        break;
+
+      case 'revenue_distributor.revenue_distributed':
+      case 'farm_campaign.revenue_distributed':
+        await this.handleRevenueDistributed(data, transactionHash);
+        break;
+
+      case 'escrow.compliance_halt':
+        await this.handleComplianceHalt(data, transactionHash);
+        break;
+
+      case 'escrow.refunded':
+      case 'farm_campaign.refunded':
+      case 'marketplace_settlement.order_refunded':
+        await this.handleRefund(data, transactionHash);
+        break;
+
+      case 'project_factory.campaign_created':
+        await this.handleFactoryCampaignCreated(data, transactionHash);
+        break;
+
+      default:
+        this.logger.debug(
+          { schemaTopic, contract: event.contract },
+          'Processed schema event with no dedicated DB mutations needed',
+        );
+    }
+  }
+
+  /**
+   * Handle order created in marketplace settlement
+   */
+  private async handleOrderCreated(data: any, txHash: string) {
+    try {
+      const { orderId, buyer, amount } = data;
+      await this.txLogRepo.update(
+        { txHash },
+        { status: TxStatus.SUCCESS },
+      );
+
+      this.queueService.emit('marketplace.order_created', {
+        orderId,
+        buyer,
+        amount,
+        txHash,
+        timestamp: new Date(),
+      });
+      this.logger.info({ orderId, buyer, amount, txHash }, 'Marketplace order created on-chain');
+    } catch (error) {
+      this.logger.error({ error, txHash }, 'Error handling order_created event');
+    }
+  }
+
+  /**
+   * Handle compliance halt in escrow contract
+   */
+  private async handleComplianceHalt(data: any, txHash: string) {
+    try {
+      const { flaggedAccount } = data;
+      this.logger.warn({ flaggedAccount, txHash }, 'Escrow compliance halt triggered on-chain');
+      this.queueService.emit('escrow.compliance_halt', {
+        flaggedAccount,
+        txHash,
+        timestamp: new Date(),
+      });
+    } catch (error) {
+      this.logger.error({ error, txHash }, 'Error handling compliance_halt event');
+    }
+  }
+
+  /**
+   * Handle refund events
+   */
+  private async handleRefund(data: any, txHash: string) {
+    try {
+      const { contributor, investor, amount } = data;
+      const recipient = contributor || investor;
+      this.logger.info({ recipient, amount, txHash }, 'Refund executed on-chain');
+      this.queueService.emit('deal.refunded', {
+        recipient,
+        amount,
+        txHash,
+        timestamp: new Date(),
+      });
+    } catch (error) {
+      this.logger.error({ error, txHash }, 'Error handling refund event');
+    }
+  }
+
+  /**
+   * Handle project factory campaign creation
+   */
+  private async handleFactoryCampaignCreated(data: any, txHash: string) {
+    try {
+      const { dealId, contractAddress } = data;
+      if (dealId) {
+        await this.dealRepo.update({ id: dealId }, { onChainContractAddress: contractAddress } as any);
+      }
+      this.queueService.emit('campaign.deployed', {
+        dealId,
+        contractAddress,
+        txHash,
+        timestamp: new Date(),
+      });
+      this.logger.info({ dealId, contractAddress, txHash }, 'Child campaign deployed by factory');
+    } catch (error) {
+      this.logger.error({ error, txHash }, 'Error handling factory campaign_created event');
+    }
+  }
+
+  /**
    * Get current indexer status
    */
   getStatus() {
@@ -602,5 +806,216 @@ export class SorobanEventIndexer implements OnModuleInit, OnModuleDestroy {
    */
   async pollOnce() {
     await this.pollForEvents();
+  }
+
+  /**
+   * Issue #1028 — Replay/backfill mode to reconstruct events from historical ledgers.
+   * Given a contract ID and starting ledger, reconstructs events from Horizon/Soroban RPC history.
+   * Uses idempotent upserts (unique event hash) to avoid duplicates.
+   */
+  async replayEvents(
+    contractId: string,
+    fromLedger: number,
+    toLedger?: number,
+  ): Promise<{ processed: number; gaps: number; duplicates: number }> {
+    this.logger.info(
+      { contractId, fromLedger, toLedger },
+      'Starting event replay/backfill',
+    );
+
+    const endLedger = toLedger || (await this.getCurrentLedger());
+    let processed = 0;
+    let gaps = 0;
+    let duplicates = 0;
+
+    try {
+      // Query events from the specified ledger range
+      const events = await this.queryEventsFromRange(
+        contractId,
+        fromLedger,
+        endLedger,
+      );
+
+      for (const event of events) {
+        const eventHash = this.computeEventHash(event);
+
+        // Check if already processed (idempotent check)
+        if (this.processedEventsCache.has(eventHash)) {
+          duplicates++;
+          continue;
+        }
+
+        // Process the event
+        await this.processEvent(event);
+        processed++;
+
+        // Mark as processed
+        this.processedEventsCache.set(eventHash, {
+          eventId: event.id,
+          transactionHash: event.transactionHash,
+          contractId: event.contractId,
+          eventType: event.type,
+          processedAt: new Date(),
+        });
+      }
+
+      // Detect gaps in the ledger sequence
+      gaps = await this.detectLedgerGaps(fromLedger, endLedger, contractId);
+
+      this.logger.info(
+        { processed, gaps, duplicates, fromLedger, toLedger: endLedger },
+        'Event replay/backfill completed',
+      );
+
+      return { processed, gaps, duplicates };
+    } catch (error) {
+      this.logger.error({ error }, 'Error during event replay/backfill');
+      throw error;
+    }
+  }
+
+  /**
+   * Query events from a specific ledger range
+   */
+  private async queryEventsFromRange(
+    contractId: string,
+    fromLedger: number,
+    toLedger: number,
+  ): Promise<ContractEvent[]> {
+    const events: ContractEvent[] = [];
+    const batchSize = 100;
+    let currentLedger = fromLedger;
+
+    while (currentLedger <= toLedger) {
+      try {
+        const batchEndLedger = Math.min(currentLedger + batchSize - 1, toLedger);
+        const eventsResponse = await (this.rpcServer as any).getEvents({
+          startLedger: currentLedger,
+          endLedger: batchEndLedger,
+          filters: [
+            {
+              contractIds: [contractId],
+              type: 'contract',
+            },
+          ],
+          limit: batchSize,
+        });
+
+        if (eventsResponse?.events) {
+          for (const event of eventsResponse.events) {
+            events.push({
+              id: `${event.id}`,
+              transactionHash: event.transactionHash,
+              ledger: event.ledger,
+              contractId: event.contractId,
+              type: event.type,
+              topic: event.topic || [],
+              value: event.value || {},
+            });
+          }
+        }
+
+        currentLedger = batchEndLedger + 1;
+      } catch (error) {
+        this.logger.warn(
+          { error, ledger: currentLedger },
+          'Error querying events batch, skipping to next batch',
+        );
+        currentLedger += batchSize;
+      }
+    }
+
+    return events;
+  }
+
+  /**
+   * Compute a unique hash for an event to enable idempotent processing
+   */
+  private computeEventHash(event: ContractEvent): string {
+    const hashInput = `${event.transactionHash}-${event.contractId}-${event.type}-${JSON.stringify(event.topic)}`;
+    return require('crypto')
+      .createHash('sha256')
+      .update(hashInput)
+      .digest('hex');
+  }
+
+  /**
+   * Detect gaps in the ledger sequence for a contract
+   */
+  private async detectLedgerGaps(
+    fromLedger: number,
+    toLedger: number,
+    contractId: string,
+  ): Promise<number> {
+    let gaps = 0;
+    let expectedLedger = fromLedger;
+
+    // Query ledgers in the range and check for continuity
+    const batchSize = 100;
+    let currentLedger = fromLedger;
+
+    while (currentLedger <= toLedger) {
+      try {
+        const batchEndLedger = Math.min(currentLedger + batchSize - 1, toLedger);
+        const eventsResponse = await (this.rpcServer as any).getEvents({
+          startLedger: currentLedger,
+          endLedger: batchEndLedger,
+          filters: [
+            {
+              contractIds: [contractId],
+              type: 'contract',
+            },
+          ],
+          limit: batchSize,
+        });
+
+        if (eventsResponse?.events && eventsResponse.events.length > 0) {
+          const minLedgerInBatch = Math.min(
+            ...eventsResponse.events.map((e: any) => e.ledger),
+          );
+          const maxLedgerInBatch = Math.max(
+            ...eventsResponse.events.map((e: any) => e.ledger),
+          );
+
+          // Check for gaps between batches
+          if (minLedgerInBatch > expectedLedger) {
+            gaps += minLedgerInBatch - expectedLedger;
+          }
+
+          expectedLedger = maxLedgerInBatch + 1;
+        }
+
+        currentLedger = batchEndLedger + 1;
+      } catch (error) {
+        this.logger.warn(
+          { error, ledger: currentLedger },
+          'Error detecting gaps, assuming gap',
+        );
+        gaps += batchSize;
+        currentLedger += batchSize;
+      }
+    }
+
+    return gaps;
+  }
+
+  /**
+   * Get the current latest ledger from Horizon
+   */
+  private async getCurrentLedger(): Promise<number> {
+    try {
+      const ledger = await this.horizonServer
+        .ledgers()
+        .limit(1)
+        .order('desc')
+        .call();
+      if (ledger.records && ledger.records.length > 0) {
+        return ledger.records[0].sequence;
+      }
+      return 0;
+    } catch (error) {
+      this.logger.warn({ error }, 'Could not fetch current ledger');
+      return 0;
+    }
   }
 }

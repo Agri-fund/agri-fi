@@ -154,8 +154,9 @@ docker-compose up -d soroban soroban-rpc
 
 ## Documentation
 
-- [SOROBAN_DEVELOPMENT.md](SOROBAN_DEVELOPMENT.md) - Comprehensive guide
-- [contracts/escrow/ESCROW_CONTRACT.md](contracts/escrow/ESCROW_CONTRACT.md) - Escrow contract
+- [Extending Soroban Contracts & Redeployment Guide](../docs/blockchain/extending-contracts.md) - Workspace layout, storage best practices, upgrade flow, and backend event integration
+- [SOROBAN_DEVELOPMENT.md](SOROBAN_DEVELOPMENT.md) - Comprehensive development guide, including contract upgrade & migration strategy
+- [contracts/escrow/ESCROW_CONTRACT.md](contracts/escrow/ESCROW_CONTRACT.md) - Escrow contract documentation
 
 ## Issues Addressed
 

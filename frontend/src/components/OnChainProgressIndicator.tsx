@@ -98,7 +98,7 @@ export const OnChainProgressIndicator: React.FC<OnChainProgressProps> = ({
                     transition-all duration-300
                     ${isDone ? 'bg-green-500 text-white' : ''}
                     ${isActive ? 'bg-blue-600 text-white ring-4 ring-blue-100 animate-pulse' : ''}
-                    ${isPending ? 'bg-slate-100 text-slate-400' : ''}
+                    ${isPending ? 'bg-slate-100 text-slate-600' : ''}
                   `}
                   aria-current={isActive ? 'step' : undefined}
                 >
@@ -113,9 +113,9 @@ export const OnChainProgressIndicator: React.FC<OnChainProgressProps> = ({
                 <span
                   className={`
                     mt-1.5 text-xs font-medium text-center whitespace-nowrap
-                    ${isDone ? 'text-green-600' : ''}
+                    ${isDone ? 'text-green-700' : ''}
                     ${isActive ? 'text-blue-600' : ''}
-                    ${isPending ? 'text-slate-400' : ''}
+                    ${isPending ? 'text-slate-500' : ''}
                   `}
                 >
                   {step.label}
@@ -176,7 +176,7 @@ export const OnChainProgressIndicator: React.FC<OnChainProgressProps> = ({
 
       {/* Success banner */}
       {state === 'confirmed' && (
-        <div className="mt-3 flex items-center justify-center gap-1.5 text-green-600 text-sm font-medium">
+        <div className="mt-3 flex items-center justify-center gap-1.5 text-green-700 text-sm font-medium">
           <CheckCircleIcon />
           <span>Transaction confirmed on-chain</span>
         </div>

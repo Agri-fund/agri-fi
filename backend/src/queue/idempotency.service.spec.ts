@@ -103,7 +103,7 @@ describe('IdempotencyService', () => {
 
     it('handles race condition — SET NX returns null', async () => {
       redisClient.get
-        .mockResolvedValueOnce(null)      // first GET: key absent
+        .mockResolvedValueOnce(null) // first GET: key absent
         .mockResolvedValueOnce('processing'); // second GET: another consumer won
       redisClient.set.mockResolvedValue(null); // SET NX failed
 

@@ -12,7 +12,9 @@ export class AuditService {
     private readonly auditRepository: Repository<SystemAuditLog>,
   ) {}
 
-  async logEvent(entry: Partial<SystemAuditLog>): Promise<SystemAuditLog | null> {
+  async logEvent(
+    entry: Partial<SystemAuditLog>,
+  ): Promise<SystemAuditLog | null> {
     try {
       const auditLog = this.auditRepository.create(entry);
       return await this.auditRepository.save(auditLog);

@@ -1,0 +1,58 @@
+name: PostgreSQL 17 Staging Restore Verification
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+env:
+  PG17_IMAGE: postgres:17-alpine
+
+jobs:
+  dump-restore-smoke:
+    name: Dump and restore with PostgreSQL 17
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dump prod-shaped source with PostgreSQL 17
+        env:
+          SOURCE_DATABASE_URL: ${{ secrets.PG17_SOURCE_DATABASE_URL }}
+        run: |
+          test -n "${SOURCE_DATABASE_URL}"
+          docker run --rm --network host \
+            -e DATABASE_URL="${SOURCE_DATABASE_URL}" \
+            -v /tmp:/work \
+            "${PG17_IMAGE}" \
+            sh -c 'pg_dump --format=custom --no-owner --no-privileges "$DATABASE_URL" --file=/work/agri-fi-pg17.pgdump'
+
+      - name: Restore into PostgreSQL 17 staging
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.PG17_STAGING_DATABASE_URL }}
+        run: |
+          test -n "${STAGING_DATABASE_URL}"
+          docker run --rm --network host \
+            -e DATABASE_URL="${STAGING_DATABASE_URL}" \
+            -v /tmp:/work:ro \
+            "${PG17_IMAGE}" \
+            sh -c 'pg_restore --clean --if-exists --no-owner --no-privileges --exit-on-error --dbname="$DATABASE_URL" /work/agri-fi-pg17.pgdump'
+
+      - name: Run PostgreSQL 17 staging smoke checks
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.PG17_STAGING_DATABASE_URL }}
+        run: |
+          docker run --rm --network host \
+            -e DATABASE_URL="${STAGING_DATABASE_URL}" \
+            "${PG17_IMAGE}" \
+            sh -c 'psql "$DATABASE_URL" --set ON_ERROR_STOP=on \
+              --command="SELECT version();" \
+              --command="SELECT extname FROM pg_extension ORDER BY extname;" \
+              --command="SELECT COUNT(*) AS rls_tables FROM pg_class WHERE relrowsecurity;" \
+              --command="SELECT COUNT(*) AS users FROM users;" \
+              --command="SELECT COUNT(*) AS deals FROM trade_deals;"'
+
+      - name: Cleanup dump
+        if: always()
+        run: rm -f /tmp/agri-fi-pg17.pgdump

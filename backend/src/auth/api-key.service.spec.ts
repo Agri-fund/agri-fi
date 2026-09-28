@@ -8,7 +8,11 @@ describe('ApiKeyService', () => {
 
   beforeEach(() => {
     repo = {
-      create: jest.fn().mockImplementation((dto) => ({ ...dto, id: 'key-uuid', createdAt: new Date() })),
+      create: jest.fn().mockImplementation((dto) => ({
+        ...dto,
+        id: 'key-uuid',
+        createdAt: new Date(),
+      })),
       save: jest.fn().mockImplementation((k) => Promise.resolve(k)),
       findOne: jest.fn(),
       find: jest.fn(),
@@ -17,7 +21,9 @@ describe('ApiKeyService', () => {
   });
 
   it('generates a valid agfi_live_ key with sha256 hash', async () => {
-    const res = await service.createApiKey('user-1', 'Test Bot', ['read:deals']);
+    const res = await service.createApiKey('user-1', 'Test Bot', [
+      'read:deals',
+    ]);
     expect(res.rawKey).toMatch(/^agfi_live_/);
     expect(res.scopes).toEqual(['read:deals']);
   });

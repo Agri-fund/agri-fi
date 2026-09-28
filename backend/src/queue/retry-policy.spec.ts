@@ -3,8 +3,6 @@ import {
   calculateBackoffWithJitter,
   getDeliveryAttempt,
   isTransientQueueError,
-  DEFAULT_BASE_DELAY_MS,
-  DEFAULT_MAX_JITTER_MS,
 } from './retry-policy';
 
 describe('RetryPolicy - Exponential Backoff with Jitter', () => {
@@ -52,9 +50,24 @@ describe('RetryPolicy - Exponential Backoff with Jitter', () => {
       const baseDelay = 500;
       const maxJitter = 200;
 
-      const delay0 = calculateBackoffWithJitter(0, baseDelay, maxJitter, () => 0.1);
-      const delay1 = calculateBackoffWithJitter(1, baseDelay, maxJitter, () => 0.5);
-      const delay2 = calculateBackoffWithJitter(2, baseDelay, maxJitter, () => 0.9);
+      const delay0 = calculateBackoffWithJitter(
+        0,
+        baseDelay,
+        maxJitter,
+        () => 0.1,
+      );
+      const delay1 = calculateBackoffWithJitter(
+        1,
+        baseDelay,
+        maxJitter,
+        () => 0.5,
+      );
+      const delay2 = calculateBackoffWithJitter(
+        2,
+        baseDelay,
+        maxJitter,
+        () => 0.9,
+      );
 
       expect(delay0).toBe(520); // 500 * 2^0 + 20
       expect(delay1).toBe(1100); // 500 * 2^1 + 100
@@ -89,9 +102,15 @@ describe('RetryPolicy - Exponential Backoff with Jitter', () => {
 
   describe('isTransientQueueError', () => {
     it('identifies transient errors correctly', () => {
-      expect(isTransientQueueError(new Error('Stellar connection failed'))).toBe(true);
-      expect(isTransientQueueError(new Error('Horizon node ETIMEDOUT'))).toBe(true);
-      expect(isTransientQueueError(new Error('Fatal syntax error'))).toBe(false);
+      expect(
+        isTransientQueueError(new Error('Stellar connection failed')),
+      ).toBe(true);
+      expect(isTransientQueueError(new Error('Horizon node ETIMEDOUT'))).toBe(
+        true,
+      );
+      expect(isTransientQueueError(new Error('Fatal syntax error'))).toBe(
+        false,
+      );
     });
   });
 });

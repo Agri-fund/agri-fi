@@ -14,6 +14,7 @@
 import { useCallback } from 'react';
 import { useStellarWallet, DisconnectReason } from '@/hooks/useStellarWallet';
 import { useToast } from '@/components/ui/ToastProvider';
+import { ModalWrapper } from '@/components/ui/ModalWrapper';
 
 interface WalletModalProps {
   onClose: () => void;
@@ -53,14 +54,14 @@ export function WalletModal({ onClose }: WalletModalProps) {
   };
 
   return (
-    <div
-      className="modal-overlay"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="wallet-modal-title"
-      onClick={(e) => e.target === e.currentTarget && onClose()}
+    <ModalWrapper
+      isOpen
+      onClose={onClose}
+      labelledBy="wallet-modal-title"
+      unstyled
+      zIndexClassName="z-[110]"
+      className="modal-panel w-full max-w-sm"
     >
-      <div className="modal-panel w-full max-w-sm">
         {/* Header */}
         <div className="modal-header">
           <h2 id="wallet-modal-title" className="text-base font-bold text-slate-900">
@@ -68,7 +69,7 @@ export function WalletModal({ onClose }: WalletModalProps) {
           </h2>
           <button
             onClick={onClose}
-            className="w-7 h-7 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors"
+            className="focus-ring w-7 h-7 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-500 hover:text-slate-700 transition-colors"
             aria-label="Close wallet modal"
           >
             ×
@@ -158,7 +159,6 @@ export function WalletModal({ onClose }: WalletModalProps) {
             </div>
           )}
         </div>
-      </div>
-    </div>
+    </ModalWrapper>
   );
 }

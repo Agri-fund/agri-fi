@@ -15,7 +15,7 @@ import {
 } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { Roles } from '../auth/decorators/roles.decorator';
-import { RolesGuard } from '../auth/roles.guard';
+import { RolesGuard } from '../common/guards';
 import { UpgradeService } from './upgrade.service';
 import { IsString, MinLength } from 'class-validator';
 
@@ -57,18 +57,31 @@ export class UpgradeController {
 
   @Post('plan')
   @ApiOperation({ summary: 'Plan a contract upgrade with WASM validation' })
-  planUpgrade(@Request() req: { user: { id: string } }, @Body() dto: PlanUpgradeDto) {
-    return this.upgradeService.planUpgrade(dto.contractName, dto.newWasmPath, req.user.id);
+  planUpgrade(
+    @Request() req: { user: { id: string } },
+    @Body() dto: PlanUpgradeDto,
+  ) {
+    return this.upgradeService.planUpgrade(
+      dto.contractName,
+      dto.newWasmPath,
+      req.user.id,
+    );
   }
 
   @Post(':planId/approve')
-  @ApiOperation({ summary: 'Multi-sig approval for production upgrade (2-of-3)' })
+  @ApiOperation({
+    summary: 'Multi-sig approval for production upgrade (2-of-3)',
+  })
   approveUpgrade(
     @Request() req: { user: { id: string } },
     @Param('planId') planId: string,
     @Body() dto: ApproveUpgradeDto,
   ) {
-    return this.upgradeService.approveUpgrade(planId, req.user.id, dto.signature);
+    return this.upgradeService.approveUpgrade(
+      planId,
+      req.user.id,
+      dto.signature,
+    );
   }
 
   @Post(':planId/execute')

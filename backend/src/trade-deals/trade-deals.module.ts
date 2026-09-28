@@ -13,6 +13,7 @@ import { DealCoFarmer } from './entities/deal-co-farmer.entity';
 import { Document } from './entities/document.entity';
 import { DealHealthAlert } from './entities/deal-health-alert.entity';
 import { Investment } from '../investments/entities/investment.entity';
+import { InvestmentsModule } from '../investments/investments.module';
 import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.entity';
 import { User } from '../auth/entities/user.entity';
 import { StellarModule } from '../stellar/stellar.module';
@@ -22,6 +23,7 @@ import { TradeDealsCronService } from './trade-deals-cron.service';
 import { DealFundingAlertService } from './deal-funding-alert.service';
 import { DealDigestService } from './deal-digest.service';
 import { RiskScoringService } from './risk-scoring.service';
+import { EsgScoringService } from './esg-scoring.service';
 import { DealHealthMonitorService } from './deal-health-monitor.service';
 import { ActivityFeedService } from './activity-feed.service';
 import { NotificationsModule } from '../notifications/notifications.module';
@@ -56,6 +58,7 @@ const DEALS_CACHE_TTL_MS = 30_000;
     SorobanModule,
     WebhooksModule,
     HttpModule,
+    InvestmentsModule,
     /**
      * #743 — Cache active deals list in Redis.
      *
@@ -97,6 +100,7 @@ const DEALS_CACHE_TTL_MS = 30_000;
     DealFundingAlertService,
     DealDigestService,
     RiskScoringService,
+    EsgScoringService,
     DealHealthMonitorService,
     ActivityFeedService,
     makeGaugeProvider({
@@ -105,6 +109,13 @@ const DEALS_CACHE_TTL_MS = 30_000;
       labelNames: ['alertType'],
     }),
   ],
-  exports: [TradeDealsService, DealCoFarmersService, DealDigestService, RiskScoringService, ActivityFeedService],
+  exports: [
+    TradeDealsService,
+    DealCoFarmersService,
+    DealDigestService,
+    RiskScoringService,
+    EsgScoringService,
+    ActivityFeedService,
+  ],
 })
 export class TradeDealsModule {}

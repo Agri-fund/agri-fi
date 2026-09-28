@@ -10,7 +10,10 @@ import StatCard from "../../../../components/StatCard";
 import OnboardingChecklist from "../../../../components/OnboardingChecklist";
 import { useToast } from "../../../../components/ui/ToastProvider";
 import { usePushNotifications } from "../../../../hooks/usePushNotifications";
+import { useCurrencyFormat } from "../../../../hooks/useCurrencyFormat";
+import { useNumberFormat } from "../../../../hooks/useNumberFormat";
 import dynamic from "next/dynamic";
+import FarmerCreditScoreWidget from "../../../../components/dashboard/FarmerCreditScoreWidget";
 
 // CreateDealForm pulls in react-hook-form + zod validation + heavy form logic.
 // Load it only when the user explicitly opens the "Create Deal" panel.
@@ -36,6 +39,8 @@ const STATUS_CFG: Record<string, string> = {
 };
 
 export default function FarmerDashboard() {
+  const { formatCurrency } = useCurrencyFormat();
+  const { formatNumber } = useNumberFormat();
   const t = useTranslations("dashboard.farmer");
   const tc = useTranslations("common");
   const router = useRouter();
@@ -114,8 +119,8 @@ export default function FarmerDashboard() {
         <div data-tour="portfolio-stats" className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
           <StatCard label={t("stats.totalProjects")} value={deals.length} icon="🌱" color="bg-emerald-50" />
           <StatCard label={t("stats.active")} value={active} icon="📈" color="bg-blue-50" />
-          <StatCard label={t("stats.totalValue")} value={`$${totalValue.toLocaleString()}`} icon="💰" color="bg-amber-50" />
-          <StatCard label={t("stats.funded")} value={`${fundingPct}%`} icon="✅" color="bg-violet-50" trend={`$${totalFunded.toLocaleString()} raised`} trendUp={totalFunded > 0} />
+          <StatCard label={t("stats.totalValue")} value={totalValue} isCurrency currency="USD" icon="💰" color="bg-amber-50" />
+          <StatCard label={t("stats.funded")} value={`${fundingPct}%`} icon="✅" color="bg-violet-50" trend={`${formatCurrency(totalFunded, "USD", { compact: true })} raised`} trendUp={totalFunded > 0} />
         </div>
 
         {/* Onboarding checklist */}
@@ -141,6 +146,11 @@ export default function FarmerDashboard() {
             </div>
           </div>
         )}
+
+        {/* Farmer Credit Score & Improvement Tips */}
+        <div className="mt-4">
+          <FarmerCreditScoreWidget />
+        </div>
 
         {/* Recent Deals List */}
         <div className="mt-6">
@@ -172,7 +182,7 @@ export default function FarmerDashboard() {
                       </div>
                       <div className="text-right">
                         <div className={STATUS_CFG[deal.status] ?? "badge-gray"}>{deal.status}</div>
-                        <div className="text-xs text-slate-400 mt-1">{Number(deal.quantity).toLocaleString()} {deal.quantity_unit}</div>
+                        <div className="text-xs text-slate-400 mt-1">{formatNumber(deal.quantity)} {deal.quantity_unit}</div>
                       </div>
                     </div>
 

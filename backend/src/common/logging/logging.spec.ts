@@ -83,7 +83,9 @@ describe('Logging Configuration', () => {
     // This documents the expected behaviour so callers know it is request-scoped.
     expect(() => {
       logger.assign({ traceId: 'test-123' });
-    }).toThrow('PinoLogger: unable to assign extra fields out of request scope');
+    }).toThrow(
+      'PinoLogger: unable to assign extra fields out of request scope',
+    );
   });
 
   describe('production mode — raw JSON (no pretty transport)', () => {

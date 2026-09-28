@@ -1,0 +1,24 @@
+{
+  "name": "@agri-fi/sdk",
+  "version": "1.0.0",
+  "description": "Official TypeScript/JavaScript Client SDK for Agri-Fi Public Partner API",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "jest"
+  },
+  "keywords": [
+    "agri-fi",
+    "stellar",
+    "soroban",
+    "agriculture",
+    "defi",
+    "sdk"
+  ],
+  "author": "Agri-Fi Development Team",
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  }
+}

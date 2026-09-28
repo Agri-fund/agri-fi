@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddSep12DataToKycSubmissions1930000000001
-  implements MigrationInterface
-{
+export class AddSep12DataToKycSubmissions1930000000001 implements MigrationInterface {
   name = 'AddSep12DataToKycSubmissions1930000000001';
 
   public async up(queryRunner: QueryRunner): Promise<void> {

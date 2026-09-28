@@ -2,10 +2,7 @@ import { Module, Global } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { StellarService, SEQUENCE_REDIS_CLIENT } from './stellar.service';
-import { StellarController } from './stellar.controller';
-import { Sep12Controller } from './sep12.controller';
 import { Sep12Service } from './sep12.service';
-import { Sep24Controller } from './sep24.controller';
 import { Sep24Service } from './sep24.service';
 import { TransactionLog } from './entities/transaction-log.entity';
 import { Sep24Transaction } from './entities/sep24-transaction.entity';
@@ -18,7 +15,14 @@ import { StellarMonitorService } from './stellar-monitor.service';
 import { KmsService } from '../kms/kms.service';
 import { User } from '../auth/entities/user.entity';
 import { KycSubmission } from '../auth/entities/kyc-submission.entity';
-import { PricesController } from './prices.controller';
+import { TokenIssuerService } from './token-issuer.service';
+import { EscrowReleaseService } from './escrow-release.service';
+import { InvestmentTxService } from './investment-tx.service';
+import { AnchorsService } from './anchors.service';
+import { StellarQueriesService } from './stellar-queries.service';
+import { UnrecognisedPayment } from './entities/unrecognised-payment.entity';
+import { Investment } from '../investments/entities/investment.entity';
+import { AccountMergeRecovery } from './entities/account-merge-recovery.entity';
 
 const redisClientFactory = {
   provide: PRICE_REDIS_CLIENT,
@@ -54,16 +58,18 @@ const sequenceRedisClientFactory = {
       Sep24Transaction,
       User,
       KycSubmission,
+      UnrecognisedPayment,
+      Investment,
+      AccountMergeRecovery,
     ]),
-  ],
-  controllers: [
-    StellarController,
-    Sep24Controller,
-    Sep12Controller,
-    PricesController,
   ],
   providers: [
     StellarService,
+    TokenIssuerService,
+    EscrowReleaseService,
+    InvestmentTxService,
+    AnchorsService,
+    StellarQueriesService,
     Sep12Service,
     Sep24Service,
     PricesService,
@@ -75,8 +81,6 @@ const sequenceRedisClientFactory = {
     fxRedisClientFactory,
     sequenceRedisClientFactory,
     KmsService,
-    StellarArchiverService,
-    StellarMonitorService,
   ],
   exports: [
     StellarService,

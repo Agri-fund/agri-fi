@@ -17,6 +17,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslations } from 'next-intl';
 import { apiFetchPublic } from '@/lib/api';
+import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -93,6 +94,7 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
   className = '',
 }) => {
   const t = useTranslations('activityFeed');
+  const { formatCurrency } = useCurrencyFormat();
 
   const [events, setEvents]       = useState<ActivityEvent[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -190,12 +192,12 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({
   const renderEventMeta = (event: ActivityEvent) => {
     const { type, meta } = event;
     if (type === 'shipment_milestone' && meta.notes) {
-      return <p className="text-xs text-slate-400 mt-1 italic">"{String(meta.notes)}"</p>;
+      return <p className="text-xs text-slate-400 mt-1 italic">&ldquo;{String(meta.notes)}&rdquo;</p>;
     }
     if (type === 'investor_joined' && isAdmin && meta.amountUsd) {
       return (
         <p className="text-xs text-slate-400 mt-1">
-          Amount: <span className="font-medium text-slate-600">${Number(meta.amountUsd).toLocaleString()}</span>
+          Amount: <span className="font-medium text-slate-600">{formatCurrency(Number(meta.amountUsd), 'USD', { decimalPlaces: 0 })}</span>
         </p>
       );
     }

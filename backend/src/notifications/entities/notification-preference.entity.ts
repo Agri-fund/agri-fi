@@ -31,6 +31,9 @@ export class NotificationPreference {
   @Column({ name: 'in_app_enabled', default: true })
   inAppEnabled: boolean;
 
+  @Column({ name: 'sms_enabled', default: true })
+  smsEnabled: boolean;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

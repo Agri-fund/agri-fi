@@ -1,7 +1,11 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
-import { PrometheusModule, makeGaugeProvider, makeCounterProvider } from '@willsoto/nestjs-prometheus';
+import {
+  PrometheusModule,
+  makeGaugeProvider,
+  makeCounterProvider,
+} from '@willsoto/nestjs-prometheus';
 import { OutboxEntity } from './outbox.entity';
 import { OutboxService } from './outbox.service';
 import { OutboxProcessor } from './outbox.processor';

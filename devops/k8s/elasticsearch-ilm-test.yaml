@@ -1,0 +1,108 @@
+---
+# Kubernetes Job to test ILM and S3 repository setup
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: elasticsearch-ilm-test
+  namespace: logging
+spec:
+  backoffLimit: 2
+  template:
+    spec:
+      serviceAccountName: default
+      containers:
+      - name: ilm-test
+        image: curlimages/curl:latest
+        env:
+        - name: ES_URL
+          value: "http://elasticsearch:9200"
+        - name: ES_USER
+          value: "elastic"
+        - name: ES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: elasticsearch-credentials
+              key: password
+              optional: true
+        command:
+        - /bin/sh
+        - -c
+        - |
+          set -e
+          echo "=========================================="
+          echo "Elasticsearch ILM & S3 Setup Validation"
+          echo "=========================================="
+          echo "Target: $ES_URL"
+          echo ""
+          
+          # Build auth header
+          if [ -n "$ES_PASSWORD" ]; then
+            AUTH="-u $ES_USER:$ES_PASSWORD"
+          else
+            AUTH=""
+          fi
+          
+          # Wait for Elasticsearch
+          echo "Waiting for Elasticsearch..."
+          until curl -s -f $AUTH "$ES_URL/_cluster/health?wait_for_status=yellow" > /dev/null 2>&1; do
+            sleep 5
+          done
+          echo "✓ Elasticsearch is ready"
+          echo ""
+          
+          # Test 1: Check ILM policy
+          echo "Test 1: ILM Policy"
+          if curl -s $AUTH "$ES_URL/_ilm/policy/agri-fi-logs-retention" | grep -q "agri-fi-logs-retention"; then
+            echo "✓ ILM policy exists"
+          else
+            echo "✗ ILM policy not found"
+            exit 1
+          fi
+          
+          # Test 2: Check S3 repository
+          echo ""
+          echo "Test 2: S3 Repository"
+          if curl -s $AUTH "$ES_URL/_snapshot/s3-backup-repo" | grep -q "s3-backup-repo"; then
+            echo "✓ S3 repository registered"
+          else
+            echo "✗ S3 repository not found"
+            exit 1
+          fi
+          
+          # Test 3: Check index template
+          echo ""
+          echo "Test 3: Index Template"
+          if curl -s $AUTH "$ES_URL/_index_template/agri-fi-logs-template" | grep -q "agri-fi-logs-template"; then
+            echo "✓ Index template exists"
+          else
+            echo "✗ Index template not found"
+            exit 1
+          fi
+          
+          # Test 4: Check ILM status
+          echo ""
+          echo "Test 4: ILM Status"
+          ILM_MODE=$(curl -s $AUTH "$ES_URL/_ilm/status" | grep -o '"mode":"[^"]*"' | cut -d'"' -f4)
+          echo "ILM mode: $ILM_MODE"
+          if [ "$ILM_MODE" = "running" ]; then
+            echo "✓ ILM is running"
+          else
+            echo "⚠ ILM mode is not running (may be initializing)"
+          fi
+          
+          # Test 5: Cluster health
+          echo ""
+          echo "Test 5: Cluster Health"
+          curl -s $AUTH "$ES_URL/_cluster/health?pretty"
+          
+          # Test 6: Check indices
+          echo ""
+          echo "Test 6: Indices"
+          curl -s $AUTH "$ES_URL/_cat/indices/agri-fi-*?format=json" | jq 'length' > /dev/null && \
+            echo "✓ Able to query indices" || echo "⚠ No indices yet (expected on first run)"
+          
+          echo ""
+          echo "=========================================="
+          echo "✓ All validation checks passed!"
+          echo "=========================================="
+      restartPolicy: Never

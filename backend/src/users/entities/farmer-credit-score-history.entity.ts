@@ -17,11 +17,21 @@ export class FarmerCreditScoreHistory {
   userId: string;
 
   @Column({ type: 'int' })
-  @ApiProperty({ description: 'Calculated credit score (300-850)', example: 745 })
+  @ApiProperty({
+    description: 'Calculated credit score (300-850)',
+    example: 745,
+  })
   score: number;
 
-  @Column({ name: 'max_deal_size_usdc', type: 'decimal', precision: 12, scale: 2 })
-  @ApiProperty({ description: 'Maximum uncollateralized deal size limit in USDC' })
+  @Column({
+    name: 'max_deal_size_usdc',
+    type: 'decimal',
+    precision: 12,
+    scale: 2,
+  })
+  @ApiProperty({
+    description: 'Maximum uncollateralized deal size limit in USDC',
+  })
   maxDealSizeUsdc: number;
 
   @Column({ type: 'simple-json' })
@@ -48,7 +58,10 @@ export class FarmerCreditScoreHistory {
   reason: string;
 
   @Column({ name: 'override_by', type: 'uuid', nullable: true })
-  @ApiProperty({ description: 'Admin user ID if manually overridden', nullable: true })
+  @ApiProperty({
+    description: 'Admin user ID if manually overridden',
+    nullable: true,
+  })
   overrideBy: string | null;
 
   @CreateDateColumn({ name: 'created_at' })

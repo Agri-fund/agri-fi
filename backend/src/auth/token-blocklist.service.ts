@@ -11,11 +11,11 @@ export class TokenBlocklistService implements OnModuleInit, OnModuleDestroy {
     private readonly redisConfig: RedisConfig,
     private readonly logger: PinoLogger,
   ) {
-    this.logger.setContext(TokenBlocklistService.name);
+    (this.logger as any).setContext(TokenBlocklistService.name);
   }
 
   async onModuleInit(): Promise<void> {
-    this.redisClient = this.redisConfig.createClient();
+    this.redisClient = await this.redisConfig.createClient();
     if (this.redisClient && !this.redisClient.isOpen) {
       try {
         await this.redisClient.connect();

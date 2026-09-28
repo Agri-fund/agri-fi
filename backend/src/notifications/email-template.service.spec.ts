@@ -14,9 +14,16 @@ import {
  * untranslated `{{variables}}` remain in the output.
  */
 const TEMPLATE_VARS: Record<string, Record<string, unknown>> = {
-  welcome: { userName: 'Amara', verifyUrl: 'https://app.agri-fi.com/verify?token=abc' },
+  welcome: {
+    userName: 'Amara',
+    verifyUrl: 'https://app.agri-fi.com/verify?token=abc',
+  },
   'kyc-approved': { userName: 'Amara' },
-  'kyc-rejected': { userName: 'Amara', reason: 'Document unreadable', kycUrl: 'https://app.agri-fi.com/kyc' },
+  'kyc-rejected': {
+    userName: 'Amara',
+    reason: 'Document unreadable',
+    kycUrl: 'https://app.agri-fi.com/kyc',
+  },
   'investment-confirmed': {
     investorName: 'Chen',
     dealName: 'Cocoa Export Q3',
@@ -30,14 +37,21 @@ const TEMPLATE_VARS: Record<string, Record<string, unknown>> = {
     amount: '4851.00',
     txId: 'abc123def456',
   },
-  'deal-funded': { farmerName: 'Amara', dealName: 'Cocoa Export Q3', amount: '10000.00' },
+  'deal-funded': {
+    farmerName: 'Amara',
+    dealName: 'Cocoa Export Q3',
+    amount: '10000.00',
+  },
   'deal-expired': { farmerName: 'Amara', dealName: 'Coffee Shipment 12' },
   'password-reset': {
     userName: 'Amara',
     resetUrl: 'https://app.agri-fi.com/reset?token=xyz',
     expiresInMinutes: 30,
   },
-  'account-lockout': { userName: 'Amara', unlockAt: 'Mon, 24 Aug 2026 10:00:00 GMT' },
+  'account-lockout': {
+    userName: 'Amara',
+    unlockAt: 'Mon, 24 Aug 2026 10:00:00 GMT',
+  },
   'security-alert': {
     userName: 'Amara',
     ipAddress: '203.0.113.7',
@@ -78,7 +92,10 @@ describe('EmailTemplateService (#897)', () => {
       providers: [
         EmailTemplateService,
         { provide: ConfigService, useValue: { get: jest.fn() } },
-        { provide: PinoLogger, useValue: { setContext: jest.fn(), warn: jest.fn() } },
+        {
+          provide: PinoLogger,
+          useValue: { setContext: jest.fn(), warn: jest.fn() },
+        },
       ],
     }).compile();
 
@@ -119,7 +136,11 @@ describe('EmailTemplateService (#897)', () => {
   it('renders every template subject line in every locale', () => {
     for (const locale of SUPPORTED_LOCALES) {
       for (const template of Object.keys(TEMPLATE_VARS)) {
-        const rendered = service.render(template, TEMPLATE_VARS[template], locale);
+        const rendered = service.render(
+          template,
+          TEMPLATE_VARS[template],
+          locale,
+        );
         expect(rendered.subject).not.toBe(template);
         expect(rendered.subject.length).toBeGreaterThan(0);
       }
@@ -127,41 +148,53 @@ describe('EmailTemplateService (#897)', () => {
   });
 
   it('localises content per locale (sanity check on welcome)', () => {
-    expect(service.render('welcome', { userName: 'A', verifyUrl: 'u' }, 'en').html).toContain(
-      'Verify my email',
-    );
-    expect(service.render('welcome', { userName: 'A', verifyUrl: 'u' }, 'es').html).toContain(
-      'Verificar mi correo',
-    );
-    expect(service.render('welcome', { userName: 'A', verifyUrl: 'u' }, 'fr').html).toContain(
-      'Vérifier mon e-mail',
-    );
-    expect(service.render('welcome', { userName: 'A', verifyUrl: 'u' }, 'pt').html).toContain(
-      'Verificar o meu e-mail',
-    );
-    expect(service.render('welcome', { userName: 'A', verifyUrl: 'u' }, 'sw').html).toContain(
-      'Thibitisha barua pepe yangu',
-    );
+    expect(
+      service.render('welcome', { userName: 'A', verifyUrl: 'u' }, 'en').html,
+    ).toContain('Verify my email');
+    expect(
+      service.render('welcome', { userName: 'A', verifyUrl: 'u' }, 'es').html,
+    ).toContain('Verificar mi correo');
+    expect(
+      service.render('welcome', { userName: 'A', verifyUrl: 'u' }, 'fr').html,
+    ).toContain('Vérifier mon e-mail');
+    expect(
+      service.render('welcome', { userName: 'A', verifyUrl: 'u' }, 'pt').html,
+    ).toContain('Verificar o meu e-mail');
+    expect(
+      service.render('welcome', { userName: 'A', verifyUrl: 'u' }, 'sw').html,
+    ).toContain('Thibitisha barua pepe yangu');
   });
 
   it('falls back to English when a locale template file is missing', () => {
     // 'xx' has no directory at all — must resolve to English output.
-    const rendered = service.render('welcome', { userName: 'A', verifyUrl: 'u' }, 'xx');
+    const rendered = service.render(
+      'welcome',
+      { userName: 'A', verifyUrl: 'u' },
+      'xx',
+    );
     expect(rendered.html).toContain('Verify my email');
     expect(rendered.subject).toContain('Welcome');
   });
 
   it('resolves regional locales to their primary subtag (fr-CA → fr)', () => {
-    const rendered = service.render('welcome', { userName: 'A', verifyUrl: 'u' }, 'fr-CA');
+    const rendered = service.render(
+      'welcome',
+      { userName: 'A', verifyUrl: 'u' },
+      'fr-CA',
+    );
     expect(rendered.html).toContain('Vérifier mon e-mail');
   });
 
   it('escapes HTML in double-stache substitutions to prevent injection', () => {
-    const rendered = service.render('kyc-rejected', {
-      userName: '<script>alert(1)</script>',
-      reason: '"quotes" & <tags>',
-      kycUrl: 'https://x.test',
-    }, 'en');
+    const rendered = service.render(
+      'kyc-rejected',
+      {
+        userName: '<script>alert(1)</script>',
+        reason: '"quotes" & <tags>',
+        kycUrl: 'https://x.test',
+      },
+      'en',
+    );
 
     expect(rendered.html).not.toContain('<script>');
     expect(rendered.html).toContain('&lt;script&gt;');
@@ -169,7 +202,11 @@ describe('EmailTemplateService (#897)', () => {
   });
 
   it('allows raw HTML through triple-stache substitutions', () => {
-    const rendered = service.render('deal-digest', TEMPLATE_VARS['deal-digest'], 'en');
+    const rendered = service.render(
+      'deal-digest',
+      TEMPLATE_VARS['deal-digest'],
+      'en',
+    );
     // dealsHtml is injected raw so inline SVG charts survive
     expect(rendered.html).toContain('<svg width="100" height="12">');
   });

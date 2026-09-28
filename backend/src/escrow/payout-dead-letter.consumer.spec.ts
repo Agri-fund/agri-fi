@@ -25,7 +25,9 @@ describe('PayoutDeadLetterConsumer', () => {
   let configService: { get: jest.Mock };
 
   beforeEach(() => {
-    notificationsService = { sendEmail: jest.fn().mockResolvedValue(undefined) };
+    notificationsService = {
+      sendEmail: jest.fn().mockResolvedValue(undefined),
+    };
     queueAlertService = { sendAlert: jest.fn().mockResolvedValue(undefined) };
     configService = {
       get: jest.fn((key: string) => {
@@ -116,7 +118,10 @@ describe('PayoutDeadLetterConsumer', () => {
     );
     const { context, channel } = makeContext({});
 
-    await consumer.handleDeadLetter({ tradeDealId: 'deal-discord-fail' }, context);
+    await consumer.handleDeadLetter(
+      { tradeDealId: 'deal-discord-fail' },
+      context,
+    );
 
     expect(notificationsService.sendEmail).toHaveBeenCalled();
     expect(channel.ack).toHaveBeenCalledTimes(1);
@@ -158,9 +163,7 @@ describe('PayoutDeadLetterConsumer', () => {
   it('handles payloads without a tradeDealId gracefully', async () => {
     const { context, channel } = makeContext({});
 
-    await expect(
-      consumer.handleDeadLetter({}, context),
-    ).resolves.not.toThrow();
+    await expect(consumer.handleDeadLetter({}, context)).resolves.not.toThrow();
 
     expect(channel.ack).toHaveBeenCalledTimes(1);
     expect(notificationsService.sendEmail).toHaveBeenCalledWith(

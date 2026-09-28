@@ -57,7 +57,11 @@ describe('SearchService', () => {
           },
         ]);
 
-      const result = await service.search('maize kenya', ['deals', 'farmers', 'documents'], 10);
+      const result = await service.search(
+        'maize kenya',
+        ['deals', 'farmers', 'documents'],
+        10,
+      );
 
       expect(result.deals).toHaveLength(1);
       expect(result.deals[0].score).toBeCloseTo(0.85);
@@ -74,7 +78,14 @@ describe('SearchService', () => {
 
     it('respects type filter', async () => {
       dataSource.query.mockResolvedValueOnce([
-        { id: 'd1', title: 'Deal', commodity: 'Maize', status: 'open', score: '0.5', snippet: 'Maize' },
+        {
+          id: 'd1',
+          title: 'Deal',
+          commodity: 'Maize',
+          status: 'open',
+          score: '0.5',
+          snippet: 'Maize',
+        },
       ]);
 
       const result = await service.search('maize', ['deals'], 5);

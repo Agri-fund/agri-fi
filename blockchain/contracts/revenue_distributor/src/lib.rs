@@ -1,6 +1,6 @@
 //! RevenueDistributor Soroban Smart Contract
 //!
-//! Issue #873 — Pro-rata payout to on-chain token holders when a deal completes.
+//! Issues #873 and #1085 — Pro-rata payout to on-chain token holders when a deal completes.
 //!
 //! ## Interface
 //!
@@ -21,8 +21,9 @@
 //!
 //! On `distribute(caller, asset, total_amount)`:
 //!   1. Caller must be admin.
-//!   2. For each holder: share = holder_balance / total_supply * total_amount.
-//!   3. Last holder receives the remainder (avoids 1-stroop dust loss).
+//!   2. For each non-final holder: share = floor(holder_balance * total_amount / total_supply).
+//!   3. The final entry in stable map-key order receives the remainder (avoids
+//!      1-stroop dust loss).
 //!   4. Emits `RevenueDistributed` event per holder.
 //!   5. Emits `DistributionComplete` event with total.
 //!
@@ -63,6 +64,7 @@ pub enum Error {
     NoHolders           = 7,
     /// total_supply is zero — cannot compute pro-rata shares
     ZeroSupply          = 8,
+    ArithmeticOverflow  = 9,
 }
 
 // ── Storage keys ──────────────────────────────────────────────────────────────
@@ -162,8 +164,9 @@ impl RevenueDistributorContract {
 
     /// Distributes `total_amount` USDC pro-rata to all registered holders.
     ///
-    /// Each holder receives: `holder_balance / total_supply * total_amount`.
-    /// The last holder in the map receives any remainder to avoid dust loss.
+    /// Each holder receives the floor of `holder_balance * total_amount /
+    /// total_supply`, except for the final entry in the stable map-key order.
+    /// The final entry receives `total_amount` minus all preceding payouts.
     ///
     /// Returns a Map of `holder -> amount_paid`.
     ///
@@ -215,19 +218,25 @@ impl RevenueDistributorContract {
         for (i, (holder, balance)) in balances.iter().enumerate() {
             // Last holder gets remainder to avoid dust from integer division
             let amount: i128 = if i as u32 == count - 1 {
-                total_amount - distributed
+                total_amount
+                    .checked_sub(distributed)
+                    .ok_or(Error::ArithmeticOverflow)?
             } else {
                 // balance * total_amount / total_supply  (order: multiply first to preserve precision)
-                balance
+                let numerator = balance
                     .checked_mul(total_amount)
-                    .unwrap_or(0)
-                    / total_supply
+                    .ok_or(Error::ArithmeticOverflow)?;
+                numerator
+                    .checked_div(total_supply)
+                    .ok_or(Error::ArithmeticOverflow)?
             };
 
             if amount > 0 {
                 // Record payout before transfer (reentrancy guard)
                 payouts.set(holder.clone(), amount);
-                distributed += amount;
+                distributed = distributed
+                    .checked_add(amount)
+                    .ok_or(Error::ArithmeticOverflow)?;
 
                 usdc.transfer(&env.current_contract_address(), &holder, &amount);
 

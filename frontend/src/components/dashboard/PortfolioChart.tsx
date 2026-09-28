@@ -11,6 +11,7 @@ import {
   Tooltip,
   TooltipProps,
 } from 'recharts';
+import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
 
 export interface PortfolioHistoryPoint {
   /** ISO date string */
@@ -61,18 +62,6 @@ export function formatPortfolioHistory(raw: unknown): PortfolioHistoryPoint[] {
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 }
 
-const currency = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-  maximumFractionDigits: 0,
-});
-const currencyCompact = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-  notation: 'compact',
-  maximumFractionDigits: 1,
-});
-
 function formatAxisDate(iso: string) {
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
@@ -80,7 +69,12 @@ function formatFullDate(iso: string) {
   return new Date(iso).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
 }
 
-function ChartTooltip({ active, payload, label }: TooltipProps<number, string>) {
+function ChartTooltip({
+  active,
+  payload,
+  label,
+  formatCurrency,
+}: TooltipProps<number, string> & { formatCurrency: (value: number, currency: string, options?: { decimalPlaces?: number }) => string }) {
   if (!active || !payload?.length) return null;
   const value = payload[0]?.value;
   if (typeof value !== 'number') return null;
@@ -88,7 +82,7 @@ function ChartTooltip({ active, payload, label }: TooltipProps<number, string>) 
   return (
     <div className="portfolio-chart-tooltip">
       <p className="text-sm font-bold text-slate-900 dark:text-slate-100 tabular-nums">
-        {currency.format(value)}
+        {formatCurrency(value, 'USD', { decimalPlaces: 0 })}
       </p>
       <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1.5">
         <span className="inline-block w-2.5 h-0.5 rounded-full" style={{ backgroundColor: 'var(--chart-line)' }} />
@@ -100,6 +94,7 @@ function ChartTooltip({ active, payload, label }: TooltipProps<number, string>) 
 
 export default function PortfolioChart({ data, loading = false, className = '' }: PortfolioChartProps) {
   const points = useMemo(() => formatPortfolioHistory(data), [data]);
+  const { formatCurrency } = useCurrencyFormat();
 
   if (loading) {
     return (
@@ -119,7 +114,7 @@ export default function PortfolioChart({ data, loading = false, className = '' }
         <p className="text-sm font-semibold text-slate-700">Not enough history yet</p>
         <p className="text-xs text-slate-400 max-w-[220px]">
           {points.length === 1
-            ? `Your current portfolio value is ${currency.format(points[0].value)}. Check back after your next investment to see a trend.`
+            ? `Your current portfolio value is ${formatCurrency(points[0].value, 'USD', { decimalPlaces: 0 })}. Check back after your next investment to see a trend.`
             : 'Once you have investment activity, your portfolio trend will appear here.'}
         </p>
       </div>
@@ -155,7 +150,7 @@ export default function PortfolioChart({ data, loading = false, className = '' }
             minTickGap={32}
           />
           <YAxis
-            tickFormatter={(v: number) => currencyCompact.format(v)}
+            tickFormatter={(v: number) => formatCurrency(v, 'USD', { compact: true, decimalPlaces: 1 })}
             tick={{ fill: 'var(--chart-axis)', fontSize: 11 }}
             axisLine={false}
             tickLine={false}
@@ -163,7 +158,7 @@ export default function PortfolioChart({ data, loading = false, className = '' }
           />
 
           <Tooltip
-            content={<ChartTooltip />}
+            content={<ChartTooltip formatCurrency={formatCurrency} />}
             cursor={{ stroke: 'var(--chart-axis)', strokeWidth: 1 }}
           />
 

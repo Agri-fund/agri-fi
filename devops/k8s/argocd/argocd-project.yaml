@@ -1,0 +1,103 @@
+# ArgoCD AppProject — agri-fi
+#
+# Defines allowed source repos, destination clusters/namespaces, and
+# cluster-resource permissions for every Application that belongs to
+# the agri-fi project.  The app-of-apps root Application and all child
+# apps must reference `project: agri-fi`.
+#
+# Ref: https://argo-cd.readthedocs.io/en/stable/user-guide/projects/
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: agri-fi
+  namespace: argocd
+  # Prevent accidental deletion of the project while apps are live.
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: "Agri-fi platform — infrastructure and application workloads"
+
+  # ── Allowed sync sources ────────────────────────────────────────────────
+  # Only this repository (and optionally pinned chart registries) may be
+  # used as a source for Applications in this project.
+  sourceRepos:
+    - https://github.com/Agri-fund/agri-fi.git
+    # Bitnami chart repo — used by RabbitMQ/Redis Helm apps when switching
+    # to Helm-managed chart deployments in a future iteration.
+    - https://charts.bitnami.com/bitnami
+
+  # ── Allowed destinations ────────────────────────────────────────────────
+  # Restrict deployments to the in-cluster API server and the two
+  # namespaces the platform uses.  ArgoCD itself lives in `argocd`.
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: agri-fi
+    - server: https://kubernetes.default.svc
+      namespace: argocd   # app-of-apps root lives here
+    - server: https://kubernetes.default.svc
+      namespace: agri-fi-staging
+    - server: https://kubernetes.default.svc
+      namespace: agri-fi-production
+
+  # ── Cluster-scoped resource allow-list ─────────────────────────────────
+  # Apps may manage these cluster-level resource kinds.  Everything else
+  # must be namespaced.
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+    - group: "rbac.authorization.k8s.io"
+      kind: ClusterRole
+    - group: "rbac.authorization.k8s.io"
+      kind: ClusterRoleBinding
+    - group: "networking.k8s.io"
+      kind: IngressClass
+    - group: "apiextensions.k8s.io"
+      kind: CustomResourceDefinition
+
+  # ── Namespace-scoped resource deny-list ────────────────────────────────
+  # Prevent accidental management of sensitive security primitives.
+  namespaceResourceBlacklist:
+    - group: ""
+      kind: ResourceQuota
+    - group: ""
+      kind: LimitRange
+
+  # ── Orphaned resource monitoring ───────────────────────────────────────
+  # Alert in the ArgoCD UI when resources exist in the target namespace
+  # but are not tracked by any Application in this project.
+  orphanedResources:
+    warn: true
+
+  # ── Sync windows ───────────────────────────────────────────────────────
+  # Allow automated syncs 24 × 7 for staging; restrict production syncs
+  # to business hours (Mon–Fri 08:00–20:00 UTC) to reduce blast radius.
+  syncWindows:
+    - kind: allow
+      schedule: "0 8 * * 1-5"   # Mon–Fri 08:00 UTC
+      duration: 12h
+      applications:
+        - "*-production"
+      manualSync: true           # out-of-window manual syncs still allowed
+    - kind: allow
+      schedule: "* * * * *"     # always open for staging
+      duration: 24h
+      applications:
+        - "*-staging"
+      manualSync: true
+
+  # ── RBAC roles inside the project ─────────────────────────────────────
+  roles:
+    - name: developer
+      description: "Read-only access + ability to trigger manual syncs"
+      policies:
+        - p, proj:agri-fi:developer, applications, get,    agri-fi/*, allow
+        - p, proj:agri-fi:developer, applications, sync,   agri-fi/*, allow
+      groups:
+        - agri-fi:developers
+
+    - name: deployer
+      description: "Full application management (CI/CD pipelines)"
+      policies:
+        - p, proj:agri-fi:deployer, applications, *, agri-fi/*, allow
+      groups:
+        - agri-fi:deployers

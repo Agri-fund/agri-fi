@@ -283,3 +283,91 @@ fn test_register_campaign_without_initialization_fails() {
     );
     assert_eq!(result, Err(Ok(Error::NotInitialized)));
 }
+
+#[test]
+fn test_create_campaign_rejects_non_positive_target() {
+    let setup = setup();
+    let client = ProjectFactoryContractClient::new(&setup.env, &setup.contract_id);
+    let deadline = setup.env.ledger().timestamp() + 1;
+
+    for target in [0i128, -1i128] {
+        let result = client.try_create_campaign(
+            &setup.admin,
+            &setup.farmer,
+            &target,
+            &deadline,
+            &200,
+        );
+        assert_eq!(result, Err(Ok(Error::InvalidTarget)));
+    }
+}
+
+#[test]
+fn test_create_campaign_rejects_non_future_deadline() {
+    let setup = setup();
+    let client = ProjectFactoryContractClient::new(&setup.env, &setup.contract_id);
+    let timestamp = setup.env.ledger().timestamp();
+
+    for deadline in [timestamp, timestamp.saturating_sub(1)] {
+        let result = client.try_create_campaign(
+            &setup.admin,
+            &setup.farmer,
+            &1i128,
+            &deadline,
+            &200,
+        );
+        assert_eq!(result, Err(Ok(Error::InvalidDeadline)));
+    }
+}
+
+#[test]
+fn test_create_campaign_rejects_fee_above_cap() {
+    let setup = setup();
+    let client = ProjectFactoryContractClient::new(&setup.env, &setup.contract_id);
+    let deadline = setup.env.ledger().timestamp() + 1;
+
+    for fee_bps in [MAX_FEE_BPS + 1, u32::MAX] {
+        let result = client.try_create_campaign(
+            &setup.admin,
+            &setup.farmer,
+            &1i128,
+            &deadline,
+            &fee_bps,
+        );
+        assert_eq!(result, Err(Ok(Error::InvalidFeeBps)));
+    }
+}
+
+#[test]
+fn test_create_campaign_accepts_boundary_params() {
+    let setup = setup();
+    let client = ProjectFactoryContractClient::new(&setup.env, &setup.contract_id);
+    let deadline = setup.env.ledger().timestamp() + 1;
+
+    let result = client.try_create_campaign(
+        &setup.admin,
+        &setup.farmer,
+        &1i128,
+        &deadline,
+        &MAX_FEE_BPS,
+    );
+
+    assert_eq!(result, Err(Ok(Error::WasmHashNotSet)));
+}
+
+#[test]
+fn test_deploy_alias_rejects_invalid_params() {
+    let setup = setup();
+    let client = ProjectFactoryContractClient::new(&setup.env, &setup.contract_id);
+    let deadline = setup.env.ledger().timestamp() + 1;
+
+    let result = client.try_deploy(
+        &setup.admin,
+        &setup.farmer,
+        &0i128,
+        &deadline,
+        &200,
+    );
+
+    assert_eq!(result, Err(Ok(Error::InvalidTarget)));
+}

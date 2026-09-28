@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
 
 export interface CommodityPrice {
   symbol: string;
@@ -17,6 +18,7 @@ interface CommodityTickerProps {
 }
 
 export const CommodityTicker: React.FC<CommodityTickerProps> = ({ initialPrices = [] }) => {
+  const { formatCurrency } = useCurrencyFormat();
   const [prices, setPrices] = useState<CommodityPrice[]>(initialPrices);
   const [isPaused, setIsPaused] = useState(false);
   const [isStale, setIsStale] = useState(false);
@@ -71,7 +73,7 @@ export const CommodityTicker: React.FC<CommodityTickerProps> = ({ initialPrices 
                 className="flex items-center gap-2.5 text-sm hover:text-emerald-400 transition-colors whitespace-nowrap cursor-pointer"
               >
                 <span className="font-semibold text-slate-200">{item.name}</span>
-                <span className="font-mono text-white">${item.priceUsdc.toFixed(2)}</span>
+                <span className="font-mono text-white">{formatCurrency(item.priceUsdc, 'USDC', { decimalPlaces: 2 })}</span>
                 <span
                   className={`text-xs font-mono px-1.5 py-0.5 rounded ${
                     isPositive ? 'text-emerald-400 bg-emerald-950/60' : 'text-rose-400 bg-rose-950/60'

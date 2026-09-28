@@ -30,8 +30,7 @@ export function parseXdr(
   xdr: string,
   network: 'testnet' | 'mainnet' = 'testnet',
 ): ParsedTransaction {
-  const passphrase =
-    network === 'mainnet' ? Networks.PUBLIC : Networks.TESTNET;
+  const passphrase = network === 'mainnet' ? Networks.PUBLIC : Networks.TESTNET;
 
   const tx = TransactionBuilder.fromXDR(xdr, passphrase) as any;
 

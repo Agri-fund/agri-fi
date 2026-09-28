@@ -38,7 +38,9 @@ export class CreateSep24Transactions1766000000000 implements MigrationInterface 
 
   public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`DROP INDEX "IDX_sep24_transactions_kind_status"`);
-    await queryRunner.query(`DROP INDEX "IDX_sep24_transactions_stellar_account"`);
+    await queryRunner.query(
+      `DROP INDEX "IDX_sep24_transactions_stellar_account"`,
+    );
     await queryRunner.query(`DROP TABLE "sep24_transactions"`);
   }
 }

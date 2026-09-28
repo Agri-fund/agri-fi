@@ -36,7 +36,11 @@ export class Achievement {
   @Column({ name: 'badge_type', type: 'varchar', length: 64 })
   badgeType: BadgeType;
 
-  @Column({ name: 'earned_at', type: 'timestamp with time zone', default: () => 'CURRENT_TIMESTAMP' })
+  @Column({
+    name: 'earned_at',
+    type: 'timestamp with time zone',
+    default: () => 'CURRENT_TIMESTAMP',
+  })
   earnedAt: Date;
 
   @Column({ name: 'granted_by', type: 'varchar', length: 64, nullable: true })

@@ -114,6 +114,12 @@ class MetricsCollector implements OnApplicationBootstrap {
       help: 'Number of idle database connections currently in the pool.',
     }),
 
+    // ── Stellar metrics ────────────────────────────────────────────────────────
+    makeCounterProvider({
+      name: 'horizon_status_stale_fallbacks_total',
+      help: 'Total number of times a stale cached transaction status was returned due to Horizon errors.',
+    }),
+
     // ── Guards & interceptors ─────────────────────────────────────────────────
     MetricsIpGuard,
     {

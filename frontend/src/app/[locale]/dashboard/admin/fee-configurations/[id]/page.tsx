@@ -1,5 +1,6 @@
 'use client';
 
+import { getAuthToken } from '@/lib/auth-token';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -36,7 +37,7 @@ export default function FeeConfigurationEditPage({ params }: { params: { id: str
   useEffect(() => {
     // Fetch deal types
     fetch('/api/admin/fee-configurations/deal-types', {
-      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+      headers: { Authorization: `Bearer ${getAuthToken()}` },
     })
       .then((r) => r.json())
       .then(setDealTypes)
@@ -45,7 +46,7 @@ export default function FeeConfigurationEditPage({ params }: { params: { id: str
     // If editing, fetch the configuration
     if (!isNew) {
       fetch(`/api/admin/fee-configurations/${params.id}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+        headers: { Authorization: `Bearer ${getAuthToken()}` },
       })
         .then((r) => r.json())
         .then((data) => {
@@ -91,7 +92,7 @@ export default function FeeConfigurationEditPage({ params }: { params: { id: str
         method,
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
+          Authorization: `Bearer ${getAuthToken()}`,
         },
         body: JSON.stringify(payload),
       });

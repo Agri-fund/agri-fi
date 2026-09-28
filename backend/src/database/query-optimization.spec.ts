@@ -9,6 +9,8 @@ const INDEXES = {
   investmentsInvestorId: 'idx_investments_investor_id',
   shipmentMilestonesTradeDealId: 'idx_shipment_milestones_trade_deal_id',
   paymentDistributionsTradeDealId: 'idx_payment_distributions_trade_deal_id',
+  tradeDealsActive: 'idx_trade_deals_active',
+  investmentsOpen: 'idx_investments_open',
 } as const;
 
 /** Seeded in migration 1762000000000-SeedInitialData */
@@ -71,6 +73,7 @@ describeWithDatabase('Query planner optimizations (PostgreSQL)', () => {
     await dataSource.query('ANALYZE investments');
     await dataSource.query('ANALYZE shipment_milestones');
     await dataSource.query('ANALYZE payment_distributions');
+    await dataSource.query('ANALYZE trade_deals');
   });
 
   afterAll(async () => {
@@ -169,5 +172,31 @@ describeWithDatabase('Query planner optimizations (PostgreSQL)', () => {
     );
 
     expectIndexScan(plan, INDEXES.paymentDistributionsTradeDealId);
+  });
+
+  it('uses partial index for open trade deals dashboard query', async () => {
+    const plan = await explainAnalyze(
+      dataSource,
+      `
+        SELECT *
+        FROM trade_deals
+        WHERE status = 'open'
+      `,
+    );
+
+    expectIndexScan(plan, INDEXES.tradeDealsActive);
+  });
+
+  it('uses partial index for active investments dashboard query', async () => {
+    const plan = await explainAnalyze(
+      dataSource,
+      `
+        SELECT *
+        FROM investments
+        WHERE status = 'active'
+      `,
+    );
+
+    expectIndexScan(plan, INDEXES.investmentsOpen);
   });
 });

@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddVerificationStatusToDocuments1800000000000
-  implements MigrationInterface
-{
+export class AddVerificationStatusToDocuments1800000000000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
       `ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "verification_status" varchar(20) NOT NULL DEFAULT 'pending'`,

@@ -14,7 +14,7 @@
  *  - Metadata persisted to compliance_reports DB table
  */
 
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between, DataSource } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
@@ -34,7 +34,8 @@ import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
 import { ComplianceReport } from './entities/compliance-report.entity';
 import { SystemAuditLog } from '../audit/entities/system-audit-log.entity';
 
-export type ReportType = 'monthly_aml_kyc' | 'quarterly_transaction' | 'incident';
+export type ReportType =
+  'monthly_aml_kyc' | 'quarterly_transaction' | 'incident';
 
 @Injectable()
 export class ComplianceReportService {
@@ -56,7 +57,7 @@ export class ComplianceReportService {
     private readonly logger: PinoLogger,
     private readonly dataSource: DataSource,
   ) {
-    this.logger.setContext(ComplianceReportService.name);
+    (this.logger as any).setContext(ComplianceReportService.name);
     this.bucket = this.config.get<string>('AWS_S3_BUCKET', '');
     this.s3 = new S3Client({
       region: this.config.get<string>('AWS_REGION', 'us-east-1'),
@@ -70,8 +71,11 @@ export class ComplianceReportService {
   async generateMonthlyScheduled(): Promise<void> {
     const now = new Date();
     const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const end   = new Date(now.getFullYear(), now.getMonth(), 1);
-    this.logger.info({ start, end }, 'Generating scheduled monthly AML/KYC report');
+    const end = new Date(now.getFullYear(), now.getMonth(), 1);
+    this.logger.info(
+      { start, end },
+      'Generating scheduled monthly AML/KYC report',
+    );
     await this.generateMonthly(start, end);
   }
 
@@ -79,10 +83,13 @@ export class ComplianceReportService {
   @Cron('0 2 1 1,4,7,10 *')
   async generateQuarterlyScheduled(): Promise<void> {
     const now = new Date();
-    const quarterStartMonth = Math.floor((now.getMonth()) / 3) * 3 - 3;
+    const quarterStartMonth = Math.floor(now.getMonth() / 3) * 3 - 3;
     const start = new Date(now.getFullYear(), quarterStartMonth, 1);
-    const end   = new Date(now.getFullYear(), quarterStartMonth + 3, 1);
-    this.logger.info({ start, end }, 'Generating scheduled quarterly transaction report');
+    const end = new Date(now.getFullYear(), quarterStartMonth + 3, 1);
+    this.logger.info(
+      { start, end },
+      'Generating scheduled quarterly transaction report',
+    );
     await this.generateQuarterly(start, end);
   }
 
@@ -93,14 +100,33 @@ export class ComplianceReportService {
 
     const [totalUsers, kycApproved, kycRejected, kycPending, ofacHits] =
       await Promise.all([
-        this.userRepo.count({ where: { createdAt: Between(start, end) } as any }),
-        this.userRepo.count({ where: { kycStatus: 'verified', updatedAt: Between(start, end) } as any }),
-        this.userRepo.count({ where: { kycStatus: 'rejected', updatedAt: Between(start, end) } as any }),
+        this.userRepo.count({
+          where: { createdAt: Between(start, end) } as any,
+        }),
+        this.userRepo.count({
+          where: {
+            kycStatus: 'verified',
+            updatedAt: Between(start, end),
+          } as any,
+        }),
+        this.userRepo.count({
+          where: {
+            kycStatus: 'rejected',
+            updatedAt: Between(start, end),
+          } as any,
+        }),
         this.userRepo.count({ where: { kycStatus: 'pending' } }),
         this.countOfacHits(start, end),
       ]);
 
-    const data = { totalUsers, kycApproved, kycRejected, kycPending, ofacHits, period: { start, end } };
+    const data = {
+      totalUsers,
+      kycApproved,
+      kycRejected,
+      kycPending,
+      ofacHits,
+      period: { start, end },
+    };
     const title = `Monthly AML/KYC Summary — ${this.formatPeriod(start, end)}`;
 
     const pdf = await this.buildPdf(title, [
@@ -115,7 +141,14 @@ export class ComplianceReportService {
       ['OFAC Screening Hits', String(ofacHits)],
     ]);
 
-    return this.uploadAndPersist('monthly_aml_kyc', title, pdf, data, start, end);
+    return this.uploadAndPersist(
+      'monthly_aml_kyc',
+      title,
+      pdf,
+      data,
+      start,
+      end,
+    );
   }
 
   async generateQuarterly(start: Date, end: Date): Promise<ComplianceReport> {
@@ -132,7 +165,8 @@ export class ComplianceReportService {
 
     for (const inv of investments) {
       const country = (inv as any).country ?? 'Unknown';
-      volumeByCountry[country] = (volumeByCountry[country] ?? 0) + Number(inv.amount_usd ?? 0);
+      volumeByCountry[country] =
+        (volumeByCountry[country] ?? 0) + Number(inv.amount_usd ?? 0);
       totalVolume += Number(inv.amount_usd ?? 0);
     }
 
@@ -142,11 +176,48 @@ export class ComplianceReportService {
     totalPayouts = deals.reduce((s, d) => s + Number(d.totalValue ?? 0), 0);
     const avgDealSize = deals.length > 0 ? totalVolume / deals.length : 0;
 
-    const data = { volumeByCountry, totalVolume, totalPayouts, avgDealSize, dealsCompleted: deals.length, period: { start, end } };
+    // #1012 ESG Impact metrics across completed deals
+    const esgRatedDeals = deals.filter((d) => d.esgScore != null);
+    const avgEsgScore =
+      esgRatedDeals.length > 0
+        ? esgRatedDeals.reduce((sum, d) => sum + Number(d.esgScore), 0) /
+          esgRatedDeals.length
+        : 0;
+    const avgEnvScore =
+      esgRatedDeals.length > 0
+        ? esgRatedDeals.reduce((sum, d) => sum + Number(d.environmentalScore ?? 0), 0) /
+          esgRatedDeals.length
+        : 0;
+    const avgSocScore =
+      esgRatedDeals.length > 0
+        ? esgRatedDeals.reduce((sum, d) => sum + Number(d.socialScore ?? 0), 0) /
+          esgRatedDeals.length
+        : 0;
+    const avgGovScore =
+      esgRatedDeals.length > 0
+        ? esgRatedDeals.reduce((sum, d) => sum + Number(d.governanceScore ?? 0), 0) /
+          esgRatedDeals.length
+        : 0;
+
+    const data = {
+      volumeByCountry,
+      totalVolume,
+      totalPayouts,
+      avgDealSize,
+      dealsCompleted: deals.length,
+      esgRatedDealsCount: esgRatedDeals.length,
+      esgMetrics: {
+        averageEsgScore: Math.round(avgEsgScore * 10) / 10,
+        averageEnvironmental: Math.round(avgEnvScore * 10) / 10,
+        averageSocial: Math.round(avgSocScore * 10) / 10,
+        averageGovernance: Math.round(avgGovScore * 10) / 10,
+      },
+      period: { start, end },
+    };
     const title = `Quarterly Transaction Report — ${this.formatPeriod(start, end)}`;
 
     const rows: [string, string][] = [
-      ['Report Type', 'Quarterly Transaction Report'],
+      ['Report Type', 'Quarterly Transaction & ESG Report'],
       ['Period', this.formatPeriod(start, end)],
       ['Generated At', new Date().toUTCString()],
       ['', ''],
@@ -155,12 +226,77 @@ export class ComplianceReportService {
       ['Average Deal Size (USD)', `$${avgDealSize.toFixed(2)}`],
       ['Total Payout Volume (USD)', `$${totalPayouts.toLocaleString()}`],
       ['', ''],
+      ['Institutional ESG Impact Summary', ''],
+      ['  Deals with Verified ESG Rating', `${esgRatedDeals.length} / ${deals.length}`],
+      ['  Platform Average ESG Score', `${(Math.round(avgEsgScore * 10) / 10).toFixed(1)} / 100`],
+      ['  Average Environmental Sub-score', `${(Math.round(avgEnvScore * 10) / 10).toFixed(1)} / 100`],
+      ['  Average Social Impact Sub-score', `${(Math.round(avgSocScore * 10) / 10).toFixed(1)} / 100`],
+      ['  Average Governance Sub-score', `${(Math.round(avgGovScore * 10) / 10).toFixed(1)} / 100`],
+      ['', ''],
       ['Investment Volume by Country', ''],
-      ...Object.entries(volumeByCountry).map(([c, v]): [string, string] => [`  ${c}`, `$${v.toLocaleString()}`]),
+      ...Object.entries(volumeByCountry).map(([c, v]): [string, string] => [
+        `  ${c}`,
+        `$${v.toLocaleString()}`,
+      ]),
     ];
 
     const pdf = await this.buildPdf(title, rows);
-    return this.uploadAndPersist('quarterly_transaction', title, pdf, data, start, end);
+    return this.uploadAndPersist(
+      'quarterly_transaction',
+      title,
+      pdf,
+      data,
+      start,
+      end,
+    );
+  }
+
+  async generateEsgImpactReport(start: Date, end: Date): Promise<ComplianceReport> {
+    const deals = await this.dealRepo.find({
+      where: { updatedAt: Between(start, end) as any },
+      relations: ['farmer'],
+    });
+
+    const esgDeals = deals.filter((d) => d.esgScore != null);
+    const avgScore =
+      esgDeals.length > 0
+        ? esgDeals.reduce((sum, d) => sum + Number(d.esgScore), 0) / esgDeals.length
+        : 0;
+
+    const ratingDistribution: Record<string, number> = {
+      AAA: 0, AA: 0, A: 0, BBB: 0, BB: 0, B: 0, CCC: 0,
+    };
+    for (const d of esgDeals) {
+      if (d.esgRating && ratingDistribution[d.esgRating] !== undefined) {
+        ratingDistribution[d.esgRating]++;
+      }
+    }
+
+    const title = `Institutional ESG Impact Report — ${this.formatPeriod(start, end)}`;
+    const rows: [string, string][] = [
+      ['Report Type', 'Institutional ESG & Impact Disclosure'],
+      ['Period', this.formatPeriod(start, end)],
+      ['Generated At', new Date().toUTCString()],
+      ['', ''],
+      ['Total Evaluated Deals', String(esgDeals.length)],
+      ['Average Composite ESG Score', `${(Math.round(avgScore * 10) / 10).toFixed(1)} / 100`],
+      ['', ''],
+      ['Rating Tier Distribution', ''],
+      ...Object.entries(ratingDistribution).map(([tier, count]): [string, string] => [
+        `  Rating ${tier}`,
+        `${count} deals`,
+      ]),
+    ];
+
+    const pdf = await this.buildPdf(title, rows);
+    return this.uploadAndPersist(
+      'quarterly_transaction',
+      title,
+      pdf,
+      { totalEvaluated: esgDeals.length, avgScore, ratingDistribution },
+      start,
+      end,
+    );
   }
 
   async generateIncident(start: Date, end: Date): Promise<ComplianceReport> {
@@ -171,7 +307,10 @@ export class ComplianceReportService {
     });
 
     const complianceAlerts = alerts.filter(
-      (a) => a.route?.includes('compliance') || a.route?.includes('kyc') || a.route?.includes('ofac'),
+      (a) =>
+        a.route?.includes('compliance') ||
+        a.route?.includes('kyc') ||
+        a.route?.includes('ofac'),
     );
 
     const title = `Incident Report — ${this.formatPeriod(start, end)}`;
@@ -182,18 +321,29 @@ export class ComplianceReportService {
       ['', ''],
       ['Total Compliance Events', String(complianceAlerts.length)],
       ['', ''],
-      ...complianceAlerts.slice(0, 50).map((a): [string, string] => [
-        new Date(a.timestamp).toUTCString(),
-        `${a.route} [${a.actorRole ?? 'system'}] status=${a.statusCode}`,
-      ]),
+      ...complianceAlerts
+        .slice(0, 50)
+        .map((a): [string, string] => [
+          new Date(a.timestamp).toUTCString(),
+          `${a.route} [${a.actorRole ?? 'system'}] status=${a.statusCode}`,
+        ]),
     ];
 
     const pdf = await this.buildPdf(title, rows);
-    return this.uploadAndPersist('incident', title, pdf, { alertCount: complianceAlerts.length }, start, end);
+    return this.uploadAndPersist(
+      'incident',
+      title,
+      pdf,
+      { alertCount: complianceAlerts.length },
+      start,
+      end,
+    );
   }
 
   /** Returns list of available reports with signed S3 download URLs (15-min expiry). */
-  async listReports(type?: ReportType): Promise<Array<ComplianceReport & { downloadUrl: string }>> {
+  async listReports(
+    type?: ReportType,
+  ): Promise<Array<ComplianceReport & { downloadUrl: string }>> {
     const where: any = {};
     if (type) where.reportType = type;
 
@@ -206,7 +356,9 @@ export class ComplianceReportService {
     return Promise.all(
       reports.map(async (r) => {
         const cmd = new GetObjectCommand({ Bucket: this.bucket, Key: r.s3Key });
-        const downloadUrl = await getSignedUrl(this.s3, cmd, { expiresIn: 900 });
+        const downloadUrl = await getSignedUrl(this.s3, cmd, {
+          expiresIn: 900,
+        });
         return { ...r, downloadUrl };
       }),
     );
@@ -224,8 +376,11 @@ export class ComplianceReportService {
     });
   }
 
-  private async buildPdf(title: string, rows: [string, string][]): Promise<Buffer> {
-    const doc  = await PDFDocument.create();
+  private async buildPdf(
+    title: string,
+    rows: [string, string][],
+  ): Promise<Buffer> {
+    const doc = await PDFDocument.create();
     const page = doc.addPage([612, 792]);
     const font = await doc.embedFont(StandardFonts.Helvetica);
     const bold = await doc.embedFont(StandardFonts.HelveticaBold);
@@ -234,22 +389,54 @@ export class ComplianceReportService {
     let y = height - 60;
 
     // Title
-    page.drawText(title, { x: 50, y, size: 16, font: bold, color: rgb(0.1, 0.4, 0.2) });
+    page.drawText(title, {
+      x: 50,
+      y,
+      size: 16,
+      font: bold,
+      color: rgb(0.1, 0.4, 0.2),
+    });
     y -= 10;
-    page.drawLine({ start: { x: 50, y }, end: { x: 562, y }, thickness: 1, color: rgb(0.7, 0.7, 0.7) });
+    page.drawLine({
+      start: { x: 50, y },
+      end: { x: 562, y },
+      thickness: 1,
+      color: rgb(0.7, 0.7, 0.7),
+    });
     y -= 20;
 
     for (const [label, value] of rows) {
       if (y < 80) {
-        const extra = doc.addPage([612, 792]);
+        doc.addPage([612, 792]);
         y = 762;
       }
-      if (!label && !value) { y -= 8; continue; }
+      if (!label && !value) {
+        y -= 8;
+        continue;
+      }
       if (!value) {
-        page.drawText(label, { x: 50, y, size: 10, font: bold, color: rgb(0.2, 0.2, 0.2) });
+        page.drawText(label, {
+          x: 50,
+          y,
+          size: 10,
+          font: bold,
+          color: rgb(0.2, 0.2, 0.2),
+        });
       } else {
-        page.drawText(label, { x: 50, y, size: 10, font, color: rgb(0.3, 0.3, 0.3) });
-        page.drawText(value, { x: 300, y, size: 10, font, color: rgb(0, 0, 0) });
+        page.drawText(label, {
+          x: 50,
+          y,
+          size: 10,
+          font,
+          color: rgb(0.3, 0.3, 0.3),
+        });
+        page.drawText(value, {
+          x: 300,
+          y,
+          size: 10,
+          font,
+          color: rgb(0, 0, 0),
+        });
       }
       y -= 16;
     }
@@ -270,24 +457,24 @@ export class ComplianceReportService {
     periodStart: Date,
     periodEnd: Date,
   ): Promise<ComplianceReport> {
-    const hash    = this.sha256(pdf);
-    const ts      = new Date().toISOString().replace(/[:.]/g, '-');
-    const s3Key   = `compliance/${type}/${ts}.pdf`;
+    const hash = this.sha256(pdf);
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    const s3Key = `compliance/${type}/${ts}.pdf`;
 
     if (this.bucket) {
       await this.s3.send(
         new PutObjectCommand({
-          Bucket:      this.bucket,
-          Key:         s3Key,
-          Body:        pdf,
+          Bucket: this.bucket,
+          Key: s3Key,
+          Body: pdf,
           ContentType: 'application/pdf',
           // Strict access: no public read, server-side encryption
           ServerSideEncryption: 'AES256',
           Metadata: {
-            'report-type':  type,
+            'report-type': type,
             'sha256-digest': hash,
             'period-start': periodStart.toISOString(),
-            'period-end':   periodEnd.toISOString(),
+            'period-end': periodEnd.toISOString(),
           },
         }),
       );
@@ -297,11 +484,11 @@ export class ComplianceReportService {
     }
 
     const report = this.reportRepo.create({
-      reportType:  type,
+      reportType: type,
       title,
       s3Key,
-      sha256Hash:  hash,
-      reportData:  data,
+      sha256Hash: hash,
+      reportData: data,
       periodStart,
       periodEnd,
       generatedAt: new Date(),

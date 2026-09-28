@@ -16,6 +16,30 @@
 #   that address to open real server connections.
 #   DATABASE_URL is provided as a convenience for any code paths that prefer a
 #   connection-string format; it also routes through PgBouncer.
+#
+# Connection pool sizing (#1037):
+#   DB_POOL_MAX is the TypeORM per-process pool toward the LOCAL pgbouncer
+#   sidecar (not toward Postgres directly). Pgbouncer is the real multiplexer
+#   and its pool_size controls real Postgres server connections.
+#
+#   Budget (RDS db.t3.small, max_connections=200):
+#     Reserved for ops/migrations/monitoring : 30 connections
+#     Usable budget                          : 170 connections
+#     HPA maxReplicas                        : 8
+#     Per-replica pgbouncer pool_size        : 170 ÷ 8 = 21 → 20 (10 spare)
+#     Per-replica DB_POOL_MAX (TypeORM→bouncer): 5
+#       (TypeORM talks to localhost:6432 only; pgbouncer queues and
+#        multiplexes the real server connections. A TypeORM pool of 5 keeps
+#        the bouncer fed without holding idle server connections open.)
+#
+#   Worst-case server connections at maxReplicas:
+#     8 replicas × 20 pool_size = 160  ≤ 170 usable  ✓
+#
+#   To recalculate for a different RDS instance class, update:
+#     DB_POOL_MAX             (TypeORM, this ConfigMap)
+#     default_pool_size       (pgbouncer-configmap.yaml + pgbouncer.ini)
+#     HPA maxReplicas         (hpa.yaml)
+#   and reapply all three files.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -35,12 +59,22 @@ data:
   #       to 127.0.0.1:6432.
   DATABASE_HOST: "localhost"
   DATABASE_PORT: "6432"
-  DATABASE_NAME: "agrifi"
+  DATABASE_NAME: "agric_onchain"
   # Convenience full connection URL used by TypeORM / Prisma code paths.
   # Credentials are interpolated at runtime from the secret — this is
   # intentionally incomplete (no user:password) to avoid storing secrets here.
   # If your app reads DATABASE_URL directly, append credentials via the secret.
-  DATABASE_URL: "postgresql://localhost:6432/agrifi"
+  DATABASE_URL: "postgresql://localhost:6432/agric_onchain"
+
+  # ── Connection pool sizing (#1037) ─────────────────────────────────────
+  # TypeORM pool toward the LOCAL pgbouncer sidecar (not real Postgres).
+  # Pgbouncer multiplexes these into the real server pool (pool_size=20).
+  # See pool budget comment at the top of this file.
+  DATABASE_POOL_MIN: "2"
+  DATABASE_POOL_MAX: "5"
+  DATABASE_POOL_IDLE_TIMEOUT_MS: "30000"
+  DATABASE_POOL_CONNECTION_TIMEOUT_MS: "5000"
+  DATABASE_STATEMENT_TIMEOUT_MS: "30000"
 
   # Upstream Postgres (used by PgBouncer sidecar — not consumed by the app).
   DATABASE_UPSTREAM_HOST: "agri-fi-postgres"

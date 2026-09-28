@@ -1,0 +1,47 @@
+{
+  "index_patterns": ["agri-fi-*"],
+  "template": {
+    "settings": {
+      "index.lifecycle.name": "agri-fi-logs-retention",
+      "index.lifecycle.rollover_alias": "agri-fi-logs",
+      "number_of_shards": 1,
+      "number_of_replicas": 0
+    },
+    "mappings": {
+      "properties": {
+        "@timestamp": {
+          "type": "date"
+        },
+        "message": {
+          "type": "text"
+        },
+        "log": {
+          "type": "text"
+        },
+        "kubernetes": {
+          "type": "object",
+          "enabled": true
+        },
+        "correlationId": {
+          "type": "keyword"
+        },
+        "txHash": {
+          "type": "keyword"
+        },
+        "operation": {
+          "type": "keyword"
+        },
+        "durationMs": {
+          "type": "long"
+        },
+        "status": {
+          "type": "keyword"
+        },
+        "level": {
+          "type": "keyword"
+        }
+      }
+    }
+  },
+  "composed_of": []
+}

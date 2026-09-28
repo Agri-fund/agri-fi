@@ -28,3 +28,18 @@ output "redis_replication_group_arn" {
   description = "ARN of the ElastiCache Redis replication group. Used by downstream modules for IAM policies and monitoring."
   value       = aws_elasticache_replication_group.redis.arn
 }
+
+# ---------------------------------------------------------------------------
+# UptimeRobot & Status Page
+# ---------------------------------------------------------------------------
+
+output "status_page_url" {
+  description = "Public URL of the UptimeRobot status page."
+  value       = "https://${var.status_page_domain}"
+}
+
+output "monitored_endpoints" {
+  description = "Map of monitored endpoints and their configured check URLs."
+  value       = { for k, v in var.monitor_targets : k => v.url }
+}
+

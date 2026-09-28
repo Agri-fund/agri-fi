@@ -24,15 +24,17 @@ interface AuthRequest extends Request {
 
 @ApiTags('referrals')
 @ApiBearerAuth('jwt')
-@Version('1')
-@Controller('users/me/referrals')
+@Controller({ path: 'users/me/referrals', version: '1' })
 export class ReferralController {
   constructor(private readonly referralService: ReferralService) {}
 
   @Get()
   @UseGuards(AuthGuard('jwt'))
   @ApiOperation({ summary: 'Get referral stats for the authenticated user' })
-  @ApiResponse({ status: 200, description: 'Referral stats with code and referral list' })
+  @ApiResponse({
+    status: 200,
+    description: 'Referral stats with code and referral list',
+  })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async getReferralStats(@Request() req: AuthRequest) {
     return this.referralService.getReferralStats(req.user.id);

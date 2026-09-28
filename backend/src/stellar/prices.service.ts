@@ -132,8 +132,7 @@ export class PricesService implements OnModuleInit, OnModuleDestroy {
     }
 
     const rawValue = (await this.redisClient.get(XLM_USDC_PRICE_CACHE_KEY)) as
-      | string
-      | null;
+      string | null;
     if (!rawValue) {
       return null;
     }

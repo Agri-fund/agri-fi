@@ -247,6 +247,7 @@ self.addEventListener("push", (event) => {
     badge: "/icon-badge.png",
     tag: "agri-fi-push",
     url: "/",
+    eventType: "alert",
   };
 
   if (event.data) {
@@ -259,15 +260,16 @@ self.addEventListener("push", (event) => {
     }
   }
 
-  const { title, body, icon, badge, tag, url, ...rest } = data;
+  const { title, body, icon, badge, url, eventType, ...rest } = data;
+  const notificationTag = data.tag || `agri-fi-${eventType || "notification"}`;
 
   event.waitUntil(
     self.registration.showNotification(title, {
       body,
       icon,
       badge,
-      tag,
-      data: { url, ...rest },
+      tag: notificationTag,
+      data: { url, eventType, ...rest },
       requireInteraction: false,
       vibrate: [200, 100, 200],
     }),
@@ -278,19 +280,30 @@ self.addEventListener("push", (event) => {
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
 
-  const targetUrl =
+  const targetPath =
     event.notification.data && event.notification.data.url
       ? event.notification.data.url
       : "/";
+
+  const targetUrl = new URL(targetPath, self.location.origin).href;
 
   event.waitUntil(
     clients
       .matchAll({ type: "window", includeUncontrolled: true })
       .then((windowClients) => {
-        // If a window with the target URL is already open, focus it
+        // If an open window matches the target origin/path, focus and navigate it
         for (const client of windowClients) {
-          if (client.url === targetUrl && "focus" in client) {
+          const clientUrl = new URL(client.url, self.location.origin);
+          const targetParsed = new URL(targetUrl);
+          if (clientUrl.pathname === targetParsed.pathname && "focus" in client) {
             return client.focus();
+          }
+        }
+        // If an open window from our app exists, focus and navigate to target URL
+        for (const client of windowClients) {
+          if ("focus" in client && "navigate" in client) {
+            client.focus();
+            return client.navigate(targetUrl);
           }
         }
         // Otherwise open a new window

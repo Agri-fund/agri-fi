@@ -1,0 +1,20 @@
+[Unit]
+Description=Agri-Fi primary-region health watcher
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=agri-fi-dr
+EnvironmentFile=/etc/agri-fi/disaster-recovery.env
+Environment=KUBECONFIG=/var/lib/agri-fi-dr/kubeconfig
+ExecStart=/opt/agri-fi/disaster-recovery.sh watch
+Restart=always
+RestartSec=15
+StateDirectory=agri-fi-dr
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

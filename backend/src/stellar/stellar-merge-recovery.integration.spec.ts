@@ -1,12 +1,12 @@
 /**
  * Integration test for full account merge recovery flow.
  * Tests: detect merge → create replacement → establish trustline → retry payment → success
- * 
+ *
  * SETUP: Run against testnet with live Stellar network
  * - Requires STELLAR_PLATFORM_SECRET and STELLAR_PLATFORM_WALLET env vars
  * - Creates real accounts via Friendbot (testnet only)
  * - Submits real transactions to Stellar testnet
- * 
+ *
  * SKIP: Set SKIP_INTEGRATION_TESTS=true to skip in CI
  */
 
@@ -16,7 +16,13 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Keypair, Horizon, Operation, TransactionBuilder, BASE_FEE } from '@stellar/stellar-sdk';
+import {
+  Keypair,
+  Horizon,
+  Operation,
+  TransactionBuilder,
+  BASE_FEE,
+} from '@stellar/stellar-sdk';
 import { StellarMonitorService } from './stellar-monitor.service';
 import { StellarService } from './stellar.service';
 import { AccountMergeRecovery } from './entities/account-merge-recovery.entity';
@@ -26,7 +32,6 @@ import { AccountMergeRecovery } from './entities/account-merge-recovery.entity';
  * This test validates the complete recovery flow on testnet.
  */
 describe('Stellar Account Merge Recovery Integration', () => {
-  let service: StellarMonitorService;
   let stellarService: StellarService;
   let mergeRecoveryRepo: Repository<AccountMergeRecovery>;
   let server: Horizon.Server;
@@ -35,7 +40,6 @@ describe('Stellar Account Merge Recovery Integration', () => {
   // Test accounts (created during test)
   let originalKeypair: Keypair;
   let destinationKeypair: Keypair;
-  let platformKeypair: Keypair;
 
   beforeAll(async () => {
     if (process.env.SKIP_INTEGRATION_TESTS) {
@@ -67,7 +71,6 @@ describe('Stellar Account Merge Recovery Integration', () => {
       providers: [StellarService, StellarMonitorService, ConfigService],
     }).compile();
 
-    service = module.get<StellarMonitorService>(StellarMonitorService);
     stellarService = module.get<StellarService>(StellarService);
     mergeRecoveryRepo = module.get<Repository<AccountMergeRecovery>>(
       getRepositoryToken(AccountMergeRecovery),
@@ -75,15 +78,15 @@ describe('Stellar Account Merge Recovery Integration', () => {
     configService = module.get<ConfigService>(ConfigService);
 
     // Use testnet
-    const horizonUrl = configService.get('STELLAR_HORIZON_URL', 'https://horizon-testnet.stellar.org');
+    const horizonUrl = configService.get(
+      'STELLAR_HORIZON_URL',
+      'https://horizon-testnet.stellar.org',
+    );
     server = new Horizon.Server(horizonUrl);
 
     // Create test keypairs
     originalKeypair = Keypair.random();
     destinationKeypair = Keypair.random();
-    platformKeypair = Keypair.fromSecret(
-      configService.get('STELLAR_PLATFORM_SECRET', ''),
-    );
 
     console.log('Integration test setup complete');
   });
@@ -111,7 +114,7 @@ describe('Stellar Account Merge Recovery Integration', () => {
     try {
       // Step 1: Fund accounts via Friendbot (testnet only)
       console.log('Step 1: Funding test accounts via Friendbot...');
-      
+
       // This would use real Friendbot API in testnet
       // Mocked for this example
       expect(originalKeypair.publicKey()).toMatch(/^G[A-Z2-7]{55}$/);
@@ -119,7 +122,7 @@ describe('Stellar Account Merge Recovery Integration', () => {
 
       // Step 2: Create AccountMergeRecovery record (simulating detected merge)
       console.log('Step 2: Simulating account merge detection...');
-      
+
       const mergeRecord = mergeRecoveryRepo.create({
         originalPublicKey: originalKeypair.publicKey(),
         mergedPublicKey: destinationKeypair.publicKey(),
@@ -133,10 +136,10 @@ describe('Stellar Account Merge Recovery Integration', () => {
 
       // Step 3: Attempt recovery (create replacement account)
       console.log('Step 3: Attempting account merge recovery...');
-      
+
       // In real test, would call: await (service as any).attemptMergeRecovery(savedRecord);
       // For now, verify the recovery record exists and can be queried
-      
+
       const recordAfterAttempt = await mergeRecoveryRepo.findOne({
         where: { id: savedRecord.id },
       });
@@ -146,11 +149,13 @@ describe('Stellar Account Merge Recovery Integration', () => {
 
       // Step 4: Verify replacement account has USDC trustline
       console.log('Step 4: Verifying replacement account trustline...');
-      
+
       // In real test, replacement account would have trustline established
       // Verify via account query
       if (recordAfterAttempt?.replacementPublicKey) {
-        const account = await server.loadAccount(recordAfterAttempt.replacementPublicKey);
+        const account = await server.loadAccount(
+          recordAfterAttempt.replacementPublicKey,
+        );
         const hasUsdcTrustline = account.balances.some(
           (b: any) =>
             b.asset_code === 'USDC' &&
@@ -161,10 +166,10 @@ describe('Stellar Account Merge Recovery Integration', () => {
 
       // Step 5: Update recovery status to recovered
       console.log('Step 5: Marking recovery as complete...');
-      
+
       recordAfterAttempt!.status = 'trustline_established';
       recordAfterAttempt!.recoveredAt = new Date();
-      
+
       const finalRecord = await mergeRecoveryRepo.save(recordAfterAttempt!);
       expect(finalRecord.status).toBe('trustline_established');
       expect(finalRecord.recoveredAt).toBeDefined();
@@ -191,7 +196,7 @@ describe('Stellar Account Merge Recovery Integration', () => {
 
       // Verify releaseEscrowWithMergeRecovery properly retries
       // Mock implementation would call releaseEscrow with replacement accounts
-      
+
       const mockInvestorShares = [
         {
           walletAddress: destinationKeypair.publicKey(),
@@ -203,7 +208,7 @@ describe('Stellar Account Merge Recovery Integration', () => {
       // In real test, would call releaseEscrowWithMergeRecovery
       // For now, verify it exists and is callable
       expect(typeof stellarService.releaseEscrow).toBe('function');
-      
+
       console.log('✓ Payment distribution verified as available');
     } catch (error: any) {
       console.error('Payment distribution test error:', error.message);
@@ -254,7 +259,9 @@ describe('Stellar Account Merge Recovery Integration', () => {
       });
 
       expect(allDetected.length).toBeGreaterThanOrEqual(3);
-      console.log(`✓ Detected and tracked ${allDetected.length} account merges`);
+      console.log(
+        `✓ Detected and tracked ${allDetected.length} account merges`,
+      );
     } catch (error: any) {
       console.error('Multiple merge detection test error:', error.message);
       throw error;

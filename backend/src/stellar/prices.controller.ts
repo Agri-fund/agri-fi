@@ -1,6 +1,6 @@
 import { Controller, Get, Header, Inject } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
-import { FxRateService, SUPPORTED_CURRENCIES } from './fx-rate.service';
+import { FxRateService } from './fx-rate.service';
 
 export interface CommodityPriceDto {
   symbol: string;

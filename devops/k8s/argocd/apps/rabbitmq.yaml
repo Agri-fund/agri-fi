@@ -1,0 +1,56 @@
+# Child App — RabbitMQ (sync-wave -1)
+#
+# RabbitMQ is the message broker for all async event processing in the
+# backend (Stellar event indexing, loan lifecycle notifications, etc.).
+#
+# Wave ordering:
+#   Starts after redis (wave -2) is Healthy.
+#   Must be Healthy before backend (wave 0) begins syncing.
+#
+# Kubernetes manifests live at: devops/k8s/rabbitmq/
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: agri-fi-rabbitmq
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: agri-fi
+    app.kubernetes.io/component: rabbitmq
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    # Wave -1: after redis is healthy, before backend starts.
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  project: agri-fi
+
+  source:
+    repoURL: https://github.com/Agri-fund/agri-fi.git
+    targetRevision: main
+    path: devops/k8s/rabbitmq
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: agri-fi
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+      - CreateNamespace=true
+      - ApplyOutOfSyncOnly=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 20s
+        factor: 2
+        maxDuration: 5m
+
+  ignoreDifferences:
+    - group: apps
+      kind: StatefulSet
+      jsonPointers:
+        # Ignore HPA-managed replica count drift.
+        - /spec/replicas

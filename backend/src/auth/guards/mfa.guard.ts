@@ -39,8 +39,7 @@ export class MfaGuard implements CanActivate {
     // Non-admin roles (farmer, trader, investor) are permitted through if MFA
     // is not set up; once enabled they are subject to the same TOTP/backup-code
     // checks as admins.
-    const isAdminRole =
-      user.role === 'admin' || user.role === 'company_admin';
+    const isAdminRole = user.role === 'admin' || user.role === 'company_admin';
 
     if (!user.isMfaEnabled || !user.mfaSecret) {
       if (isAdminRole) {
@@ -94,7 +93,10 @@ export class MfaGuard implements CanActivate {
     // If TOTP fails, try backup codes
     if (!isValid && user.mfaBackupCodes?.length) {
       for (let i = 0; i < user.mfaBackupCodes.length; i++) {
-        const codeMatch = await bcrypt.compare(mfaToken.trim(), user.mfaBackupCodes[i]);
+        const codeMatch = await bcrypt.compare(
+          mfaToken.trim(),
+          user.mfaBackupCodes[i],
+        );
         if (codeMatch) {
           isValid = true;
           // Remove used backup code (single-use)

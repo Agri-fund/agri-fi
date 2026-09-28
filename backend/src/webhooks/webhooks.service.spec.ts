@@ -33,7 +33,9 @@ describe('WebhooksService', () => {
 
   beforeEach(async () => {
     repo = {
-      create: jest.fn().mockImplementation((dto) => ({ ...dto, id: 'sub-uuid-1' })),
+      create: jest
+        .fn()
+        .mockImplementation((dto) => ({ ...dto, id: 'sub-uuid-1' })),
       save: jest.fn().mockImplementation((sub) => Promise.resolve(sub)),
       find: jest.fn().mockResolvedValue([mockSubscription]),
       findOne: jest.fn().mockResolvedValue(mockSubscription),
@@ -66,7 +68,9 @@ describe('WebhooksService', () => {
     it('should generate valid HMAC-SHA256 signature matching WebhookSignatureGuard pattern', () => {
       const payload = JSON.stringify({ event: 'test' });
       const secret = 'supersecretkey123';
-      const expectedSignature = createHmac('sha256', secret).update(payload).digest('hex');
+      const expectedSignature = createHmac('sha256', secret)
+        .update(payload)
+        .digest('hex');
 
       const signature = service.generateSignature(payload, secret);
       expect(signature).toBe(expectedSignature);
@@ -78,12 +82,18 @@ describe('WebhooksService', () => {
       httpService.post.mockReturnValue(of({ status: 200, data: {} } as any));
 
       const payloadString = JSON.stringify({ event: 'deal.funding_progress' });
-      const result = await service.sendPayloadWithRetry(mockSubscription, payloadString);
+      const result = await service.sendPayloadWithRetry(
+        mockSubscription,
+        payloadString,
+      );
 
       expect(result).toBe(true);
       expect(httpService.post).toHaveBeenCalledTimes(1);
 
-      const expectedSig = service.generateSignature(payloadString, mockSubscription.secret);
+      const expectedSig = service.generateSignature(
+        payloadString,
+        mockSubscription.secret,
+      );
       expect(httpService.post).toHaveBeenCalledWith(
         mockSubscription.url,
         payloadString,
@@ -101,17 +111,27 @@ describe('WebhooksService', () => {
         .mockReturnValueOnce(of({ status: 200, data: {} } as any));
 
       const payloadString = JSON.stringify({ event: 'deal.funding_progress' });
-      const result = await service.sendPayloadWithRetry(mockSubscription, payloadString, 3);
+      const result = await service.sendPayloadWithRetry(
+        mockSubscription,
+        payloadString,
+        3,
+      );
 
       expect(result).toBe(true);
       expect(httpService.post).toHaveBeenCalledTimes(2);
     });
 
     it('should return false after max attempts fail', async () => {
-      httpService.post.mockReturnValue(throwError(() => ({ response: { status: 502 } })));
+      httpService.post.mockReturnValue(
+        throwError(() => ({ response: { status: 502 } })),
+      );
 
       const payloadString = JSON.stringify({ event: 'deal.funding_progress' });
-      const result = await service.sendPayloadWithRetry(mockSubscription, payloadString, 3);
+      const result = await service.sendPayloadWithRetry(
+        mockSubscription,
+        payloadString,
+        3,
+      );
 
       expect(result).toBe(false);
       expect(httpService.post).toHaveBeenCalledTimes(3);

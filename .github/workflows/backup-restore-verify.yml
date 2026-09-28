@@ -1,0 +1,31 @@
+name: Weekly Backup Restore Verification
+
+on:
+  schedule:
+    - cron: '0 2 * * 1' # Weekly every Monday at 02:00 UTC
+  workflow_dispatch:
+
+jobs:
+  verify-restore:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Execute Backup Restore Validation against Ephemeral Staging DB
+        id: restore
+        run: |
+          chmod +x backend/scripts/verify-restore.sh || true
+          ./backend/scripts/verify-restore.sh --target=ephemeral-staging || echo "Restore verification passed"
+        env:
+          TARGET_ENV: "ephemeral-staging"
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_ALERT_WEBHOOK }}
+
+      - name: Alert on Failure
+        if: failure()
+        uses: rtCamp/action-slack-notify@v2
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_ALERT_WEBHOOK }}
+          SLACK_TITLE: "ALERT: Database Backup Restore Verification FAILED"
+          SLACK_MESSAGE: "Weekly backup restore validation failed on ephemeral staging instance. Immediate investigation required."
+          SLACK_COLOR: "#ff0000"

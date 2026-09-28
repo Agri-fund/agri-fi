@@ -1,37 +1,106 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import {
   isPushSupported,
+  getPushPermissionStatus,
   registerPushNotifications,
+  optInToPush,
+  optOutOfPush,
+  CONCRETE_PUSH_EVENT_TYPES,
+  ConcretePushEventType,
 } from '@/lib/pushNotifications';
+
+export interface UsePushNotificationsOptions {
+  enabled?: boolean;
+  eventTypes?: (ConcretePushEventType | string)[];
+}
+
+export interface UsePushNotificationsReturn {
+  isSupported: boolean;
+  permission: NotificationPermission | 'unsupported';
+  isSubscribed: boolean;
+  optIn: (types?: string[]) => Promise<boolean>;
+  optOut: () => Promise<boolean>;
+}
 
 /**
  * usePushNotifications
  *
- * Registers the service worker and requests push notification permission once
- * per session (the browser's own permission prompt handles subsequent visits).
+ * Registers the service worker and manages push notifications for concrete event types:
+ *  - investment.confirmed
+ *  - escrow.released
+ *  - kyc.approved
  *
- * Drop this hook into any authenticated dashboard page — it is intentionally
- * side-effect-only and returns nothing.
- *
- * @param enabled Pass `false` to skip the request (e.g. while the user
- *   object is still loading). Defaults to `true`.
+ * Can be used as a side-effect-only hook:
+ *   usePushNotifications();
+ * Or with control handlers:
+ *   const { isSubscribed, optIn, optOut } = usePushNotifications();
  */
-export function usePushNotifications(enabled = true): void {
+export function usePushNotifications(
+  optionsOrEnabled: boolean | UsePushNotificationsOptions = true,
+): UsePushNotificationsReturn {
+  const options =
+    typeof optionsOrEnabled === 'boolean'
+      ? { enabled: optionsOrEnabled, eventTypes: [...CONCRETE_PUSH_EVENT_TYPES] }
+      : {
+          enabled: optionsOrEnabled.enabled ?? true,
+          eventTypes: optionsOrEnabled.eventTypes ?? [...CONCRETE_PUSH_EVENT_TYPES],
+        };
+
   const attempted = useRef(false);
+  const [permission, setPermission] = useState<NotificationPermission | 'unsupported'>('unsupported');
+  const [isSubscribed, setIsSubscribed] = useState(false);
+  const isSupported = isPushSupported();
 
   useEffect(() => {
-    if (!enabled) return;
+    setPermission(getPushPermissionStatus());
+    if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.ready.then((reg) => {
+        reg.pushManager.getSubscription().then((sub) => {
+          setIsSubscribed(sub !== null);
+        });
+      }).catch(() => {});
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!options.enabled) return;
     if (attempted.current) return;
-    if (!isPushSupported()) return;
+    if (!isSupported) return;
 
     attempted.current = true;
 
-    // Fire-and-forget — we deliberately do NOT surface errors to the UI;
-    // push notifications are an enhancement, not a critical path.
-    registerPushNotifications().catch(() => {
-      // Silently swallow failures (permission denied, network error, etc.)
+    // Fire-and-forget default registration for high-value events
+    registerPushNotifications(options.eventTypes).then((success) => {
+      setIsSubscribed(success);
+      setPermission(getPushPermissionStatus());
+    }).catch(() => {
+      // Silently swallow failures
     });
-  }, [enabled]);
+  }, [options.enabled, isSupported, options.eventTypes]);
+
+  const optIn = useCallback(async (types?: string[]) => {
+    const targetTypes = types ?? options.eventTypes;
+    const success = await optInToPush(targetTypes);
+    setIsSubscribed(success);
+    setPermission(getPushPermissionStatus());
+    return success;
+  }, [options.eventTypes]);
+
+  const optOut = useCallback(async () => {
+    const success = await optOutOfPush();
+    if (success) {
+      setIsSubscribed(false);
+    }
+    return success;
+  }, []);
+
+  return {
+    isSupported,
+    permission,
+    isSubscribed,
+    optIn,
+    optOut,
+  };
 }

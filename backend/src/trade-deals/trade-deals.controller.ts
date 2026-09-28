@@ -31,10 +31,8 @@ import { Throttle } from '@nestjs/throttler';
 import { TradeDealsService } from './trade-deals.service';
 import { TradeDeal } from './entities/trade-deal.entity';
 import { User } from '../auth/entities/user.entity';
-import { KycGuard } from '../auth/kyc.guard';
-import { RolesGuard } from '../auth/roles.guard';
+import { KycGuard, RolesGuard, OptionalJwtGuard } from '../common/guards';
 import { Roles } from '../auth/decorators/roles.decorator';
-import { OptionalJwtGuard } from '../auth/optional-jwt.guard';
 import { CreateTradeDealDto } from './dto/create-trade-deal.dto';
 import { DealCoFarmersService } from './deal-co-farmers.service';
 import { DealDeploymentService } from './deal-deployment.service';
@@ -43,10 +41,11 @@ import {
   InviteCoFarmerDto,
 } from './dto/co-farmer.dto';
 import { DealCoFarmer } from './entities/deal-co-farmer.entity';
-import { ActivityFeedService } from './activity-feed.service';
 import { ActivityFeedResponseDto } from './dto/activity-feed.dto';
 
 import { TradeDealAccessRequest, TradeDealsGuard } from './trade-deals.guard';
+
+import { EsgScoringService, EsgQuestionnaireDto } from './esg-scoring.service';
 
 interface AuthRequest extends Request {
   user: User;
@@ -59,6 +58,8 @@ export class TradeDealsController {
     private readonly tradeDealsService: TradeDealsService,
     private readonly dealCoFarmersService: DealCoFarmersService,
     private readonly dealDeploymentService: DealDeploymentService,
+    private readonly activityFeedService: ActivityFeedService,
+    private readonly esgScoringService: EsgScoringService,
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
   ) {}
 
@@ -115,7 +116,7 @@ export class TradeDealsController {
     await this.dealCoFarmersService.assertAllCoFarmersVerified(id);
 
     const deal = await this.tradeDealsService.publishDeal(id, req.user.id);
-    await this.cacheManager.stores[0].reset();
+    await (this.cacheManager.stores[0] as any).reset();
     return deal;
   }
 
@@ -137,13 +138,16 @@ export class TradeDealsController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 403, description: 'Admin role required' })
   @ApiResponse({ status: 404, description: 'Trade deal not found' })
-  @ApiResponse({ status: 422, description: 'Deal not in draft or deployment failed' })
+  @ApiResponse({
+    status: 422,
+    description: 'Deal not in draft or deployment failed',
+  })
   async approveDeal(
     @Param('id') id: string,
     @Request() req: AuthRequest,
   ): Promise<TradeDeal> {
     const deal = await this.dealDeploymentService.approveDeal(id, req.user.id);
-    await this.cacheManager.stores[0].reset();
+    await (this.cacheManager.stores[0] as any).reset();
     return deal;
   }
 
@@ -159,8 +163,14 @@ export class TradeDealsController {
       'Invite an existing farmer user as a co-farmer on a deal (lead farmer or trader)',
   })
   @ApiResponse({ status: 201, description: 'Invitation created and emailed' })
-  @ApiResponse({ status: 400, description: 'Portion exceeds 100% or invalid target' })
-  @ApiResponse({ status: 403, description: 'Not the lead farmer or assigned trader' })
+  @ApiResponse({
+    status: 400,
+    description: 'Portion exceeds 100% or invalid target',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Not the lead farmer or assigned trader',
+  })
   @ApiResponse({ status: 404, description: 'Trade deal not found' })
   async inviteCoFarmer(
     @Param('id') id: string,
@@ -174,7 +184,10 @@ export class TradeDealsController {
   @UseGuards(AuthGuard('jwt'))
   @ApiBearerAuth('jwt')
   @ApiOperation({ summary: 'List co-farmers for a trade deal' })
-  @ApiResponse({ status: 200, description: 'Co-farmer list (invitation tokens hidden)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Co-farmer list (invitation tokens hidden)',
+  })
   async listCoFarmers(@Param('id') id: string): Promise<DealCoFarmer[]> {
     const records = await this.dealCoFarmersService.listCoFarmers(id);
     // Never expose invitation tokens through the API.
@@ -197,7 +210,11 @@ export class TradeDealsController {
     @Request() req: AuthRequest,
     @Body() dto: AcceptCoFarmerInvitationDto,
   ): Promise<DealCoFarmer> {
-    return this.dealCoFarmersService.acceptInvitation(id, req.user.id, dto.token);
+    return this.dealCoFarmersService.acceptInvitation(
+      id,
+      req.user.id,
+      dto.token,
+    );
   }
 
   @Post(':id/co-farmers/decline')
@@ -216,7 +233,11 @@ export class TradeDealsController {
     @Request() req: AuthRequest,
     @Body() dto: AcceptCoFarmerInvitationDto,
   ): Promise<DealCoFarmer> {
-    return this.dealCoFarmersService.declineInvitation(id, req.user.id, dto.token);
+    return this.dealCoFarmersService.declineInvitation(
+      id,
+      req.user.id,
+      dto.token,
+    );
   }
 
   @Delete(':id/co-farmers/:farmerId')
@@ -229,8 +250,14 @@ export class TradeDealsController {
       'Remove a co-farmer from a deal before delivery (lead farmer or trader)',
   })
   @ApiResponse({ status: 204, description: 'Co-farmer removed' })
-  @ApiResponse({ status: 403, description: 'Not the lead farmer or assigned trader' })
-  @ApiResponse({ status: 404, description: 'Trade deal or co-farmer not found' })
+  @ApiResponse({
+    status: 403,
+    description: 'Not the lead farmer or assigned trader',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Trade deal or co-farmer not found',
+  })
   async removeCoFarmer(
     @Param('id') id: string,
     @Param('farmerId') farmerId: string,
@@ -253,6 +280,8 @@ export class TradeDealsController {
   @ApiQuery({ name: 'maxRoi', required: false, example: 50 })
   @ApiQuery({ name: 'duration', required: false, example: '3-6 months' })
   @ApiQuery({ name: 'riskRating', required: false, example: 'Medium' })
+  @ApiQuery({ name: 'minEsgScore', required: false, example: 70 })
+  @ApiQuery({ name: 'esgRating', required: false, example: 'AA' })
   @ApiQuery({ name: 'status', required: false, example: 'almost funded' })
   @ApiQuery({ name: 'sortBy', required: false, example: 'newest' })
   @ApiQuery({ name: 'q', required: false, example: 'cocoa cooperative' })
@@ -272,6 +301,8 @@ export class TradeDealsController {
       maxRoi: query.maxRoi ? Number(query.maxRoi) : undefined,
       duration: query.duration as any,
       riskRating: query.riskRating as any,
+      minEsgScore: query.minEsgScore ? Number(query.minEsgScore) : undefined,
+      esgRating: query.esgRating,
       status: query.status as any,
       sortBy: query.sortBy as any,
       q: query.q,
@@ -316,7 +347,7 @@ export class TradeDealsController {
     const deal = await this.tradeDealsService.cancelDeal(id, req.user.id);
     // Invalidate the marketplace listing cache so cancelled deals disappear
     // from the active-deals list immediately (#743).
-    await this.cacheManager.stores[0].reset();
+    await (this.cacheManager.stores[0] as any).reset();
     return deal;
   }
 
@@ -335,8 +366,16 @@ export class TradeDealsController {
     summary: 'Get activity feed for a trade deal (cursor-paginated)',
   })
   @ApiParam({ name: 'id', description: 'Trade deal UUID' })
-  @ApiQuery({ name: 'cursor', required: false, description: 'Opaque pagination cursor' })
-  @ApiQuery({ name: 'limit', required: false, description: 'Page size (max 50, default 20)' })
+  @ApiQuery({
+    name: 'cursor',
+    required: false,
+    description: 'Opaque pagination cursor',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    description: 'Page size (max 50, default 20)',
+  })
   @ApiResponse({ status: 200, description: 'Activity feed events' })
   @ApiResponse({ status: 404, description: 'Trade deal not found' })
   async getActivityFeed(
@@ -345,11 +384,73 @@ export class TradeDealsController {
     @Query('limit') limit?: string,
     @Request() req?: any,
   ): Promise<ActivityFeedResponseDto> {
-    const isAdmin = req?.user?.role === 'admin' || req?.user?.role === 'company_admin';
+    const isAdmin =
+      req?.user?.role === 'admin' || req?.user?.role === 'company_admin';
     return this.activityFeedService.getFeed(id, {
       cursor,
       limit: limit ? parseInt(limit, 10) : undefined,
       isAdmin,
     });
+  }
+
+  // ── ESG / Impact Scoring Endpoints (#1012) ────────────────────────────────
+
+  @Post(':id/esg-questionnaire')
+  @UseGuards(AuthGuard('jwt'), RolesGuard, KycGuard)
+  @Roles('trader', 'farmer')
+  @ApiBearerAuth('jwt')
+  @ApiOperation({
+    summary: 'Submit standardized ESG questionnaire for a trade deal',
+  })
+  @ApiParam({ name: 'id', description: 'Trade deal UUID' })
+  @ApiResponse({ status: 200, description: 'ESG questionnaire processed and queued for review' })
+  @ApiResponse({ status: 403, description: 'Not authorized for this deal' })
+  @ApiResponse({ status: 404, description: 'Trade deal not found' })
+  async submitEsgQuestionnaire(
+    @Param('id') id: string,
+    @Request() req: AuthRequest,
+    @Body() dto: EsgQuestionnaireDto,
+  ) {
+    return this.esgScoringService.submitQuestionnaire(id, req.user.id, dto);
+  }
+
+  @Get(':id/esg-score')
+  @ApiOperation({ summary: 'Get computed ESG score and sub-score breakdown' })
+  @ApiParam({ name: 'id', description: 'Trade deal UUID' })
+  @ApiResponse({ status: 200, description: 'Deal ESG score metrics' })
+  @ApiResponse({ status: 404, description: 'Trade deal not found' })
+  async getDealEsgScore(@Param('id') id: string) {
+    return this.esgScoringService.getDealEsgScore(id);
+  }
+
+  @Get('admin/esg-queue')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('admin', 'compliance_officer')
+  @ApiBearerAuth('jwt')
+  @ApiOperation({ summary: 'List deals pending ESG compliance review (Admin only)' })
+  @ApiResponse({ status: 200, description: 'Pending ESG review deals list' })
+  async getEsgReviewQueue() {
+    return this.esgScoringService.getPendingReviewDeals();
+  }
+
+  @Patch(':id/esg-review')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('admin', 'compliance_officer')
+  @ApiBearerAuth('jwt')
+  @ApiOperation({ summary: 'Approve, reject, or adjust ESG review for a deal (Admin only)' })
+  @ApiParam({ name: 'id', description: 'Trade deal UUID' })
+  @ApiResponse({ status: 200, description: 'ESG review decision applied' })
+  async reviewEsgScore(
+    @Param('id') id: string,
+    @Request() req: AuthRequest,
+    @Body() body: { approved: boolean; notes?: string; adjustedScore?: number },
+  ) {
+    return this.esgScoringService.reviewScore(
+      id,
+      req.user.id,
+      body.approved,
+      body.notes,
+      body.adjustedScore,
+    );
   }
 }

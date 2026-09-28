@@ -1,0 +1,138 @@
+name: Terraform Plan
+
+on:
+  pull_request:
+    paths:
+      - 'devops/terraform/**'
+    branches: [main, develop]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  plan-aws:
+    name: Plan (AWS)
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: devops/terraform
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '~1.8'
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.TF_AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.TF_AWS_SECRET_ACCESS_KEY }}
+          aws-region:            us-east-1
+
+      - name: Terraform Init (with remote state lock)
+        run: terraform init -input=false
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        id: plan
+        run: |
+          terraform plan \
+            -input=false \
+            -lock=true \
+            -lock-timeout=60s \
+            -out=tfplan \
+            -var="db_password=${{ secrets.TF_DB_PASSWORD }}" \
+            -var="jwt_secret=${{ secrets.TF_JWT_SECRET }}" \
+            -var="stellar_platform_secret=${{ secrets.TF_STELLAR_PLATFORM_SECRET }}" \
+            -var="vpc_id=${{ secrets.TF_VPC_ID }}" \
+            -var="db_subnet_ids=${{ secrets.TF_DB_SUBNET_IDS }}" \
+            -var="backend_subnet_cidrs=${{ secrets.TF_BACKEND_SUBNET_CIDRS }}" \
+            -var="ecs_subnet_ids=${{ secrets.TF_ECS_SUBNET_IDS }}" \
+            -var="alb_subnet_ids=${{ secrets.TF_ALB_SUBNET_IDS }}" \
+            2>&1 | tee plan.txt
+        continue-on-error: true
+
+      - name: Post plan summary to PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('devops/terraform/plan.txt', 'utf8');
+            const truncated = plan.length > 60000
+              ? plan.slice(0, 60000) + '\n\n... (truncated)'
+              : plan;
+            const status = '${{ steps.plan.outcome }}' === 'success' ? '✅' : '❌';
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              issue_number: context.issue.number,
+              body: `### ${status} Terraform Plan (AWS)\n\`\`\`hcl\n${truncated}\n\`\`\``,
+            });
+
+      - name: Fail if plan failed
+        if: steps.plan.outcome == 'failure'
+        run: exit 1
+
+  plan-gcp:
+    name: Plan (GCP)
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: devops/terraform/gcp
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '~1.8'
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.TF_GCP_CREDENTIALS }}
+
+      - name: Terraform Init (with GCS remote state)
+        run: terraform init -input=false
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        id: plan-gcp
+        run: |
+          terraform plan \
+            -input=false \
+            -lock=true \
+            -lock-timeout=60s \
+            -var="project_id=${{ secrets.TF_GCP_PROJECT_ID }}" \
+            2>&1 | tee plan.txt
+        continue-on-error: true
+
+      - name: Post GCP plan summary to PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('devops/terraform/gcp/plan.txt', 'utf8');
+            const truncated = plan.length > 60000
+              ? plan.slice(0, 60000) + '\n\n... (truncated)'
+              : plan;
+            const status = '${{ steps.plan-gcp.outcome }}' === 'success' ? '✅' : '❌';
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              issue_number: context.issue.number,
+              body: `### ${status} Terraform Plan (GCP)\n\`\`\`hcl\n${truncated}\n\`\`\``,
+            });
+
+      - name: Fail if GCP plan failed
+        if: steps.plan-gcp.outcome == 'failure'
+        run: exit 1

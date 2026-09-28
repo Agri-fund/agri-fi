@@ -15,7 +15,10 @@ import {
   GetSecretValueCommand,
 } from '@aws-sdk/client-secrets-manager';
 
-const CACHE_TTL_MS = parseInt(process.env.SECRETS_CACHE_TTL_MS ?? '3600000', 10);
+const CACHE_TTL_MS = parseInt(
+  process.env.SECRETS_CACHE_TTL_MS ?? '3600000',
+  10,
+);
 const SECRET_ARN = process.env.DB_SECRET_ARN ?? '';
 
 interface DbCredentials {
@@ -41,7 +44,9 @@ class SecretsCache {
     });
   }
 
-  private async fetchSecret(secretArn: string): Promise<Record<string, unknown>> {
+  private async fetchSecret(
+    secretArn: string,
+  ): Promise<Record<string, unknown>> {
     const response = await this.client.send(
       new GetSecretValueCommand({ SecretId: secretArn }),
     );

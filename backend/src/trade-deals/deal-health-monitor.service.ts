@@ -70,7 +70,10 @@ export class DealHealthMonitorService {
     const pct = (totalInvested / totalValue) * 100;
     const daysRemaining = this.getDaysUntilDelivery(deal);
 
-    if (pct < FUNDING_LOW_THRESHOLD && daysRemaining <= FUNDING_LOW_DAYS_REMAINING) {
+    if (
+      pct < FUNDING_LOW_THRESHOLD &&
+      daysRemaining <= FUNDING_LOW_DAYS_REMAINING
+    ) {
       await this.fireAlert(
         deal,
         'funding_below_threshold',
@@ -110,7 +113,9 @@ export class DealHealthMonitorService {
 
     const deliveryDate = new Date(deal.deliveryDate);
     const overdueThreshold = new Date();
-    overdueThreshold.setHours(overdueThreshold.getHours() - SHIPMENT_OVERDUE_HOURS);
+    overdueThreshold.setHours(
+      overdueThreshold.getHours() - SHIPMENT_OVERDUE_HOURS,
+    );
 
     if (deliveryDate < overdueThreshold) {
       const overdueHours = Math.floor(
@@ -306,13 +311,13 @@ export class DealHealthMonitorService {
         .getRawMany();
 
       for (const row of alertCounts) {
-        this.activeAlertsGauge.set({ alertType: row.type }, parseInt(row.count, 10));
+        this.activeAlertsGauge.set(
+          { alertType: row.type },
+          parseInt(row.count, 10),
+        );
       }
     } catch (error) {
-      this.logger.warn(
-        { error },
-        'Failed to refresh active alerts gauge',
-      );
+      this.logger.warn({ error }, 'Failed to refresh active alerts gauge');
     }
   }
 

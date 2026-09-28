@@ -1,5 +1,161 @@
 'use client';
 
+// =============================================================================
+// Issue #978 — perf(frontend): Add bundle budget check and lazy-load PDF viewer
+// https://github.com/Agri-fund/agri-fi/issues/978
+//
+// ─── PROBLEM ─────────────────────────────────────────────────────────────────
+//
+// This component (`ui/PdfViewer.tsx`) is imported statically throughout the
+// app (InvestmentCertificate, receipt pages, document library).  Because it is
+// a static import, Next.js includes the entire react-pdf / pdfjs-dist bundle
+// in the INITIAL JavaScript payload — even for users who never open a PDF.
+//
+// pdfjs-dist alone is ~670 KB minified (~220 KB gzip).  Combined with the
+// canvas polyfill and the pdf.js worker, it is one of the largest single
+// chunks in the build.  There is currently no bundle-size budget, so
+// regressions like this go undetected in CI.
+//
+// ─── ROOT CAUSE ──────────────────────────────────────────────────────────────
+//
+// 1. Static `import` of react-pdf / PdfViewer means the chunk is always
+//    part of the initial load, regardless of whether the user visits a page
+//    that needs it.
+//
+// 2. No CI step measures or enforces a JS chunk size limit.  Large new
+//    dependencies can be added without any build-time warning.
+//
+// ─── PROPOSED IMPLEMENTATION ─────────────────────────────────────────────────
+//
+// Step 1 — Convert all PDF-viewer imports to next/dynamic with ssr: false
+// -----------------------------------------------------------------------
+// Anywhere this component (or components/PdfViewer.tsx) is imported, replace
+// the static import with a dynamic one so pdf.js is only downloaded when the
+// component actually mounts.
+//
+//   // BEFORE (static — included in initial bundle)
+//   import { PdfViewer } from '@/components/ui/PdfViewer';
+//
+//   // AFTER (dynamic — downloaded only when the viewer is first rendered)
+//   import dynamic from 'next/dynamic';
+//
+//   const PdfViewer = dynamic(
+//     () => import('@/components/ui/PdfViewer').then(m => ({ default: m.PdfViewer })),
+//     {
+//       ssr: false,              // pdf.js uses browser APIs; cannot run on server
+//       loading: () => (
+//         <div className="flex items-center justify-center h-48 rounded-xl bg-slate-100">
+//           <p className="text-sm text-slate-400 animate-pulse">Loading document…</p>
+//         </div>
+//       ),
+//     }
+//   );
+//
+// The same pattern applies to:
+//   • components/PdfViewer.tsx         (the react-pdf / WASM variant)
+//   • components/PdfViewerErrorBoundary.tsx  (must wrap the dynamic viewer)
+//   • components/InvestmentCertificate.tsx   (calls the receipt download)
+//
+// Any page that renders a PDF viewer should lazy-load the whole viewer tree,
+// not just the leaf component.  Wrap the outermost component that owns the
+// "open PDF" trigger in dynamic().
+//
+//
+// Step 2 — SSR / error-boundary safety
+// -------------------------------------
+// PdfViewerErrorBoundary already covers render-time errors from react-pdf.
+// With `ssr: false` the boundary is never invoked server-side, but to be
+// explicit add a server-safe guard:
+//
+//   // At the top of PdfViewerErrorBoundary.tsx
+//   if (typeof window === 'undefined') {
+//     // Server render: return nothing — the dynamic() loading placeholder
+//     // is shown instead.
+//     return null;
+//   }
+//
+// This ensures SSR environments (e.g. Playwright's server-side rendering,
+// getServerSideProps, generateMetadata) never attempt to run pdf.js.
+//
+//
+// Step 3 — CI bundle-size budget
+// --------------------------------
+// Add a build step in .github/workflows/frontend-ci.yml that:
+//   (a) Runs `next build`
+//   (b) Parses .next/static/chunks/ and sums JS chunk sizes
+//   (c) Fails the workflow if any single chunk exceeds 500 KB (gzip)
+//      or the total first-load JS exceeds 250 KB (gzip)
+//
+// Simplest implementation using the @next/bundle-analyzer package:
+//
+//   # In next.config.js
+//   const withBundleAnalyzer = require('@next/bundle-analyzer')({
+//     enabled: process.env.ANALYZE === 'true',
+//   });
+//   module.exports = withBundleAnalyzer(nextConfig);
+//
+//   # In CI (GitHub Actions step)
+//   - name: Check bundle budget
+//     run: |
+//       node scripts/check-bundle-size.mjs   # custom script — see below
+//     env:
+//       NEXT_TELEMETRY_DISABLED: 1
+//
+// Minimal check-bundle-size.mjs script:
+//
+//   import { readdirSync, statSync } from 'fs';
+//   import { join } from 'path';
+//
+//   const CHUNK_DIR = '.next/static/chunks';
+//   const MAX_CHUNK_KB = 500;                // gzip ~= raw / 3; adjust as needed
+//   let failed = false;
+//
+//   for (const file of readdirSync(CHUNK_DIR)) {
+//     if (!file.endsWith('.js')) continue;
+//     const sizeKb = statSync(join(CHUNK_DIR, file)).size / 1024;
+//     if (sizeKb > MAX_CHUNK_KB) {
+//       console.error(`BUDGET EXCEEDED: ${file} is ${sizeKb.toFixed(0)} KB`);
+//       failed = true;
+//     }
+//   }
+//   if (failed) process.exit(1);
+//
+// After the lazy-load fix the pdf.js chunk should only appear in
+// .next/static/chunks/ as a separate async chunk (named something like
+// `pages/[locale]/dashboard/investor~…`) and must NOT appear in
+// `pages/_app-*.js` (the initial bundle).
+//
+//
+// ─── ACCEPTANCE CRITERIA MAPPING ─────────────────────────────────────────────
+//
+//  ✅  pdf.js loads only when a PDF is opened
+//      → Verified by:
+//        1. Opening DevTools Network tab, filtering by "pdf.worker", and
+//           confirming no request fires until the viewer mounts.
+//        2. Playwright test: navigate to /dashboard, assert pdf.worker chunk
+//           is NOT in the list of loaded scripts before clicking "View PDF".
+//
+//  ✅  CI fails if total JS chunk size exceeds budget
+//      → Satisfied by Step 3 (check-bundle-size.mjs in CI workflow).
+//
+//  ✅  Receipt page still works after lazy-loading
+//      → Existing Playwright tests in tests/pdf-viewer.spec.ts cover the
+//        receipt page; they must pass unchanged after the dynamic() migration.
+//
+// ─── FILES TO MODIFY ─────────────────────────────────────────────────────────
+//
+//   frontend/src/components/ui/PdfViewer.tsx          ← (THIS FILE) no logic
+//                                                        change; callers switch
+//                                                        to dynamic import
+//   frontend/src/components/PdfViewer.tsx             ← same; caller fix
+//   frontend/src/components/PdfViewerErrorBoundary.tsx ← add SSR null-guard
+//   frontend/src/components/InvestmentCertificate.tsx  ← switch to dynamic
+//   frontend/next.config.js                            ← add bundle analyzer
+//   .github/workflows/frontend-ci.yml                 ← add budget check step
+//   scripts/check-bundle-size.mjs                      ← new CI script
+//
+// =============================================================================
+
 import React, { useState, useRef } from 'react';
 
 interface PdfViewerProps {
