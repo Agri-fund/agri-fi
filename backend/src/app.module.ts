@@ -41,6 +41,7 @@ import { SettlementModule } from './settlement/settlement.module';
 import { SearchModule } from './search/search.module';
 import { UpgradeModule } from './upgrade/upgrade.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
+import { AccreditationModule } from './accreditation/accreditation.module';
 
 @Module({
   controllers: [AppController],
@@ -107,6 +108,7 @@ import { WebhooksModule } from './webhooks/webhooks.module';
     SearchModule,
     UpgradeModule,
     WebhooksModule,
+    AccreditationModule,
   ],
   providers: [
     {

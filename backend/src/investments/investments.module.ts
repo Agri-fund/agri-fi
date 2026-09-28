@@ -21,6 +21,7 @@ import { MarketplaceSettlementService } from './marketplace-settlement.service';
 import { MarketplaceSettlementController } from './marketplace-settlement.controller';
 import { TaxReportService } from './tax-report.service';
 import { ReceiptService } from './receipt.service';
+import { AccreditationModule } from '../accreditation/accreditation.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { ReceiptService } from './receipt.service';
     QueueModule,
     ReferralModule,
     AuthModule,
+    AccreditationModule,
   ],
   controllers: [
     InvestmentsController,

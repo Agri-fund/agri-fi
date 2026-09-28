@@ -14,6 +14,7 @@ import { Exclude } from 'class-transformer';
 import { User } from '../../auth/entities/user.entity';
 import { Document } from './document.entity';
 import { Investment } from '../../investments/entities/investment.entity';
+import type { AccreditationTier } from '../../auth/entities/user.entity';
 
 export type TradeDealStatus =
   | 'draft'
@@ -217,15 +218,6 @@ export class TradeDeal {
   })
   deliveryDate: Date;
 
-  @Column({ name: 'risk_rating', nullable: true })
-  @ApiProperty({
-    description: 'Risk rating for the listing',
-    required: false,
-    nullable: true,
-    enum: ['Low', 'Medium', 'High'],
-  })
-  riskRating: 'Low' | 'Medium' | 'High' | null;
-
   @Column({ name: 'farm_location', nullable: true })
   @ApiProperty({
     description: 'Textual farm location description',
@@ -396,4 +388,17 @@ export class TradeDeal {
 
   @Column({ name: 'settled_at', type: 'timestamptz', nullable: true })
   settledAt: Date | null;
+
+  // #902 — Minimum accreditation tier required to invest in this deal
+  @Column({
+    name: 'minimum_tier',
+    type: 'varchar',
+    default: 'retail',
+  })
+  @ApiProperty({
+    description: 'Minimum investor accreditation tier required to invest',
+    enum: ['retail', 'accredited', 'institutional'],
+    example: 'retail',
+  })
+  minimumTier: AccreditationTier;
 }
