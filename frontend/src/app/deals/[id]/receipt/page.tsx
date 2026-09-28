@@ -4,6 +4,8 @@ import './print.css';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { getDealById, Deal, getStoredToken } from '@/lib/api';
+import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
+import { useNumberFormat } from '@/hooks/useNumberFormat';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -18,10 +20,6 @@ interface PaymentDistribution {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-function fmt(n: number): string {
-  return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
 
 function shortHash(hash: string | null | undefined, len = 16): string {
   if (!hash) return '—';
@@ -61,6 +59,8 @@ const HORIZON_BASE = 'https://stellar.expert/explorer/testnet/tx';
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function ReceiptPage({ params }: { params: { id: string } }) {
+  const { formatCurrency } = useCurrencyFormat();
+  const { formatNumber } = useNumberFormat();
   const [deal, setDeal] = useState<Deal | null>(null);
   const [distributions, setDistributions] = useState<PaymentDistribution[]>([]);
   const [loading, setLoading] = useState(true);
@@ -213,7 +213,7 @@ export default function ReceiptPage({ params }: { params: { id: string } }) {
               <div className="receipt-field">
                 <span className="receipt-field-label">Quantity</span>
                 <span className="receipt-field-value">
-                  {Number(deal.quantity).toLocaleString()} {deal.quantity_unit}
+                  {formatNumber(deal.quantity)} {deal.quantity_unit}
                 </span>
               </div>
               <div className="receipt-field">
@@ -226,7 +226,7 @@ export default function ReceiptPage({ params }: { params: { id: string } }) {
               </div>
               <div className="receipt-field">
                 <span className="receipt-field-label">Total Deal Value</span>
-                <span className="receipt-field-value large">${fmt(totalValue)} USD</span>
+                <span className="receipt-field-value large">{formatCurrency(totalValue, 'USD')}</span>
               </div>
               <div className="receipt-field">
                 <span className="receipt-field-label">Status</span>
@@ -274,7 +274,7 @@ export default function ReceiptPage({ params }: { params: { id: string } }) {
                           </a>
                         ) : '—'}
                       </td>
-                      <td className="amount">${fmt(farmerPayout.amount_usd)}</td>
+                      <td className="amount">{formatCurrency(farmerPayout.amount_usd, 'USD')}</td>
                     </tr>
                   )}
 
@@ -295,7 +295,7 @@ export default function ReceiptPage({ params }: { params: { id: string } }) {
                           </a>
                         ) : '—'}
                       </td>
-                      <td className="amount">${fmt(inv.amount_usd)}</td>
+                      <td className="amount">{formatCurrency(inv.amount_usd, 'USD')}</td>
                     </tr>
                   ))}
 
@@ -316,7 +316,7 @@ export default function ReceiptPage({ params }: { params: { id: string } }) {
                           </a>
                         ) : '—'}
                       </td>
-                      <td className="amount">${fmt(platformPayout.amount_usd)}</td>
+                      <td className="amount">{formatCurrency(platformPayout.amount_usd, 'USD')}</td>
                     </tr>
                   )}
                 </tbody>
@@ -324,7 +324,7 @@ export default function ReceiptPage({ params }: { params: { id: string } }) {
                   <tr>
                     <td colSpan={3} style={{ fontWeight: 700 }}>Total Distributed</td>
                     <td className="amount">
-                      ${fmt(distributions.reduce((s, d) => s + d.amount_usd, 0))}
+                      {formatCurrency(distributions.reduce((s, d) => s + d.amount_usd, 0), 'USD')}
                     </td>
                   </tr>
                 </tfoot>

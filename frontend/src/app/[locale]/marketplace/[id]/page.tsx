@@ -8,6 +8,7 @@ import FundingProgressBar from '@/components/FundingProgressBar';
 import StatusBadge from '@/components/StatusBadge';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import InvestmentSection from '@/components/InvestmentSection';
+import DealStats from '@/components/marketplace/DealStats';
 
 // Heavy client components — loaded as separate chunks that are only fetched
 // when the browser renders this page, not included in the shared JS bundle.
@@ -74,9 +75,14 @@ export async function generateMetadata({
     const roiLabel =
       roi > 0 ? `+${roi.toFixed(1)}% target ROI` : 'Earn returns on delivery';
 
-    const title = `Invest in ${commodity} — $${totalValue.toLocaleString()} USD | AgriFi`;
+    const formattedTotalValue = new Intl.NumberFormat(params.locale, {
+      style: 'currency',
+      currency: 'USD',
+      maximumFractionDigits: 0,
+    }).format(totalValue);
+    const title = `Invest in ${commodity} — ${formattedTotalValue} USD | AgriFi`;
     const description =
-      `${Number(deal.quantity).toLocaleString()} ${deal.quantity_unit} of ${commodity}. ` +
+      `${new Intl.NumberFormat(params.locale).format(Number(deal.quantity))} ${deal.quantity_unit} of ${commodity}. ` +
       `${fundingPct}% funded · ${roiLabel}. ` +
       `Delivery by ${new Date(deal.delivery_date).toLocaleDateString('en', {
         month: 'long',
@@ -190,19 +196,14 @@ export default async function DealDetailPage({ params }: { params: { id: string;
               </div>
 
               {/* Stats grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-                {[
-                  { label: 'Quantity',     value: `${Number(deal.quantity).toLocaleString()} ${deal.quantity_unit}` },
-                  { label: 'Total Value',  value: `$${Number(deal.total_value).toLocaleString()}` },
-                  { label: 'Token Price',  value: `$${(Number(deal.total_value) / Number(deal.token_count)).toFixed(0)}` },
-                  { label: 'Delivery',     value: new Date(deal.delivery_date).toLocaleDateString('en', { month: 'short', day: 'numeric', year: 'numeric' }) },
-                ].map(s => (
-                  <div key={s.label} className="bg-slate-50 rounded-2xl p-4">
-                    <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide">{s.label}</p>
-                    <p className="font-bold text-slate-900 mt-1">{s.value}</p>
-                  </div>
-                ))}
-              </div>
+              <DealStats
+                quantity={deal.quantity}
+                quantityUnit={deal.quantity_unit}
+                totalValue={deal.total_value}
+                tokenPrice={Number(deal.total_value) / Number(deal.token_count)}
+                tokensRemaining={deal.tokens_remaining}
+                deliveryDate={deal.delivery_date}
+              />
 
               {/* ESG Impact Highlight Card (#1012) */}
               {deal.esg_score != null && (
@@ -241,13 +242,6 @@ export default async function DealDetailPage({ params }: { params: { id: string;
                 totalValue={Number(deal.total_value)}
                 totalInvested={Number(deal.total_invested)}
               />
-
-              {/* Tokens remaining */}
-              {deal.tokens_remaining > 0 && (
-                <p className="text-xs text-slate-400 mt-2">
-                  <span className="font-semibold text-slate-600">{deal.tokens_remaining.toLocaleString()}</span> tokens remaining
-                </p>
-              )}
 
               {/* Investment CTA */}
               <InvestmentSection deal={deal} />

@@ -1,5 +1,7 @@
 'use client';
 
+import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
+
 interface Props {
   label: string;
   usdValue: number;
@@ -27,11 +29,12 @@ export default function DualCurrencyStatCard({
   localValue,
   rateDisclaimer,
 }: Props) {
+  const { formatCurrency } = useCurrencyFormat();
   const showLocal = localCurrency && localValue !== undefined;
 
   const displayValue = showLocal
-    ? `${usdValue.toLocaleString()} USDC (~${localValue.toLocaleString()} ${localCurrency})`
-    : `${usdValue.toLocaleString()} USDC`;
+    ? `${formatCurrency(usdValue, 'USDC', { decimalPlaces: 2 })} (~${formatCurrency(localValue, localCurrency)})`
+    : formatCurrency(usdValue, 'USDC', { decimalPlaces: 2 });
 
   return (
     <div className="stat-card">

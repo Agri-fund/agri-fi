@@ -1,5 +1,6 @@
 import { useCurrencyFormat } from '../useCurrencyFormat';
 import { useLocale } from 'next-intl';
+import { renderHook } from '@testing-library/react';
 
 vi.mock('next-intl', () => ({
   useLocale: vi.fn(() => 'en'),
@@ -15,7 +16,8 @@ describe('useCurrencyFormat', () => {
       });
 
       it('should format fiat currencies with 2 decimal places and ISO code', () => {
-        const { formatCurrency } = useCurrencyFormat();
+        const { result } = renderHook(() => useCurrencyFormat());
+        const { formatCurrency } = result.current;
         const formatted = formatCurrency(1234.56, 'USD');
         expect(formatted).toContain('1');
         expect(formatted).toContain('234');
@@ -23,14 +25,29 @@ describe('useCurrencyFormat', () => {
       });
 
       it('should format USDC/crypto amounts with 7 decimal places', () => {
-        const { formatCurrency } = useCurrencyFormat();
+        const { result } = renderHook(() => useCurrencyFormat());
+        const { formatCurrency } = result.current;
         const formatted = formatCurrency(123.4567891, 'USDC');
         expect(formatted).toContain('123');
         expect(formatted).toContain('USDC');
       });
 
+      it.each(['KES', 'NGN', 'GHS', 'TZS'])(
+        'should format %s as a locale-aware fiat currency',
+        (currency) => {
+          const { result } = renderHook(() => useCurrencyFormat());
+          const { formatCurrency } = result.current;
+          const formatted = formatCurrency(1234.56, currency);
+
+          expect(formatted).toContain(currency);
+          expect(formatted).toContain('1');
+          expect(formatted).toContain('234');
+        },
+      );
+
       it('should support compact abbreviation mode (1.2M, 50K)', () => {
-        const { formatCurrency } = useCurrencyFormat();
+        const { result } = renderHook(() => useCurrencyFormat());
+        const { formatCurrency } = result.current;
         const formatted50k = formatCurrency(50000, 'USD', { compact: true });
         const formatted1m = formatCurrency(1200000, 'USD', { compact: true });
 
@@ -39,7 +56,8 @@ describe('useCurrencyFormat', () => {
       });
 
       it('should handle zero and invalid inputs gracefully', () => {
-        const { formatCurrency } = useCurrencyFormat();
+        const { result } = renderHook(() => useCurrencyFormat());
+        const { formatCurrency } = result.current;
         expect(formatCurrency(0, 'USD')).toContain('0');
         expect(formatCurrency('invalid', 'USD')).toContain('USD');
       });

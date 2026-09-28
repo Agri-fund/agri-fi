@@ -8,6 +8,7 @@ import MarketplaceSkeleton from "@/components/marketplace/MarketplaceSkeleton";
 import Pagination from "@/components/ui/Pagination";
 import DealCard from "@/components/marketplace/DealCard";
 import DealComparison from "@/components/marketplace/DealComparison";
+import { useCurrencyFormat } from "@/hooks/useCurrencyFormat";
 
 const LIMIT = 12;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -26,6 +27,7 @@ const SORT_OPTIONS = [
 ] as const;
 
 function MarketplaceContent() {
+  const { formatCurrency } = useCurrencyFormat();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -222,13 +224,13 @@ function MarketplaceContent() {
     if (filters.minAmount > 0)
       chips.push({
         key: "minAmount",
-        label: `Min $${filters.minAmount}`,
+        label: `Min ${formatCurrency(filters.minAmount, "USD", { decimalPlaces: 0 })}`,
         onRemove: () => setFilters((c) => ({ ...c, minAmount: 0 })),
       });
     if (filters.maxAmount < DEFAULT_FILTERS.maxAmount)
       chips.push({
         key: "maxAmount",
-        label: `Max $${filters.maxAmount}`,
+        label: `Max ${formatCurrency(filters.maxAmount, "USD", { decimalPlaces: 0 })}`,
         onRemove: () =>
           setFilters((c) => ({ ...c, maxAmount: DEFAULT_FILTERS.maxAmount })),
       });
@@ -246,7 +248,7 @@ function MarketplaceContent() {
           setFilters((c) => ({ ...c, maxRoi: DEFAULT_FILTERS.maxRoi })),
       });
     return chips;
-  }, [filters]);
+  }, [filters, formatCurrency]);
 
   const clearAll = () => {
     setSearchInput("");
@@ -526,7 +528,7 @@ function MarketplaceContent() {
                       className="w-full mt-2"
                     />
                     <p className="mt-1 text-sm text-slate-600">
-                      ${filters.minAmount.toLocaleString()}
+                      {formatCurrency(filters.minAmount, "USD", { decimalPlaces: 0 })}
                     </p>
                   </div>
                   <div>
@@ -549,7 +551,7 @@ function MarketplaceContent() {
                       className="w-full mt-2"
                     />
                     <p className="mt-1 text-sm text-slate-600">
-                      ${filters.maxAmount.toLocaleString()}
+                      {formatCurrency(filters.maxAmount, "USD", { decimalPlaces: 0 })}
                     </p>
                   </div>
                 </div>

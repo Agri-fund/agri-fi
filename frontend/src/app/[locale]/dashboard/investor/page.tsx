@@ -8,10 +8,14 @@ import dynamic from "next/dynamic";
 import { apiClient, Investment } from "../../../../lib/api";
 import { useDashboardData } from "../../../../hooks/useDashboardData";
 import { useCurrencyConversion } from "../../../../hooks/useCurrencyConversion";
+import { useCurrencyFormat } from "../../../../hooks/useCurrencyFormat";
+import { useNumberFormat } from "../../../../hooks/useNumberFormat";
 import DashboardLayout from "../../../../components/DashboardLayout";
 import StatCard from "../../../../components/StatCard";
 import DualCurrencyStatCard from "../../../../components/DualCurrencyStatCard";
 import CancelInvestmentButton from "../../../../components/CancelInvestmentButton";
+import ReferralDashboard from "../../../../components/ReferralDashboard";
+import type { ReferralAnalytics } from "../../../../components/ReferralDashboard";
 
 // Heavy chart / certificate components — loaded only when the user navigates
 // to their respective tabs, keeping the initial dashboard bundle small.
@@ -66,10 +70,14 @@ const DEAL_STATUS: Record<string, string> = {
 type Tab = "portfolio" | "certificates" | "fiat";
 
 export default function InvestorDashboard() {
+  const { formatCurrency } = useCurrencyFormat();
+  const { formatNumber } = useNumberFormat();
   const router = useRouter();
   const { data, loading, isOffline } = useDashboardData();
   const [filter, setFilter] = useState<"all" | "confirmed" | "pending">("all");
   const [tab, setTab] = useState<Tab>("portfolio");
+  const [referralData, setReferralData] = useState<ReferralAnalytics | null>(null);
+  const [referralLoading, setReferralLoading] = useState(true);
 
   const user = data?.user ?? null;
   const investments: Investment[] = data?.investments ?? [];
@@ -257,19 +265,23 @@ export default function InvestorDashboard() {
           />
           <StatCard
             label="Total Returns Paid"
-            value={`${totalReturnsPaid.toLocaleString()}`}
+            value={totalReturnsPaid}
+            isCurrency
+            currency="USD"
             icon="💵"
             color="bg-teal-50"
           />
           <StatCard
             label="Total Tokens"
-            value={totalTokens.toLocaleString()}
+            value={totalTokens}
             icon="🪙"
             color="bg-blue-50"
           />
           <StatCard
             label="Expected Returns"
-            value={`${totalExpected.toLocaleString()}`}
+            value={totalExpected}
+            isCurrency
+            currency="USD"
             icon="📈"
             color="bg-amber-50"
             trend={
@@ -438,17 +450,17 @@ export default function InvestorDashboard() {
                             {[
                               [
                                 "Invested",
-                                `${Number(inv.amount_invested).toLocaleString()}`,
+                                formatCurrency(inv.amount_invested, "USD", { decimalPlaces: 0 }),
                                 "text-violet-700",
                               ],
                               [
                                 "Tokens",
-                                Number(inv.token_holdings).toLocaleString(),
+                                formatNumber(inv.token_holdings),
                                 "",
                               ],
                               [
                                 returnLabel,
-                                `${returnVal.toLocaleString()}`,
+                                formatCurrency(returnVal, "USD", { decimalPlaces: 0 }),
                                 isCompleted
                                   ? "text-emerald-600"
                                   : "text-blue-600",
@@ -463,7 +475,7 @@ export default function InvestorDashboard() {
                                   ]
                                 : [
                                     "Deal Value",
-                                    `${Number(inv.deal.total_value).toLocaleString()}`,
+                                    formatCurrency(inv.deal.total_value, "USD", { decimalPlaces: 0 }),
                                     "",
                                   ],
                             ].map(([l, v, cls]) => (

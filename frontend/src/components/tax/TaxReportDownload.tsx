@@ -9,6 +9,7 @@ import {
   TaxReportData,
 } from '@/lib/api/tax-report';
 import { getTaxTemplate, JurisdictionCode } from '@/lib/tax/jurisdictions';
+import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
 
 const CURRENT_YEAR = new Date().getFullYear();
 const AVAILABLE_YEARS = Array.from({ length: 5 }, (_, i) => CURRENT_YEAR - i).sort(
@@ -16,6 +17,7 @@ const AVAILABLE_YEARS = Array.from({ length: 5 }, (_, i) => CURRENT_YEAR - i).so
 );
 
 export function TaxReportDownload() {
+  const { formatCurrency } = useCurrencyFormat();
   const [year, setYear] = useState(CURRENT_YEAR);
   const [jurisdiction, setJurisdiction] = useState<JurisdictionCode>('US');
   const [summary, setSummary] = useState<TaxReportSummary | null>(null);
@@ -214,7 +216,7 @@ export function TaxReportDownload() {
             <div>
               <p className="text-slate-600">Total Invested</p>
               <p className="font-bold text-slate-900">
-                {summary.currency} {summary.totalInvested.toLocaleString()}
+                {formatCurrency(summary.totalInvested, summary.currency, { decimalPlaces: 0 })}
               </p>
             </div>
             <div>
@@ -222,13 +224,13 @@ export function TaxReportDownload() {
               <p
                 className={`font-bold ${summary.totalGainLoss >= 0 ? 'text-green-600' : 'text-red-600'}`}
               >
-                {summary.currency} {summary.totalGainLoss.toLocaleString()}
+                {formatCurrency(summary.totalGainLoss, summary.currency, { decimalPlaces: 0 })}
               </p>
             </div>
             <div>
               <p className="text-slate-600">Platform Fees</p>
               <p className="font-bold text-slate-900">
-                {summary.currency} {summary.totalFees.toLocaleString()}
+                {formatCurrency(summary.totalFees, summary.currency, { decimalPlaces: 0 })}
               </p>
             </div>
             <div>
@@ -245,7 +247,7 @@ export function TaxReportDownload() {
                 <div key={cat.key} className="flex justify-between text-xs">
                   <span className="text-slate-700">{cat.label}</span>
                   <span className="font-semibold text-slate-900">
-                    {cat.percentage.toFixed(1)}% ({summary.currency} {cat.amount.toFixed(0)})
+                    {cat.percentage.toFixed(1)}% ({formatCurrency(cat.amount, summary.currency, { decimalPlaces: 0 })})
                   </span>
                 </div>
               ))}

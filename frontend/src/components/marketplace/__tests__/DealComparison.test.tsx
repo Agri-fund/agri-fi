@@ -9,22 +9,26 @@ import DealComparison, {
 } from '../DealComparison';
 import { Deal } from '@/lib/api';
 
+vi.mock('next-intl', () => ({
+  useLocale: vi.fn(() => 'en'),
+}));
+
 // Mock next/navigation
-jest.mock('next/navigation', () => ({
-  useRouter: jest.fn(),
-  useSearchParams: jest.fn(),
+vi.mock('next/navigation', () => ({
+  useRouter: vi.fn(),
+  useSearchParams: vi.fn(),
 }));
 
 // Mock clipboard API
 Object.assign(navigator, {
   clipboard: {
-    writeText: jest.fn(),
+    writeText: vi.fn(),
   },
 });
 
 // Mock blob and file operations
-global.URL.createObjectURL = jest.fn(() => 'blob:mock-url');
-global.URL.revokeObjectURL = jest.fn();
+global.URL.createObjectURL = vi.fn(() => 'blob:mock-url');
+global.URL.revokeObjectURL = vi.fn();
 
 const mockDeal1: Deal = {
   id: 'deal-1',
@@ -76,14 +80,14 @@ describe('DealComparison Component', () => {
   let mockSearchParams: any;
 
   beforeEach(() => {
-    mockRouter = { push: jest.fn() };
+    mockRouter = { push: vi.fn() };
     mockSearchParams = new URLSearchParams();
-    (useRouter as jest.Mock).mockReturnValue(mockRouter);
-    (useSearchParams as jest.Mock).mockReturnValue(mockSearchParams);
+    (useRouter as vi.Mock).mockReturnValue(mockRouter);
+    (useSearchParams as vi.Mock).mockReturnValue(mockSearchParams);
 
     localStorage.clear();
     sessionStorage.clear();
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   describe('Rendering', () => {
@@ -91,8 +95,8 @@ describe('DealComparison Component', () => {
       const { container } = render(
         <DealComparison
           deals={[]}
-          onRemove={jest.fn()}
-          onClear={jest.fn()}
+          onRemove={vi.fn()}
+          onClear={vi.fn()}
         />
       );
       expect(container.firstChild).toBeNull();
@@ -102,8 +106,8 @@ describe('DealComparison Component', () => {
       render(
         <DealComparison
           deals={[mockDeal1, mockDeal2]}
-          onRemove={jest.fn()}
-          onClear={jest.fn()}
+          onRemove={vi.fn()}
+          onClear={vi.fn()}
         />
       );
 
@@ -116,8 +120,8 @@ describe('DealComparison Component', () => {
       render(
         <DealComparison
           deals={[mockDeal1, mockDeal2]}
-          onRemove={jest.fn()}
-          onClear={jest.fn()}
+          onRemove={vi.fn()}
+          onClear={vi.fn()}
         />
       );
 
@@ -155,14 +159,14 @@ describe('DealComparison Component', () => {
 
     it('should download CSV file on export button click', async () => {
       const user = userEvent.setup();
-      const createElementSpy = jest.spyOn(document, 'createElement');
-      const clickSpy = jest.fn();
+      const createElementSpy = vi.spyOn(document, 'createElement');
+      const clickSpy = vi.fn();
 
       render(
         <DealComparison
           deals={[mockDeal1, mockDeal2]}
-          onRemove={jest.fn()}
-          onClear={jest.fn()}
+          onRemove={vi.fn()}
+          onClear={vi.fn()}
         />
       );
 
@@ -171,7 +175,7 @@ describe('DealComparison Component', () => {
       // Mock anchor click
       createElementSpy.mockImplementation((tag) => {
         if (tag === 'a') {
-          return { click: clickSpy, setAttribute: jest.fn() } as any;
+          return { click: clickSpy, setAttribute: vi.fn() } as any;
         }
         return document.createElement(tag);
       });
@@ -184,13 +188,13 @@ describe('DealComparison Component', () => {
 
     it('should include current date in CSV filename', async () => {
       const user = userEvent.setup();
-      const setAttributeSpy = jest.fn();
-      const createElementSpy = jest.spyOn(document, 'createElement');
+      const setAttributeSpy = vi.fn();
+      const createElementSpy = vi.spyOn(document, 'createElement');
 
       createElementSpy.mockImplementation((tag) => {
         if (tag === 'a') {
           return {
-            click: jest.fn(),
+            click: vi.fn(),
             setAttribute: setAttributeSpy,
           } as any;
         }
@@ -200,8 +204,8 @@ describe('DealComparison Component', () => {
       render(
         <DealComparison
           deals={[mockDeal1]}
-          onRemove={jest.fn()}
-          onClear={jest.fn()}
+          onRemove={vi.fn()}
+          onClear={vi.fn()}
         />
       );
 
@@ -227,13 +231,13 @@ describe('DealComparison Component', () => {
 
     it('should copy share link to clipboard', async () => {
       const user = userEvent.setup();
-      const writeTextMock = jest.spyOn(navigator.clipboard, 'writeText');
+      const writeTextMock = vi.spyOn(navigator.clipboard, 'writeText');
 
       render(
         <DealComparison
           deals={[mockDeal1, mockDeal2]}
-          onRemove={jest.fn()}
-          onClear={jest.fn()}
+          onRemove={vi.fn()}
+          onClear={vi.fn()}
         />
       );
 
@@ -249,13 +253,13 @@ describe('DealComparison Component', () => {
 
     it('should show "Copied" feedback after copy', async () => {
       const user = userEvent.setup();
-      jest.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined);
+      vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined);
 
       render(
         <DealComparison
           deals={[mockDeal1, mockDeal2]}
-          onRemove={jest.fn()}
-          onClear={jest.fn()}
+          onRemove={vi.fn()}
+          onClear={vi.fn()}
         />
       );
 
@@ -281,8 +285,8 @@ describe('DealComparison Component', () => {
       const { rerender } = render(
         <DealComparison
           deals={[mockDeal1, mockDeal2]}
-          onRemove={jest.fn()}
-          onClear={jest.fn()}
+          onRemove={vi.fn()}
+          onClear={vi.fn()}
         />
       );
 
@@ -298,8 +302,8 @@ describe('DealComparison Component', () => {
       render(
         <DealComparison
           deals={[]}
-          onRemove={jest.fn()}
-          onClear={jest.fn()}
+          onRemove={vi.fn()}
+          onClear={vi.fn()}
         />
       );
 
@@ -313,8 +317,8 @@ describe('DealComparison Component', () => {
       render(
         <DealComparison
           deals={[mockDeal1, mockDeal2, mockDeal3]}
-          onRemove={jest.fn()}
-          onClear={jest.fn()}
+          onRemove={vi.fn()}
+          onClear={vi.fn()}
         />
       );
 
@@ -331,13 +335,13 @@ describe('DealComparison Component', () => {
   describe('Remove and Clear', () => {
     it('should call onRemove when remove button clicked', async () => {
       const user = userEvent.setup();
-      const onRemove = jest.fn();
+      const onRemove = vi.fn();
 
       render(
         <DealComparison
           deals={[mockDeal1, mockDeal2]}
           onRemove={onRemove}
-          onClear={jest.fn()}
+          onClear={vi.fn()}
         />
       );
 
@@ -349,12 +353,12 @@ describe('DealComparison Component', () => {
 
     it('should call onClear when clear all button clicked', async () => {
       const user = userEvent.setup();
-      const onClear = jest.fn();
+      const onClear = vi.fn();
 
       render(
         <DealComparison
           deals={[mockDeal1, mockDeal2]}
-          onRemove={jest.fn()}
+          onRemove={vi.fn()}
           onClear={onClear}
         />
       );
@@ -398,8 +402,8 @@ describe('DealComparison Component', () => {
       render(
         <DealComparison
           deals={[mockDeal1]}
-          onRemove={jest.fn()}
-          onClear={jest.fn()}
+          onRemove={vi.fn()}
+          onClear={vi.fn()}
         />
       );
 
@@ -410,8 +414,8 @@ describe('DealComparison Component', () => {
       render(
         <DealComparison
           deals={[mockDeal1]}
-          onRemove={jest.fn()}
-          onClear={jest.fn()}
+          onRemove={vi.fn()}
+          onClear={vi.fn()}
         />
       );
 
@@ -422,8 +426,8 @@ describe('DealComparison Component', () => {
       render(
         <DealComparison
           deals={[mockDeal1]}
-          onRemove={jest.fn()}
-          onClear={jest.fn()}
+          onRemove={vi.fn()}
+          onClear={vi.fn()}
         />
       );
 
@@ -435,13 +439,13 @@ describe('DealComparison Component', () => {
       render(
         <DealComparison
           deals={[mockDeal1]}
-          onRemove={jest.fn()}
-          onClear={jest.fn()}
+          onRemove={vi.fn()}
+          onClear={vi.fn()}
         />
       );
 
-      expect(screen.getByText('$50,000')).toBeInTheDocument();
-      expect(screen.getByText('$25,000')).toBeInTheDocument();
+      expect(screen.getByText('$50,000 USD')).toBeInTheDocument();
+      expect(screen.getByText('$25,000 USD')).toBeInTheDocument();
     });
   });
 });

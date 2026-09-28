@@ -3,6 +3,7 @@
 import { useId } from 'react';
 import CopyButton from '@/components/ui/CopyButton';
 import { ModalWrapper } from '@/components/ui/ModalWrapper';
+import { useNumberFormat } from '@/hooks/useNumberFormat';
 
 export interface TxOperation {
   type?: string;
@@ -57,7 +58,11 @@ function timestampAttribute(value: TxReceipt['timestamp']): string | undefined {
   return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
 }
 
-function formatOperation(operation: TxOperation | string, index: number): string {
+function formatOperation(
+  operation: TxOperation | string,
+  index: number,
+  formatNumber: (value: number | string, options?: { decimalPlaces?: number }) => string,
+): string {
   if (typeof operation === 'string') return operation;
 
   const type = (operation.type ?? 'operation').replace(/_/g, ' ');
@@ -67,7 +72,7 @@ function formatOperation(operation: TxOperation | string, index: number): string
   const counterparty = destination ? ` to ${shortHash(destination)}` : '';
 
   if (amount !== undefined && (operation.type === 'payment' || operation.type === 'path_payment_strict_send' || operation.type === 'path_payment_strict_receive')) {
-    return `${capitalize(type)} ${amount} ${asset}${counterparty}`;
+    return `${capitalize(type)} ${formatNumber(amount, { decimalPlaces: 7 })} ${asset}${counterparty}`;
   }
 
   return `${index + 1}. ${capitalize(type)}${counterparty}`;
@@ -97,6 +102,7 @@ export default function TxReceiptModal({
   explorerBaseUrl = DEFAULT_EXPLORER,
 }: TxReceiptModalProps) {
   const titleId = useId();
+  const { formatNumber } = useNumberFormat();
   const operations = transaction.operations ?? [];
   const timestamp = transaction.createdAt ?? transaction.timestamp;
   const fee = transaction.feeCharged ?? transaction.fee;
@@ -152,7 +158,7 @@ export default function TxReceiptModal({
                 {formatTimestamp(timestamp)}
               </time>
             </DetailRow>
-            <DetailRow label="Fee">{fee !== undefined ? `${fee} stroops` : 'Unavailable'}</DetailRow>
+            <DetailRow label="Fee">{fee !== undefined ? `${formatNumber(fee, { decimalPlaces: 0 })} stroops` : 'Unavailable'}</DetailRow>
             <DetailRow label="Ledger">{transaction.ledger ?? 'Unavailable'}</DetailRow>
             <DetailRow label="Memo">
               <span className="break-all">{transaction.memo || 'None'}</span>
@@ -165,7 +171,7 @@ export default function TxReceiptModal({
               <ol className="space-y-2">
                 {operations.map((operation, index) => (
                   <li key={`${index}-${typeof operation === 'string' ? operation : operation.type ?? 'operation'}`} className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                    {formatOperation(operation, index)}
+                    {formatOperation(operation, index, formatNumber)}
                   </li>
                 ))}
               </ol>

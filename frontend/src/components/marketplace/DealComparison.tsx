@@ -2,6 +2,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Deal } from "@/lib/api";
+import { useCurrencyFormat } from "@/hooks/useCurrencyFormat";
 
 const COMPARISON_STORAGE_KEY = "agri-fi:deal-comparison";
 const COMPARISON_URL_PARAM = "compare";
@@ -25,24 +26,29 @@ function formatProgress(deal: Deal): string {
   return `${progress.toFixed(1)}%`;
 }
 
-function formatCurrency(value: number | string | undefined): string {
+function formatCsvCurrency(value: number | string | undefined): string {
   if (value === undefined || value === null) return "N/A";
   const num = typeof value === "string" ? Number(value) : value;
   return `$${num.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 }
 
+type CurrencyFormatter = (value: number | string, currency?: string, options?: { decimalPlaces?: number }) => string;
+
 /**
  * Generates CSV content from comparison table
  */
-function generateComparisonCSV(deals: Deal[]): string {
+function generateComparisonCSV(
+  deals: Deal[],
+  formatCurrency: CurrencyFormatter = (value) => formatCsvCurrency(value),
+): string {
   const rows = [
     ["Expected ROI", (deal: Deal) => formatRoi(deal.expected_roi)],
     ["Duration", (deal: Deal) => formatDuration(deal.duration_days)],
     ["Funding progress", (deal: Deal) => formatProgress(deal)],
     ["Risk rating", (deal: Deal) => deal.risk_rating ?? "Not specified"],
     ["Commodity", (deal: Deal) => deal.commodity],
-    ["Total Value", (deal: Deal) => formatCurrency(deal.total_value)],
-    ["Total Invested", (deal: Deal) => formatCurrency(deal.total_invested)],
+    ["Total Value", (deal: Deal) => formatCurrency(deal.total_value, "USD", { decimalPlaces: 0 })],
+    ["Total Invested", (deal: Deal) => formatCurrency(deal.total_invested, "USD", { decimalPlaces: 0 })],
   ] as const;
 
   const headers = ["Metric", ...deals.map((d) => d.commodity)];
@@ -94,8 +100,19 @@ export default function DealComparison({
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { formatCurrency } = useCurrencyFormat();
   const [shareUrl, setShareUrl] = useState("");
   const [copied, setCopied] = useState(false);
+
+  const comparisonRows = [
+    ["Expected ROI", (deal: Deal) => formatRoi(deal.expected_roi)],
+    ["Duration", (deal: Deal) => formatDuration(deal.duration_days)],
+    ["Funding progress", (deal: Deal) => formatProgress(deal)],
+    ["Risk rating", (deal: Deal) => deal.risk_rating ?? "Not specified"],
+    ["Commodity", (deal: Deal) => deal.commodity],
+    ["Total Value", (deal: Deal) => formatCurrency(deal.total_value, "USD", { decimalPlaces: 0 })],
+    ["Total Invested", (deal: Deal) => formatCurrency(deal.total_invested, "USD", { decimalPlaces: 0 })],
+  ] as const;
 
   // Persist comparison to localStorage
   useEffect(() => {
@@ -131,7 +148,7 @@ export default function DealComparison({
   }, [deals]);
 
   const handleExportCSV = () => {
-    const csv = generateComparisonCSV(deals);
+    const csv = generateComparisonCSV(deals, formatCurrency);
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
@@ -153,16 +170,6 @@ export default function DealComparison({
   };
 
   if (deals.length === 0) return null;
-
-  const rows = [
-    ["Expected ROI", (deal: Deal) => formatRoi(deal.expected_roi)],
-    ["Duration", (deal: Deal) => formatDuration(deal.duration_days)],
-    ["Funding progress", (deal: Deal) => formatProgress(deal)],
-    ["Risk rating", (deal: Deal) => deal.risk_rating ?? "Not specified"],
-    ["Commodity", (deal: Deal) => deal.commodity],
-    ["Total Value", (deal: Deal) => formatCurrency(deal.total_value)],
-    ["Total Invested", (deal: Deal) => formatCurrency(deal.total_invested)],
-  ] as const;
 
   return (
     <section
@@ -230,7 +237,7 @@ export default function DealComparison({
             </tr>
           </thead>
           <tbody>
-            {rows.map(([label, value]) => (
+            {comparisonRows.map(([label, value]) => (
               <tr key={label} className="border-t border-slate-100">
                 <th className="py-2 font-medium text-slate-500">{label}</th>
                 {deals.map((deal) => (

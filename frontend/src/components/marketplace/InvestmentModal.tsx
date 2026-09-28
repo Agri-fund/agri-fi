@@ -4,6 +4,7 @@ import { useId, useState } from 'react';
 import { Deal } from '@/lib/api';
 import { InvestmentForm } from '../InvestmentForm';
 import { ModalWrapper } from '../ui/ModalWrapper';
+import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
 
 interface InvestmentModalProps {
   deal: Deal;
@@ -11,6 +12,7 @@ interface InvestmentModalProps {
 }
 
 export function InvestmentModal({ deal, onClose }: InvestmentModalProps) {
+  const { formatCurrency } = useCurrencyFormat();
   const [tokenQuantity, setTokenQuantity] = useState<number>(1);
   // While a transaction is in flight, Escape / backdrop clicks must not
   // unmount the form mid-signature.
@@ -64,10 +66,10 @@ export function InvestmentModal({ deal, onClose }: InvestmentModalProps) {
               <div className="pt-6 border-t border-emerald-500/50">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-100">Estimated Payout</p>
                 <p className="text-4xl font-black text-yellow-300">
-                  ${netReturn.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  {formatCurrency(netReturn, 'USD')}
                 </p>
                 <p className="text-[10px] text-emerald-100 mt-1 italic">
-                  Net of platform fees (${platformFee.toFixed(2)})
+                  Net of platform fees ({formatCurrency(platformFee, 'USD')})
                 </p>
               </div>
             </div>
@@ -77,7 +79,7 @@ export function InvestmentModal({ deal, onClose }: InvestmentModalProps) {
             <p className="font-semibold text-emerald-50">Token Economics</p>
             <div className="flex justify-between mt-2">
               <span className="text-emerald-100">Profit:</span>
-              <span className="font-bold text-emerald-50">+${profit.toFixed(2)}</span>
+              <span className="font-bold text-emerald-50">+{formatCurrency(profit, 'USD')}</span>
             </div>
             <div className="flex justify-between mt-1">
               <span className="text-emerald-100">Maturity:</span>

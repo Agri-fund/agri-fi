@@ -11,6 +11,8 @@
 import { useEffect, useState } from 'react';
 import { getStoredToken } from '../lib/api';
 import { getInvestorOwnership, CampaignState, getCampaignState } from '../lib/soroban';
+import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
+import { useNumberFormat } from '@/hooks/useNumberFormat';
 
 interface CertificateProps {
   investmentId: string;
@@ -35,6 +37,8 @@ export function InvestmentCertificate({
   investorAddress,
   createdAt,
 }: CertificateProps) {
+  const { formatCurrency } = useCurrencyFormat();
+  const { formatNumber } = useNumberFormat();
   const [ownershipPct, setOwnershipPct] = useState<string | null>(null);
   const [campaignState, setCampaignState] = useState<CampaignState | null>(null);
   const [receiptLoading, setReceiptLoading] = useState(false);
@@ -116,14 +120,13 @@ export function InvestmentCertificate({
           <p className="text-green-300 text-xs uppercase tracking-wide mb-1">
             Investment Amount
           </p>
-          <p className="text-2xl font-bold">${amountUsd.toLocaleString()}</p>
-          <p className="text-green-300 text-xs">USDC</p>
+          <p className="text-2xl font-bold">{formatCurrency(amountUsd, 'USDC', { decimalPlaces: 2 })}</p>
         </div>
         <div className="bg-white/10 rounded-xl p-4">
           <p className="text-green-300 text-xs uppercase tracking-wide mb-1">
             Tokens Owned
           </p>
-          <p className="text-2xl font-bold">{tokenAmount.toLocaleString()}</p>
+          <p className="text-2xl font-bold">{formatNumber(tokenAmount)}</p>
           <p className="text-green-300 text-xs">Project tokens</p>
         </div>
         <div className="bg-white/10 rounded-xl p-4">

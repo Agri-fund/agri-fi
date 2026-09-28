@@ -103,4 +103,12 @@ describe('InvestmentModal accessibility', () => {
     expect(announcer).toHaveAttribute('role', 'status');
     expect(announcer).toHaveAttribute('aria-live', 'polite');
   });
+
+  it('formats estimated payout and fees as locale-aware USD', () => {
+    mockUseWallet.mockReturnValue(walletState({ isConnected: true, publicKey: 'GABC' }));
+    renderModal();
+
+    expect(screen.getByText(/102\.20 USD/)).toBeInTheDocument();
+    expect(screen.getByText(/1\.50 USD/)).toBeInTheDocument();
+  });
 });

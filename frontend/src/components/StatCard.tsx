@@ -28,7 +28,7 @@ export default function StatCard({
   const { formatCurrency } = useCurrencyFormat();
 
   let formattedValue: string;
-  if (typeof value === 'number') {
+  if (typeof value === 'number' || isCurrency) {
     formattedValue = isCurrency
       ? formatCurrency(value, currency, { compact })
       : formatNumber(value, { compact });
