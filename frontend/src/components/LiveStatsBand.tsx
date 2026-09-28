@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import { useCurrencyFormat } from "@/hooks/useCurrencyFormat";
 
 export interface PlatformLiveStats {
   totalFunded: number;
@@ -26,17 +27,28 @@ const DEFAULT_STATS: PlatformLiveStats = {
 };
 
 /* ── Reduced motion and animated counter hook ────────────────────────────── */
-function useLiveCounter(target: string, prefersReducedMotion: boolean, duration = 1400) {
+function useLiveCounter(
+  target: string,
+  prefersReducedMotion: boolean,
+  formatCurrency: (value: number) => string,
+  currencyValue?: number,
+  duration = 1400,
+) {
   const [display, setDisplay] = useState(target);
 
   useEffect(() => {
+    const suffix = currencyValue === undefined ? "" : target.endsWith("+") ? "+" : "";
+    const formatValue = (value: number) =>
+      currencyValue === undefined
+        ? `${(value < 1000 ? value.toFixed(value < 10 ? 1 : 0) : Math.round(value).toLocaleString())}${target.replace(/[0-9.,]/g, "")}`
+        : `${formatCurrency(value)}${suffix}`;
+
     if (prefersReducedMotion) {
-      setDisplay(target);
+      setDisplay(currencyValue === undefined ? target : formatValue(currencyValue));
       return;
     }
 
-    const num = parseFloat(target.replace(/[^0-9.]/g, ""));
-    const suffix = target.replace(/[0-9.,]/g, "");
+    const num = currencyValue ?? parseFloat(target.replace(/[^0-9.]/g, ""));
     if (isNaN(num)) {
       setDisplay(target);
       return;
@@ -46,16 +58,12 @@ function useLiveCounter(target: string, prefersReducedMotion: boolean, duration 
     const step = num / (duration / 16);
     const timer = setInterval(() => {
       start = Math.min(start + step, num);
-      setDisplay(
-        (start < 1000
-          ? start.toFixed(start < 10 ? 1 : 0)
-          : Math.round(start).toLocaleString()) + suffix,
-      );
+      setDisplay(formatValue(start));
       if (start >= num) clearInterval(timer);
     }, 16);
 
     return () => clearInterval(timer);
-  }, [target, duration, prefersReducedMotion]);
+  }, [target, duration, prefersReducedMotion, formatCurrency, currencyValue]);
 
   return display;
 }
@@ -66,14 +74,22 @@ function StatCard({
   icon,
   detail,
   prefersReducedMotion,
+  currencyValue,
 }: {
   value: string;
   label: string;
   icon: string;
   detail: string;
   prefersReducedMotion: boolean;
+  currencyValue?: number;
 }) {
-  const display = useLiveCounter(value, prefersReducedMotion);
+  const { formatCurrency: formatLocalizedCurrency } = useCurrencyFormat();
+  const formatCurrency = useCallback(
+    (amount: number) =>
+      formatLocalizedCurrency(amount, "USD", { compact: true, decimalPlaces: 1 }),
+    [formatLocalizedCurrency],
+  );
+  const display = useLiveCounter(value, prefersReducedMotion, formatCurrency, currencyValue);
 
   return (
     <div className="relative group p-5 rounded-2xl bg-white/70 hover:bg-white border border-slate-200/80 hover:border-brand-300 shadow-sm hover:shadow-md transition-all duration-300 backdrop-blur-sm text-center">
@@ -155,6 +171,7 @@ export function LiveStatsBand() {
   const items = [
     {
       value: stats.totalFundedFormatted,
+      currencyValue: stats.totalFunded,
       label: "Total Funded",
       icon: "💰",
       detail: "Escrowed & disbursed on Stellar",

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { getOpenDeals, getStoredToken } from '@/lib/api';
 import { useToast } from '@/components/ui/ToastProvider';
 import { useTranslations } from 'next-intl';
+import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
 
 interface CoFarmerRow {
   email: string;
@@ -140,14 +141,6 @@ function loadImage(file: File): Promise<PhotoItem> {
   });
 }
 
-function money(value: number): string {
-  return new Intl.NumberFormat(undefined, {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 0,
-  }).format(Number.isFinite(value) ? value : 0);
-}
-
 function asNumber(raw: string): number {
   const parsed = Number(raw);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -156,6 +149,7 @@ function asNumber(raw: string): number {
 export function CreateDealForm({ onSuccess, onCancel }: CreateDealFormProps) {
   const t = useTranslations('deals');
   const tc = useTranslations('common');
+  const { formatCurrency } = useCurrencyFormat();
   const { toast, promise } = useToast();
 
   const [step, setStep] = useState<Step>(0);
@@ -717,8 +711,8 @@ export function CreateDealForm({ onSuccess, onCancel }: CreateDealFormProps) {
                   </div>
                   <p className="mt-3 text-sm text-slate-600">{draft.short_description || t('preview.placeholderSummary')}</p>
                   <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                    <Metric label={t('fields.totalValue')} value={money(draft.total_value)} />
-                    <Metric label={t('fields.minInvestment')} value={money(draft.min_investment_lot)} />
+                    <Metric label={t('fields.totalValue')} value={formatCurrency(draft.total_value, 'USD', { decimalPlaces: 0 })} />
+                    <Metric label={t('fields.minInvestment')} value={formatCurrency(draft.min_investment_lot, 'USD', { decimalPlaces: 0 })} />
                     <Metric label={t('fields.expectedRoi')} value={`${draft.expected_roi}%`} />
                     <Metric label={t('fields.duration')} value={`${draft.duration_days} days`} />
                   </div>

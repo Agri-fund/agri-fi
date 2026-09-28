@@ -6,6 +6,8 @@ import { getDealById, Deal, Document as DealDocument } from '@/lib/api';
 import { TradeAcronym } from '@/components/ui/Tooltip';
 import StatusBadge from '@/components/StatusBadge';
 import { InvestmentModal } from './InvestmentModal';
+import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
+import { useNumberFormat } from '@/hooks/useNumberFormat';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -14,15 +16,6 @@ interface DealDetailsProps {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-function formatCurrency(value: number | string): string {
-  return Number(value).toLocaleString('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  });
-}
 
 function formatDate(dateString: string): string {
   return new Date(dateString).toLocaleDateString('en-US', {
@@ -110,6 +103,8 @@ function DealDetailsSkeleton() {
  * tooltips so retail investors can hover/focus to read plain-language definitions.
  */
 export default function DealDetails({ dealId }: DealDetailsProps) {
+  const { formatCurrency } = useCurrencyFormat();
+  const { formatNumber } = useNumberFormat();
   const [deal, setDeal] = useState<Deal | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -155,6 +150,7 @@ export default function DealDetails({ dealId }: DealDetailsProps) {
   const pct = fundingPercent(deal);
   const tokensLeft = Math.max(0, Number(deal.token_count) - Math.floor(Number(deal.total_invested) / 100));
   const canInvest = deal.status === 'open' && tokensLeft > 0;
+  const tokenPrice = formatCurrency(100, 'USD', { decimalPlaces: 0 });
 
   return (
     <>
@@ -189,9 +185,9 @@ export default function DealDetails({ dealId }: DealDetailsProps) {
             <InfoRow label="Commodity" value={<span className="capitalize">{deal.commodity}</span>} />
             <InfoRow
               label="Quantity"
-              value={`${Number(deal.quantity).toLocaleString()} ${deal.quantity_unit}`}
+              value={`${formatNumber(deal.quantity)} ${deal.quantity_unit}`}
             />
-            <InfoRow label="Total Value" value={formatCurrency(deal.total_value)} />
+            <InfoRow label="Total Value" value={formatCurrency(deal.total_value, 'USD', { decimalPlaces: 0 })} />
             <InfoRow label="Delivery Date" value={formatDate(deal.delivery_date)} />
             {deal.annual_roi != null && (
               <InfoRow
@@ -290,7 +286,7 @@ export default function DealDetails({ dealId }: DealDetailsProps) {
             {/* Progress bar */}
             <div>
               <div className="flex flex-wrap justify-between gap-2 text-xs font-medium text-muted-foreground mb-1.5">
-                <span>{formatCurrency(deal.total_invested)} raised</span>
+                <span>{formatCurrency(deal.total_invested, 'USD', { decimalPlaces: 0 })} raised</span>
                 <span>{pct}%</span>
               </div>
               <div
@@ -307,7 +303,7 @@ export default function DealDetails({ dealId }: DealDetailsProps) {
                 />
               </div>
               <p className="text-xs text-muted-foreground mt-1.5">
-                of {formatCurrency(deal.total_value)} goal
+                of {formatCurrency(deal.total_value, 'USD', { decimalPlaces: 0 })} goal
               </p>
             </div>
 
@@ -315,7 +311,7 @@ export default function DealDetails({ dealId }: DealDetailsProps) {
             <div className="grid grid-cols-2 gap-3">
               <div className="rounded-xl bg-canvas border border-border p-3 text-center">
                 <p className="text-xl font-black text-foreground tabular-nums">
-                  {tokensLeft.toLocaleString()}
+                  {formatNumber(tokensLeft)}
                 </p>
                 <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wide mt-0.5">
                   Tokens left
@@ -323,7 +319,7 @@ export default function DealDetails({ dealId }: DealDetailsProps) {
               </div>
               <div className="rounded-xl bg-canvas border border-border p-3 text-center">
                 <p className="text-xl font-black text-foreground tabular-nums">
-                  $100
+                  {tokenPrice}
                 </p>
                 <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wide mt-0.5">
                   Per token
@@ -343,7 +339,7 @@ export default function DealDetails({ dealId }: DealDetailsProps) {
 
             {canInvest && (
               <p className="text-xs text-muted-foreground text-center">
-                Minimum investment: 1 token ($100)
+                Minimum investment: 1 token ({tokenPrice})
               </p>
             )}
           </div>

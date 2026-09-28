@@ -9,6 +9,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
 
 interface DealSummary {
   id: string;
@@ -28,6 +29,7 @@ const STELLAR_EXPERT_BASE =
     : 'https://stellar.expert/explorer/testnet';
 
 export default function TransparencyPage() {
+  const { formatCurrency } = useCurrencyFormat();
   const [deals, setDeals] = useState<DealSummary[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -116,8 +118,8 @@ export default function TransparencyPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-gray-600">
-                      ${Number(deal.totalInvested).toLocaleString()} /{' '}
-                      ${Number(deal.totalValue).toLocaleString()}
+                      {formatCurrency(deal.totalInvested, 'USD', { decimalPlaces: 0 })} /{' '}
+                      {formatCurrency(deal.totalValue, 'USD', { decimalPlaces: 0 })}
                     </td>
                     <td className="px-4 py-3">
                       {deal.sorobanCampaignContractId ? (

@@ -2,6 +2,7 @@
 
 import React, { useState, useCallback } from 'react';
 import { Investment } from '@/lib/api';
+import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -33,15 +34,6 @@ interface TransactionTableProps {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-function formatCurrency(value: number): string {
-  return value.toLocaleString('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-}
 
 function formatDate(dateStr: string): { full: string; short: string } {
   const d = new Date(dateStr);
@@ -143,7 +135,13 @@ function SkeletonRow() {
 
 // ── Mobile card view ──────────────────────────────────────────────────────────
 
-function MobileCard({ tx }: { tx: Transaction }) {
+function MobileCard({
+  tx,
+  formatCurrency,
+}: {
+  tx: Transaction;
+  formatCurrency: (value: number, currency: string, options?: { decimalPlaces?: number }) => string;
+}) {
   const date = formatDate(tx.date);
   const isCredit = tx.type === 'return' || tx.type === 'escrow_release';
 
@@ -170,14 +168,14 @@ function MobileCard({ tx }: { tx: Transaction }) {
           {TYPE_LABELS[tx.type]}
         </span>
         <span className={`text-base font-bold tabular-nums ${isCredit ? 'text-emerald-600' : 'text-foreground'}`}>
-          {isCredit ? '+' : '-'}{formatCurrency(tx.amount_usd)}
+          {isCredit ? '+' : '-'}{formatCurrency(tx.amount_usd, 'USD')}
         </span>
       </div>
 
       {/* Token info */}
       {tx.token_amount != null && (
         <div className="text-xs text-muted-foreground">
-          {tx.token_amount} {tx.token_symbol ?? 'tokens'} @ $100 each
+          {tx.token_amount} {tx.token_symbol ?? 'tokens'} @ {formatCurrency(100, 'USDC', { decimalPlaces: 0 })} each
         </div>
       )}
 
@@ -213,6 +211,9 @@ export default function TransactionTable({
   pageSize = 10,
   caption = 'Transaction History',
 }: TransactionTableProps) {
+  const { formatCurrency: formatCurrencyWithLocale } = useCurrencyFormat();
+  const formatCurrency = (value: number, currency: string, options?: { decimalPlaces?: number }) =>
+    formatCurrencyWithLocale(value, currency, options);
   const [page, setPage] = useState(1);
 
   const totalPages = Math.max(1, Math.ceil(transactions.length / pageSize));
@@ -285,7 +286,7 @@ export default function TransactionTable({
       {/* ── Mobile: card list (hidden on md+) ──────────────────────────────── */}
       <div className="space-y-3 md:hidden" aria-label={caption}>
         {paginatedRows.map((tx) => (
-          <MobileCard key={tx.id} tx={tx} />
+          <MobileCard key={tx.id} tx={tx} formatCurrency={formatCurrency} />
         ))}
       </div>
 
@@ -336,7 +337,7 @@ export default function TransactionTable({
                     </span>
                     {tx.token_amount != null && (
                       <span className="block text-xs text-muted-foreground">
-                        {tx.token_amount} {tx.token_symbol ?? 'tokens'}
+                        {tx.token_amount} {tx.token_symbol ?? 'tokens'} @ {formatCurrency(100, 'USDC', { decimalPlaces: 0 })} each
                       </span>
                     )}
                   </td>
@@ -344,7 +345,7 @@ export default function TransactionTable({
                   {/* Amount */}
                   <td className="table-td text-right whitespace-nowrap">
                     <span className={`text-sm font-bold tabular-nums ${isCredit ? 'text-emerald-600' : 'text-foreground'}`}>
-                      {isCredit ? '+' : '-'}{formatCurrency(tx.amount_usd)}
+                      {isCredit ? '+' : '-'}{formatCurrency(tx.amount_usd, 'USD')}
                     </span>
                   </td>
 

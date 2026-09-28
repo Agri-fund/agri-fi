@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { apiClient, CreditScoreDisclosure } from '@/lib/api';
+import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
 
 const TIER_COLORS: Record<string, { bg: string; text: string; border: string }> = {
   Excellent: { bg: 'bg-emerald-50 text-emerald-700', text: 'text-emerald-600', border: 'border-emerald-200' },
@@ -11,6 +12,7 @@ const TIER_COLORS: Record<string, { bg: string; text: string; border: string }> 
 };
 
 export default function FarmerCreditScoreWidget() {
+  const { formatCurrency } = useCurrencyFormat();
   const [data, setData] = useState<CreditScoreDisclosure | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -72,7 +74,7 @@ export default function FarmerCreditScoreWidget() {
             <span className="text-xs font-medium text-slate-400">/ 850</span>
           </div>
           <p className="text-[10px] text-slate-400 mt-0.5">
-            Max Deal Limit: <span className="font-bold text-slate-700">${data.maxDealSizeUsdc.toLocaleString()}</span>
+            Max Deal Limit: <span className="font-bold text-slate-700">{formatCurrency(data.maxDealSizeUsdc, 'USDC', { decimalPlaces: 0 })}</span>
           </p>
         </div>
       </div>

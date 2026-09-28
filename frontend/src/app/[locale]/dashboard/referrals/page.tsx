@@ -4,6 +4,7 @@ import { getAuthToken } from '@/lib/auth-token';
 import { useEffect, useState } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import { apiClient, User } from '@/lib/api';
+import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
 
 interface Referral {
   id: string;
@@ -24,6 +25,7 @@ interface ReferralStats {
 }
 
 export default function ReferralsPage() {
+  const { formatCurrency } = useCurrencyFormat();
   const [user, setUser] = useState<User | null>(null);
   const [stats, setStats] = useState<ReferralStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -120,7 +122,7 @@ export default function ReferralsPage() {
             { label: 'Link Clicks', value: stats?.totalClicks ?? 0, color: 'bg-slate-100' },
             { label: 'Registered', value: stats?.totalRegistered ?? 0, color: 'bg-blue-50' },
             { label: 'Rewarded', value: stats?.totalRewarded ?? 0, color: 'bg-emerald-50' },
-            { label: 'Total Earned', value: `$${(stats?.totalRewardAmount ?? 0).toFixed(2)}`, color: 'bg-violet-50' },
+            { label: 'Total Earned', value: formatCurrency(stats?.totalRewardAmount ?? 0, 'USD'), color: 'bg-violet-50' },
           ].map((card) => (
             <div key={card.label} className={`p-4 rounded-xl ${card.color}`}>
               <p className="text-xs font-semibold text-slate-500 uppercase">{card.label}</p>
@@ -203,7 +205,7 @@ export default function ReferralsPage() {
                         </span>
                       </td>
                       <td className="px-5 py-3 text-slate-700">
-                        {ref.status === 'rewarded' ? `$${Number(ref.rewardAmount).toFixed(2)}` : '—'}
+                        {ref.status === 'rewarded' ? formatCurrency(ref.rewardAmount, 'USD') : '—'}
                       </td>
                       <td className="px-5 py-3 text-slate-500">
                         {new Date(ref.createdAt).toLocaleDateString()}

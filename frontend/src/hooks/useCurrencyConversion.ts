@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
 
 interface ExchangeRates {
   KES: number;
@@ -19,6 +20,7 @@ interface DualCurrencyDisplay {
  * Hook to fetch exchange rates and convert USD to local currency
  */
 export function useCurrencyConversion(preferredCurrency?: string) {
+  const { formatCurrency } = useCurrencyFormat();
   const [rates, setRates] = useState<ExchangeRates | null>(null);
   const [loading, setLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
@@ -60,7 +62,7 @@ export function useCurrencyConversion(preferredCurrency?: string) {
     if (!rate) return null;
 
     const localAmount = Number((usdAmount * rate).toFixed(2));
-    const formatted = `${usdAmount} USDC (~${localAmount.toLocaleString()} ${preferredCurrency})`;
+    const formatted = `${formatCurrency(usdAmount, 'USDC')} (~${formatCurrency(localAmount, preferredCurrency)})`;
 
     const dateObj = lastUpdated ? new Date(lastUpdated) : new Date();
     const timeStr = dateObj.toLocaleString('en-US', {

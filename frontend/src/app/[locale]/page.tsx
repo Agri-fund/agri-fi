@@ -5,28 +5,34 @@ import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { LiveStatsBand } from "@/components/LiveStatsBand";
+import { useCurrencyFormat } from "@/hooks/useCurrencyFormat";
 
 /* ── Animated counter ─────────────────────────────────────────────────────── */
-function useCounter(target: string, duration = 1800) {
+function useCounter(target: string, duration = 1800, currencyValue?: number) {
+  const { formatCurrency } = useCurrencyFormat();
   const [display, setDisplay] = useState("0");
   useEffect(() => {
-    const num = parseFloat(target.replace(/[^0-9.]/g, ""));
+    const num = currencyValue ?? parseFloat(target.replace(/[^0-9.]/g, ""));
     const suffix = target.replace(/[0-9.,]/g, "");
     if (isNaN(num)) { setDisplay(target); return; }
     let start = 0;
     const step = num / (duration / 16);
     const timer = setInterval(() => {
       start = Math.min(start + step, num);
-      setDisplay((start < 1000 ? start.toFixed(start < 10 ? 1 : 0) : Math.round(start).toLocaleString()) + suffix);
+      setDisplay(
+        currencyValue !== undefined
+          ? `${formatCurrency(Math.round(start), "USD", { compact: true, decimalPlaces: 1 })}${target.endsWith("+") ? "+" : ""}`
+          : (start < 1000 ? start.toFixed(start < 10 ? 1 : 0) : Math.round(start).toLocaleString()) + suffix,
+      );
       if (start >= num) clearInterval(timer);
     }, 16);
     return () => clearInterval(timer);
-  }, [target, duration]);
+  }, [target, duration, currencyValue, formatCurrency]);
   return display;
 }
 
-function StatItem({ value, label, icon }: { value: string; label: string; icon: string }) {
-  const display = useCounter(value);
+function StatItem({ value, label, icon, currencyValue }: { value: string; label: string; icon: string; currencyValue?: number }) {
+  const display = useCounter(value, 1800, currencyValue);
   return (
     <div className="text-center group">
       <div className="text-2xl mb-1 group-hover:animate-bounce-sm transition-all">{icon}</div>
@@ -79,7 +85,7 @@ export default function Home() {
   const tn = useTranslations("nav");
 
   const stats = [
-    { value: "$2.4M+", label: t("stats.totalFunded"),    icon: "💰" },
+    { value: "$2.4M+", currencyValue: 2400000, label: t("stats.totalFunded"), icon: "💰" },
     { value: "340+",   label: t("stats.activeProjects"), icon: "🌱" },
     { value: "1,200+", label: t("stats.investors"),        icon: "👥" },
     { value: "98%",    label: t("stats.harvestSuccess"),  icon: "✅" },

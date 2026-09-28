@@ -1,4 +1,5 @@
 import { useLocale } from 'next-intl';
+import { useCallback } from 'react';
 
 export interface NumberFormatOptions {
   compact?: boolean;
@@ -10,7 +11,7 @@ export function useNumberFormat() {
   const localeFromHook = useLocale();
   const locale = localeFromHook ?? 'en';
 
-  const formatNumber = (
+  const formatNumber = useCallback((
     value: number | string,
     options: NumberFormatOptions = {},
   ): string => {
@@ -27,7 +28,7 @@ export function useNumberFormat() {
     });
 
     return formatter.format(numericValue);
-  };
+  }, [locale]);
 
   return { formatNumber };
 }

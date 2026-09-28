@@ -4,6 +4,8 @@ import { useEffect, useId, useMemo, useState } from 'react';
 import { apiClient, Deal, getStoredToken } from '@/lib/api';
 import { useWallet } from '@/hooks/useWallet';
 import { useToast } from '@/components/ui/ToastProvider';
+import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
+import { useNumberFormat } from '@/hooks/useNumberFormat';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -61,6 +63,8 @@ function LabeledField({
 // ── Order book ────────────────────────────────────────────────────────────────
 
 function OrderBookSection({ deal }: { deal: Deal }) {
+  const { formatCurrency } = useCurrencyFormat();
+  const { formatNumber } = useNumberFormat();
   const [rows, setRows] = useState<OrderBookRow[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -175,9 +179,9 @@ function OrderBookSection({ deal }: { deal: Deal }) {
                     </span>
                   </td>
                   <td className="table-td font-mono text-xs">{truncateAddress(row.counterparty)}</td>
-                  <td className="table-td tabular-nums">{row.price.toFixed(4)}</td>
-                  <td className="table-td tabular-nums">{row.quantity.toFixed(2)}</td>
-                  <td className="table-td tabular-nums">{(row.price * row.quantity).toFixed(2)}</td>
+                  <td className="table-td tabular-nums">{formatCurrency(row.price, 'USDC', { decimalPlaces: 4 })}</td>
+                  <td className="table-td tabular-nums">{formatNumber(row.quantity, { decimalPlaces: 2 })}</td>
+                  <td className="table-td tabular-nums">{formatCurrency(row.price * row.quantity, 'USDC', { decimalPlaces: 2 })}</td>
                 </tr>
               ))}
             </tbody>
@@ -213,6 +217,7 @@ function PriceHistoryPlaceholder({ tokenCode }: { tokenCode: string }) {
 // ── Create Sell Offer form ───────────────────────────────────────────────────
 
 function CreateSellOfferForm({ deal }: { deal: Deal }) {
+  const { formatCurrency } = useCurrencyFormat();
   const { isConnected, publicKey, connect, availableWallets, signTransaction } = useWallet();
   const { toast } = useToast();
   const [maxTokens, setMaxTokens] = useState(0);
@@ -368,7 +373,7 @@ function CreateSellOfferForm({ deal }: { deal: Deal }) {
 
       {amount > 0 && total > 0 && (
         <div className="bg-slate-50 rounded-xl px-3 py-2 text-sm text-slate-600">
-          You will receive up to <span className="font-semibold text-slate-800">{total.toFixed(2)} USDC</span> when the offer fills.
+          You will receive up to <span className="font-semibold text-slate-800">{formatCurrency(total, 'USDC', { decimalPlaces: 2 })}</span> when the offer fills.
         </div>
       )}
 
@@ -384,6 +389,7 @@ function CreateSellOfferForm({ deal }: { deal: Deal }) {
 // ── Create Buy Offer form (frontend-only — no backend buy-offer builder yet) ─
 
 function CreateBuyOfferForm({ deal }: { deal: Deal }) {
+  const { formatCurrency } = useCurrencyFormat();
   const [tokenAmount, setTokenAmount] = useState('1');
   const [pricePerToken, setPricePerToken] = useState('');
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -435,7 +441,7 @@ function CreateBuyOfferForm({ deal }: { deal: Deal }) {
 
       {amount > 0 && total > 0 && (
         <div className="bg-slate-50 rounded-xl px-3 py-2 text-sm text-slate-600">
-          Total cost: <span className="font-semibold text-slate-800">{total.toFixed(2)} USDC</span>
+          Total cost: <span className="font-semibold text-slate-800">{formatCurrency(total, 'USDC', { decimalPlaces: 2 })}</span>
         </div>
       )}
 

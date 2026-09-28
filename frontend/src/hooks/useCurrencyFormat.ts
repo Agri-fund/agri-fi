@@ -1,4 +1,5 @@
 import { useLocale } from 'next-intl';
+import { useCallback } from 'react';
 
 export interface CurrencyFormatOptions {
   compact?: boolean;
@@ -6,13 +7,28 @@ export interface CurrencyFormatOptions {
   displayIso?: boolean;
 }
 
-const FIAT_CURRENCIES = ['USD', 'EUR', 'KES', 'GBP', 'BRL', 'CAD', 'AUD', 'JPY'];
+const FIAT_CURRENCIES = [
+  'USD',
+  'EUR',
+  'KES',
+  'NGN',
+  'GHS',
+  'TZS',
+  'ZAR',
+  'INR',
+  'SGD',
+  'GBP',
+  'BRL',
+  'CAD',
+  'AUD',
+  'JPY',
+];
 
 export function useCurrencyFormat() {
   const localeFromHook = useLocale();
   const locale = localeFromHook ?? 'en';
 
-  const formatCurrency = (
+  const formatCurrency = useCallback((
     amount: number | string,
     currency: string = 'USD',
     options: CurrencyFormatOptions = {},
@@ -50,7 +66,7 @@ export function useCurrencyFormat() {
       });
       return `${formatter.format(numericValue)} ${uppercaseCurrency}`;
     }
-  };
+  }, [locale]);
 
   return { formatCurrency };
 }

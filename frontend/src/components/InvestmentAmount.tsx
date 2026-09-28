@@ -1,6 +1,7 @@
 'use client';
 
 import { useCurrencyConversion } from '@/hooks/useCurrencyConversion';
+import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
 
 interface Props {
   usdAmount: number;
@@ -20,13 +21,14 @@ export function InvestmentAmount({
   className = '',
 }: Props) {
   const { convert } = useCurrencyConversion(preferredCurrency);
+  const { formatCurrency } = useCurrencyFormat();
 
   const conversion = convert(usdAmount);
 
   if (!conversion) {
     return (
       <div className={className}>
-        <span className="font-medium">{usdAmount.toLocaleString()} USDC</span>
+        <span className="font-medium">{formatCurrency(usdAmount, 'USDC', { decimalPlaces: 2 })}</span>
       </div>
     );
   }
@@ -49,10 +51,11 @@ export function InvestmentAmountInline({
   preferredCurrency,
 }: Props) {
   const { convert } = useCurrencyConversion(preferredCurrency);
+  const { formatCurrency } = useCurrencyFormat();
   const conversion = convert(usdAmount);
 
   if (!conversion) {
-    return <span>{usdAmount.toLocaleString()} USDC</span>;
+    return <span>{formatCurrency(usdAmount, 'USDC', { decimalPlaces: 2 })}</span>;
   }
 
   return (

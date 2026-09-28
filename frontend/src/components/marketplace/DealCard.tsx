@@ -1,6 +1,8 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { Deal } from '@/lib/api';
+import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
+import { useNumberFormat } from '@/hooks/useNumberFormat';
 
 const STATUS_CONFIG: Record<string, { cls: string; dot: string }> = {
   open:      { cls: 'badge-green',  dot: 'bg-emerald-500' },
@@ -55,6 +57,8 @@ export default function DealCard({
   selected?: boolean;
   onToggleCompare?: () => void;
 }) {
+  const { formatCurrency } = useCurrencyFormat();
+  const { formatNumber } = useNumberFormat();
   const pct = deal.total_value > 0
     ? Math.min((Number(deal.total_invested) / Number(deal.total_value)) * 100, 100) : 0;
   const tokensLeft = Math.max(0, Number(deal.token_count) - Math.floor(Number(deal.total_invested) / 100));
@@ -89,15 +93,15 @@ export default function DealCard({
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-slate-50 rounded-xl p-3">
             <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide">Total Value</p>
-            <p className="font-bold text-slate-900 text-sm mt-0.5">${Number(deal.total_value).toLocaleString()}</p>
+            <p className="font-bold text-slate-900 text-sm mt-0.5">{formatCurrency(deal.total_value, 'USD', { decimalPlaces: 0 })}</p>
           </div>
           <div className="bg-slate-50 rounded-xl p-3">
             <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide">Quantity</p>
-            <p className="font-bold text-slate-900 text-sm mt-0.5">{Number(deal.quantity).toLocaleString()} {deal.quantity_unit}</p>
+            <p className="font-bold text-slate-900 text-sm mt-0.5">{formatNumber(deal.quantity)} {deal.quantity_unit}</p>
           </div>
           <div className="bg-slate-50 rounded-xl p-3">
             <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide">Tokens Left</p>
-            <p className="font-bold text-slate-900 text-sm mt-0.5">{tokensLeft.toLocaleString()}</p>
+            <p className="font-bold text-slate-900 text-sm mt-0.5">{formatNumber(tokensLeft)}</p>
           </div>
           <div className="bg-slate-50 rounded-xl p-3">
             <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide">Delivery</p>
@@ -111,7 +115,7 @@ export default function DealCard({
         <div className="mt-auto space-y-1.5">
           <div className="flex justify-between items-center text-xs">
             <span className="text-slate-500 font-medium">
-              ${Number(deal.total_invested).toLocaleString()} raised
+              {formatCurrency(deal.total_invested, 'USD', { decimalPlaces: 0 })} raised
             </span>
             <span className={`font-bold ${pct >= 100 ? 'text-blue-600' : 'text-brand-600'}`}>
               {pct.toFixed(1)}%
@@ -122,7 +126,7 @@ export default function DealCard({
               style={{ width: `${pct}%` }} />
           </div>
           <p className="text-[10px] text-slate-400">
-            of ${Number(deal.total_value).toLocaleString()} goal
+            of {formatCurrency(deal.total_value, 'USD', { decimalPlaces: 0 })} goal
           </p>
         </div>
       </div>

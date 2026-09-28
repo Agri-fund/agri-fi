@@ -12,6 +12,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
 
 export interface ReferralFunnelStep {
   stage: 'clicks' | 'signups' | 'activated';
@@ -46,12 +47,6 @@ export interface ReferralAnalytics {
   timeline: ReferralTimelinePoint[];
 }
 
-const currency = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-  maximumFractionDigits: 0,
-});
-
 const chartColors = ['#22c55e', '#3b82f6', '#8b5cf6'];
 
 function formatPercent(value: number) {
@@ -72,6 +67,7 @@ export default function ReferralDashboard({
   data?: ReferralAnalytics | null;
   loading?: boolean;
 }) {
+  const { formatCurrency } = useCurrencyFormat();
   if (loading) {
     return (
       <div className="card p-5 animate-pulse">
@@ -111,7 +107,7 @@ export default function ReferralDashboard({
           <p className="text-sm text-slate-500 mb-1">Acquisition loop</p>
           <h2 className="section-title">Referral Funnel</h2>
         </div>
-        <span className="badge-green">{currency.format(data.totalRewards)} accrued</span>
+        <span className="badge-green">{formatCurrency(data.totalRewards, 'USD', { decimalPlaces: 0 })} accrued</span>
       </div>
 
       <div className="grid sm:grid-cols-3 gap-4">
@@ -185,7 +181,7 @@ export default function ReferralDashboard({
               <XAxis dataKey="date" tickFormatter={formatShortDate} tick={{ fill: 'var(--chart-axis)', fontSize: 11 }} />
               <YAxis tick={{ fill: 'var(--chart-axis)', fontSize: 11 }} />
               <Tooltip
-                formatter={(value: number) => [currency.format(value), 'Rewards']}
+                formatter={(value: number) => [formatCurrency(value, 'USD', { decimalPlaces: 0 }), 'Rewards']}
                 labelFormatter={(label) => formatShortDate(String(label))}
               />
               <Line type="monotone" dataKey="rewards" stroke="#22c55e" strokeWidth={3} dot={{ r: 4 }} />
@@ -219,7 +215,7 @@ export default function ReferralDashboard({
                   <td className="py-3 pr-4">{row.clicks}</td>
                   <td className="py-3 pr-4">{row.signups}</td>
                   <td className="py-3 pr-4">{row.activated}</td>
-                  <td className="py-3 pr-4">{currency.format(row.rewards)}</td>
+                  <td className="py-3 pr-4">{formatCurrency(row.rewards, 'USD', { decimalPlaces: 0 })}</td>
                   <td className="py-3">{formatPercent(row.rewardRate)}</td>
                 </tr>
               ))}
