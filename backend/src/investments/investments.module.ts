@@ -9,6 +9,7 @@ import { Investment } from './entities/investment.entity';
 import { InvestmentEvent } from './entities/investment-event.entity';
 import { SecondaryTrade } from './entities/secondary-trade.entity';
 import { SecondaryOrder } from './entities/secondary-order.entity';
+import { AutoInvestPlan } from './entities/auto-invest-plan.entity';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
 import { User } from '../auth/entities/user.entity';
 import { FeeConfiguration } from '../database/entities/fee-configuration.entity';
@@ -26,6 +27,10 @@ import { InvoiceService } from './invoice.service';
 import { AuditModule } from '../audit/audit.module';
 import { PaymentDistribution } from '../escrow/entities/payment-distribution.entity';
 import { SecondaryOrderMatchingService } from './secondary-order-matching.service';
+import { AutoInvestService } from './auto-invest.service';
+import { AutoInvestController } from './auto-invest.controller';
+import { RiskScoringService } from '../trade-deals/risk-scoring.service';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -34,6 +39,7 @@ import { SecondaryOrderMatchingService } from './secondary-order-matching.servic
       InvestmentEvent,
       SecondaryTrade,
       SecondaryOrder,
+      AutoInvestPlan,
       TradeDeal,
       User,
       FeeConfiguration,
@@ -44,11 +50,13 @@ import { SecondaryOrderMatchingService } from './secondary-order-matching.servic
     ReferralModule,
     AuthModule,
     AuditModule,
+    NotificationsModule,
   ],
   controllers: [
     InvestmentsController,
     FeeConfigurationController,
     MarketplaceSettlementController,
+    AutoInvestController,
   ],
   providers: [
     InvestmentsService,
@@ -61,6 +69,8 @@ import { SecondaryOrderMatchingService } from './secondary-order-matching.servic
     ReceiptService,
     InvoiceService,
     SecondaryOrderMatchingService,
+    AutoInvestService,
+    RiskScoringService,
   ],
   exports: [
     InvestmentsService,
@@ -70,6 +80,7 @@ import { SecondaryOrderMatchingService } from './secondary-order-matching.servic
     CurrencyConverterService,
     MarketplaceSettlementService,
     SecondaryOrderMatchingService,
+    AutoInvestService,
   ],
 })
 export class InvestmentsModule {}
