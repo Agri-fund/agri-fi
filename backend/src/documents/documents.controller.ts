@@ -25,8 +25,14 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { AuthGuard } from '@nestjs/passport';
 import { DocumentsService } from './documents.service';
+import { SignatureRequestService } from './signature-request.service';
 import { ClamScanService } from './clam-scan.service';
 import { UploadChunkDto, UploadCompleteDto } from './dto/upload-chunk.dto';
+import {
+  CreateSignatureRequestDto,
+  SignDocumentDto,
+  SignatureRequestResponseDto,
+} from './dto/signature-request.dto';
 import { User } from '../auth/entities/user.entity';
 
 interface AuthRequest extends Request {
@@ -121,7 +127,10 @@ export class DocumentsController {
     { chunks: Buffer[]; totalChunks: number; receivedCount: number }
   >();
 
-  constructor(private readonly documentsService: DocumentsService) {}
+  constructor(
+    private readonly documentsService: DocumentsService,
+    private readonly signatureRequestService: SignatureRequestService,
+  ) {}
 
   @Post()
   @Throttle({ default: { limit: 20, ttl: 60000 } })
@@ -151,6 +160,12 @@ export class DocumentsController {
           description:
             'Optional detached PGP/GnuPG armored signature of the file, issued by a trusted certifying authority',
         },
+        watermark: {
+          type: 'boolean',
+          description:
+            'Apply a PDF watermark overlay (deal id, date, requester) to the document before storage. Only applies to PDFs.',
+          default: false,
+        },
       },
     },
   })
@@ -174,7 +189,12 @@ export class DocumentsController {
   async uploadDocument(
     @UploadedFile() file: Express.Multer.File,
     @Body()
-    body: { doc_type: string; trade_deal_id: string; signature_asc?: string },
+    body: {
+      doc_type: string;
+      trade_deal_id: string;
+      signature_asc?: string;
+      watermark?: boolean;
+    },
     @Request() req: AuthRequest,
   ) {
     if (!file) throw new BadRequestException('File is required');
@@ -233,12 +253,21 @@ export class DocumentsController {
     }
 
     // ── 6. Handle upload (magic-number check + IPFS + Stellar anchor) ────────
+    const watermark = body.watermark
+      ? {
+          dealId: body.trade_deal_id,
+          date: new Date(),
+          requester: req.user.email ?? req.user.id,
+        }
+      : undefined;
+
     const result = await this.documentsService.handleUpload({
       file,
       docType: body.doc_type,
       tradeDealId: body.trade_deal_id,
       userId: req.user.id,
       signatureAsc: body.signature_asc,
+      watermark,
     });
 
     this.ipfsCache.set(contentKey, result);
@@ -349,8 +378,176 @@ export class DocumentsController {
       docType,
       tradeDealId,
       userId: req.user.id,
+      watermark: dto.watermark
+        ? {
+            dealId: tradeDealId,
+            date: new Date(),
+            requester: req.user.email ?? req.user.id,
+          }
+        : undefined,
     });
 
     return result;
+  }
+
+  // ─── Watermark ─────────────────────────────────────────────────────────────
+
+  @Post(':id/watermark')
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
+  @UseGuards(AuthGuard('jwt'))
+  @ApiOperation({
+    summary: 'Regenerate an existing document with a PDF watermark overlay',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        dealId: { type: 'string', description: 'Trade deal identifier' },
+        requester: {
+          type: 'string',
+          description: 'Name/email of the user requesting the watermark',
+        },
+        date: {
+          type: 'string',
+          format: 'date-time',
+          description: 'Date to embed in the watermark (defaults to now)',
+        },
+        opacity: {
+          type: 'number',
+          description: 'Watermark opacity (0.02–0.25, default 0.08)',
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Document regenerated with watermark and re-uploaded',
+  })
+  @ApiResponse({ status: 404, description: 'Document not found' })
+  async regenerateWithWatermark(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      dealId: string;
+      requester: string;
+      date?: string;
+      opacity?: number;
+    },
+  ) {
+    const watermarkOptions: {
+      dealId: string;
+      date: Date;
+      requester: string;
+      opacity?: number;
+    } = {
+      dealId: body.dealId,
+      requester: body.requester,
+      date: body.date ? new Date(body.date) : new Date(),
+      opacity: body.opacity,
+    };
+
+    return this.documentsService.regenerateWithWatermark(id, watermarkOptions);
+  }
+
+  // ─── Signing queue ──────────────────────────────────────────────────────────
+
+  @Post('signature-request')
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
+  @UseGuards(AuthGuard('jwt'))
+  @ApiOperation({
+    summary: 'Create a co-signer signature request with a JWT-scoped signing link',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Signature request created; co-signer notified',
+    type: SignatureRequestResponseDto,
+  })
+  @ApiResponse({ status: 404, description: 'Document or co-signer not found' })
+  async createSignatureRequest(
+    @Body() dto: CreateSignatureRequestDto,
+    @Request() req: AuthRequest,
+  ) {
+    const result = await this.signatureRequestService.createSignatureRequest(
+      dto.documentId,
+      dto.coSignerId,
+      req.user.id,
+      dto.ttlSeconds ? parseInt(dto.ttlSeconds, 10) : undefined,
+    );
+
+    return {
+      id: result.id,
+      documentId: result.documentId,
+      coSignerId: result.coSignerId,
+      requesterId: result.requesterId,
+      status: result.status,
+      signingLink: result.signingLink,
+      expiresAt: result.expiresAt,
+      createdAt: result.createdAt,
+    };
+  }
+
+  @Get(':documentId/signature-requests')
+  @UseGuards(AuthGuard('jwt'))
+  @ApiOperation({
+    summary: 'List signature requests for a document (status tracking)',
+  })
+  async getDocumentSignatureRequests(
+    @Param('documentId') documentId: string,
+  ) {
+    return this.signatureRequestService.getDocumentSignatureRequests(documentId);
+  }
+
+  @Get('signature-request/:id')
+  @UseGuards(AuthGuard('jwt'))
+  @ApiOperation({ summary: 'Get a single signature request by id' })
+  async getSignatureRequest(@Param('id') id: string) {
+    return this.signatureRequestService.getSignatureRequest(id);
+  }
+
+  @Post('sign')
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
+  @ApiOperation({
+    summary: 'Submit a co-signer signature (OpenPGP or SEP-10 / Stellar wallet)',
+  })
+  @ApiResponse({ status: 200, description: 'Signature processed and POE anchored' })
+  @ApiResponse({ status: 401, description: 'Invalid or expired signing token' })
+  async signDocument(@Body() dto: SignDocumentDto) {
+    if (dto.signatureMethod === 'openpgp') {
+      return this.signatureRequestService.processOpenPgpSignature(
+        dto.documentId,
+        dto.signingToken,
+        dto.signatureAsc!,
+      );
+    }
+
+    if (dto.signatureMethod === 'sep10') {
+      return this.signatureRequestService.processSep10Signature(
+        dto.documentId,
+        dto.signingToken,
+        dto.stellarEnvelope!,
+      );
+    }
+
+    throw new BadRequestException(
+      `Unsupported signature method: ${dto.signatureMethod}`,
+    );
+  }
+
+  @Post('signature-request/:id/revoke')
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
+  @UseGuards(AuthGuard('jwt'))
+  @ApiOperation({ summary: 'Revoke a pending signature request' })
+  @ApiResponse({ status: 200, description: 'Signature request revoked' })
+  @ApiResponse({ status: 409, description: 'Request is not pending' })
+  async revokeSignatureRequest(@Param('id') id: string) {
+    return this.signatureRequestService.revokeSignatureRequest(id);
+  }
+
+  @Post('signature-request/:id/verify-token')
+  @ApiOperation({
+    summary: 'Verify a signing token without submitting a signature',
+  })
+  async verifySigningToken(@Body() body: { signingToken: string }) {
+    return this.signatureRequestService.verifySigningToken(body.signingToken);
   }
 }

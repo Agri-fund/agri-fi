@@ -10,20 +10,21 @@ describe('DocumentsService malware scanning', () => {
     buffer: Buffer.from('document'),
   } as Express.Multer.File;
 
-  function createService(scanResult: Promise<unknown>) {
-    const clamScanService = { scan: jest.fn(() => scanResult) };
-    const auditService = { logEvent: jest.fn().mockResolvedValue(null) };
-    const service = new DocumentsService(
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      clamScanService as any,
-      auditService as any,
-    );
-    return { service, clamScanService, auditService };
-  }
+   function createService(scanResult: Promise<unknown>) {
+     const clamScanService = { scan: jest.fn(() => scanResult) };
+     const auditService = { logEvent: jest.fn().mockResolvedValue(null) };
+     const service = new DocumentsService(
+       {} as any,
+       {} as any,
+       {} as any,
+       {} as any,
+       {} as any,
+       clamScanService as any,
+       auditService as any,
+       null,
+     );
+     return { service, clamScanService, auditService };
+   }
 
   it('rejects out-of-order chunk uploads with a structured error', () => {
     const { service } = createService(Promise.resolve({ isClean: true }));
