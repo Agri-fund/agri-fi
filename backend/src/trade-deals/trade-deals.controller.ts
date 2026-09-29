@@ -3,6 +3,7 @@ import {
   Delete,
   Get,
   Post,
+  Patch,
   Param,
   Query,
   Body,
@@ -42,10 +43,12 @@ import {
 } from './dto/co-farmer.dto';
 import { DealCoFarmer } from './entities/deal-co-farmer.entity';
 import { ActivityFeedResponseDto } from './dto/activity-feed.dto';
+import { ActivityFeedService } from './activity-feed.service';
 
 import { TradeDealAccessRequest, TradeDealsGuard } from './trade-deals.guard';
 
 import { EsgScoringService, EsgQuestionnaireDto } from './esg-scoring.service';
+import { DealHealthService } from './deal-health.service';
 
 interface AuthRequest extends Request {
   user: User;
@@ -60,6 +63,7 @@ export class TradeDealsController {
     private readonly dealDeploymentService: DealDeploymentService,
     private readonly activityFeedService: ActivityFeedService,
     private readonly esgScoringService: EsgScoringService,
+    private readonly dealHealthService: DealHealthService,
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
   ) {}
 
@@ -431,6 +435,20 @@ export class TradeDealsController {
   @ApiResponse({ status: 200, description: 'Pending ESG review deals list' })
   async getEsgReviewQueue() {
     return this.esgScoringService.getPendingReviewDeals();
+  }
+
+  // ── Deal Health Indicators (#1002) ────────────────────────────────────────
+
+  @Get(':id/health')
+  @ApiOperation({
+    summary:
+      'Get computed deal health snapshot: risk score, funding pace vs. timeline, and milestone progress vs. expected schedule',
+  })
+  @ApiParam({ name: 'id', description: 'Trade deal UUID' })
+  @ApiResponse({ status: 200, description: 'Deal health snapshot' })
+  @ApiResponse({ status: 404, description: 'Trade deal not found' })
+  async getDealHealth(@Param('id') id: string) {
+    return this.dealHealthService.getDealHealth(id);
   }
 
   @Patch(':id/esg-review')
