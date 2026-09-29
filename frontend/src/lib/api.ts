@@ -29,6 +29,7 @@ export interface User {
   role: "farmer" | "trader" | "investor" | "company_admin" | "admin";
   name?: string;
   kycStatus?: string;
+  isMfaEnabled?: boolean;
   walletAddress?: string | null;
   isCompany?: boolean;
   preferredCurrency?: string;

@@ -1,11 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import zxcvbn from 'zxcvbn';
 import { apiClient } from '@/lib/api';
 import { useToast } from '@/components/ui/ToastProvider';
+import { FormField } from '@/components/ui/FormField';
 
 const ROLES = [
   { value: 'farmer',        emoji: '👨‍🌾', label: 'Farmer',   desc: 'List crops & raise funding',   color: 'border-emerald-400 bg-emerald-50 ring-emerald-400' },
@@ -20,11 +22,29 @@ export default function RegisterPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { toast } = useToast();
+  const tValidation = useTranslations('common.validation');
   const [step, setStep] = useState(0);
   const [form, setForm] = useState({ name: '', email: '', password: '', role: '', country: '', referralCode: '' });
+  const [fieldErrors, setFieldErrors] = useState<{ name?: string; email?: string; password?: string; country?: string }>({});
+  const [touched, setTouched] = useState({ name: false, email: false, password: false, country: false });
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const fieldRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  const validateField = (field: 'name' | 'email' | 'password' | 'country', value: string) => {
+    if (field === 'name' && !value.trim()) return tValidation('nameRequired');
+    if (field === 'country' && !value.trim()) return tValidation('countryRequired');
+    if (field === 'email') {
+      if (!value.trim()) return tValidation('emailRequired');
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return tValidation('emailInvalid');
+    }
+    if (field === 'password') {
+      if (!value.trim()) return tValidation('passwordRequired');
+      if (value.length < 8) return tValidation('passwordMin');
+    }
+    return undefined;
+  };
 
   useEffect(() => {
     const ref = searchParams.get('ref');
@@ -38,8 +58,26 @@ export default function RegisterPage() {
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm(f => ({ ...f, [k]: e.target.value }));
 
+  const updateField = (field: 'name' | 'email' | 'password' | 'country', value: string) => {
+    setForm(current => ({ ...current, [field]: value }));
+    if (touched[field]) setFieldErrors(current => ({ ...current, [field]: validateField(field, value) }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const errors = {
+      name: validateField('name', form.name),
+      email: validateField('email', form.email),
+      password: validateField('password', form.password),
+      country: validateField('country', form.country),
+    };
+    setFieldErrors(errors);
+    setTouched({ name: true, email: true, password: true, country: true });
+    const firstInvalid = (['name', 'email', 'password', 'country'] as const).find(field => errors[field]);
+    if (firstInvalid) {
+      fieldRefs.current[firstInvalid]?.focus();
+      return;
+    }
     setLoading(true); setError(null);
     try {
       const { referralCode, ...rest } = form;
@@ -63,7 +101,15 @@ export default function RegisterPage() {
       toast('Account created! Welcome to AgriFi 🎉', 'success');
       router.push('/kyc');
     } catch (err: any) {
-      setError(err.message ?? 'Registration failed');
+      const message = String(err?.message ?? 'Registration failed');
+      const lowerMessage = message.toLowerCase();
+      if (lowerMessage.includes('email') && /(already|exists|taken|registered)/.test(lowerMessage)) {
+        setFieldErrors(current => ({ ...current, email: tValidation('emailTaken') }));
+        setTouched(current => ({ ...current, email: true }));
+        fieldRefs.current.email?.focus();
+      } else {
+        setError(message);
+      }
     } finally {
       setLoading(false);
     }
@@ -147,7 +193,7 @@ export default function RegisterPage() {
             </div>
 
             {error && (
-              <div className="alert-error mb-5">
+              <div role="alert" className="alert-error mb-5">
                 <span>⚠</span><span>{error}</span>
               </div>
             )}
@@ -177,7 +223,7 @@ export default function RegisterPage() {
 
             {/* Step 1: Details */}
             {step === 1 && (
-              <form onSubmit={handleSubmit} className="space-y-4">
+              <form onSubmit={handleSubmit} noValidate className="space-y-4">
                 {/* Selected role pill */}
                 <div className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl border border-slate-200">
                   <span className="text-xl">{ROLES.find(r => r.value === form.role)?.emoji}</span>
@@ -186,27 +232,47 @@ export default function RegisterPage() {
                     className="ml-auto text-xs text-brand-600 font-semibold hover:underline">Change</button>
                 </div>
 
-                <div>
-                  <label className="label">Full name</label>
-                  <input className="input" type="text" required placeholder="Amara Diallo"
-                    value={form.name} onChange={set('name')} />
-                </div>
+                <FormField
+                  ref={node => { fieldRefs.current.name = node; }}
+                  label="Full name" type="text" required autoComplete="name" placeholder="Amara Diallo"
+                  value={form.name} error={fieldErrors.name} touched={touched.name}
+                  success={!fieldErrors.name && !!form.name.trim()}
+                  onBlur={() => {
+                    setTouched(current => ({ ...current, name: true }));
+                    setFieldErrors(current => ({ ...current, name: validateField('name', form.name) }));
+                  }}
+                  onChange={e => updateField('name', e.target.value)}
+                />
+
+                <FormField
+                  ref={node => { fieldRefs.current.email = node; }}
+                  label="Email address" type="email" required autoComplete="email" placeholder="you@example.com"
+                  value={form.email} error={fieldErrors.email} touched={touched.email}
+                  success={!fieldErrors.email && !!form.email.trim()}
+                  onBlur={() => {
+                    setTouched(current => ({ ...current, email: true }));
+                    setFieldErrors(current => ({ ...current, email: validateField('email', form.email) }));
+                  }}
+                  onChange={e => updateField('email', e.target.value)}
+                />
 
                 <div>
-                  <label className="label">Email address</label>
-                  <input className="input" type="email" required placeholder="you@example.com"
-                    value={form.email} onChange={set('email')} />
-                </div>
-
-                <div>
-                  <label className="label">Password</label>
                   <div className="relative">
-                    <input className="input pr-11" type={showPw ? 'text' : 'password'}
-                      required minLength={8} placeholder="Min. 8 characters"
-                      value={form.password} onChange={set('password')} />
-                    <button type="button" tabIndex={-1}
+                    <FormField
+                      ref={node => { fieldRefs.current.password = node; }}
+                      label="Password" type={showPw ? 'text' : 'password'} required minLength={8}
+                      placeholder="Min. 8 characters" value={form.password} className="pr-20"
+                      error={fieldErrors.password} touched={touched.password}
+                      success={!fieldErrors.password && form.password.length >= 8}
+                      onBlur={() => {
+                        setTouched(current => ({ ...current, password: true }));
+                        setFieldErrors(current => ({ ...current, password: validateField('password', form.password) }));
+                      }}
+                      onChange={e => updateField('password', e.target.value)}
+                    />
+                    <button type="button" aria-label={showPw ? 'Hide password' : 'Show password'}
                       onClick={() => setShowPw(v => !v)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-sm">
+                      className="absolute right-10 bottom-3 text-slate-400 hover:text-slate-600 text-sm">
                       {showPw ? '🙈' : '👁'}
                     </button>
                   </div>
@@ -227,17 +293,25 @@ export default function RegisterPage() {
                   })()}
                 </div>
 
-                <div>
-                  <label className="label">Country</label>
-                  <input className="input" type="text" required placeholder="Nigeria"
-                    value={form.country} onChange={set('country')} />
-                </div>
+                <FormField
+                  ref={node => { fieldRefs.current.country = node; }}
+                  label="Country" type="text" required placeholder="Nigeria"
+                  value={form.country} error={fieldErrors.country} touched={touched.country}
+                  success={!fieldErrors.country && !!form.country.trim()}
+                  onBlur={() => {
+                    setTouched(current => ({ ...current, country: true }));
+                    setFieldErrors(current => ({ ...current, country: validateField('country', form.country) }));
+                  }}
+                  onChange={e => updateField('country', e.target.value)}
+                />
 
-                <div>
-                  <label className="label">Referral Code <span className="text-slate-400 font-normal">(optional)</span></label>
-                  <input className="input" type="text" placeholder="ABC12345"
-                    value={form.referralCode} onChange={set('referralCode')} />
-                </div>
+                <FormField
+                  label="Referral Code (optional)"
+                  type="text"
+                  placeholder="ABC12345"
+                  value={form.referralCode}
+                  onChange={set('referralCode')}
+                />
 
                 <div className="flex gap-3 pt-1">
                   <button type="button" onClick={() => setStep(0)} className="btn-secondary flex-none px-4">

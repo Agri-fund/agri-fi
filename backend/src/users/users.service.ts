@@ -27,6 +27,7 @@ export interface CurrentUserProfile {
   kycStatus: User['kycStatus'];
   walletAddress: string | null;
   isCompany: boolean;
+  isMfaEnabled: boolean;
   companyDetails: User['companyDetails'];
   country: string;
   createdAt: Date;
@@ -113,6 +114,7 @@ export class UsersService {
       kycStatus: user.kycStatus,
       walletAddress: user.walletAddress,
       isCompany: user.isCompany,
+      isMfaEnabled: Boolean(user.isMfaEnabled),
       companyDetails: user.companyDetails,
       country: user.country,
       createdAt: user.createdAt,

@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { apiClient, getStoredToken } from '@/lib/api';
 import { useToast } from '@/components/ui/ToastProvider';
 import { Dropzone, DropzoneFile } from '@/components/ui/Dropzone';
+import { FormField } from '@/components/ui/FormField';
 import { useTranslations } from 'next-intl';
 
 type Step = 0 | 1 | 2 | 3 | 4;
@@ -90,9 +91,19 @@ export default function KycPage() {
   const [proof, setProof] = useState<DropzoneFile | null>(null);
   const [selfie, setSelfie] = useState<DropzoneFile | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [personalTouched, setPersonalTouched] = useState<Record<string, boolean>>({});
   const [restoredAt, setRestoredAt] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const isHydrated = useRef(false);
+  const focusFirstError = useRef(false);
+
+  useEffect(() => {
+    if (!focusFirstError.current) return;
+    focusFirstError.current = false;
+    document.querySelector<HTMLElement>(
+      'div[data-invalid="true"], input[aria-invalid="true"], textarea[aria-invalid="true"], [aria-invalid="true"] input',
+    )?.focus();
+  }, [errors]);
 
   useEffect(() => {
     if (!currentUser) {
@@ -190,6 +201,7 @@ export default function KycPage() {
     const nextErrors: Record<string, string> = {};
 
     if (currentStep === 0) {
+      setPersonalTouched({ fullName: true, dateOfBirth: true, nationality: true, address: true });
       if (!draft.personal.fullName.trim()) nextErrors.fullName = t('errors.fullName');
       if (!draft.personal.dateOfBirth.trim()) nextErrors.dateOfBirth = t('errors.dateOfBirth');
       else if (draft.personal.dateOfBirth > todayIso()) nextErrors.dateOfBirth = t('errors.dateOfBirthPast');
@@ -217,6 +229,7 @@ export default function KycPage() {
     }
 
     setErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0) focusFirstError.current = true;
     return Object.keys(nextErrors).length === 0;
   };
 
@@ -236,6 +249,19 @@ export default function KycPage() {
         [field]: value,
       },
     }));
+  };
+
+  const validatePersonalField = (field: keyof DraftPayload['personal'], value: string) => {
+    let message: string | undefined;
+    if (field === 'fullName' && !value.trim()) message = t('errors.fullName');
+    if (field === 'dateOfBirth') {
+      if (!value.trim()) message = t('errors.dateOfBirth');
+      else if (value > todayIso()) message = t('errors.dateOfBirthPast');
+    }
+    if (field === 'nationality' && !value.trim()) message = t('errors.nationality');
+    if (field === 'address' && !value.trim()) message = t('errors.address');
+    setPersonalTouched((current) => ({ ...current, [field]: true }));
+    setErrors((current) => ({ ...current, [field]: message ?? '' }));
   };
 
   const submit = async () => {
@@ -313,36 +339,83 @@ export default function KycPage() {
 
           <div className="grid gap-8 px-6 py-6 md:px-10 md:py-8">
             {errors.submit && (
-              <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{errors.submit}</div>
+              <div role="alert" className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{errors.submit}</div>
             )}
 
             {step === 0 && (
               <section className="grid gap-4 md:grid-cols-2">
-                <WizardField label={t('fields.fullName')} error={errors.fullName}>
-                  <input className="input" value={draft.personal.fullName} onChange={(e) => savePersonal('fullName', e.target.value)} />
-                </WizardField>
-                <WizardField label={t('fields.dateOfBirth')} error={errors.dateOfBirth}>
-                  <input type="date" className="input" value={draft.personal.dateOfBirth} onChange={(e) => savePersonal('dateOfBirth', e.target.value)} />
-                </WizardField>
-                <WizardField label={t('fields.nationality')} error={errors.nationality}>
-                  <input className="input" value={draft.personal.nationality} onChange={(e) => savePersonal('nationality', e.target.value)} />
-                </WizardField>
-                <WizardField label={t('fields.address')} error={errors.address} className="md:col-span-2">
-                  <textarea className="input min-h-[130px]" value={draft.personal.address} onChange={(e) => savePersonal('address', e.target.value)} />
-                </WizardField>
+                <FormField
+                  label={t('fields.fullName')}
+                  required
+                  value={draft.personal.fullName}
+                  error={errors.fullName || undefined}
+                  touched={personalTouched.fullName}
+                  success={!errors.fullName && !!draft.personal.fullName.trim()}
+                  onBlur={(e) => validatePersonalField('fullName', e.currentTarget.value)}
+                  onChange={(e) => {
+                    savePersonal('fullName', e.target.value);
+                    if (personalTouched.fullName) validatePersonalField('fullName', e.target.value);
+                  }}
+                />
+                <FormField
+                  label={t('fields.dateOfBirth')}
+                  type="date"
+                  required
+                  value={draft.personal.dateOfBirth}
+                  error={errors.dateOfBirth || undefined}
+                  touched={personalTouched.dateOfBirth}
+                  success={!errors.dateOfBirth && !!draft.personal.dateOfBirth}
+                  onBlur={(e) => validatePersonalField('dateOfBirth', e.currentTarget.value)}
+                  onChange={(e) => {
+                    savePersonal('dateOfBirth', e.target.value);
+                    if (personalTouched.dateOfBirth) validatePersonalField('dateOfBirth', e.target.value);
+                  }}
+                />
+                <FormField
+                  label={t('fields.nationality')}
+                  required
+                  value={draft.personal.nationality}
+                  error={errors.nationality || undefined}
+                  touched={personalTouched.nationality}
+                  success={!errors.nationality && !!draft.personal.nationality.trim()}
+                  onBlur={(e) => validatePersonalField('nationality', e.currentTarget.value)}
+                  onChange={(e) => {
+                    savePersonal('nationality', e.target.value);
+                    if (personalTouched.nationality) validatePersonalField('nationality', e.target.value);
+                  }}
+                />
+                <FormField
+                  label={t('fields.address')}
+                  error={errors.address}
+                  wrapperClassName="md:col-span-2"
+                  required
+                  touched={personalTouched.address}
+                  success={!!draft.personal.address.trim()}
+                >
+                  <textarea
+                    value={draft.personal.address}
+                    onBlur={(e) => validatePersonalField('address', e.currentTarget.value)}
+                    onChange={(e) => {
+                      savePersonal('address', e.target.value);
+                      if (personalTouched.address) validatePersonalField('address', e.target.value);
+                    }}
+                  />
+                </FormField>
               </section>
             )}
 
             {step === 1 && (
               <section className="grid gap-4 md:grid-cols-2">
-                <WizardField label={t('fields.idFront')} error={errors.front} className="md:col-span-1">
+                <FormField label={t('fields.idFront')} error={errors.front} required touched={!!front} success={!!front}>
                   <Dropzone
                     capture="environment"
                     maxSizeBytes={10 * 1024 * 1024}
                     label={t('fields.idFront')}
+                    hideLabel
                     hint={t('hints.documents')}
                     onFileAccepted={(entry) => {
                       setFront(entry);
+                      setErrors((current) => ({ ...current, front: '' }));
                       setDraft((current) => ({
                         ...current,
                         files: { ...current.files, frontName: entry.file.name },
@@ -351,15 +424,17 @@ export default function KycPage() {
                     value={front}
                     onRemove={() => setFront(null)}
                   />
-                </WizardField>
-                <WizardField label={t('fields.idBack')} error={errors.back}>
+                </FormField>
+                <FormField label={t('fields.idBack')} error={errors.back} required touched={!!back} success={!!back}>
                   <Dropzone
                     capture="environment"
                     maxSizeBytes={10 * 1024 * 1024}
                     label={t('fields.idBack')}
+                    hideLabel
                     hint={t('hints.documents')}
                     onFileAccepted={(entry) => {
                       setBack(entry);
+                      setErrors((current) => ({ ...current, back: '' }));
                       setDraft((current) => ({
                         ...current,
                         files: { ...current.files, backName: entry.file.name },
@@ -368,20 +443,22 @@ export default function KycPage() {
                     value={back}
                     onRemove={() => setBack(null)}
                   />
-                </WizardField>
+                </FormField>
               </section>
             )}
 
             {step === 2 && (
               <section className="grid gap-4">
-                <WizardField label={t('fields.proofOfAddress')} error={errors.proof}>
+                <FormField label={t('fields.proofOfAddress')} error={errors.proof} required touched={!!proof} success={!!proof}>
                   <Dropzone
                     capture="environment"
                     maxSizeBytes={10 * 1024 * 1024}
                     label={t('fields.proofOfAddress')}
+                    hideLabel
                     hint={t('hints.proof')}
                     onFileAccepted={(entry) => {
                       setProof(entry);
+                      setErrors((current) => ({ ...current, proof: '' }));
                       setDraft((current) => ({
                         ...current,
                         files: { ...current.files, proofName: entry.file.name },
@@ -390,20 +467,22 @@ export default function KycPage() {
                     value={proof}
                     onRemove={() => setProof(null)}
                   />
-                </WizardField>
+                </FormField>
               </section>
             )}
 
             {step === 3 && (
               <section className="grid gap-4">
-                <WizardField label={t('fields.selfie')} error={errors.selfie}>
+                <FormField label={t('fields.selfie')} error={errors.selfie} required touched={!!selfie} success={!!selfie}>
                   <Dropzone
                     capture="user"
                     maxSizeBytes={10 * 1024 * 1024}
                     label={t('fields.selfie')}
+                    hideLabel
                     hint={t('hints.selfie')}
                     onFileAccepted={(entry) => {
                       setSelfie(entry);
+                      setErrors((current) => ({ ...current, selfie: '' }));
                       setDraft((current) => ({
                         ...current,
                         files: { ...current.files, selfieName: entry.file.name },
@@ -412,7 +491,7 @@ export default function KycPage() {
                     value={selfie}
                     onRemove={() => setSelfie(null)}
                   />
-                </WizardField>
+                </FormField>
               </section>
             )}
 
@@ -464,16 +543,6 @@ export default function KycPage() {
         </div>
       </div>
     </div>
-  );
-}
-
-function WizardField({ label, children, error, className }: { label: string; children: ReactNode; error?: string; className?: string }) {
-  return (
-    <label className={`space-y-2 ${className ?? ''}`}>
-      <span className="text-sm font-semibold text-slate-700">{label}</span>
-      {children}
-      {error && <p className="text-xs text-red-600">{error}</p>}
-    </label>
   );
 }
 
