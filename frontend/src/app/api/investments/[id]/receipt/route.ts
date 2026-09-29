@@ -1,6 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
-
-const BACKEND_BASE = process.env.BACKEND_URL ?? 'http://localhost:3001';
+import { withBackendProxy } from '@/lib/api-proxy';
 
 /**
  * GET /api/investments/:id/receipt
@@ -11,30 +9,8 @@ const BACKEND_BASE = process.env.BACKEND_URL ?? 'http://localhost:3001';
  *
  * Response shape: { url: string; expiresAt: string }
  */
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } },
-) {
-  const { id } = params;
-  const authorization = request.headers.get('authorization') ?? '';
-
-  const backendRes = await fetch(
-    `${BACKEND_BASE}/v1/investments/${id}/receipt`,
-    {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(authorization ? { Authorization: authorization } : {}),
-      },
-      cache: 'no-store',
-    },
-  );
-
-  const body = await backendRes.json().catch(() => ({}));
-
-  if (!backendRes.ok) {
-    return NextResponse.json(body, { status: backendRes.status });
-  }
-
-  return NextResponse.json(body, { status: 200 });
-}
+export const GET = withBackendProxy(async (_request, { params }: { params: { id: string } }) => ({
+  path: `/investments/${params.id}/receipt`,
+  method: 'GET',
+  headers: { 'Content-Type': 'application/json' },
+}));
