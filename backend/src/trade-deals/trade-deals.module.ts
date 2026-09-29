@@ -25,6 +25,7 @@ import { DealDigestService } from './deal-digest.service';
 import { RiskScoringService } from './risk-scoring.service';
 import { EsgScoringService } from './esg-scoring.service';
 import { DealHealthMonitorService } from './deal-health-monitor.service';
+import { DealHealthService } from './deal-health.service';
 import { ActivityFeedService } from './activity-feed.service';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { AuditModule } from '../audit/audit.module';
@@ -102,6 +103,7 @@ const DEALS_CACHE_TTL_MS = 30_000;
     RiskScoringService,
     EsgScoringService,
     DealHealthMonitorService,
+    DealHealthService,
     ActivityFeedService,
     makeGaugeProvider({
       name: 'deal_health_alerts_active_total',
@@ -115,6 +117,7 @@ const DEALS_CACHE_TTL_MS = 30_000;
     DealDigestService,
     RiskScoringService,
     EsgScoringService,
+    DealHealthService,
     ActivityFeedService,
   ],
 })

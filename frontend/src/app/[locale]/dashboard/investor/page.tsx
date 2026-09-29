@@ -53,6 +53,19 @@ const AnchorWidget = dynamic(
   },
 );
 
+const DealHealthWidget = dynamic(
+  () =>
+    import("../../../../components/deals/DealHealthWidget").then((m) => ({
+      default: m.DealHealthWidget,
+    })),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-24 skeleton rounded-xl" aria-label="Loading deal health…" />
+    ),
+  },
+);
+
 const INV_STATUS: Record<string, string> = {
   confirmed: "badge-green",
   pending: "badge-yellow",
@@ -511,6 +524,9 @@ export default function InvestorDashboard() {
                               />
                             </div>
                           </div>
+
+                          {/* Deal Health Indicators — Issue #1002 */}
+                          <DealHealthWidget dealId={inv.deal.id} compact />
 
                           <div className="flex gap-2 mt-auto">
                             <Link
