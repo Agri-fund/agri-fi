@@ -6,7 +6,7 @@ import Shepherd from 'shepherd.js';
 import 'shepherd.js/dist/css/shepherd.css';
 
 const TOUR_STORAGE_KEY = 'agri-fi-dashboard-tour-completed';
-const TOUR_VERSION = '1.0.0';
+const TOUR_VERSION = '1.1.0';
 
 function hasReducedMotion(): boolean {
   if (typeof window === 'undefined') return false;
@@ -20,15 +20,24 @@ interface DashboardTourProps {
   forceRestart?: boolean;
 }
 
+/**
+ * Accessibility-guided onboarding tour for new investors (#1020).
+ * Keyboard-first Shepherd.js tour with ARIA live announcements,
+ * focus management, and WCAG 2.1 AA contrast on highlights.
+ */
 export function DashboardTour({
-  locale,
-  userRole,
+  locale: _locale,
+  userRole: _userRole,
   onTourComplete,
   forceRestart = false,
 }: DashboardTourProps) {
   const t = useTranslations('tour');
   const tourRef = useRef<Shepherd.Tour | null>(null);
+  const triggerRef = useRef<HTMLElement | null>(null);
   const [isTourActive, setIsTourActive] = useState(false);
+  const [liveAnnouncement, setLiveAnnouncement] = useState('');
+  const [currentStepIndex, setCurrentStepIndex] = useState(0);
+  const [totalSteps, setTotalSteps] = useState(0);
 
   const isTourCompleted = useCallback((): boolean => {
     if (typeof window === 'undefined') return true;
@@ -46,173 +55,281 @@ export function DashboardTour({
     if (typeof window === 'undefined') return;
     localStorage.setItem(
       TOUR_STORAGE_KEY,
-      JSON.stringify({ completed: true, version: TOUR_VERSION, completedAt: new Date().toISOString() }),
+      JSON.stringify({
+        completed: true,
+        version: TOUR_VERSION,
+        completedAt: new Date().toISOString(),
+      }),
     );
   }, []);
 
-  const getSteps = useCallback((): Shepherd.Step.StepOptions[] => {
-    const accentColor = '#059669';
+  const announceStep = useCallback(
+    (index: number, title: string, text: string, total: number) => {
+      setCurrentStepIndex(index + 1);
+      setTotalSteps(total);
+      setLiveAnnouncement(
+        `Onboarding step ${index + 1} of ${total}: ${title}. ${text}`,
+      );
+    },
+    [],
+  );
 
+  const restoreFocus = useCallback(() => {
+    const target = triggerRef.current;
+    if (target && typeof target.focus === 'function') {
+      target.focus();
+    }
+  }, []);
+
+  const getSteps = useCallback((): Shepherd.Step.StepOptions[] => {
     return [
       {
         id: 'welcome',
         title: t('welcome.title'),
-        text: t('welcome.text'),
+        text: `<div id="shepherd-step-description">${t('welcome.text')}</div>`,
         buttons: [
           {
             text: t('buttons.skip'),
             classes: 'shepherd-button-secondary',
-            action: () => tourRef.current?.cancel(),
+            action() {
+              tourRef.current?.cancel();
+            },
           },
           {
             text: t('buttons.next'),
             classes: 'shepherd-button-primary',
-            action: () => tourRef.current?.next(),
+            action() {
+              tourRef.current?.next();
+            },
           },
         ],
         cancelIcon: { enabled: true },
         modalOverlayOpeningPadding: 8,
+        when: {
+          show() {
+            announceStep(0, t('welcome.title'), t('welcome.text'), 6);
+            const el = document.querySelector(
+              '.shepherd-element',
+            ) as HTMLElement | null;
+            el?.setAttribute('role', 'dialog');
+            el?.setAttribute('aria-modal', 'true');
+            el?.setAttribute('aria-labelledby', 'shepherd-step-title');
+            el?.setAttribute(
+              'aria-describedby',
+              'shepherd-step-description',
+            );
+            const titleEl = el?.querySelector('.shepherd-title');
+            titleEl?.setAttribute('id', 'shepherd-step-title');
+            const primary = el?.querySelector(
+              '.shepherd-button-primary',
+            ) as HTMLElement | null;
+            primary?.focus();
+          },
+        },
       },
       {
         id: 'browse-deals',
         title: t('browseDeals.title'),
-        text: t('browseDeals.text'),
+        text: `<div id="shepherd-step-description">${t('browseDeals.text')}</div>`,
         attachTo: { element: '[data-tour="nav-marketplace"]', on: 'bottom' },
         buttons: [
           {
             text: t('buttons.back'),
             classes: 'shepherd-button-secondary',
-            action: () => tourRef.current?.back(),
+            action() {
+              tourRef.current?.back();
+            },
           },
           {
             text: t('buttons.next'),
             classes: 'shepherd-button-primary',
-            action: () => tourRef.current?.next(),
+            action() {
+              tourRef.current?.next();
+            },
           },
         ],
         cancelIcon: { enabled: true },
         modalOverlayOpeningPadding: 4,
+        when: {
+          show() {
+            announceStep(1, t('browseDeals.title'), t('browseDeals.text'), 6);
+          },
+        },
       },
       {
         id: 'connect-wallet',
         title: t('connectWallet.title'),
-        text: t('connectWallet.text'),
+        text: `<div id="shepherd-step-description">${t('connectWallet.text')}</div>`,
         attachTo: { element: '[data-tour="wallet-button"]', on: 'bottom' },
         buttons: [
           {
             text: t('buttons.back'),
             classes: 'shepherd-button-secondary',
-            action: () => tourRef.current?.back(),
+            action() {
+              tourRef.current?.back();
+            },
           },
           {
             text: t('buttons.next'),
             classes: 'shepherd-button-primary',
-            action: () => tourRef.current?.next(),
+            action() {
+              tourRef.current?.next();
+            },
           },
         ],
         cancelIcon: { enabled: true },
         modalOverlayOpeningPadding: 4,
+        when: {
+          show() {
+            announceStep(
+              2,
+              t('connectWallet.title'),
+              t('connectWallet.text'),
+              6,
+            );
+          },
+        },
       },
       {
         id: 'portfolio-stats',
         title: t('portfolioStats.title'),
-        text: t('portfolioStats.text'),
+        text: `<div id="shepherd-step-description">${t('portfolioStats.text')}</div>`,
         attachTo: { element: '[data-tour="portfolio-stats"]', on: 'bottom' },
         buttons: [
           {
             text: t('buttons.back'),
             classes: 'shepherd-button-secondary',
-            action: () => tourRef.current?.back(),
+            action() {
+              tourRef.current?.back();
+            },
           },
           {
             text: t('buttons.next'),
             classes: 'shepherd-button-primary',
-            action: () => tourRef.current?.next(),
+            action() {
+              tourRef.current?.next();
+            },
           },
         ],
         cancelIcon: { enabled: true },
         modalOverlayOpeningPadding: 4,
+        when: {
+          show() {
+            announceStep(
+              3,
+              t('portfolioStats.title'),
+              t('portfolioStats.text'),
+              6,
+            );
+          },
+        },
       },
       {
         id: 'notification-bell',
         title: t('notificationBell.title'),
-        text: t('notificationBell.text'),
+        text: `<div id="shepherd-step-description">${t('notificationBell.text')}</div>`,
         attachTo: { element: '[data-tour="notification-bell"]', on: 'bottom' },
         buttons: [
           {
             text: t('buttons.back'),
             classes: 'shepherd-button-secondary',
-            action: () => tourRef.current?.back(),
+            action() {
+              tourRef.current?.back();
+            },
           },
           {
             text: t('buttons.next'),
             classes: 'shepherd-button-primary',
-            action: () => tourRef.current?.next(),
+            action() {
+              tourRef.current?.next();
+            },
           },
         ],
         cancelIcon: { enabled: true },
         modalOverlayOpeningPadding: 4,
+        when: {
+          show() {
+            announceStep(
+              4,
+              t('notificationBell.title'),
+              t('notificationBell.text'),
+              6,
+            );
+          },
+        },
       },
       {
         id: 'tour-complete',
         title: t('complete.title'),
-        text: t('complete.text'),
+        text: `<div id="shepherd-step-description">${t('complete.text')}</div>`,
         buttons: [
           {
             text: t('buttons.finish'),
             classes: 'shepherd-button-primary',
-            action: () => tourRef.current?.complete(),
+            action() {
+              tourRef.current?.complete();
+            },
           },
         ],
         cancelIcon: { enabled: true },
+        when: {
+          show() {
+            announceStep(5, t('complete.title'), t('complete.text'), 6);
+          },
+        },
       },
     ];
-  }, [t]);
+  }, [t, announceStep]);
 
   const startTour = useCallback(() => {
     if (tourRef.current) {
       tourRef.current.destroy();
     }
 
-    if (hasReducedMotion()) {
-      markTourCompleted();
-      onTourComplete?.();
-      return;
-    }
+    // Preserve tour content under reduced motion — only disable animations via CSS
+    triggerRef.current = document.activeElement as HTMLElement | null;
 
     const tour = new Shepherd.Tour({
       defaultStepOptions: {
         cancelIcon: { enabled: true },
-        classes: 'shepherd-theme-arrows agri-fi-tour',
+        classes: `shepherd-theme-arrows agri-fi-tour${hasReducedMotion() ? ' agri-fi-tour--reduced-motion' : ''}`,
         arrow: true,
         modalOverlayOpeningPadding: 8,
-        highlightClass: 'shepherd-highlight',
-        title: undefined,
-        text: undefined,
+        highlightClass: 'shepherd-highlight agri-fi-tour-highlight',
+        scrollTo: hasReducedMotion() ? false : { behavior: 'smooth', block: 'center' },
+        canClickTarget: false,
       },
-      useEffectOverlay: true,
+      useModalOverlay: true,
       keyboardNavigation: true,
       exitOnEsc: true,
     });
 
-    tour.steps = getSteps();
+    const steps = getSteps();
+    setTotalSteps(steps.length);
+    for (const step of steps) {
+      tour.addStep(step);
+    }
 
     tour.on('complete', () => {
       markTourCompleted();
       setIsTourActive(false);
+      setLiveAnnouncement('Onboarding tour completed.');
+      restoreFocus();
       onTourComplete?.();
     });
 
     tour.on('cancel', () => {
       markTourCompleted();
       setIsTourActive(false);
+      setLiveAnnouncement('Onboarding tour dismissed.');
+      restoreFocus();
       onTourComplete?.();
     });
 
     tourRef.current = tour;
     setIsTourActive(true);
     tour.start();
-  }, [getSteps, markTourCompleted, onTourComplete]);
+  }, [getSteps, markTourCompleted, onTourComplete, restoreFocus]);
 
   useEffect(() => {
     if (forceRestart) {
@@ -237,7 +354,29 @@ export function DashboardTour({
     };
   }, []);
 
-  return null;
+  return (
+    <>
+      {/* Persistent polite live region for step progress (#1020) */}
+      <div
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+        data-testid="tour-live-region"
+      >
+        {liveAnnouncement}
+      </div>
+      {isTourActive && (
+        <div
+          className="sr-only"
+          data-testid="tour-progress"
+          aria-hidden="true"
+        >
+          {currentStepIndex}/{totalSteps}
+        </div>
+      )}
+    </>
+  );
 }
 
 export function isTourCompletedStatic(): boolean {

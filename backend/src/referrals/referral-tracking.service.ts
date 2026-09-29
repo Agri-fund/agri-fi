@@ -1,4 +1,5 @@
 export type ReferralEventType = 'click' | 'signup' | 'activated' | 'reward';
+export type ReferralPayoutStatus = 'pending' | 'accrued' | 'paid' | 'failed';
 
 export interface ReferralEvent {
   id?: string;
@@ -8,6 +9,7 @@ export interface ReferralEvent {
   amount?: number | string;
   referredUserId?: string;
   userId?: string;
+  payoutStatus?: ReferralPayoutStatus;
   metadata?: Record<string, unknown>;
 }
 
@@ -34,6 +36,16 @@ export interface RewardTimelinePoint {
   activated: number;
 }
 
+export interface PayoutStatusSummary {
+  pending: number;
+  accrued: number;
+  paid: number;
+  failed: number;
+  totalAmountPending: number;
+  totalAmountAccrued: number;
+  totalAmountPaid: number;
+}
+
 export interface ReferralAnalytics {
   totalClicks: number;
   totalSignups: number;
@@ -42,6 +54,7 @@ export interface ReferralAnalytics {
   funnel: ReferralFunnelStep[];
   channels: ReferralChannelSummary[];
   timeline: RewardTimelinePoint[];
+  payoutStatus: PayoutStatusSummary;
 }
 
 interface ChannelAccumulator {
@@ -51,6 +64,11 @@ interface ChannelAccumulator {
   rewards: number;
 }
 
+/**
+ * Pure analytics helpers for the referral conversion funnel (#1018).
+ * Converts click → signup → activated events into funnel rates,
+ * per-channel breakdowns, reward accrual timeline, and payout status.
+ */
 export class ReferralTrackingService {
   private round(value: number): number {
     return Number(value.toFixed(2));
@@ -72,14 +90,20 @@ export class ReferralTrackingService {
     return this.round((numerator / denominator) * 100);
   }
 
-  buildRewardTimeline(events: ReferralEvent[] = []): Array<{ date: string; rewards: number }> {
+  buildRewardTimeline(
+    events: ReferralEvent[] = [],
+  ): Array<{ date: string; rewards: number }> {
     const rewardsByDate = new Map<string, number>();
 
     for (const event of events) {
       if (event.type !== 'reward') continue;
       const dateKey = this.getDateKey(event.createdAt);
       const amount = Number(event.amount ?? 0);
-      rewardsByDate.set(dateKey, (rewardsByDate.get(dateKey) ?? 0) + (Number.isFinite(amount) ? amount : 0));
+      rewardsByDate.set(
+        dateKey,
+        (rewardsByDate.get(dateKey) ?? 0) +
+          (Number.isFinite(amount) ? amount : 0),
+      );
     }
 
     return Array.from(rewardsByDate.entries())
@@ -87,15 +111,33 @@ export class ReferralTrackingService {
       .sort((a, b) => a.date.localeCompare(b.date));
   }
 
+  /**
+   * Build full funnel analytics from a flat event stream.
+   * Funnel conversion rates are relative to clicks (top of funnel).
+   * Channel rewardRate is activated/signups for that channel.
+   */
   buildAnalytics(events: ReferralEvent[] = []): ReferralAnalytics {
     const totalClicks = events.filter((event) => event.type === 'click').length;
-    const totalSignups = events.filter((event) => event.type === 'signup').length;
-    const totalActivated = events.filter((event) => event.type === 'activated').length;
+    const totalSignups = events.filter(
+      (event) => event.type === 'signup',
+    ).length;
+    const totalActivated = events.filter(
+      (event) => event.type === 'activated',
+    ).length;
     const totalRewards = events
       .filter((event) => event.type === 'reward')
       .reduce((sum, event) => sum + Number(event.amount ?? 0), 0);
 
     const channelMap = new Map<string, ChannelAccumulator>();
+    const payoutStatus: PayoutStatusSummary = {
+      pending: 0,
+      accrued: 0,
+      paid: 0,
+      failed: 0,
+      totalAmountPending: 0,
+      totalAmountAccrued: 0,
+      totalAmountPaid: 0,
+    };
 
     for (const event of events) {
       const channel = this.normalizeChannel(event.channel);
@@ -106,20 +148,19 @@ export class ReferralTrackingService {
         rewards: 0,
       };
 
-      if (event.type === 'click') {
-        bucket.clicks += 1;
-      }
-
-      if (event.type === 'signup') {
-        bucket.signups += 1;
-      }
-
-      if (event.type === 'activated') {
-        bucket.activated += 1;
-      }
-
+      if (event.type === 'click') bucket.clicks += 1;
+      if (event.type === 'signup') bucket.signups += 1;
+      if (event.type === 'activated') bucket.activated += 1;
       if (event.type === 'reward') {
         bucket.rewards += Number(event.amount ?? 0);
+        const status = event.payoutStatus ?? 'accrued';
+        const amount = Number(event.amount ?? 0);
+        payoutStatus[status] += 1;
+        if (status === 'pending')
+          payoutStatus.totalAmountPending += amount;
+        if (status === 'accrued')
+          payoutStatus.totalAmountAccrued += amount;
+        if (status === 'paid') payoutStatus.totalAmountPaid += amount;
       }
 
       channelMap.set(channel, bucket);
@@ -132,9 +173,14 @@ export class ReferralTrackingService {
         signups: bucket.signups,
         activated: bucket.activated,
         rewards: this.round(bucket.rewards),
-        rewardRate: bucket.signups === 0 ? 0 : this.getConversionRate(bucket.activated, bucket.signups),
+        rewardRate:
+          bucket.signups === 0
+            ? 0
+            : this.getConversionRate(bucket.activated, bucket.signups),
       }))
-      .sort((a, b) => b.rewards - a.rewards || a.channel.localeCompare(b.channel));
+      .sort(
+        (a, b) => b.rewards - a.rewards || a.channel.localeCompare(b.channel),
+      );
 
     const funnel: ReferralFunnelStep[] = [
       {
@@ -154,9 +200,9 @@ export class ReferralTrackingService {
       },
     ];
 
+    // Timeline aggregates ALL event types per day (not just rewards)
     const timelineByDate = new Map<string, RewardTimelinePoint>();
     for (const event of events) {
-      if (event.type !== 'reward') continue;
       const date = this.getDateKey(event.createdAt);
       const point = timelineByDate.get(date) ?? {
         date,
@@ -165,7 +211,10 @@ export class ReferralTrackingService {
         signups: 0,
         activated: 0,
       };
-      point.rewards += Number(event.amount ?? 0);
+      if (event.type === 'click') point.clicks += 1;
+      if (event.type === 'signup') point.signups += 1;
+      if (event.type === 'activated') point.activated += 1;
+      if (event.type === 'reward') point.rewards += Number(event.amount ?? 0);
       timelineByDate.set(date, point);
     }
 
@@ -184,6 +233,12 @@ export class ReferralTrackingService {
       funnel,
       channels,
       timeline,
+      payoutStatus: {
+        ...payoutStatus,
+        totalAmountPending: this.round(payoutStatus.totalAmountPending),
+        totalAmountAccrued: this.round(payoutStatus.totalAmountAccrued),
+        totalAmountPaid: this.round(payoutStatus.totalAmountPaid),
+      },
     };
   }
 }

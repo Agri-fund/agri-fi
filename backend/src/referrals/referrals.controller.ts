@@ -1,34 +1,123 @@
-import { Controller, Get, Query } from '@nestjs/common';
-import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { ReferralTrackingService, ReferralEvent } from './referral-tracking.service';
+import {
+  Controller,
+  Get,
+  Query,
+  Request,
+  UseGuards,
+  Version,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiQuery,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
+import { AuthGuard } from '@nestjs/passport';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import {
+  ReferralTrackingService,
+  ReferralEvent,
+} from './referral-tracking.service';
+import { Referral } from '../auth/entities/referral.entity';
+import { User } from '../auth/entities/user.entity';
 
-const DEFAULT_REFERRAL_EVENTS: ReferralEvent[] = [
-  { id: 'click-1', type: 'click', channel: 'email', createdAt: '2024-01-10T09:00:00.000Z' },
-  { id: 'click-2', type: 'click', channel: 'email', createdAt: '2024-01-10T10:00:00.000Z' },
-  { id: 'click-3', type: 'click', channel: 'social', createdAt: '2024-01-11T11:00:00.000Z' },
-  { id: 'signup-1', type: 'signup', channel: 'email', createdAt: '2024-01-12T09:00:00.000Z' },
-  { id: 'signup-2', type: 'signup', channel: 'social', createdAt: '2024-01-12T12:00:00.000Z' },
-  { id: 'activated-1', type: 'activated', channel: 'email', createdAt: '2024-01-16T09:00:00.000Z' },
-  { id: 'reward-1', type: 'reward', channel: 'email', amount: 15, createdAt: '2024-01-18T09:00:00.000Z' },
-  { id: 'reward-2', type: 'reward', channel: 'social', amount: 7.5, createdAt: '2024-01-19T09:00:00.000Z' },
-];
+interface AuthRequest extends Request {
+  user: User;
+}
 
-@ApiTags('referrals')
-@Controller('referrals')
-export class ReferralsController {
-  constructor(private readonly referralTrackingService: ReferralTrackingService) {}
+/**
+ * Converts persisted referral rows into the flat event stream expected by
+ * ReferralTrackingService funnel math (#1018).
+ */
+function referralsToEvents(referrals: Referral[]): ReferralEvent[] {
+  const events: ReferralEvent[] = [];
 
-  @Get('analytics')
-  @ApiOperation({ summary: 'Get referral funnel and reward analytics by channel' })
-  @ApiQuery({ name: 'channel', required: false, description: 'Filter the response to a specific channel' })
-  @ApiResponse({ status: 200, description: 'Referral funnel analytics' })
-  getAnalytics(@Query('channel') channel?: string) {
-    const source = DEFAULT_REFERRAL_EVENTS.filter((event) => {
-      if (!channel) return true;
-      return event.channel?.toLowerCase() === channel.toLowerCase();
+  for (const referral of referrals) {
+    const channel = referral.channel || 'unknown';
+    const createdAt = referral.createdAt;
+
+    // Every referral starts as a click
+    events.push({
+      id: `${referral.id}-click`,
+      type: 'click',
+      channel,
+      createdAt,
     });
 
-    const analytics = this.referralTrackingService.buildAnalytics(source);
-    return analytics;
+    if (referral.status === 'registered' || referral.status === 'rewarded') {
+      events.push({
+        id: `${referral.id}-signup`,
+        type: 'signup',
+        channel,
+        createdAt,
+        referredUserId: referral.refereeId ?? undefined,
+      });
+    }
+
+    if (referral.status === 'rewarded') {
+      // First investment activates the referral and accrues the reward
+      events.push({
+        id: `${referral.id}-activated`,
+        type: 'activated',
+        channel,
+        createdAt,
+        referredUserId: referral.refereeId ?? undefined,
+      });
+      events.push({
+        id: `${referral.id}-reward`,
+        type: 'reward',
+        channel,
+        createdAt,
+        amount: Number(referral.rewardAmount ?? 0),
+        payoutStatus: referral.payoutStatus ?? 'accrued',
+      });
+    }
+  }
+
+  return events;
+}
+
+@ApiTags('referrals')
+@ApiBearerAuth('jwt')
+@Controller({ path: 'referrals', version: '1' })
+export class ReferralsController {
+  constructor(
+    private readonly referralTrackingService: ReferralTrackingService,
+    @InjectRepository(Referral)
+    private readonly referralRepo: Repository<Referral>,
+  ) {}
+
+  @Get('analytics')
+  @UseGuards(AuthGuard('jwt'))
+  @ApiOperation({
+    summary: 'Get referral funnel and reward analytics by channel (#1018)',
+  })
+  @ApiQuery({
+    name: 'channel',
+    required: false,
+    description: 'Filter the response to a specific channel',
+  })
+  @ApiResponse({ status: 200, description: 'Referral funnel analytics' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async getAnalytics(
+    @Request() req: AuthRequest,
+    @Query('channel') channel?: string,
+  ) {
+    const referrals = await this.referralRepo.find({
+      where: { referrerId: req.user.id },
+      order: { createdAt: 'ASC' },
+    });
+
+    let events = referralsToEvents(referrals);
+
+    if (channel) {
+      events = events.filter(
+        (event) => event.channel?.toLowerCase() === channel.toLowerCase(),
+      );
+    }
+
+    return this.referralTrackingService.buildAnalytics(events);
   }
 }

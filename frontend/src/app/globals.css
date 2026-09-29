@@ -433,3 +433,89 @@ html.dark .portfolio-chart-tooltip {
   left: 0;
   top: 0;
 }
+
+/* ── Dashboard tour accessibility (#1020) ─────────────────────────────────── */
+.agri-fi-tour.shepherd-element {
+  z-index: 10000;
+  max-width: 360px;
+  border: 2px solid #047857;
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.18);
+  background: #ffffff;
+  color: #0f172a;
+}
+
+.agri-fi-tour .shepherd-header {
+  background: #ecfdf5;
+  border-bottom: 1px solid #a7f3d0;
+  padding: 0.75rem 1rem;
+}
+
+.agri-fi-tour .shepherd-title {
+  color: #064e3b;
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+
+.agri-fi-tour .shepherd-text {
+  color: #1e293b;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.agri-fi-tour .shepherd-button {
+  border-radius: 8px;
+  font-weight: 600;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0.5rem 1rem;
+}
+
+.agri-fi-tour .shepherd-button:focus-visible {
+  outline: 3px solid #047857;
+  outline-offset: 2px;
+}
+
+.agri-fi-tour .shepherd-button-primary {
+  background: #047857;
+  color: #ffffff;
+}
+
+.agri-fi-tour .shepherd-button-primary:hover {
+  background: #065f46;
+}
+
+.agri-fi-tour .shepherd-button-secondary {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.agri-fi-tour .shepherd-cancel-icon {
+  color: #334155;
+}
+
+.agri-fi-tour .shepherd-cancel-icon:focus-visible {
+  outline: 3px solid #047857;
+  outline-offset: 2px;
+}
+
+/* WCAG AA highlight: high-contrast emerald ring on target */
+.agri-fi-tour-highlight,
+.shepherd-highlight.agri-fi-tour-highlight {
+  outline: 3px solid #047857 !important;
+  outline-offset: 4px;
+  box-shadow: 0 0 0 6px rgba(4, 120, 87, 0.35) !important;
+}
+
+.agri-fi-tour--reduced-motion,
+.agri-fi-tour--reduced-motion * {
+  transition: none !important;
+  animation: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shepherd-modal-overlay-container,
+  .shepherd-element {
+    transition: none !important;
+  }
+}

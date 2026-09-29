@@ -45,6 +45,7 @@ import { SearchModule } from './search/search.module';
 import { UpgradeModule } from './upgrade/upgrade.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { PublicApiModule } from './public-api/public-api.module';
+import { KycRulesModule } from './kyc-rules/kyc-rules.module';
 
 @Module({
   controllers: [AppController, PublicController],
@@ -118,6 +119,8 @@ import { PublicApiModule } from './public-api/public-api.module';
     UpgradeModule,
     WebhooksModule,
     PublicApiModule,
+    ReferralsModule,
+    KycRulesModule,
   ],
   providers: [
     {

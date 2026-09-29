@@ -94,6 +94,15 @@ export interface ReferralAnalytics {
   funnel: ReferralFunnelStep[];
   channels: ReferralChannelSummary[];
   timeline: ReferralTimelinePoint[];
+  payoutStatus?: {
+    pending: number;
+    accrued: number;
+    paid: number;
+    failed: number;
+    totalAmountPending: number;
+    totalAmountAccrued: number;
+    totalAmountPaid: number;
+  };
 }
 
 const chartColors = ['#22c55e', '#3b82f6', '#8b5cf6'];
@@ -272,6 +281,38 @@ export default function ReferralDashboard({
           </table>
         </div>
       </div>
+
+      {data.payoutStatus && (
+        <div className="card p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="section-title text-base">Reward Payout Status</h3>
+            <span className="text-xs text-slate-400">Accrual → payout</span>
+          </div>
+          <div className="grid sm:grid-cols-3 gap-4">
+            <div className="rounded-xl bg-amber-50 p-4">
+              <p className="text-xs uppercase text-amber-700 mb-1">Pending</p>
+              <p className="text-xl font-bold text-amber-900">{data.payoutStatus.pending}</p>
+              <p className="text-sm text-amber-700 mt-1">
+                {formatCurrency(data.payoutStatus.totalAmountPending, 'USD', { decimalPlaces: 2 })}
+              </p>
+            </div>
+            <div className="rounded-xl bg-emerald-50 p-4">
+              <p className="text-xs uppercase text-emerald-700 mb-1">Accrued</p>
+              <p className="text-xl font-bold text-emerald-900">{data.payoutStatus.accrued}</p>
+              <p className="text-sm text-emerald-700 mt-1">
+                {formatCurrency(data.payoutStatus.totalAmountAccrued, 'USD', { decimalPlaces: 2 })}
+              </p>
+            </div>
+            <div className="rounded-xl bg-blue-50 p-4">
+              <p className="text-xs uppercase text-blue-700 mb-1">Paid</p>
+              <p className="text-xl font-bold text-blue-900">{data.payoutStatus.paid}</p>
+              <p className="text-sm text-blue-700 mt-1">
+                {formatCurrency(data.payoutStatus.totalAmountPaid, 'USD', { decimalPlaces: 2 })}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

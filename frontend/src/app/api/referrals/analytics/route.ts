@@ -9,7 +9,15 @@ export async function GET(request: NextRequest) {
 
     const response = await fetchBackend(`/referrals/analytics${query}`, {
       method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(request.headers.get('authorization')
+          ? { Authorization: request.headers.get('authorization')! }
+          : {}),
+        ...(request.headers.get('cookie')
+          ? { Cookie: request.headers.get('cookie')! }
+          : {}),
+      },
     });
 
     const data = await response.json();
