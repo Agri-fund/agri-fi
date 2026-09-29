@@ -102,6 +102,17 @@ jobs:
         run: npm run check:seed-safety
         working-directory: backend
 
+      # ── Migration history linearity (#951) ─────────────────────────────────
+      # Static check, no database needed — catches two migrations that would
+      # both CREATE the same table/index/type (a guaranteed migration:run
+      # failure on a fresh environment, the exact bug this reconciles) before
+      # ever spinning up Postgres. See backend/scripts/check-migration-linearity.js
+      # for what's checked and why some pre-existing timestamp collisions are
+      # intentionally grandfathered rather than blocking.
+      - name: Verify migration history linearity
+        run: npm run check:migration-linearity
+        working-directory: backend
+
       - name: Build
         run: npm run build
         working-directory: backend
@@ -276,6 +287,20 @@ jobs:
 
       - name: Run database migrations
         run: npm run migration:run
+        working-directory: backend
+        env:
+          DATABASE_URL: postgres://agri:agri@localhost:5432/agri_test
+
+      # ── Migration revert verification (#951) ───────────────────────────────
+      # Acceptance criterion: "migration:revert reverts cleanly". Reverts the
+      # most recently applied migration, then re-applies it (migration:run is
+      # idempotent — it only runs pending migrations) so the schema is back
+      # to fully migrated before the Test step, which expects the complete
+      # schema to exist.
+      - name: Verify migration:revert reverts cleanly
+        run: |
+          npm run migration:revert
+          npm run migration:run
         working-directory: backend
         env:
           DATABASE_URL: postgres://agri:agri@localhost:5432/agri_test
