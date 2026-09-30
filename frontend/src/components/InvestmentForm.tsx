@@ -8,6 +8,8 @@ import { useToast } from './ui/ToastProvider';
 import { OnChainProgressIndicator } from './OnChainProgressIndicator';
 import { useCurrencyFormat } from '../hooks/useCurrencyFormat';
 import { useNumberFormat } from '../hooks/useNumberFormat';
+import { useTranslations } from 'next-intl';
+import { FormField } from './ui/FormField';
 import { WalletSelectionModal } from './wallet/WalletSelectionModal';
 import TxReceiptModal from './wallet/TxReceiptModal';
 
@@ -67,7 +69,9 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
   const txProgress = useTransactionProgress();
   const { formatCurrency } = useCurrencyFormat();
   const { formatNumber } = useNumberFormat();
+  const tValidation = useTranslations('common.validation');
   const [tokenQuantity, setTokenQuantity] = useState<number | ''>(1);
+  const [quantityTouched, setQuantityTouched] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<SuccessState | null>(null);
@@ -78,6 +82,7 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
   const [connectError, setConnectError] = useState<string | null>(null);
   const [showReceipt, setShowReceipt] = useState(false);
   const stepHeadingRef = useRef<HTMLHeadingElement>(null);
+  const quantityInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     onBusyChange?.(isSubmitting);
@@ -133,6 +138,11 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
     minLotSize && minLotSize > 0
       ? Math.max(1, Math.ceil(minLotSize / tokenPrice))
       : 1;
+  const quantityError = safeQuantity < minTokens
+    ? tValidation('quantityMin', { min: minTokens })
+    : safeQuantity > maxTokens
+      ? tValidation('quantityMax', { max: maxTokens })
+      : undefined;
   const availableLots = Math.floor((maxTokens * tokenPrice) / lotSizeUsd);
 
   const adjustLot = (direction: 1 | -1) => {
@@ -153,13 +163,9 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
       return;
     }
 
-    if (safeQuantity < minTokens || safeQuantity > maxTokens) {
-      toast(
-        minLotSize && minLotSize > tokenPrice
-          ? `Minimum investment for this deal is ${minLotSize} USD (${minTokens} tokens)`
-          : `Token quantity must be between ${minTokens} and ${maxTokens}`,
-        'warning',
-      );
+    if (quantityError) {
+      setQuantityTouched(true);
+      quantityInputRef.current?.focus();
       return;
     }
 
@@ -449,11 +455,8 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
     );
   } else {
     body = (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} noValidate className="space-y-4">
       <div>
-        <label htmlFor="tokenQuantity" className="block text-sm font-medium text-gray-700 mb-2">
-          Number of Tokens
-        </label>
         <div className="flex items-center space-x-2">
           <button
             type="button"
@@ -464,22 +467,30 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
           >
             &minus;
           </button>
-          <input
+          <FormField
+            ref={quantityInputRef}
+            label="Number of Tokens"
+            hideLabel
             type="number"
             id="tokenQuantity"
             data-autofocus
+            required
             min={minTokens}
             step={tokensPerLot}
             max={maxTokens}
             value={tokenQuantity === '' ? '' : tokenQuantity}
+            error={quantityTouched ? quantityError : undefined}
+            touched={quantityTouched}
+            success={!quantityError && safeQuantity > 0}
+            hint={`Maximum available: ${formatNumber(maxTokens)} tokens`}
             onChange={(e) => {
               const val = parseInt(e.target.value, 10);
               const qty = isNaN(val) ? 0 : val;
               setTokenQuantity(isNaN(val) ? '' : val);
               onQuantityChange?.(qty);
             }}
-            aria-describedby="tokenQuantity-hint"
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-center"
+            onBlur={() => setQuantityTouched(true)}
+            className="text-center"
             disabled={isSubmitting}
           />
           <button
@@ -492,9 +503,6 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
             +
           </button>
         </div>
-        <p id="tokenQuantity-hint" className="text-xs text-gray-500 mt-1">
-          Maximum available: {formatNumber(maxTokens)} tokens
-        </p>
       </div>
 
       <div className="bg-gray-50 p-3 rounded-md">
@@ -524,7 +532,7 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
 
       <button
         type="submit"
-        disabled={isSubmitting || safeQuantity < minTokens || safeQuantity > maxTokens}
+        disabled={isSubmitting}
         className="focus-ring w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white py-2 px-4 rounded-md font-medium transition-colors"
       >
         {isSubmitting ? 'Processing Investment...' : `Invest ${formatCurrency(totalAmount, 'USD')}`}

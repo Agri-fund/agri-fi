@@ -91,6 +91,7 @@ describe('UsersService', () => {
         kycStatus: 'verified',
         walletAddress: 'GTESTWALLET',
         isCompany: false,
+        isMfaEnabled: true,
         companyDetails: null,
         country: 'GH',
         createdAt: new Date('2026-01-01'),
@@ -103,6 +104,7 @@ describe('UsersService', () => {
           id: 'user-1',
           email: 'farmer@example.com',
           role: 'farmer',
+          isMfaEnabled: true,
         }),
       );
       expect(result).not.toHaveProperty('passwordHash');

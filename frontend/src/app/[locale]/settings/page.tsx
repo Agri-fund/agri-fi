@@ -1,14 +1,23 @@
 "use client";
 
 import { getAuthToken } from "@/lib/auth-token";
-import { useEffect, useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import Image from "next/image";
+import { useTranslations } from "next-intl";
 import { apiClient, User } from "@/lib/api";
 import DashboardLayout from "@/components/DashboardLayout";
 import { resetTour, isTourCompletedStatic } from "@/components/DashboardTour";
 import BrowserPushNotificationsCard from "@/components/BrowserPushNotificationsCard";
+import { FormField } from "@/components/ui/FormField";
 
-type Tab = "account" | "verification" | "wallets" | "currency" | "notifications";
+type Tab = "account" | "verification" | "wallets" | "currency" | "notifications" | "security";
+
+interface MfaSetup {
+  secret: string;
+  qrCodeUrl: string;
+  backupCodes: string[];
+}
 
 const KYC_INFO: Record<string, { label: string; color: string; note: string }> =
   {
@@ -44,14 +53,58 @@ const SUPPORTED_CURRENCIES = [
 
 export default function SettingsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const tValidation = useTranslations("common.validation");
   const [user, setUser] = useState<User | null>(null);
   const [tab, setTab] = useState<Tab>("account");
   const [loading, setLoading] = useState(true);
 
   // Account form state
   const [name, setName] = useState("");
+  const [nameError, setNameError] = useState<string | undefined>();
+  const [nameTouched, setNameTouched] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
+
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordErrors, setPasswordErrors] = useState<Record<string, string | undefined>>({});
+  const [passwordTouched, setPasswordTouched] = useState<Record<string, boolean>>({});
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [changingPassword, setChangingPassword] = useState(false);
+  const passwordRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  const [mfaSetup, setMfaSetup] = useState<MfaSetup | null>(null);
+  const [mfaCode, setMfaCode] = useState("");
+  const [disableMfaCode, setDisableMfaCode] = useState("");
+  const [disableMfaPassword, setDisableMfaPassword] = useState("");
+  const [mfaErrors, setMfaErrors] = useState<Record<string, string | undefined>>({});
+  const [mfaTouched, setMfaTouched] = useState<Record<string, boolean>>({});
+  const [mfaError, setMfaError] = useState<string | null>(null);
+  const [mfaMessage, setMfaMessage] = useState<string | null>(null);
+  const [mfaLoading, setMfaLoading] = useState(false);
+  const mfaCodeRef = useRef<HTMLInputElement>(null);
+  const disableMfaCodeRef = useRef<HTMLInputElement>(null);
+  const disableMfaPasswordRef = useRef<HTMLInputElement>(null);
+
+  const loadMfaSetup = useCallback(async () => {
+    setMfaLoading(true);
+    setMfaError(null);
+    try {
+      const response = await fetch("/api/auth/security/mfa/setup", {
+        headers: { Authorization: `Bearer ${getAuthToken()}` },
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message ?? tValidation("mfaSetupFailed"));
+      setMfaSetup(data);
+    } catch (error) {
+      setMfaError(error instanceof Error ? error.message : tValidation("mfaSetupFailed"));
+    } finally {
+      setMfaLoading(false);
+    }
+  }, [tValidation]);
 
   // Currency preference state
   const [preferredCurrency, setPreferredCurrency] = useState("USD");
@@ -104,8 +157,160 @@ export default function SettingsPage() {
     })();
   }, [router]);
 
+  useEffect(() => {
+    if (searchParams.get("tab") !== "security") return;
+    setTab("security");
+    if (searchParams.get("mfa") === "enroll" && user && !user.isMfaEnabled) void loadMfaSetup();
+  }, [searchParams, loadMfaSetup, user]);
+
+  const validatePasswordField = (field: "current" | "new" | "confirm", value: string) => {
+    if (field === "current" && !value.trim()) return tValidation("currentPasswordRequired");
+    if (field === "new") {
+      if (!value.trim()) return tValidation("newPasswordRequired");
+      if (value.length < 8) return tValidation("passwordMin");
+      if (currentPassword && value === currentPassword) return tValidation("passwordMustDiffer");
+    }
+    if (field === "confirm") {
+      if (!value.trim()) return tValidation("confirmPasswordRequired");
+      if (value !== newPassword) return tValidation("passwordMismatch");
+    }
+    return undefined;
+  };
+
+  const handleChangePassword = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const errors = {
+      current: validatePasswordField("current", currentPassword),
+      new: validatePasswordField("new", newPassword),
+      confirm: validatePasswordField("confirm", confirmPassword),
+    };
+    setPasswordErrors(errors);
+    setPasswordTouched({ current: true, new: true, confirm: true });
+    const firstInvalid = (["current", "new", "confirm"] as const).find((field) => errors[field]);
+    if (firstInvalid) {
+      passwordRefs.current[firstInvalid]?.focus();
+      return;
+    }
+
+    setChangingPassword(true);
+    setPasswordError(null);
+    try {
+      const response = await fetch("/api/auth/security/change-password", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${getAuthToken()}`,
+        },
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message ?? "Unable to change password.");
+      apiClient.clearAuth();
+      router.push("/login?notice=password-changed");
+    } catch (error) {
+      setPasswordError(error instanceof Error ? error.message : "Unable to change password.");
+    } finally {
+      setChangingPassword(false);
+    }
+  };
+
+  const validateMfaCode = (value: string) => {
+    if (!value.trim()) return tValidation("mfaCodeRequired");
+    if (!/^\d{6}$/.test(value)) return tValidation("mfaCodeInvalid");
+    return undefined;
+  };
+
+  const handleEnableMfa = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const codeError = validateMfaCode(mfaCode);
+    setMfaErrors({ code: codeError });
+    setMfaTouched({ code: true });
+    if (codeError) {
+      mfaCodeRef.current?.focus();
+      return;
+    }
+    setMfaLoading(true);
+    setMfaError(null);
+    try {
+      const response = await fetch("/api/auth/security/mfa/enable", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getAuthToken()}` },
+        body: JSON.stringify({ token: mfaCode }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message ?? "Unable to enable MFA.");
+      setUser((current) => current ? { ...current, isMfaEnabled: true } : current);
+      setMfaSetup(null);
+      setMfaCode("");
+      setMfaMessage("MFA is enabled for your account.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (message.includes("Invalid MFA verification code")) {
+        setMfaErrors((current) => ({ ...current, code: tValidation("mfaCodeInvalid") }));
+        setMfaTouched((current) => ({ ...current, code: true }));
+        mfaCodeRef.current?.focus();
+      } else {
+        setMfaError(message || tValidation("mfaEnableFailed"));
+      }
+    } finally {
+      setMfaLoading(false);
+    }
+  };
+
+  const handleDisableMfa = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const errors = {
+      code: validateMfaCode(disableMfaCode),
+      password: disableMfaPassword.trim() ? undefined : tValidation("currentPasswordRequired"),
+    };
+    setMfaErrors(errors);
+    setMfaTouched({ disableCode: true, disablePassword: true });
+    const firstInvalid = errors.code ? "code" : errors.password ? "password" : undefined;
+    if (firstInvalid) {
+      (firstInvalid === "code" ? disableMfaCodeRef : disableMfaPasswordRef).current?.focus();
+      return;
+    }
+    setMfaLoading(true);
+    setMfaError(null);
+    try {
+      const response = await fetch("/api/auth/security/mfa/disable", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getAuthToken()}` },
+        body: JSON.stringify({ token: disableMfaCode, password: disableMfaPassword }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message ?? "Unable to disable MFA.");
+      setUser((current) => current ? { ...current, isMfaEnabled: false } : current);
+      setDisableMfaCode("");
+      setDisableMfaPassword("");
+      setMfaMessage("MFA has been disabled.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (message.includes("Invalid password")) {
+        setMfaErrors((current) => ({ ...current, password: tValidation("currentPasswordIncorrect") }));
+        setMfaTouched((current) => ({ ...current, disablePassword: true }));
+        disableMfaPasswordRef.current?.focus();
+      } else if (message.includes("Invalid MFA token")) {
+        setMfaErrors((current) => ({ ...current, code: tValidation("mfaCodeInvalid") }));
+        setMfaTouched((current) => ({ ...current, disableCode: true }));
+        disableMfaCodeRef.current?.focus();
+      } else {
+        setMfaError(message || tValidation("mfaDisableFailed"));
+      }
+    } finally {
+      setMfaLoading(false);
+    }
+  };
+
   const handleSaveAccount = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    const validationError = name.trim() ? undefined : tValidation("nameRequired");
+    setNameError(validationError);
+    setNameTouched(true);
+    if (validationError) {
+      nameRef.current?.focus();
+      return;
+    }
     if (!user) return;
     setSaving(true);
     setSaveMsg(null);
@@ -230,6 +435,7 @@ export default function SettingsPage() {
   const TABS: { id: Tab; label: string; icon: string }[] = [
     { id: "account", label: "Account", icon: "👤" },
     { id: "verification", label: "Verification", icon: "🛡️" },
+    { id: "security", label: "Security", icon: "🔐" },
     { id: "wallets", label: "Wallets", icon: "🔑" },
     { id: "currency", label: "Currency", icon: "💱" },
     { id: "notifications", label: "Notifications", icon: "🔔" },
@@ -265,38 +471,39 @@ export default function SettingsPage() {
         {tab === "account" && (
           <div className="card p-6 space-y-5">
             <h2 className="section-title">Profile Information</h2>
-            <form onSubmit={handleSaveAccount} className="space-y-4">
-              <div>
-                <label className="label" htmlFor="settings-email">
-                  Email
-                </label>
-                <input
-                  id="settings-email"
-                  type="email"
-                  value={user.email}
-                  disabled
-                  className="input bg-slate-50 text-slate-400 cursor-not-allowed"
-                  aria-describedby="email-hint"
-                />
-                <p id="email-hint" className="label-hint">
-                  Email cannot be changed.
-                </p>
-              </div>
+            <form onSubmit={handleSaveAccount} noValidate className="space-y-4">
+              <FormField
+                id="settings-email"
+                label="Email"
+                type="email"
+                value={user.email}
+                disabled
+                hint="Email cannot be changed."
+                className="bg-slate-50 text-slate-400 cursor-not-allowed"
+              />
 
-              <div>
-                <label className="label" htmlFor="settings-name">
-                  Full Name
-                </label>
-                <input
-                  id="settings-name"
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Your full name"
-                  className="input"
-                  maxLength={100}
-                />
-              </div>
+              <FormField
+                ref={nameRef}
+                id="settings-name"
+                label="Full Name"
+                type="text"
+                value={name}
+                required
+                onChange={(e) => {
+                  setName(e.target.value);
+                  setSaveMsg(null);
+                  if (nameTouched) setNameError(e.target.value.trim() ? undefined : tValidation("nameRequired"));
+                }}
+                onBlur={() => {
+                  setNameTouched(true);
+                  setNameError(name.trim() ? undefined : tValidation("nameRequired"));
+                }}
+                placeholder="Your full name"
+                maxLength={100}
+                error={nameError}
+                touched={nameTouched}
+                success={!nameError && !!name.trim()}
+              />
 
               <div>
                 <label className="label">Role</label>
@@ -343,6 +550,193 @@ export default function SettingsPage() {
                 <p className="text-sm font-medium text-emerald-600 mt-2">{tourRestartMsg}</p>
               )}
             </div>
+          </div>
+        )}
+
+        {tab === "security" && (
+          <div className="card p-6 space-y-8">
+            <section>
+              <h2 className="section-title">Change Password</h2>
+              <p className="text-sm text-slate-500 mt-1 mb-5">Changing your password signs out all active sessions.</p>
+              <form onSubmit={handleChangePassword} noValidate className="space-y-4">
+                {passwordError && <p role="alert" className="text-sm text-red-600">{passwordError}</p>}
+                <FormField
+                  ref={(node) => { passwordRefs.current.current = node; }}
+                  label="Current password"
+                  type="password"
+                  autoComplete="current-password"
+                  required
+                  value={currentPassword}
+                  error={passwordErrors.current}
+                  touched={passwordTouched.current}
+                  success={!passwordErrors.current && !!currentPassword}
+                  onBlur={() => {
+                    setPasswordTouched((current) => ({ ...current, current: true }));
+                    setPasswordErrors((current) => ({ ...current, current: validatePasswordField("current", currentPassword) }));
+                  }}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setCurrentPassword(value);
+                    if (passwordTouched.current) setPasswordErrors((current) => ({ ...current, current: validatePasswordField("current", value) }));
+                  }}
+                />
+                <FormField
+                  ref={(node) => { passwordRefs.current.new = node; }}
+                  label="New password"
+                  type="password"
+                  autoComplete="new-password"
+                  minLength={8}
+                  required
+                  value={newPassword}
+                  error={passwordErrors.new}
+                  touched={passwordTouched.new}
+                  success={!passwordErrors.new && newPassword.length >= 8}
+                  onBlur={() => {
+                    setPasswordTouched((current) => ({ ...current, new: true }));
+                    setPasswordErrors((current) => ({ ...current, new: validatePasswordField("new", newPassword) }));
+                  }}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setNewPassword(value);
+                    if (passwordTouched.new) setPasswordErrors((current) => ({ ...current, new: validatePasswordField("new", value) }));
+                    if (passwordTouched.confirm) {
+                      const confirmError = !confirmPassword.trim()
+                        ? tValidation("confirmPasswordRequired")
+                        : confirmPassword === value ? undefined : tValidation("passwordMismatch");
+                      setPasswordErrors((current) => ({ ...current, confirm: confirmError }));
+                    }
+                  }}
+                />
+                <FormField
+                  ref={(node) => { passwordRefs.current.confirm = node; }}
+                  label="Confirm new password"
+                  type="password"
+                  autoComplete="new-password"
+                  required
+                  value={confirmPassword}
+                  error={passwordErrors.confirm}
+                  touched={passwordTouched.confirm}
+                  success={!passwordErrors.confirm && !!confirmPassword && confirmPassword === newPassword}
+                  onBlur={() => {
+                    setPasswordTouched((current) => ({ ...current, confirm: true }));
+                    setPasswordErrors((current) => ({ ...current, confirm: validatePasswordField("confirm", confirmPassword) }));
+                  }}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setConfirmPassword(value);
+                    if (passwordTouched.confirm) setPasswordErrors((current) => ({ ...current, confirm: validatePasswordField("confirm", value) }));
+                  }}
+                />
+                <button type="submit" disabled={changingPassword} className="btn-primary">
+                  {changingPassword ? "Updating…" : "Update Password"}
+                </button>
+              </form>
+            </section>
+
+            <section className="border-t border-slate-100 pt-6">
+              <h2 className="section-title">Multi-factor authentication</h2>
+              <p className="text-sm text-slate-500 mt-1 mb-5">Use an authenticator app to add another layer of account protection.</p>
+              {mfaError && <p role="alert" className="text-sm text-red-600 mb-4">{mfaError}</p>}
+              {mfaMessage && <p role="status" className="text-sm text-emerald-700 mb-4">{mfaMessage}</p>}
+
+              {user.isMfaEnabled ? (
+                <form onSubmit={handleDisableMfa} noValidate className="space-y-4">
+                  <p className="text-sm font-medium text-emerald-700">MFA is enabled.</p>
+                  <FormField
+                    ref={disableMfaCodeRef}
+                    label="Authenticator code"
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    required
+                    value={disableMfaCode}
+                    error={mfaErrors.code}
+                    touched={mfaTouched.disableCode}
+                    success={!mfaErrors.code && /^\d{6}$/.test(disableMfaCode)}
+                    onBlur={() => {
+                      setMfaTouched((current) => ({ ...current, disableCode: true }));
+                      setMfaErrors((current) => ({ ...current, code: validateMfaCode(disableMfaCode) }));
+                    }}
+                    onChange={(event) => {
+                      const value = event.target.value.replace(/\D/g, "").slice(0, 6);
+                      setDisableMfaCode(value);
+                      if (mfaTouched.disableCode) setMfaErrors((current) => ({ ...current, code: validateMfaCode(value) }));
+                    }}
+                  />
+                  <FormField
+                    ref={disableMfaPasswordRef}
+                    label="Current password"
+                    type="password"
+                    autoComplete="current-password"
+                    required
+                    value={disableMfaPassword}
+                    error={mfaErrors.password}
+                    touched={mfaTouched.disablePassword}
+                    success={!mfaErrors.password && !!disableMfaPassword}
+                    onBlur={() => {
+                      setMfaTouched((current) => ({ ...current, disablePassword: true }));
+                      setMfaErrors((current) => ({ ...current, password: disableMfaPassword.trim() ? undefined : tValidation("currentPasswordRequired") }));
+                    }}
+                    onChange={(event) => {
+                      setDisableMfaPassword(event.target.value);
+                      if (mfaTouched.disablePassword) setMfaErrors((current) => ({ ...current, password: event.target.value.trim() ? undefined : tValidation("currentPasswordRequired") }));
+                    }}
+                  />
+                  <button type="submit" disabled={mfaLoading} className="btn-danger">
+                    {mfaLoading ? "Updating…" : "Disable MFA"}
+                  </button>
+                </form>
+              ) : mfaSetup ? (
+                <div className="space-y-5">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+                    <Image src={mfaSetup.qrCodeUrl} alt="Authenticator setup QR code" width={160} height={160} unoptimized className="h-40 w-40 border border-slate-200 p-2" />
+                    <div className="space-y-2 text-sm">
+                      <p>Scan this QR code or enter the setup key manually:</p>
+                      <code className="block break-all rounded bg-slate-50 p-3 font-mono">{mfaSetup.secret}</code>
+                    </div>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold">Backup codes</h3>
+                    <p className="text-xs text-slate-500 mt-1">Save these codes somewhere secure. Each code can be used once.</p>
+                    <ul className="mt-2 grid grid-cols-2 gap-2 font-mono text-sm sm:grid-cols-4">
+                      {mfaSetup.backupCodes.map((code) => <li key={code} className="rounded border border-slate-200 px-2 py-1">{code}</li>)}
+                    </ul>
+                  </div>
+                  <form onSubmit={handleEnableMfa} noValidate className="space-y-4">
+                    <FormField
+                      ref={mfaCodeRef}
+                      label="Authenticator code"
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      maxLength={6}
+                      required
+                      value={mfaCode}
+                      error={mfaErrors.code}
+                      touched={mfaTouched.code}
+                      success={!mfaErrors.code && /^\d{6}$/.test(mfaCode)}
+                      onBlur={() => {
+                        setMfaTouched((current) => ({ ...current, code: true }));
+                        setMfaErrors((current) => ({ ...current, code: validateMfaCode(mfaCode) }));
+                      }}
+                      onChange={(event) => {
+                        const value = event.target.value.replace(/\D/g, "").slice(0, 6);
+                        setMfaCode(value);
+                        if (mfaTouched.code) setMfaErrors((current) => ({ ...current, code: validateMfaCode(value) }));
+                      }}
+                    />
+                    <button type="submit" disabled={mfaLoading} className="btn-primary">
+                      {mfaLoading ? "Verifying…" : "Enable MFA"}
+                    </button>
+                  </form>
+                </div>
+              ) : (
+                <button type="button" onClick={() => void loadMfaSetup()} disabled={mfaLoading} className="btn-primary">
+                  {mfaLoading ? "Preparing setup…" : "Set up MFA"}
+                </button>
+              )}
+            </section>
           </div>
         )}
 
