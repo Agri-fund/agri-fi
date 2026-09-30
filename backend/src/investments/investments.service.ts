@@ -30,6 +30,8 @@ import { encodeFeeData, generateInvestmentMemo } from './fee-transaction.utils';
 import { EmailSequenceService } from '../email-sequence/email-sequence.service';
 import { InvestmentEventStore } from './investment-event-store.service';
 import { OfacSanctionsCheckService } from '../auth/utils/ofac-sanctions-check';
+import { AnnualCapService } from '../accreditation/annual-cap.service';
+import { ReferralService } from '../auth/referral.service';
 
 export interface CreateInvestmentResult {
   investment: Investment;
@@ -67,7 +69,8 @@ export class InvestmentsService {
     private readonly ofacCheckService: OfacSanctionsCheckService,
     @Optional() private readonly emailSequenceService: EmailSequenceService,
     @Optional() private readonly eventStore?: InvestmentEventStore,
-    @Optional() private readonly configService?: ConfigService,
+    @Optional() private readonly annualCapService?: AnnualCapService,
+    @Optional() private readonly referralService?: ReferralService,
   ) {}
 
   private coolingOffHours(): number {
@@ -132,6 +135,16 @@ export class InvestmentsService {
 
     if (!tradeDealTemp) {
       throw new NotFoundException('Trade deal not found.');
+    }
+
+    // #902 — Enforce accreditation tier and annual cap before proceeding
+    if (this.annualCapService) {
+      await this.annualCapService.enforceCaps(
+        investorId,
+        investor.accreditationTier ?? 'retail',
+        dto.amountUsd,
+        tradeDealTemp.minimumTier ?? 'retail',
+      );
     }
 
     const feeBreakdown = await this.feeCalculatorService.calculateFeeBreakdown({
@@ -265,6 +278,9 @@ export class InvestmentsService {
       },
       investorId,
     );
+
+    // #902 — Track annual invested total for cap enforcement
+    await this.annualCapService?.recordInvestment(investorId, dto.amountUsd);
 
     return { investment, unsignedXdr, feeBreakdown };
   }
@@ -604,7 +620,7 @@ export class InvestmentsService {
     // If a signed XDR is provided (investor signed via Freighter), enqueue async job
     if (signedXdr) {
       await this.queueService.enqueueInvestmentFundTransactional(
-        this.dataSource.createQueryRunner(),
+        this.dataSource.manager,
         {
           investmentId,
           signedXdr,
@@ -649,7 +665,7 @@ export class InvestmentsService {
         relations: ['investor'],
       });
       await this.queueService.enqueueDealFundedTransactional(
-        this.dataSource.createQueryRunner(),
+        this.dataSource.manager,
         {
           tradeDealId: tradeDeal.id,
           commodity: tradeDeal.commodity,

@@ -12,6 +12,35 @@ export type UserRole =
   'farmer' | 'trader' | 'investor' | 'company_admin' | 'admin';
 export type KycStatus = 'pending' | 'verified' | 'rejected' | 'expired';
 
+// #902 — Investor accreditation tiers
+export type AccreditationTier = 'retail' | 'accredited' | 'institutional';
+export type AccreditationStatus = 'none' | 'pending' | 'approved' | 'rejected' | 'expired';
+
+/** Ordered tier values for comparison (higher index = higher tier). */
+export const TIER_ORDER: AccreditationTier[] = ['retail', 'accredited', 'institutional'];
+
+/** Returns true if `userTier` meets or exceeds `requiredTier`. */
+export function tierSatisfies(
+  userTier: AccreditationTier,
+  requiredTier: AccreditationTier,
+): boolean {
+  return TIER_ORDER.indexOf(userTier) >= TIER_ORDER.indexOf(requiredTier);
+}
+
+/** Annual investment caps per tier in USD. Institutional has no cap (Infinity). */
+export const ANNUAL_CAP_USD: Record<AccreditationTier, number> = {
+  retail: 10_000,
+  accredited: Infinity, // no annual cap — per-deal cap of $50,000 applies instead
+  institutional: Infinity,
+};
+
+/** Per-deal investment caps in USD. */
+export const PER_DEAL_CAP_USD: Record<AccreditationTier, number> = {
+  retail: 5_000,
+  accredited: 50_000,
+  institutional: Infinity,
+};
+
 export interface CompanyDetails {
   companyName?: string;
   registrationNumber?: string;
@@ -277,4 +306,60 @@ export class User {
 
   @Column({ name: 'gdpr_status', type: 'varchar', default: 'active' })
   gdprStatus: 'active' | 'pending_erasure' | 'erased';
+
+  // #902 — Investor accreditation tier management
+  /**
+   * The investor's current accreditation tier.
+   * Retail (default) → max $5,000/deal, $10,000/year.
+   * Accredited (self-cert + document) → max $50,000/deal.
+   * Institutional (manual admin review) → no cap.
+   */
+  @Column({
+    name: 'accreditation_tier',
+    type: 'varchar',
+    default: 'retail',
+  })
+  @ApiProperty({
+    description: 'Investor accreditation tier',
+    enum: ['retail', 'accredited', 'institutional'],
+    example: 'retail',
+  })
+  accreditationTier: AccreditationTier;
+
+  @Column({
+    name: 'accreditation_status',
+    type: 'varchar',
+    default: 'none',
+  })
+  @ApiProperty({
+    description: 'Accreditation application status',
+    enum: ['none', 'pending', 'approved', 'rejected', 'expired'],
+    example: 'none',
+  })
+  accreditationStatus: AccreditationStatus;
+
+  @Column({ name: 'accreditation_submitted_at', type: 'timestamptz', nullable: true })
+  @ApiProperty({ description: 'When the accreditation application was submitted', nullable: true })
+  accreditationSubmittedAt: Date | null;
+
+  @Column({ name: 'accreditation_approved_at', type: 'timestamptz', nullable: true })
+  @ApiProperty({ description: 'When accreditation was approved by admin', nullable: true })
+  accreditationApprovedAt: Date | null;
+
+  /** Accreditation expires 2 years after approval (#902). */
+  @Column({ name: 'accreditation_expires_at', type: 'timestamptz', nullable: true })
+  @ApiProperty({ description: 'Accreditation expiry date (2 years from approval)', nullable: true })
+  accreditationExpiresAt: Date | null;
+
+  @Column({ name: 'accreditation_document_url', type: 'text', nullable: true })
+  @ApiProperty({ description: 'URL of supporting document (net-worth statement, broker letter, etc.)', nullable: true })
+  accreditationDocumentUrl: string | null;
+
+  @Column({ name: 'accreditation_declaration', type: 'text', nullable: true })
+  @ApiProperty({ description: 'Self-certification declaration text signed by the investor', nullable: true })
+  accreditationDeclaration: string | null;
+
+  @Column({ name: 'accreditation_rejection_reason', type: 'text', nullable: true })
+  @ApiProperty({ description: 'Admin rejection reason when status is "rejected"', nullable: true })
+  accreditationRejectionReason: string | null;
 }
