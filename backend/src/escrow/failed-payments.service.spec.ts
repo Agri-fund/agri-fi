@@ -3,7 +3,10 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { FailedPaymentsService } from './failed-payments.service';
-import { TransactionLog } from './entities/transaction-log.entity';
+import {
+  TransactionLog,
+  TxStatus,
+} from '../database/entities/transaction-log.entity';
 import { QueueService } from '../queue/queue.service';
 
 const mockTxLogRepo = () => ({
@@ -47,7 +50,7 @@ describe('FailedPaymentsService', () => {
           txHash: 'abc123',
           errorCode: 'TIMEOUT',
           createdAt: new Date('2024-01-01'),
-          status: 'failed',
+          status: TxStatus.FAILED,
           deal: { id: 'deal-1', commodity: 'Cocoa' } as any,
         },
       ];
@@ -60,7 +63,7 @@ describe('FailedPaymentsService', () => {
       const result = await service.getFailedPayments(1, 20);
 
       expect(txLogRepo.findAndCount).toHaveBeenCalledWith({
-        where: { status: 'failed' },
+        where: { status: TxStatus.FAILED },
         relations: ['deal'],
         order: { createdAt: 'DESC' },
         take: 20,
@@ -96,7 +99,7 @@ describe('FailedPaymentsService', () => {
     it('returns a failed transaction log', async () => {
       const mockLog: Partial<TransactionLog> = {
         id: 'tx-1',
-        status: 'failed',
+        status: TxStatus.FAILED,
         dealId: 'deal-1',
       };
       txLogRepo.findOne.mockResolvedValue(mockLog as TransactionLog);
@@ -115,7 +118,7 @@ describe('FailedPaymentsService', () => {
     it('throws BadRequestException for non-failed transactions', async () => {
       const mockLog: Partial<TransactionLog> = {
         id: 'tx-1',
-        status: 'success',
+        status: TxStatus.SUCCESS,
       };
       txLogRepo.findOne.mockResolvedValue(mockLog as TransactionLog);
       await expect(service.getFailedPaymentById('tx-1')).rejects.toThrow(
@@ -128,7 +131,7 @@ describe('FailedPaymentsService', () => {
     it('enqueues a deal.delivered event for the associated deal', async () => {
       const mockLog: Partial<TransactionLog> = {
         id: 'tx-1',
-        status: 'failed',
+        status: TxStatus.FAILED,
         dealId: 'deal-abc',
         deal: null,
         user: null,
@@ -147,7 +150,7 @@ describe('FailedPaymentsService', () => {
     it('throws BadRequestException when transaction has no associated deal', async () => {
       const mockLog: Partial<TransactionLog> = {
         id: 'tx-1',
-        status: 'failed',
+        status: TxStatus.FAILED,
         dealId: null,
         deal: null,
         user: null,

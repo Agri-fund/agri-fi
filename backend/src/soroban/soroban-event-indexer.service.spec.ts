@@ -10,7 +10,7 @@ import { SorobanEventIndexer } from './soroban-event-indexer.service';
 import {
   TransactionLog,
   TxStatus,
-} from '../stellar/entities/transaction-log.entity';
+} from '../database/entities/transaction-log.entity';
 import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.entity';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
 import { QueueService } from '../queue/queue.service';

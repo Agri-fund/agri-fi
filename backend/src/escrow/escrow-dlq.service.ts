@@ -1,5 +1,7 @@
-import { Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { Injectable, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { InjectMetric } from '@willsoto/nestjs-prometheus';
+import { Counter } from 'prom-client';
 import * as amqp from 'amqplib';
 import { createHash } from 'crypto';
 import {
@@ -16,7 +18,12 @@ export interface EscrowDlqMessage {
 
 @Injectable()
 export class EscrowDlqService {
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    @Optional()
+    @InjectMetric('escrow_release_dlq_replays_total')
+    private readonly dlqReplays?: Counter<string>,
+  ) {}
 
   async listMessages(): Promise<EscrowDlqMessage[]> {
     return this.withChannel(async (channel) => {
@@ -50,12 +57,14 @@ export class EscrowDlqService {
             headers: message.properties.headers,
           });
           channel.ack(message);
+          this.dlqReplays?.inc({ result: 'success' });
           return { replayed: true, id };
         }
 
         channel.nack(message, false, true);
       }
 
+      this.dlqReplays?.inc({ result: 'not_found' });
       return { replayed: false, id };
     });
   }
@@ -75,6 +84,7 @@ export class EscrowDlqService {
         });
         channel.ack(message);
         replayed++;
+        this.dlqReplays?.inc({ result: 'success' });
       }
 
       return { replayed };

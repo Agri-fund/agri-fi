@@ -36,12 +36,22 @@ function msgWithDeaths(count: number) {
 describe('EscrowConsumer', () => {
   let consumer: EscrowConsumer;
   let escrowService: { processDealDelivered: jest.Mock };
+  let idempotency: {
+    acquireLease: jest.Mock;
+    markDone: jest.Mock;
+    releaseLease: jest.Mock;
+  };
 
   const payload = { tradeDealId: 'deal-001' };
 
   beforeEach(() => {
     escrowService = { processDealDelivered: jest.fn() };
-    consumer = new EscrowConsumer(escrowService as any);
+    idempotency = {
+      acquireLease: jest.fn().mockResolvedValue({ acquired: true }),
+      markDone: jest.fn().mockResolvedValue(undefined),
+      releaseLease: jest.fn().mockResolvedValue(undefined),
+    };
+    consumer = new EscrowConsumer(escrowService as any, idempotency as any);
   });
 
   // ── Success path ───────────────────────────────────────────────────────────

@@ -21,7 +21,7 @@ import { Horizon, Networks, rpc } from '@stellar/stellar-sdk';
 import {
   TransactionLog,
   TxStatus,
-} from '../stellar/entities/transaction-log.entity';
+} from '../database/entities/transaction-log.entity';
 import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.entity';
 import { QueueService } from '../queue/queue.service';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
