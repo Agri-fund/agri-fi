@@ -1,19 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { fetchBackend } from '@/config/backend';
+import { NextRequest } from 'next/server';
+import { withBackendProxy } from '@/lib/api-proxy';
 
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
-  try {
-    const authHeader = request.headers.get('authorization');
-    const response = await fetchBackend(`/admin/documents/${params.id}/verify`, {
-      method: 'POST',
-      headers: { Authorization: authHeader || '', 'Content-Type': 'application/json' },
-    });
-    const data = await response.json();
-    if (!response.ok) return NextResponse.json(data, { status: response.status });
-    return NextResponse.json(data);
-  } catch (error: any) {
-    if (error?.isBackendUnreachable)
-      return NextResponse.json({ message: 'Backend service is unavailable' }, { status: 503 });
-    return NextResponse.json({ message: 'Internal server error' }, { status: 500 });
-  }
-}
+export const POST = withBackendProxy(
+  async (_request: NextRequest, { params }: { params: { id: string } }) => ({
+    path: `/admin/documents/${params.id}/verify`,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  }),
+);

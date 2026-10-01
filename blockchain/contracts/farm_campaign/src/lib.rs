@@ -8,7 +8,7 @@
 
 use soroban_sdk::{
     contract, contractimpl, contracttype, contracterror, symbol_short,
-    Address, Env, Map, String, Symbol, Vec, token,
+    Address, Env, Map, String, Symbol, token,
 };
 
 #[contracterror]
@@ -66,6 +66,27 @@ pub struct Config {
     pub max_funding: i128,
 }
 
+/// Fee/milestone terms, bundled into one parameter so `initialize`/
+/// `initialize_with_max_funding` stay under Soroban's 10-parameter-per-
+/// contract-function limit (`#[contractimpl]` rejects an 11th). See the
+/// comment on `initialize` for the full history of why this exists.
+#[contracttype]
+#[derive(Clone)]
+pub struct CampaignTerms {
+    pub platform_fee_bps: u32,
+    pub milestone_count: u32,
+    pub partial_release_cap_bps: u32,
+}
+
+/// Display-only project metadata, bundled for the same parameter-count
+/// reason as `CampaignTerms`.
+#[contracttype]
+#[derive(Clone)]
+pub struct CampaignMetadata {
+    pub project_name: String,
+    pub commodity: String,
+}
+
 #[contracttype]
 #[derive(Clone, PartialEq)]
 pub enum CampaignStatus {
@@ -86,6 +107,12 @@ pub struct State {
     pub milestones_released: u32,
     pub partial_release_total_bps: u32,
     pub raise_ended: bool,
+    /// Cumulative amount already paid out of escrow to the farmer via
+    /// `release_milestone`/`partial_release_milestone`. Tracked directly
+    /// (rather than re-derived from `milestones_released`/
+    /// `partial_release_total_bps` after the fact) so refund safety never
+    /// drifts if either release formula changes later. See `mark_failed`.
+    pub total_released: i128,
 }
 
 #[contract]
@@ -94,6 +121,14 @@ pub struct FarmCampaignContract;
 #[contractimpl]
 impl FarmCampaignContract {
 
+    /// Initializes with `max_funding` defaulted to `funding_target` (no
+    /// headroom above target — see `initialize_with_max_funding` to set a
+    /// cap above target). `terms`/`metadata` are bundled structs, not a
+    /// flat parameter list: Soroban's `#[contractimpl]` caps a contract
+    /// function at 10 parameters, and this constructor's inputs (admin,
+    /// farmer, arbitrator, usdc_token, funding_target, deadline, plus fee/
+    /// milestone/release-cap terms and project display metadata) exceed
+    /// that as separate arguments.
     pub fn initialize(
         env: Env,
         admin: Address,
@@ -102,11 +137,8 @@ impl FarmCampaignContract {
         usdc_token: Address,
         funding_target: i128,
         deadline: u64,
-        platform_fee_bps: u32,
-        milestone_count: u32,
-        partial_release_cap_bps: u32,
-        project_name: String,
-        commodity: String,
+        terms: CampaignTerms,
+        metadata: CampaignMetadata,
     ) -> Result<(), Error> {
         Self::initialize_internal(
             env,
@@ -117,14 +149,14 @@ impl FarmCampaignContract {
             funding_target,
             funding_target,
             deadline,
-            platform_fee_bps,
-            milestone_count,
-            partial_release_cap_bps,
-            project_name,
-            commodity,
+            terms,
+            metadata,
         )
     }
 
+    /// Same as `initialize`, but with an explicit `max_funding` cap above
+    /// `funding_target` (see `CampaignTerms`/`CampaignMetadata`'s doc on
+    /// `initialize` for why those two are bundled structs).
     pub fn initialize_with_max_funding(
         env: Env,
         admin: Address,
@@ -134,11 +166,8 @@ impl FarmCampaignContract {
         funding_target: i128,
         max_funding: i128,
         deadline: u64,
-        platform_fee_bps: u32,
-        milestone_count: u32,
-        partial_release_cap_bps: u32,
-        project_name: String,
-        commodity: String,
+        terms: CampaignTerms,
+        metadata: CampaignMetadata,
     ) -> Result<(), Error> {
         Self::initialize_internal(
             env,
@@ -149,11 +178,8 @@ impl FarmCampaignContract {
             funding_target,
             max_funding,
             deadline,
-            platform_fee_bps,
-            milestone_count,
-            partial_release_cap_bps,
-            project_name,
-            commodity,
+            terms,
+            metadata,
         )
     }
 
@@ -166,12 +192,11 @@ impl FarmCampaignContract {
         funding_target: i128,
         max_funding: i128,
         deadline: u64,
-        platform_fee_bps: u32,
-        milestone_count: u32,
-        partial_release_cap_bps: u32,
-        project_name: String,
-        commodity: String,
+        terms: CampaignTerms,
+        metadata: CampaignMetadata,
     ) -> Result<(), Error> {
+        let CampaignTerms { platform_fee_bps, milestone_count, partial_release_cap_bps } = terms;
+        let CampaignMetadata { project_name, commodity } = metadata;
         if env.storage().instance().has(&DataKey::Config) {
             return Err(Error::AlreadyInitialized);
         }
@@ -193,7 +218,7 @@ impl FarmCampaignContract {
         let config = Config {
             admin,
             farmer,
-            arbitrator,
+            arbitrator: arbitrator.clone(),
             usdc_token,
             funding_target,
             deadline,
@@ -210,6 +235,7 @@ impl FarmCampaignContract {
             milestones_released: 0,
             partial_release_total_bps: 0,
             raise_ended: false,
+            total_released: 0,
         };
         env.storage().instance().set(&DataKey::Config, &config);
         env.storage().instance().set(&DataKey::State, &state);
@@ -312,7 +338,20 @@ impl FarmCampaignContract {
         invested: i128,
     ) -> Result<i128, Error> {
         if total_raised <= 0 || invested <= 0 { return Ok(0); }
-        if total_raised <= funding_target { return Ok(invested); }
+        // Must match refundable_total's boundary exactly (strictly `<`, not
+        // `<=`): at total_raised == funding_target there is nothing to
+        // refund (refundable_total returns 0), so this needs to fall
+        // through to the surplus branch below too — which correctly
+        // computes 0 there (refundable = total_raised - funding_target =
+        // 0) — rather than returning the investor's full stake. The two
+        // functions disagreeing at this exact boundary was a real bug:
+        // apply_proportional_refund would allocate 100% of an investor's
+        // stake as refundable while total_refundable (from
+        // refundable_total) said 0 was refundable, leaving a negative
+        // residual that early_close/mark_failed rejected with
+        // Error::InvalidAmount — i.e. closing a campaign that landed
+        // exactly on its funding target could never succeed.
+        if total_raised < funding_target { return Ok(invested); }
         let refundable = total_raised
             .checked_sub(funding_target)
             .ok_or(Error::InvalidAmount)?;
@@ -323,39 +362,36 @@ impl FarmCampaignContract {
             .ok_or(Error::InvalidAmount)
     }
 
-    pub fn early_close(env: Env, admin: Address, close_reason: String) -> Result<(), Error> {
-        admin.require_auth();
-        let config: Config = env.storage().instance().get(&DataKey::Config)
-            .ok_or(Error::NotInitialized)?;
-        if admin != config.admin { return Err(Error::Unauthorized); }
-        let mut state: State = env.storage().instance().get(&DataKey::State)
-            .ok_or(Error::NotInitialized)?;
-
-        if state.raise_ended { return Ok(()); }
-        if state.status != CampaignStatus::Open
-            && state.status != CampaignStatus::Funded
-            && state.status != CampaignStatus::Paused
-        {
-            return Err(Error::FundingClosed);
-        }
-
-        let total_refundable = Self::refundable_total(
-            state.total_raised,
-            config.funding_target,
-        )?;
+    /// Proportionally splits `state.total_raised` between what's retained
+    /// (up to `retained_target`) and what becomes refundable (anything
+    /// above it), distributing rounding residue one stroop at a time so
+    /// every investor's refundable + retained amount always exactly
+    /// reconciles with `total_raised` — no dust left unaccounted for.
+    ///
+    /// Shared by `early_close` (`retained_target` = `funding_target`: keep
+    /// the target, refund the surplus above it, or refund everything if
+    /// underfunded) and `mark_failed` (`retained_target` =
+    /// `state.total_released`: keep nothing beyond what's already left
+    /// escrow, refund whatever principal is actually still held). Mutates
+    /// `state.total_raised` and `state.raise_ended`, and writes the
+    /// `Investments`/`RefundableInvestments` storage maps. Does not write
+    /// `State` itself — callers do, alongside their own additional state
+    /// changes (`CloseReason`, `status`, ...).
+    fn apply_proportional_refund(
+        env: &Env,
+        state: &mut State,
+        retained_target: i128,
+    ) -> Result<i128, Error> {
+        let total_refundable = Self::refundable_total(state.total_raised, retained_target)?;
         let investments: Map<Address, i128> = env.storage().instance()
-            .get(&DataKey::Investments).unwrap_or_else(|| Map::new(&env));
-        let mut refundable: Map<Address, i128> = Map::new(&env);
-        let mut retained: Map<Address, i128> = Map::new(&env);
+            .get(&DataKey::Investments).unwrap_or_else(|| Map::new(env));
+        let mut refundable: Map<Address, i128> = Map::new(env);
+        let mut retained: Map<Address, i128> = Map::new(env);
         let mut allocated = 0i128;
 
         for (investor, invested) in investments.iter() {
             if invested <= 0 { continue; }
-            let amount = Self::refundable_amount(
-                state.total_raised,
-                config.funding_target,
-                invested,
-            )?;
+            let amount = Self::refundable_amount(state.total_raised, retained_target, invested)?;
             if amount > 0 {
                 refundable.set(investor.clone(), amount);
                 allocated = allocated.checked_add(amount).ok_or(Error::InvalidAmount)?;
@@ -399,6 +435,26 @@ impl FarmCampaignContract {
         state.raise_ended = true;
         env.storage().instance().set(&DataKey::Investments, &retained);
         env.storage().instance().set(&DataKey::RefundableInvestments, &refundable);
+        Ok(total_refundable)
+    }
+
+    pub fn early_close(env: Env, admin: Address, close_reason: String) -> Result<(), Error> {
+        admin.require_auth();
+        let config: Config = env.storage().instance().get(&DataKey::Config)
+            .ok_or(Error::NotInitialized)?;
+        if admin != config.admin { return Err(Error::Unauthorized); }
+        let mut state: State = env.storage().instance().get(&DataKey::State)
+            .ok_or(Error::NotInitialized)?;
+
+        if state.raise_ended { return Ok(()); }
+        if state.status != CampaignStatus::Open
+            && state.status != CampaignStatus::Funded
+            && state.status != CampaignStatus::Paused
+        {
+            return Err(Error::FundingClosed);
+        }
+
+        let total_refundable = Self::apply_proportional_refund(&env, &mut state, config.funding_target)?;
         env.storage().instance().set(&DataKey::State, &state);
         env.storage().instance().set(&DataKey::CloseReason, &close_reason);
         env.events().publish(
@@ -488,6 +544,10 @@ impl FarmCampaignContract {
             .partial_release_total_bps
             .checked_add(amount_bps)
             .ok_or(Error::ReleaseCapExceeded)?;
+        state.total_released = state
+            .total_released
+            .checked_add(release_amount)
+            .ok_or(Error::InvalidAmount)?;
         env.storage().instance().set(&DataKey::State, &state);
 
         usdc.transfer(
@@ -529,6 +589,10 @@ impl FarmCampaignContract {
         // reentrant call sees it already released and errors out.
         env.storage().instance().set(&DataKey::MilestoneReleased(milestone_index), &true);
         state.milestones_released += 1;
+        state.total_released = state
+            .total_released
+            .checked_add(tranche)
+            .ok_or(Error::InvalidAmount)?;
         if state.milestones_released >= config.milestone_count {
             state.status = CampaignStatus::Delivered;
             env.events().publish((Symbol::new(&env, "status_changed"), symbol_short!("delivered")), ());
@@ -709,6 +773,34 @@ impl FarmCampaignContract {
         Ok(())
     }
 
+    /// Marks the campaign Failed and makes whatever principal is still
+    /// actually held in escrow refundable to investors.
+    ///
+    /// Bug this fixes: `release_milestone`/`partial_release_milestone` pay
+    /// real USDC out of escrow to the farmer but never reduce
+    /// `total_raised` (it's a "how much was ever raised" ledger figure,
+    /// not a live balance). Before this fix, marking a campaign Failed
+    /// after any funds had already been released left `raise_ended`
+    /// false, so `refund()`/`refund_by_admin()` fell through to the
+    /// full-original-investment path — promising every investor their
+    /// entire stake back even though part of the contract's balance was
+    /// already gone. Whoever claimed first would succeed; later claimants'
+    /// transfers could fail for insufficient contract balance, or in the
+    /// worst case (a campaign marked Failed after full delivery and
+    /// revenue distribution) investors would be paid their principal
+    /// *again*, on top of the revenue share they already received via
+    /// `distribute_revenue`.
+    ///
+    /// The fix: route through the same proportional-refund math
+    /// `early_close` uses (`apply_proportional_refund`), treating
+    /// `state.total_released` (the cumulative amount actually paid to the
+    /// farmer so far — tracked directly at each release site) as the
+    /// "retained" target instead of `funding_target`. Each investor's
+    /// refundable share becomes proportional to what's actually left,
+    /// never more than the contract can pay out. If nothing was ever
+    /// released, this is equivalent to a full refund of everyone's
+    /// original investment — the previously-intended behavior for the
+    /// common case, just made explicit and safe for the uncommon one.
     pub fn mark_failed(env: Env, admin: Address) -> Result<(), Error> {
         admin.require_auth();
         let config: Config = env.storage().instance().get(&DataKey::Config)
@@ -716,12 +808,18 @@ impl FarmCampaignContract {
         if admin != config.admin { return Err(Error::Unauthorized); }
         let mut state: State = env.storage().instance().get(&DataKey::State)
             .ok_or(Error::NotInitialized)?;
+        // Idempotent, matching early_close: a repeat call after the raise
+        // already ended (whether via mark_failed or early_close) is a
+        // no-op rather than an error.
         if state.raise_ended {
-            return Err(Error::FundingClosed);
+            return Ok(());
         }
         state.status = CampaignStatus::Failed;
+        let retained_target = state.total_released;
+        let total_refundable = Self::apply_proportional_refund(&env, &mut state, retained_target)?;
         env.storage().instance().set(&DataKey::State, &state);
         env.events().publish((Symbol::new(&env, "status_changed"), symbol_short!("failed")), ());
+        env.events().publish((Symbol::new(&env, "failed_refund"),), total_refundable);
         Ok(())
     }
 
@@ -1002,11 +1100,11 @@ mod tests {
             &funding_target,
             &max_funding,
             &1000,
-            &200,
-            &3,
-            &9800,
-            &String::from_str(&env, "demo"),
-            &String::from_str(&env, "maize"),
+            &CampaignTerms { platform_fee_bps: 200, milestone_count: 3, partial_release_cap_bps: 9800 },
+            &CampaignMetadata {
+                project_name: String::from_str(&env, "demo"),
+                commodity: String::from_str(&env, "maize"),
+            },
         );
 
         CampaignSetup {
@@ -1024,13 +1122,20 @@ mod tests {
             token::Client::new(&self.env, &self.usdc_address)
         }
 
+        /// Minting lives on the Stellar Asset Contract's admin interface,
+        /// a separate generated client from the regular `token::Client`
+        /// used for balance/transfer.
+        fn usdc_admin(&self) -> token::StellarAssetClient<'_> {
+            token::StellarAssetClient::new(&self.env, &self.usdc_address)
+        }
+
         fn client(&self) -> FarmCampaignContractClient<'_> {
             FarmCampaignContractClient::new(&self.env, &self.contract_id)
         }
     }
 
     fn invest(setup: &CampaignSetup, investor: &Address, amount: i128) {
-        setup.usdc().mint(investor, &amount);
+        setup.usdc_admin().mint(investor, &amount);
         setup.client().invest(investor, &amount);
     }
 
@@ -1040,7 +1145,7 @@ mod tests {
         invest(&setup, &setup.investor_a, 120);
         invest(&setup, &setup.investor_b, 30);
 
-        setup.usdc().mint(&setup.investor_a, &1);
+        setup.usdc_admin().mint(&setup.investor_a, &1);
         let balance_before = setup.usdc().balance(&setup.investor_a);
         let result = setup.client().try_invest(&setup.investor_a, &1);
         assert_eq!(result, Err(Ok(Error::TargetExceeded)));
@@ -1165,7 +1270,7 @@ mod tests {
             &String::from_str(&setup.env, "raise closed"),
         );
 
-        setup.usdc().mint(&setup.investor_a, &1);
+        setup.usdc_admin().mint(&setup.investor_a, &1);
         let balance_before = setup.usdc().balance(&setup.investor_a);
         let result = setup.client().try_invest(&setup.investor_a, &1);
         assert_eq!(result, Err(Ok(Error::FundingClosed)));
@@ -1176,7 +1281,7 @@ mod tests {
     fn invest_is_rejected_after_the_raise_deadline() {
         let setup = setup_campaign(100, 150);
         setup.env.ledger().set_timestamp(1001);
-        setup.usdc().mint(&setup.investor_a, &1);
+        setup.usdc_admin().mint(&setup.investor_a, &1);
         let result = setup.client().try_invest(&setup.investor_a, &1);
         assert_eq!(result, Err(Ok(Error::DeadlinePassed)));
         assert_eq!(setup.usdc().balance(&setup.investor_a), 1);
@@ -1213,11 +1318,11 @@ mod tests {
             &100,
             &99,
             &1000,
-            &200,
-            &3,
-            &9800,
-            &String::from_str(&env, "demo"),
-            &String::from_str(&env, "maize"),
+            &CampaignTerms { platform_fee_bps: 200, milestone_count: 3, partial_release_cap_bps: 9800 },
+            &CampaignMetadata {
+                project_name: String::from_str(&env, "demo"),
+                commodity: String::from_str(&env, "maize"),
+            },
         );
 
         assert_eq!(result, Err(Ok(Error::InvalidAmount)));
@@ -1240,13 +1345,98 @@ mod tests {
             &usdc_address,
             &100,
             &1000,
-            &200,
-            &3,
-            &9800,
-            &String::from_str(&env, "demo"),
-            &String::from_str(&env, "maize"),
+            &CampaignTerms { platform_fee_bps: 200, milestone_count: 3, partial_release_cap_bps: 9800 },
+            &CampaignMetadata {
+                project_name: String::from_str(&env, "demo"),
+                commodity: String::from_str(&env, "maize"),
+            },
         );
 
         assert_eq!(client.get_config().max_funding, 100);
+    }
+
+    #[test]
+    fn mark_failed_after_milestone_release_only_refunds_remaining_escrow() {
+        // Regression test for the fix in this PR: release_milestone pays
+        // real USDC out of escrow but never reduces total_raised, so
+        // marking a campaign Failed after a release must not promise
+        // investors their full original stake back — only what's actually
+        // still held.
+        let setup = setup_campaign(100, 150);
+        invest(&setup, &setup.investor_a, 60);
+        invest(&setup, &setup.investor_b, 40);
+        setup.client().approve(&setup.admin);
+        setup.client().release_milestone(&setup.admin, &0);
+
+        let released = setup.client().get_state().total_released;
+        assert!(released > 0, "sanity check: release_milestone should have released something");
+
+        setup.client().mark_failed(&setup.admin);
+
+        let remaining = 100 - released;
+        let refundable_a = setup.client().get_refundable_amount(&setup.investor_a);
+        let refundable_b = setup.client().get_refundable_amount(&setup.investor_b);
+        assert_eq!(refundable_a + refundable_b, remaining);
+        assert!(
+            refundable_a < 60,
+            "investor_a must not be refunded their full original stake once funds were already released"
+        );
+        assert!(
+            refundable_b < 40,
+            "investor_b must not be refunded their full original stake once funds were already released"
+        );
+        // total_raised after the operation reflects what's retained (i.e.
+        // already released to the farmer), not what was refunded —
+        // consistent with early_close's existing behavior.
+        assert_eq!(setup.client().get_state().total_raised, released);
+
+        setup.client().refund(&setup.investor_a);
+        setup.client().refund(&setup.investor_b);
+        assert_eq!(setup.usdc().balance(&setup.investor_a), refundable_a);
+        assert_eq!(setup.usdc().balance(&setup.investor_b), refundable_b);
+    }
+
+    #[test]
+    fn mark_failed_with_nothing_released_refunds_full_investment() {
+        let setup = setup_campaign(100, 150);
+        invest(&setup, &setup.investor_a, 60);
+        invest(&setup, &setup.investor_b, 40);
+
+        setup.client().mark_failed(&setup.admin);
+
+        assert_eq!(setup.client().get_refundable_amount(&setup.investor_a), 60);
+        assert_eq!(setup.client().get_refundable_amount(&setup.investor_b), 40);
+        assert_eq!(setup.client().get_state().total_raised, 0);
+
+        setup.client().refund(&setup.investor_a);
+        setup.client().refund(&setup.investor_b);
+        assert_eq!(setup.usdc().balance(&setup.investor_a), 60);
+        assert_eq!(setup.usdc().balance(&setup.investor_b), 40);
+    }
+
+    #[test]
+    fn duplicate_mark_failed_is_an_idempotent_no_op() {
+        let setup = setup_campaign(100, 150);
+        invest(&setup, &setup.investor_a, 100);
+
+        setup.client().mark_failed(&setup.admin);
+        let refundable_before = setup.client().get_refundable_amount(&setup.investor_a);
+
+        let result = setup.client().try_mark_failed(&setup.admin);
+        assert_eq!(result, Ok(Ok(())));
+        assert!(setup.client().is_raise_ended());
+        assert_eq!(setup.client().get_refundable_amount(&setup.investor_a), refundable_before);
+    }
+
+    #[test]
+    fn mark_failed_after_early_close_is_a_no_op() {
+        let setup = setup_campaign(100, 150);
+        invest(&setup, &setup.investor_a, 100);
+        setup.client().early_close(&setup.admin, &String::from_str(&setup.env, "closed early"));
+
+        let refundable_before = setup.client().get_refundable_amount(&setup.investor_a);
+        let result = setup.client().try_mark_failed(&setup.admin);
+        assert_eq!(result, Ok(Ok(())));
+        assert_eq!(setup.client().get_refundable_amount(&setup.investor_a), refundable_before);
     }
 }

@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { fetchBackend } from '@/config/backend';
+import { NextRequest } from 'next/server';
+import { withBackendProxy } from '@/lib/api-proxy';
 
 /**
  * PATCH /api/admin/kyc/bulk
@@ -7,30 +7,9 @@ import { fetchBackend } from '@/config/backend';
  * Proxies the bulk KYC approve/reject request to the backend.
  * Body: { userIds: string[], action: 'approve' | 'reject', reason?: string }
  */
-export async function PATCH(request: NextRequest) {
-  try {
-    const authHeader = request.headers.get('authorization');
-    const body = await request.json();
-
-    const response = await fetchBackend('/admin/kyc/bulk', {
-      method: 'PATCH',
-      headers: {
-        Authorization: authHeader || '',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
-    });
-
-    const data = await response.json();
-    if (!response.ok) return NextResponse.json(data, { status: response.status });
-    return NextResponse.json(data);
-  } catch (error: any) {
-    if (error?.isBackendUnreachable) {
-      return NextResponse.json(
-        { message: 'Backend service is unavailable' },
-        { status: 503 },
-      );
-    }
-    return NextResponse.json({ message: 'Internal server error' }, { status: 500 });
-  }
-}
+export const PATCH = withBackendProxy(async (request: NextRequest) => ({
+  path: '/admin/kyc/bulk',
+  method: 'PATCH',
+  headers: { 'Content-Type': 'application/json' },
+  body: await request.json(),
+}));

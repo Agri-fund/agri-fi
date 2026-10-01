@@ -1,9 +1,18 @@
 # Cargo configuration for Soroban smart contracts
 # Issue #346 - Integrate Soroban Rust SDK in development environment
 
-# Default build target for smart contracts
-[build]
-target = "wasm32-unknown-unknown"
+# No default [build] target here on purpose. Cargo's `[build] target` applies
+# to every subcommand with a compilation step — not just `build` — so a
+# wasm32-unknown-unknown default here previously broke plain `cargo test`
+# (and the root `npm run test:contracts`, which just runs `cargo test`):
+# soroban-sdk's `testutils` feature depends on `rand`/`serde_json` only under
+# `cfg(not(target_family = "wasm"))`, so building tests for wasm32 excludes
+# them and the whole workspace fails with "cannot find crate `serde_json`" /
+# "`rand`", even though both are correctly present in Cargo.lock. Tests must
+# run against the host's native target; the actual deployable wasm artifact
+# is produced explicitly via the `wasm` alias below (or
+# `cargo build --release --target wasm32-unknown-unknown` per this repo's
+# documented deploy flow), not via a workspace-wide default.
 
 # Alias shortcuts for common commands
 [alias]
