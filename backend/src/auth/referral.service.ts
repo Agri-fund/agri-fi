@@ -47,7 +47,10 @@ export class ReferralService {
     return this.referralCodeRepo.save(code);
   }
 
-  async trackClick(code: string): Promise<{ referralId: string }> {
+  async trackClick(
+    code: string,
+    channel = 'unknown',
+  ): Promise<{ referralId: string }> {
     const referralCode = await this.referralCodeRepo.findOne({
       where: { code },
     });
@@ -56,12 +59,18 @@ export class ReferralService {
     const referral = this.referralRepo.create({
       referrerId: referralCode.userId,
       status: 'clicked',
+      channel: channel?.trim() || 'unknown',
+      payoutStatus: 'pending',
     });
     const saved = await this.referralRepo.save(referral);
     return { referralId: saved.id };
   }
 
-  async trackRegistration(refereeId: string, code: string): Promise<void> {
+  async trackRegistration(
+    refereeId: string,
+    code: string,
+    channel = 'unknown',
+  ): Promise<void> {
     const referralCode = await this.referralCodeRepo.findOne({
       where: { code },
     });
@@ -71,6 +80,8 @@ export class ReferralService {
       referrerId: referralCode.userId,
       refereeId,
       status: 'registered',
+      channel: channel?.trim() || 'unknown',
+      payoutStatus: 'pending',
     });
     await this.referralRepo.save(referral);
   }
@@ -83,6 +94,7 @@ export class ReferralService {
 
     referral.status = 'rewarded';
     referral.rewardAmount = 5.0; // $5 USDC credit
+    referral.payoutStatus = 'accrued';
     await this.referralRepo.save(referral);
   }
 

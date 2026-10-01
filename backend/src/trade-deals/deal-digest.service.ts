@@ -1,6 +1,6 @@
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { In, Repository, MoreThanOrEqual } from 'typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
@@ -9,25 +9,44 @@ import { RedisConfig } from '../config/redis.config';
 import { RedisClientType } from 'redis';
 import { User } from '../auth/entities/user.entity';
 import { TradeDeal } from './entities/trade-deal.entity';
-import { Investment } from '../investments/entities/investment.entity';
+import {
+  Investment,
+  InvestmentStatus,
+} from '../investments/entities/investment.entity';
 import { Document } from './entities/document.entity';
+import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { EmailTemplateService } from '../notifications/email-template.service';
 
 /** Deal statuses included in the weekly digest. */
 const ACTIVE_DEAL_STATUSES = ['open', 'funded', 'delivered'] as const;
 
+/** Investment statuses counted toward weekly funding pace metrics (#1021). */
+const COUNTED_INVESTMENT_STATUSES = new Set<string>([
+  InvestmentStatus.CONFIRMED,
+  InvestmentStatus.ACTIVE,
+  InvestmentStatus.COMPLETED,
+]);
+
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
+export interface DigestAggregation {
+  deals: TradeDeal[];
+  newInvestments: Investment[];
+  upcomingMilestones: TradeDeal[];
+  loggedMilestones: ShipmentMilestone[];
+  missingDocs: TradeDeal[];
+  fundingPacePct: number;
+  investorTotal: number;
+}
+
 /**
- * #892 — Weekly deal digest for farmers.
+ * #1021 / #892 — Weekly deal digest for farmers.
  *
- * Every farmer receives one localized email per week summarizing their
- * active deals: funding progress (with an SVG bar chart), new investors,
- * upcoming milestones, documents awaiting submission and derived action
- * items. The email is sent Monday 07:00 in the *farmer's own timezone*
- * (`users.timezone`), deduplicated per ISO week, and can be disabled via
- * `users.email_digest_enabled` / the unsubscribe link.
+ * Every opted-in farmer receives one localized email per week summarizing
+ * their active deals: funding pace, milestones due/logged, deposits, and
+ * derived action items. Sent Monday 07:00 in the farmer's timezone,
+ * deduplicated per ISO week.
  */
 @Injectable()
 export class DealDigestService implements OnModuleInit, OnModuleDestroy {
@@ -44,6 +63,8 @@ export class DealDigestService implements OnModuleInit, OnModuleDestroy {
     private readonly investmentRepo: Repository<Investment>,
     @InjectRepository(Document)
     private readonly documentRepo: Repository<Document>,
+    @InjectRepository(ShipmentMilestone)
+    private readonly milestoneRepo: Repository<ShipmentMilestone>,
     private readonly notificationsService: NotificationsService,
     private readonly emailTemplates: EmailTemplateService,
     private readonly redisConfig: RedisConfig,
@@ -74,6 +95,70 @@ export class DealDigestService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Pure aggregation helpers exposed for unit tests (#1021).
+   */
+  aggregateDigestData(input: {
+    deals: TradeDeal[];
+    investments: Investment[];
+    documents: Array<{ tradeDealId: string }>;
+    milestones: ShipmentMilestone[];
+    since: Date;
+    now?: Date;
+  }): DigestAggregation {
+    const now = input.now?.getTime() ?? Date.now();
+    const since = input.since.getTime();
+
+    const newInvestments = input.investments.filter((inv) => {
+      const created = inv.createdAt ? new Date(inv.createdAt).getTime() : 0;
+      const statusOk =
+        !inv.status || COUNTED_INVESTMENT_STATUSES.has(String(inv.status));
+      return created >= since && statusOk;
+    });
+
+    const dealsWithDocs = new Set(input.documents.map((d) => d.tradeDealId));
+    const upcomingMilestones = input.deals.filter(
+      (d) =>
+        d.deliveryDate &&
+        now < new Date(d.deliveryDate).getTime() &&
+        new Date(d.deliveryDate).getTime() <= now + 7 * MS_PER_DAY,
+    );
+    const missingDocs = input.deals.filter(
+      (d) => !dealsWithDocs.has(d.id) && d.status === 'open',
+    );
+
+    const loggedMilestones = input.milestones.filter((m) => {
+      const recorded = m.recordedAt ? new Date(m.recordedAt).getTime() : 0;
+      return recorded >= since;
+    });
+
+    const totalValue = input.deals.reduce(
+      (sum, d) => sum + Number(d.totalValue ?? 0),
+      0,
+    );
+    const totalInvested = input.deals.reduce(
+      (sum, d) => sum + Number(d.totalInvested ?? 0),
+      0,
+    );
+    const fundingPacePct =
+      totalValue > 0 ? Math.round((totalInvested / totalValue) * 100) : 0;
+
+    const investorTotal = newInvestments.reduce(
+      (sum, inv) => sum + Number(inv.amountUsd ?? 0),
+      0,
+    );
+
+    return {
+      deals: input.deals,
+      newInvestments,
+      upcomingMilestones,
+      loggedMilestones,
+      missingDocs,
+      fundingPacePct,
+      investorTotal,
+    };
+  }
+
+  /**
    * Builds the full digest payload for one farmer.
    * Returns null when there is nothing to send (no active deals or the
    * farmer opted out).
@@ -82,6 +167,7 @@ export class DealDigestService implements OnModuleInit, OnModuleDestroy {
     userId: string,
   ): Promise<{ subject: string; html: string; text: string } | null> {
     const user = await this.userRepo.findOne({ where: { id: userId } });
+    // Explicit opt-in respected (#1021)
     if (!user || user.emailDigestEnabled === false) return null;
 
     const deals = await this.tradeDealRepo.find({
@@ -96,29 +182,27 @@ export class DealDigestService implements OnModuleInit, OnModuleDestroy {
       where: { tradeDealId: In(dealIds) },
       relations: ['investor'],
     });
-    const newInvestments = allInvestments.filter((inv) => {
-      const created = inv.createdAt ? new Date(inv.createdAt) : null;
-      return created !== null && created >= since;
-    });
 
     const docs = await this.documentRepo.find({
       where: { tradeDealId: In(dealIds) },
       select: ['tradeDealId'],
     });
-    const dealsWithDocs = new Set(docs.map((d) => d.tradeDealId));
 
-    const now = Date.now();
-    const upcomingMilestones = deals.filter(
-      (d) =>
-        d.deliveryDate &&
-        now < new Date(d.deliveryDate).getTime() &&
-        new Date(d.deliveryDate).getTime() <= now + 7 * MS_PER_DAY,
-    );
-    const missingDocs = deals.filter(
-      (d) => !dealsWithDocs.has(d.id) && d.status === 'open',
-    );
+    const milestones = await this.milestoneRepo.find({
+      where: {
+        tradeDealId: In(dealIds),
+        recordedAt: MoreThanOrEqual(since),
+      },
+    });
 
-    // ── Sections ────────────────────────────────────────────────────────────
+    const agg = this.aggregateDigestData({
+      deals,
+      investments: allInvestments,
+      documents: docs,
+      milestones,
+      since,
+    });
+
     const headings = this.emailTemplates.getSectionHeadings(
       user.preferredLanguage,
     );
@@ -127,46 +211,50 @@ export class DealDigestService implements OnModuleInit, OnModuleDestroy {
     const chartSvg = this.renderFundingChart(deals);
 
     const milestonesHtml =
-      upcomingMilestones.length > 0
-        ? `<ul>${upcomingMilestones
-            .map(
+      agg.upcomingMilestones.length > 0 || agg.loggedMilestones.length > 0
+        ? `<ul>${[
+            ...agg.upcomingMilestones.map(
               (d) =>
-                `<li>${escapeHtml(d.commodity)} — ${escapeHtml(
+                `<li>Due: ${escapeHtml(d.commodity)} — ${escapeHtml(
                   String(d.deliveryDate).slice(0, 10),
                 )}</li>`,
-            )
-            .join('')}</ul>`
-        : '<p>No milestones scheduled for the next 7 days.</p>';
+            ),
+            ...agg.loggedMilestones.map(
+              (m) =>
+                `<li>Logged: ${escapeHtml(m.milestone)} (${escapeHtml(
+                  String(m.recordedAt).slice(0, 10),
+                )})</li>`,
+            ),
+          ].join('')}</ul>`
+        : '<p>No milestones scheduled or logged for the next 7 days.</p>';
 
     const documentsHtml =
-      missingDocs.length > 0
-        ? `<ul>${missingDocs
+      agg.missingDocs.length > 0
+        ? `<ul>${agg.missingDocs
             .map(
               (d) =>
                 `<li>${escapeHtml(d.commodity)} (${escapeHtml(d.tokenSymbol)})</li>`,
             )
             .join('')}</ul>`
-        : '<p>All required documents have been submitted. 🎉</p>';
+        : '<p>All required documents have been submitted.</p>';
 
     const actionsHtml = this.buildActionItems(
       deals,
-      missingDocs,
-      newInvestments,
+      agg.missingDocs,
+      agg.newInvestments,
     );
 
-    const investorTotal = newInvestments.reduce(
-      (sum, inv) => sum + Number(inv.amountUsd ?? 0),
-      0,
-    );
-
-    const weekStart = new Date(now - 7 * MS_PER_DAY);
+    const weekStart = new Date(Date.now() - 7 * MS_PER_DAY);
     const fmt = (date: Date) => date.toISOString().slice(0, 10);
 
     const vars: Record<string, unknown> = {
       farmerName: user.fullName || user.email.split('@')[0],
-      weekRange: `${fmt(weekStart)} → ${fmt(new Date(now))}`,
-      newInvestorCount: String(newInvestments.length),
-      newInvestorTotal: investorTotal.toLocaleString('en-US'),
+      weekRange: `${fmt(weekStart)} → ${fmt(new Date())}`,
+      newInvestorCount: String(agg.newInvestments.length),
+      newInvestorTotal: agg.investorTotal.toLocaleString('en-US'),
+      fundingPacePct: String(agg.fundingPacePct),
+      milestonesLoggedCount: String(agg.loggedMilestones.length),
+      milestonesDueCount: String(agg.upcomingMilestones.length),
       sectionDeals: headings.deals,
       sectionMilestones: headings.milestones,
       sectionDocuments: headings.documents,
@@ -188,8 +276,8 @@ export class DealDigestService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Hourly scheduler: sends the digest to every eligible farmer for whom it
-   * is currently Monday 07:00 local time, once per ISO week (#892).
+   * Hourly scheduler: sends the digest to every opted-in farmer for whom it
+   * is currently Monday 07:00 local time, once per ISO week (#1021).
    */
   @Cron(CronExpression.EVERY_HOUR)
   async runWeeklyDigest(): Promise<void> {
@@ -224,7 +312,6 @@ export class DealDigestService implements OnModuleInit, OnModuleDestroy {
         );
         this.logger.info({ userId: user.id }, 'Weekly deal digest sent');
       } catch (err: any) {
-        // Release the claim so a transient failure retries next hour.
         await this.releaseWeeklySlot(key);
         this.logger.error(
           { userId: user.id, error: err.message },
@@ -234,10 +321,6 @@ export class DealDigestService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /**
-   * Marks an unsubscribe token as valid for a user id (HMAC-SHA256 over the
-   * user id using JWT_SECRET/APP_SECRET — see #892 acceptance criteria).
-   */
   verifyUnsubscribeToken(userId: string, token: string): boolean {
     const expected = this.hmacFor(userId);
     const a = Buffer.from(expected);
@@ -253,8 +336,6 @@ export class DealDigestService implements OnModuleInit, OnModuleDestroy {
     return `${base}/users/unsubscribe?userId=${userId}&token=${this.hmacFor(userId)}`;
   }
 
-  // ── internals ─────────────────────────────────────────────────────────────
-
   private hmacFor(userId: string): string {
     const secret =
       this.config.get<string>('JWT_SECRET') ??
@@ -263,7 +344,6 @@ export class DealDigestService implements OnModuleInit, OnModuleDestroy {
     return crypto.createHmac('sha256', secret).update(userId).digest('hex');
   }
 
-  /** Renders one funding row with an inline SVG progress bar. */
   renderDealRow(deal: TradeDeal): string {
     const total = Number(deal.totalValue ?? 0);
     const invested = Math.min(Number(deal.totalInvested ?? 0), total);
@@ -280,7 +360,6 @@ export class DealDigestService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
-  /** SVG bar chart: one bar per active deal, height ∝ % funded. */
   renderFundingChart(deals: TradeDeal[]): string {
     if (deals.length === 0) return '';
     const barWidth = 40;
@@ -345,7 +424,6 @@ export class DealDigestService implements OnModuleInit, OnModuleDestroy {
     return `<ul>${items.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>`;
   }
 
-  /** True when it is currently Monday 07:00 (±59 min) at the given IANA timezone. */
   isMondaySevenLocal(timezone?: string | null): boolean {
     const tz = timezone?.trim() || 'UTC';
     try {
@@ -360,7 +438,6 @@ export class DealDigestService implements OnModuleInit, OnModuleDestroy {
       const hour = Number(parts.find((p) => p.type === 'hour')?.value);
       return weekday === 'Mon' && hour === 7;
     } catch {
-      // Invalid timezone stored on the user — fall back to UTC rules.
       const utcHour = new Date().getUTCHours();
       return new Date().getUTCDay() === 1 && utcHour === 7;
     }

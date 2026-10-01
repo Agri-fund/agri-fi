@@ -5,23 +5,25 @@ import { PinoLogger } from 'nestjs-pino';
 import { DealDigestService } from './deal-digest.service';
 import { User } from '../auth/entities/user.entity';
 import { TradeDeal } from './entities/trade-deal.entity';
-import { Investment } from '../investments/entities/investment.entity';
+import { Investment, InvestmentStatus } from '../investments/entities/investment.entity';
 import { Document } from './entities/document.entity';
+import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { EmailTemplateService } from '../notifications/email-template.service';
 import { RedisConfig } from '../config/redis.config';
 
 /**
- * Unit tests for #892 — weekly farmer deal digest:
- * digest data generation, opt-out/skip rules, timezone scheduling
- * (UTC+0 / UTC+3 / UTC+8) and per-ISO-week dedupe.
+ * Unit tests for #1021 / #892 — weekly farmer deal digest:
+ * digest data generation, opt-out/skip rules, timezone scheduling,
+ * aggregation correctness (statuses, milestones, funding pace).
  */
-describe('DealDigestService (#892)', () => {
+describe('DealDigestService (#1021)', () => {
   let service: DealDigestService;
   let userRepo: Record<string, jest.Mock>;
   let tradeDealRepo: Record<string, jest.Mock>;
   let investmentRepo: Record<string, jest.Mock>;
   let documentRepo: Record<string, jest.Mock>;
+  let milestoneRepo: Record<string, jest.Mock>;
   let notificationsService: Record<string, jest.Mock>;
   let emailTemplates: Record<string, jest.Mock>;
 
@@ -54,6 +56,7 @@ describe('DealDigestService (#892)', () => {
     tradeDealRepo = { find: jest.fn().mockResolvedValue([]) };
     investmentRepo = { find: jest.fn().mockResolvedValue([]) };
     documentRepo = { find: jest.fn().mockResolvedValue([]) };
+    milestoneRepo = { find: jest.fn().mockResolvedValue([]) };
     notificationsService = {
       sendEmail: jest.fn().mockResolvedValue(undefined),
     };
@@ -79,6 +82,10 @@ describe('DealDigestService (#892)', () => {
         { provide: getRepositoryToken(TradeDeal), useValue: tradeDealRepo },
         { provide: getRepositoryToken(Investment), useValue: investmentRepo },
         { provide: getRepositoryToken(Document), useValue: documentRepo },
+        {
+          provide: getRepositoryToken(ShipmentMilestone),
+          useValue: milestoneRepo,
+        },
         { provide: NotificationsService, useValue: notificationsService },
         { provide: EmailTemplateService, useValue: emailTemplates },
         { provide: RedisConfig, useValue: { createClient: () => null } },
@@ -109,6 +116,104 @@ describe('DealDigestService (#892)', () => {
     jest.restoreAllMocks();
   });
 
+  describe('aggregateDigestData (#1021)', () => {
+    const now = new Date('2026-03-15T12:00:00Z');
+    const since = new Date('2026-03-08T12:00:00Z');
+
+    it('excludes cancelled/failed/refunded investments from weekly totals', () => {
+      const deals = [buildDeal({ totalValue: 10_000, totalInvested: 4_000 })];
+      const investments = [
+        {
+          amountUsd: 500,
+          status: InvestmentStatus.CONFIRMED,
+          createdAt: new Date('2026-03-10T00:00:00Z'),
+        },
+        {
+          amountUsd: 999,
+          status: InvestmentStatus.CANCELLED,
+          createdAt: new Date('2026-03-10T00:00:00Z'),
+        },
+        {
+          amountUsd: 100,
+          status: InvestmentStatus.FAILED,
+          createdAt: new Date('2026-03-11T00:00:00Z'),
+        },
+        {
+          amountUsd: 200,
+          status: InvestmentStatus.REFUNDED,
+          createdAt: new Date('2026-03-12T00:00:00Z'),
+        },
+      ] as Investment[];
+
+      const agg = service.aggregateDigestData({
+        deals,
+        investments,
+        documents: [],
+        milestones: [],
+        since,
+        now,
+      });
+
+      expect(agg.newInvestments).toHaveLength(1);
+      expect(agg.investorTotal).toBe(500);
+      expect(agg.fundingPacePct).toBe(40);
+    });
+
+    it('counts logged shipment milestones within the 7-day window', () => {
+      const milestones = [
+        {
+          id: 'm1',
+          tradeDealId: 'deal-1',
+          milestone: 'warehouse',
+          recordedAt: new Date('2026-03-12T00:00:00Z'),
+        },
+        {
+          id: 'm2',
+          tradeDealId: 'deal-1',
+          milestone: 'port',
+          recordedAt: new Date('2026-03-01T00:00:00Z'),
+        },
+      ] as ShipmentMilestone[];
+
+      const agg = service.aggregateDigestData({
+        deals: [buildDeal()],
+        investments: [],
+        documents: [{ tradeDealId: 'deal-1' }],
+        milestones,
+        since,
+        now,
+      });
+
+      expect(agg.loggedMilestones).toHaveLength(1);
+      expect(agg.loggedMilestones[0].id).toBe('m1');
+      expect(agg.missingDocs).toHaveLength(0);
+    });
+
+    it('identifies upcoming delivery milestones in the next 7 days', () => {
+      const deals = [
+        buildDeal({
+          id: 'soon',
+          deliveryDate: new Date('2026-03-18T00:00:00Z'),
+        }),
+        buildDeal({
+          id: 'later',
+          deliveryDate: new Date('2026-04-20T00:00:00Z'),
+        }),
+      ];
+
+      const agg = service.aggregateDigestData({
+        deals,
+        investments: [],
+        documents: [],
+        milestones: [],
+        since,
+        now,
+      });
+
+      expect(agg.upcomingMilestones.map((d) => d.id)).toEqual(['soon']);
+    });
+  });
+
   describe('generateForFarmer', () => {
     it('returns null when the user does not exist', async () => {
       userRepo.findOne.mockResolvedValue(null);
@@ -132,17 +237,26 @@ describe('DealDigestService (#892)', () => {
       const now = Date.now();
       userRepo.findOne.mockResolvedValue(buildUser());
       tradeDealRepo.find.mockResolvedValue([
-        buildDeal({ totalInvested: 7_500 }), // 75% funded, delivery in 3 days
-        buildDeal({ id: 'deal-2', commodity: 'Coffee' }), // no docs yet
+        buildDeal({ totalInvested: 7_500 }),
+        buildDeal({ id: 'deal-2', commodity: 'Coffee' }),
       ]);
       investmentRepo.find.mockResolvedValue([
         {
           amountUsd: 500,
+          status: InvestmentStatus.CONFIRMED,
           createdAt: new Date(now - 2 * 86_400_000),
           investor: {},
         },
       ] as any[]);
-      documentRepo.find.mockResolvedValue([{ tradeDealId: 'deal-1' }]); // deal-2 missing docs
+      documentRepo.find.mockResolvedValue([{ tradeDealId: 'deal-1' }]);
+      milestoneRepo.find.mockResolvedValue([
+        {
+          id: 'm1',
+          tradeDealId: 'deal-1',
+          milestone: 'farm',
+          recordedAt: new Date(now - 86_400_000),
+        },
+      ]);
 
       const rendered = await service.generateForFarmer('farmer-1');
 
@@ -158,17 +272,18 @@ describe('DealDigestService (#892)', () => {
       expect(vars).toMatchObject({
         farmerName: 'Amina Farmer',
         newInvestorCount: '1',
+        milestonesLoggedCount: '1',
       });
-      // SVG bar chart + raw section fragments are present
       expect(String(vars.chartSvg)).toContain('<svg');
       expect(String(vars.dealsHtml)).toContain('Cocoa');
       expect(String(vars.documentsHtml)).toContain('Coffee');
+      expect(String(vars.milestonesHtml)).toContain('Logged');
       expect(String(vars.unsubscribeUrl)).toMatch(
         /^https:\/\/app\.test\/users\/unsubscribe\?userId=farmer-1&token=[0-9a-f]{64}$/,
       );
     });
 
-    it('renders in the farmer’s preferred language with localized headings', async () => {
+    it('renders in the farmer\u2019s preferred language with localized headings', async () => {
       userRepo.findOne.mockResolvedValue(
         buildUser({ preferredLanguage: 'fr' }),
       );
@@ -195,7 +310,6 @@ describe('DealDigestService (#892)', () => {
     };
 
     it('sends when it is Monday 07:00 local time (UTC farmer)', async () => {
-      // 2026-01-05 is a Monday; 07:30 UTC
       setNow('2026-01-05T07:30:00Z');
       seedFarmer({ timezone: 'UTC' });
 
@@ -211,7 +325,7 @@ describe('DealDigestService (#892)', () => {
     });
 
     it('sends UTC+3 farmers at 04:00 UTC (their 07:00)', async () => {
-      setNow('2026-01-05T04:30:00Z'); // 07:30 in Africa/Nairobi
+      setNow('2026-01-05T04:30:00Z');
       seedFarmer({ timezone: 'Africa/Nairobi' });
 
       await service.runWeeklyDigest();
@@ -220,7 +334,6 @@ describe('DealDigestService (#892)', () => {
     });
 
     it('sends UTC+8 farmers at 23:00 UTC the day before (their Monday 07:00)', async () => {
-      // Sunday 2026-01-04 23:00 UTC == Monday 07:00 Asia/Singapore
       setNow('2026-01-04T23:00:30Z');
       seedFarmer({ timezone: 'Asia/Singapore' });
 
@@ -230,7 +343,7 @@ describe('DealDigestService (#892)', () => {
     });
 
     it('does not send outside the Monday-07:00 window', async () => {
-      setNow('2026-01-06T07:30:00Z'); // Tuesday
+      setNow('2026-01-06T07:30:00Z');
       seedFarmer({ timezone: 'UTC' });
 
       await service.runWeeklyDigest();
@@ -242,14 +355,14 @@ describe('DealDigestService (#892)', () => {
       seedFarmer({ timezone: 'UTC' });
 
       await service.runWeeklyDigest();
-      await service.runWeeklyDigest(); // same week → deduped
+      await service.runWeeklyDigest();
 
       expect(notificationsService.sendEmail).toHaveBeenCalledTimes(1);
     });
 
     it('skips farmers who unsubscribed', async () => {
       setNow('2026-01-05T07:30:00Z');
-      userRepo.find.mockResolvedValue([]); // scheduler query filters them out
+      userRepo.find.mockResolvedValue([]);
 
       await service.runWeeklyDigest();
       expect(notificationsService.sendEmail).not.toHaveBeenCalled();

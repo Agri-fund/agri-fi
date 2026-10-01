@@ -6,10 +6,41 @@ import {
   IsOptional,
   IsString,
   IsUrl,
+  Length,
+  Matches,
   ValidateIf,
 } from 'class-validator';
 
 export class SubmitKycDto {
+  @ApiPropertyOptional({
+    example: 'NG',
+    description:
+      'ISO 3166-1 alpha-2 country code for jurisdiction rules (#1019)',
+  })
+  @IsOptional()
+  @IsString()
+  @Length(2, 2)
+  @Matches(/^[A-Za-z]{2}$/)
+  countryCode?: string;
+
+  @ApiPropertyOptional({
+    example: 'passport',
+    description:
+      'Selected identity document type (validated against jurisdiction matrix)',
+  })
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  documentType?: string;
+
+  @ApiPropertyOptional({
+    example: 'A1234567',
+    description: 'Identity document number',
+  })
+  @IsOptional()
+  @IsString()
+  idNumber?: string;
+
   @ApiPropertyOptional({
     example: 'Amina Yusuf',
     description: 'Full legal name',

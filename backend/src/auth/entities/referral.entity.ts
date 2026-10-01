@@ -10,6 +10,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import { User } from './user.entity';
 
 export type ReferralStatus = 'clicked' | 'registered' | 'rewarded';
+export type ReferralPayoutStatus = 'pending' | 'accrued' | 'paid' | 'failed';
 
 @Entity('referrals')
 export class Referral {
@@ -48,6 +49,28 @@ export class Referral {
   })
   @ApiProperty({ description: 'Reward amount credited', example: 5.0 })
   rewardAmount: number;
+
+  /** Acquisition channel for funnel analytics (#1018). */
+  @Column({ type: 'varchar', length: 64, default: 'unknown' })
+  @ApiProperty({
+    description: 'Referral acquisition channel',
+    example: 'email',
+  })
+  channel: string;
+
+  /** Reward payout lifecycle (#1018). */
+  @Column({
+    name: 'payout_status',
+    type: 'varchar',
+    length: 32,
+    default: 'pending',
+  })
+  @ApiProperty({
+    description: 'Reward payout status',
+    enum: ['pending', 'accrued', 'paid', 'failed'],
+    example: 'accrued',
+  })
+  payoutStatus: ReferralPayoutStatus;
 
   @CreateDateColumn({ name: 'created_at' })
   @ApiProperty({ description: 'Referral creation timestamp' })

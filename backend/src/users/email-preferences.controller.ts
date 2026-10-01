@@ -17,7 +17,7 @@ import {
   ApiProperty,
 } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
-import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsIn, IsOptional, IsString, IsBoolean, MaxLength } from 'class-validator';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from '../auth/entities/user.entity';
@@ -45,10 +45,11 @@ class UpdatePreferencesDto {
   preferredLanguage?: string;
 
   @ApiProperty({
-    description: 'Opt in/out of the weekly deal digest email (#892)',
+    description: 'Opt in/out of the weekly deal digest email (#1021)',
     required: false,
   })
   @IsOptional()
+  @IsBoolean()
   emailDigestEnabled?: boolean;
 }
 
@@ -99,12 +100,34 @@ export class EmailPreferencesController {
     };
   }
 
+  @Get('me/preferences')
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth('jwt')
+  @ApiOperation({
+    summary: 'Get email preferences including weekly digest opt-in (#1021)',
+  })
+  @ApiResponse({ status: 200, description: 'Current preferences' })
+  async getPreferences(@Request() req: { user: User }): Promise<{
+    timezone: string | null;
+    preferredLanguage: string;
+    emailDigestEnabled: boolean;
+  }> {
+    const user = await this.userRepo.findOne({ where: { id: req.user.id } });
+    if (!user) throw new BadRequestException('User not found.');
+
+    return {
+      timezone: user.timezone ?? null,
+      preferredLanguage: user.preferredLanguage ?? 'en',
+      emailDigestEnabled: user.emailDigestEnabled !== false,
+    };
+  }
+
   @Patch('me/preferences')
   @UseGuards(AuthGuard('jwt'))
   @ApiBearerAuth('jwt')
   @ApiOperation({
     summary:
-      'Update email preferences: timezone, preferred language, digest opt-out',
+      'Update email preferences: timezone, preferred language, digest opt-in (#1021)',
   })
   @ApiResponse({ status: 200, description: 'Updated preferences' })
   @ApiResponse({ status: 400, description: 'Validation error' })
@@ -120,8 +143,6 @@ export class EmailPreferencesController {
     if (!user) throw new BadRequestException('User not found.');
 
     if (dto.timezone !== undefined) {
-      // Reject obviously invalid IANA zones early; the digest scheduler has a
-      // UTC fallback but explicit validation gives users better feedback.
       try {
         new Intl.DateTimeFormat('en-GB', { timeZone: dto.timezone });
         user.timezone = dto.timezone;

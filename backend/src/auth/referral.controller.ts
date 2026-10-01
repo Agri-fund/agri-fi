@@ -3,9 +3,9 @@ import {
   Get,
   Post,
   Param,
+  Query,
   UseGuards,
   Request,
-  Version,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -13,6 +13,7 @@ import {
   ApiResponse,
   ApiBearerAuth,
   ApiParam,
+  ApiQuery,
 } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { ReferralService } from './referral.service';
@@ -43,9 +44,17 @@ export class ReferralController {
   @Post('track/:code')
   @ApiOperation({ summary: 'Track a referral link click' })
   @ApiParam({ name: 'code', description: 'Referral code' })
+  @ApiQuery({
+    name: 'channel',
+    required: false,
+    description: 'Acquisition channel (email, social, whatsapp, …)',
+  })
   @ApiResponse({ status: 200, description: 'Click tracked' })
   @ApiResponse({ status: 404, description: 'Invalid referral code' })
-  async trackClick(@Param('code') code: string) {
-    return this.referralService.trackClick(code);
+  async trackClick(
+    @Param('code') code: string,
+    @Query('channel') channel?: string,
+  ) {
+    return this.referralService.trackClick(code, channel || 'unknown');
   }
 }

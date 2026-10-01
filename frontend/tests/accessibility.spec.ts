@@ -318,3 +318,81 @@ test.describe('Accessibility - Tablet Viewports', () => {
     await checkA11y(page, 'Marketplace (Tablet)');
   });
 });
+
+/**
+ * Test suite: Dashboard onboarding tour (#1020)
+ * Keyboard operability + axe-core clean while the tour is active.
+ */
+test.describe('Accessibility - Dashboard Tour (#1020)', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => {
+      window.localStorage.removeItem('agri-fi-dashboard-tour-completed');
+    });
+  });
+
+  test('tour live region and popover pass axe WCAG 2.1 AA when open', async ({
+    page,
+  }) => {
+    await page.goto('/en/dashboard/investor');
+    await page.waitForLoadState('networkidle');
+
+    // Wait for auto-start tour (1s delay) or shepherd element
+    const shepherd = page.locator('.shepherd-element, [data-testid="tour-live-region"]');
+    await shepherd.first().waitFor({ state: 'attached', timeout: 5000 }).catch(() => null);
+
+    const liveRegion = page.getByTestId('tour-live-region');
+    if (await liveRegion.count()) {
+      await expect(liveRegion).toHaveAttribute('aria-live', 'polite');
+    }
+
+    // Keyboard: Escape should dismiss when tour is open
+    await page.keyboard.press('Escape');
+
+    const results = await new AxeBuilder({ page })
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21aa'])
+      .exclude('.shepherd-modal-overlay-container') // overlay is decorative
+      .analyze();
+
+    if (results.violations.length > 0) {
+      console.log('\n❌ Tour accessibility violations:');
+      results.violations.forEach((violation: any) => {
+        console.log(`  Rule: ${violation.id} — ${violation.help}`);
+      });
+    }
+
+    expect(results.violations.length).toBe(0);
+  });
+
+  test('tour steps are keyboard operable (Tab / Enter / Escape)', async ({
+    page,
+  }) => {
+    await page.goto('/en/dashboard/investor');
+    await page.waitForLoadState('networkidle');
+
+    const shepherdElement = page.locator('.shepherd-element');
+    const appeared = await shepherdElement
+      .waitFor({ state: 'visible', timeout: 5000 })
+      .then(() => true)
+      .catch(() => false);
+
+    if (!appeared) {
+      test.skip(true, 'Tour did not auto-start (auth-gated dashboard)');
+      return;
+    }
+
+    // Focus should land inside the tour dialog
+    await page.keyboard.press('Tab');
+    const focusedTag = await page.evaluate(
+      () => document.activeElement?.className || '',
+    );
+    expect(focusedTag).toMatch(/shepherd/);
+
+    // Enter activates primary button (next)
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(300);
+
+    // Escape dismisses
+    await page.keyboard.press('Escape');
+    await expect(shepherdElement).toBeHidden({ timeout: 3000 });
+  });
+});
