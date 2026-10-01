@@ -3,7 +3,7 @@ import { StellarService } from '../src/stellar/stellar.service';
 import { ConfigService } from '@nestjs/config';
 import { PinoLogger } from 'nestjs-pino';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { TransactionLog } from '../src/stellar/entities/transaction-log.entity';
+import { TransactionLog } from '../src/database/entities/transaction-log.entity';
 import { Keypair, Horizon } from '@stellar/stellar-sdk';
 import axios from 'axios';
 

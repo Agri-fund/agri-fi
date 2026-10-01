@@ -23,14 +23,7 @@ import { MarketplaceSettlementService } from './marketplace-settlement.service';
 import { MarketplaceSettlementController } from './marketplace-settlement.controller';
 import { TaxReportService } from './tax-report.service';
 import { ReceiptService } from './receipt.service';
-import { InvoiceService } from './invoice.service';
-import { AuditModule } from '../audit/audit.module';
-import { PaymentDistribution } from '../escrow/entities/payment-distribution.entity';
-import { SecondaryOrderMatchingService } from './secondary-order-matching.service';
-import { AutoInvestService } from './auto-invest.service';
-import { AutoInvestController } from './auto-invest.controller';
-import { RiskScoringService } from '../trade-deals/risk-scoring.service';
-import { NotificationsModule } from '../notifications/notifications.module';
+import { AccreditationModule } from '../accreditation/accreditation.module';
 
 @Module({
   imports: [
@@ -49,8 +42,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     QueueModule,
     ReferralModule,
     AuthModule,
-    AuditModule,
-    NotificationsModule,
+    AccreditationModule,
   ],
   controllers: [
     InvestmentsController,

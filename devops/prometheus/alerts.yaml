@@ -420,7 +420,7 @@ groups:
     rules:
       # ── Escrow queue depth warning (>500 for 5m) ───────────────────────────
       - alert: EscrowQueueDepthHigh
-        expr: rabbitmq_queue_messages{queue="escrow.process"} > 500
+        expr: rabbitmq_queue_messages{queue="agric_onchain_escrow_queue"} > 500
         for: 5m
         labels:
           severity: warning
@@ -441,7 +441,7 @@ groups:
 
       # ── Escrow queue depth critical (>2000 for 2m) ─────────────────────────
       - alert: EscrowQueueDepthCritical
-        expr: rabbitmq_queue_messages{queue="escrow.process"} > 2000
+        expr: rabbitmq_queue_messages{queue="agric_onchain_escrow_queue"} > 2000
         for: 2m
         labels:
           severity: critical
@@ -463,7 +463,7 @@ groups:
 
       # ── DLQ message count increased in last 15m ────────────────────────────
       - alert: DLQGrowing
-        expr: increase(rabbitmq_queue_messages{queue="escrow.dlq"}[15m]) > 0
+        expr: increase(rabbitmq_queue_messages{queue="agric_onchain_escrow_queue.dlq"}[15m]) > 0
         for: 0m
         labels:
           severity: warning
@@ -483,7 +483,7 @@ groups:
 
       # ── DLQ has messages for more than 1h ──────────────────────────────────
       - alert: DLQNotEmpty
-        expr: rabbitmq_queue_messages{queue="escrow.dlq"} > 0
+        expr: rabbitmq_queue_messages{queue="agric_onchain_escrow_queue.dlq"} > 0
         for: 1h
         labels:
           severity: critical
@@ -505,7 +505,7 @@ groups:
 
       # ── Consumer lag exceeds 100 for 10m ───────────────────────────────────
       - alert: EscrowConsumerLag
-        expr: rabbitmq_queue_consumers{queue="escrow.process"} == 0
+        expr: rabbitmq_queue_consumers{queue="agric_onchain_escrow_queue"} == 0
         for: 10m
         labels:
           severity: warning

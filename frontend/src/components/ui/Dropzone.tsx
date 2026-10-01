@@ -31,6 +31,8 @@ interface DropzoneProps {
   onFileAccepted: (entry: DropzoneFile) => void;
   /** Label shown above the dropzone */
   label?: ReactNode;
+  /** Keep the label available to assistive technology without duplicating a FormField label. */
+  hideLabel?: boolean;
   /** Optional hint text below the label */
   hint?: string;
   /** Whether the field is disabled */
@@ -43,6 +45,10 @@ interface DropzoneProps {
   maxSizeBytes?: number;
   /** Mobile capture hint for camera inputs */
   capture?: 'user' | 'environment';
+  id?: string;
+  required?: boolean;
+  'aria-invalid'?: boolean;
+  'aria-describedby'?: string;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -70,12 +76,17 @@ async function getPdfPageCount(file: File): Promise<number> {
 export function Dropzone({
   onFileAccepted,
   label,
+  hideLabel = false,
   hint,
   disabled = false,
   value,
   onRemove,
   maxSizeBytes = 10 * 1024 * 1024,
   capture,
+  id,
+  required,
+  'aria-invalid': ariaInvalid,
+  'aria-describedby': ariaDescribedBy,
 }: DropzoneProps) {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -152,9 +163,17 @@ export function Dropzone({
 
     return (
       <div className="space-y-1.5">
-        {label && <label className="label">{label}</label>}
+        {label && !hideLabel && <label className="label">{label}</label>}
 
-        <div className="flex items-center gap-4 p-4 rounded-xl border-2 border-primary/30 bg-primary-muted/30">
+        <div
+          id={id}
+          role="group"
+          aria-label={typeof label === 'string' ? label : 'Uploaded file'}
+          aria-describedby={ariaDescribedBy}
+          data-invalid={ariaInvalid || undefined}
+          tabIndex={ariaInvalid ? -1 : undefined}
+          className={`flex items-center gap-4 p-4 rounded-xl border-2 ${ariaInvalid ? 'border-red-400 bg-red-50' : 'border-primary/30 bg-primary-muted/30'}`}
+        >
           {/* Preview */}
           {isPdf ? (
             <div className="w-14 h-14 rounded-lg bg-red-50 border border-red-200 flex flex-col items-center justify-center flex-shrink-0">
@@ -203,7 +222,7 @@ export function Dropzone({
 
   // ── Render: dropzone ──────────────────────────────────────────────────────
 
-  const borderColor = isDragReject || uploadError
+  const borderColor = isDragReject || uploadError || ariaInvalid
     ? 'border-red-400 bg-red-50'
     : isDragActive
     ? 'border-primary bg-primary-muted/40'
@@ -211,14 +230,22 @@ export function Dropzone({
 
   return (
     <div className="space-y-1.5">
-      {label && <label className="label">{label}</label>}
+      {label && !hideLabel && <label className="label">{label}</label>}
 
       <div
         {...getRootProps()}
         className={`relative flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-6 py-8 text-center cursor-pointer transition-all duration-200 outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${borderColor} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
         aria-label={typeof label === 'string' ? label : 'File upload dropzone'}
       >
-        <input {...getInputProps({ capture })} aria-label={typeof label === 'string' ? label : 'Upload file'} />
+        <input
+          {...getInputProps({ capture })}
+          id={id}
+          required={required}
+          aria-required={required || undefined}
+          aria-describedby={ariaDescribedBy}
+          data-invalid={ariaInvalid || undefined}
+          aria-label={id ? undefined : typeof label === 'string' ? label : 'Upload file'}
+        />
 
         {loading ? (
           /* Upload spinner */
@@ -241,6 +268,8 @@ export function Dropzone({
             <div>
               <p className="text-sm font-semibold text-foreground">
                 Drag &amp; drop or{' '}
+              aria-invalid={ariaInvalid || undefined}
+              aria-describedby={ariaDescribedBy}
                 <span className="text-primary underline underline-offset-2">browse</span>
               </p>
               <p className="text-xs text-muted-foreground mt-1">

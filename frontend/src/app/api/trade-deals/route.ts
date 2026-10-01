@@ -1,51 +1,27 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { fetchBackend } from '@/config/backend';
+import { NextRequest } from 'next/server';
+import { withBackendProxy } from '@/lib/api-proxy';
 
-export async function GET(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const query = new URLSearchParams();
-    for (const [key, value] of searchParams.entries()) {
-      if (value) query.set(key, value);
-    }
-    if (!query.has('page')) query.set('page', '1');
-    if (!query.has('limit')) query.set('limit', '12');
-
-    const response = await fetchBackend(`/trade-deals?${query}`, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
-    });
-
-    const data = await response.json();
-    if (!response.ok) return NextResponse.json(data, { status: response.status });
-    return NextResponse.json(data);
-  } catch (error: any) {
-    if (error?.isBackendUnreachable)
-      return NextResponse.json({ message: 'Backend service is unavailable' }, { status: 503 });
-    return NextResponse.json({ message: 'Internal server error' }, { status: 500 });
+export const GET = withBackendProxy(async (request: NextRequest) => {
+  const { searchParams } = new URL(request.url);
+  const query = new URLSearchParams();
+  for (const [key, value] of searchParams.entries()) {
+    if (value) query.set(key, value);
   }
-}
+  if (!query.has('page')) query.set('page', '1');
+  if (!query.has('limit')) query.set('limit', '12');
 
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const authHeader = request.headers.get('authorization');
+  return {
+    path: `/trade-deals?${query}`,
+    method: 'GET',
+    headers: { 'Content-Type': 'application/json' },
+    forwardAuth: false,
+  };
+});
 
-    const response = await fetchBackend('/trade-deals', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': authHeader || '',
-      },
-      body: JSON.stringify(body),
-    });
-
-    const data = await response.json();
-    if (!response.ok) return NextResponse.json(data, { status: response.status });
-    return NextResponse.json(data, { status: 201 });
-  } catch (error: any) {
-    if (error?.isBackendUnreachable)
-      return NextResponse.json({ message: 'Backend service is unavailable' }, { status: 503 });
-    return NextResponse.json({ message: 'Internal server error' }, { status: 500 });
-  }
-}
+export const POST = withBackendProxy(async (request: NextRequest) => ({
+  path: '/trade-deals',
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: await request.json(),
+  status: 201,
+}));

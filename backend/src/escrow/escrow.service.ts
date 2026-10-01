@@ -1,8 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, QueryRunner } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { PinoLogger } from 'nestjs-pino';
+import { InjectMetric } from '@willsoto/nestjs-prometheus';
+import { Counter, Histogram } from 'prom-client';
 import { PaymentDistribution } from './entities/payment-distribution.entity';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
 import { DealCoFarmer } from '../trade-deals/entities/deal-co-farmer.entity';
@@ -38,6 +40,18 @@ export class EscrowService {
     private readonly config: ConfigService,
     private readonly dataSource: DataSource,
     private readonly logger: PinoLogger,
+    @Optional()
+    @InjectMetric('escrow_release_attempts_total')
+    private readonly releaseAttempts?: Counter<string>,
+    @Optional()
+    @InjectMetric('escrow_release_duration_seconds')
+    private readonly releaseDuration?: Histogram<string>,
+    @Optional()
+    @InjectMetric('escrow_release_payouts_total')
+    private readonly payoutsTotal?: Counter<string>,
+    @Optional()
+    @InjectMetric('escrow_release_payout_amount_usd_total')
+    private readonly payoutAmountUsd?: Counter<string>,
   ) {
     (this.logger as any).setContext(EscrowService.name);
   }
@@ -63,6 +77,7 @@ export class EscrowService {
    */
   async processDealDelivered(payload: DealDeliveredPayload): Promise<void> {
     const { tradeDealId } = payload;
+    const startedAt = process.hrtime.bigint();
 
     this.logger.info(`Processing deal.delivered for deal ${tradeDealId}`);
 
@@ -73,6 +88,7 @@ export class EscrowService {
     });
 
     if (!deal) {
+      this.recordReleaseOutcome('failure', startedAt);
       throw new NotFoundException(`Trade deal ${tradeDealId} not found`);
     }
 
@@ -80,6 +96,7 @@ export class EscrowService {
       this.logger.warn(
         `Deal ${tradeDealId} is not in delivered status (current: ${deal.status}). Skipping escrow release.`,
       );
+      this.recordReleaseOutcome('skipped', startedAt);
       return;
     }
 
@@ -92,6 +109,7 @@ export class EscrowService {
       this.logger.warn(
         `No confirmed investments found for deal ${tradeDealId}`,
       );
+      this.recordReleaseOutcome('skipped', startedAt);
       return;
     }
 
@@ -139,6 +157,7 @@ export class EscrowService {
       this.logger.warn(
         `Payment distribution for deal ${tradeDealId} is already ${lease.status ?? 'processing'}; skipping duplicate release.`,
       );
+      this.recordReleaseOutcome('skipped', startedAt);
       return;
     }
 
@@ -169,6 +188,7 @@ export class EscrowService {
           'Stellar escrow release failed — no DB writes were made',
         );
         await this.handleEscrowFailure(tradeDealId, stellarError);
+        this.recordReleaseOutcome('failure', startedAt);
         throw stellarError;
       }
 
@@ -248,6 +268,12 @@ export class EscrowService {
         await this.idempotency.markDone(idempotencyKey);
         idempotencyMarkedDone = true;
 
+        this.recordPayoutMetrics([
+          ...farmerDistributions,
+          ...paymentDistributions,
+        ]);
+        this.recordReleaseOutcome('success', startedAt);
+
         this.logger.info(
           `Deal ${tradeDealId} committed to completed. Stellar TX: ${stellarTxId}`,
         );
@@ -267,6 +293,7 @@ export class EscrowService {
         );
 
         await this.handleEscrowFailure(tradeDealId, dbError);
+        this.recordReleaseOutcome('failure', startedAt);
         throw dbError;
       } finally {
         // Always release the QueryRunner back to the pool — prevents connection leaks.
@@ -295,6 +322,26 @@ export class EscrowService {
         await this.idempotency.releaseLease(idempotencyKey);
       }
       throw error;
+    }
+  }
+
+  private recordReleaseOutcome(
+    result: 'success' | 'failure' | 'skipped',
+    startedAt: bigint,
+  ): void {
+    this.releaseAttempts?.inc({ result });
+    const elapsedNs = Number(process.hrtime.bigint() - startedAt);
+    this.releaseDuration?.observe({ result }, elapsedNs / 1e9);
+  }
+
+  private recordPayoutMetrics(distributions: PaymentDistribution[]): void {
+    for (const dist of distributions) {
+      const recipientType = dist.recipientType ?? 'unknown';
+      this.payoutsTotal?.inc({ recipient_type: recipientType });
+      this.payoutAmountUsd?.inc(
+        { recipient_type: recipientType },
+        Number(dist.amountUsd) || 0,
+      );
     }
   }
 

@@ -4,7 +4,7 @@ import { EscrowService } from './escrow.service';
 import { EscrowConsumer } from './escrow.consumer';
 import { EscrowDlqModule } from './escrow-dlq.module';
 import { PaymentDistribution } from './entities/payment-distribution.entity';
-import { TransactionLog } from './entities/transaction-log.entity';
+import { TransactionLog } from '../database/entities/transaction-log.entity';
 import { MilestoneReleaseRecord } from './entities/milestone-release-record.entity';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
 import { Investment } from '../investments/entities/investment.entity';
@@ -15,6 +15,8 @@ import { FailedPaymentsService } from './failed-payments.service';
 import { EscrowDlqService } from './escrow-dlq.service';
 import { MilestonePartialReleaseService } from './milestone-partial-release.service';
 import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.entity';
+import { ESCROW_METRICS_PROVIDERS } from './escrow-metrics.providers';
+import { EscrowFailedPaymentsMetrics } from './escrow-failed-payments.metrics';
 
 @Module({
   imports: [
@@ -37,6 +39,8 @@ import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.enti
     FailedPaymentsService,
     EscrowDlqService,
     MilestonePartialReleaseService,
+    EscrowFailedPaymentsMetrics,
+    ...ESCROW_METRICS_PROVIDERS,
   ],
   exports: [
     EscrowService,

@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { StellarService, InvestorShare } from './stellar.service';
 import { PinoLogger } from 'nestjs-pino';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { TransactionLog } from './entities/transaction-log.entity';
+import { TransactionLog } from '../database/entities/transaction-log.entity';
 import { KmsService } from '../kms/kms.service';
 import {
   BASE_FEE,

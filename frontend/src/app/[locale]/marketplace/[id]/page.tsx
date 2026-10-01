@@ -35,6 +35,14 @@ const ActivityFeed = nextDynamic(
   },
 );
 
+const DealHealthWidget = nextDynamic(
+  () => import('@/components/deals/DealHealthWidget').then(m => ({ default: m.DealHealthWidget })),
+  {
+    ssr: false,
+    loading: () => <div className="h-40 skeleton rounded-2xl" aria-label="Loading deal health…" />,
+  },
+);
+
 export const dynamic = 'force-static';
 export const dynamicParams = false;
 export const revalidate = false;
@@ -247,6 +255,9 @@ export default async function DealDetailPage({ params }: { params: { id: string;
               <InvestmentSection deal={deal} />
             </div>
           </div>
+
+          {/* Deal Health Indicators — Issue #1002 */}
+          <DealHealthWidget dealId={deal.id} />
 
           <div className="grid sm:grid-cols-2 gap-5">
             {/* Documents */}

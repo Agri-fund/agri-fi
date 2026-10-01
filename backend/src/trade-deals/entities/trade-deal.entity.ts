@@ -14,6 +14,7 @@ import { Exclude } from 'class-transformer';
 import { User } from '../../auth/entities/user.entity';
 import { Document } from './document.entity';
 import { Investment } from '../../investments/entities/investment.entity';
+import type { AccreditationTier } from '../../auth/entities/user.entity';
 
 export type TradeDealStatus =
   | 'draft'
@@ -229,15 +230,6 @@ export class TradeDeal {
   })
   deliveryDate: Date;
 
-  @Column({ name: 'risk_rating', nullable: true })
-  @ApiProperty({
-    description: 'Risk rating for the listing',
-    required: false,
-    nullable: true,
-    enum: ['Low', 'Medium', 'High'],
-  })
-  // `riskRating` was consolidated later in the file with the full enum
-  // and larger varchar length. Keep a single declaration below.
   @Column({ name: 'farm_location', nullable: true })
   @ApiProperty({
     description: 'Textual farm location description',
@@ -456,99 +448,16 @@ export class TradeDeal {
   @Column({ name: 'settled_at', type: 'timestamptz', nullable: true })
   settledAt: Date | null;
 
-  // #1012 — ESG / Impact scoring fields
+  // #902 — Minimum accreditation tier required to invest in this deal
   @Column({
-    name: 'esg_score',
-    type: 'decimal',
-    precision: 5,
-    scale: 2,
-    nullable: true,
-  })
-  @ApiProperty({
-    description:
-      'Composite ESG score (0-100, higher = stronger impact/compliance)',
-    nullable: true,
-    example: 84.5,
-  })
-  esgScore: number | null;
-
-  @Column({
-    name: 'environmental_score',
-    type: 'decimal',
-    precision: 5,
-    scale: 2,
-    nullable: true,
-  })
-  @ApiProperty({
-    description: 'Environmental impact sub-score (0-100)',
-    nullable: true,
-    example: 88.0,
-  })
-  environmentalScore: number | null;
-
-  @Column({
-    name: 'social_score',
-    type: 'decimal',
-    precision: 5,
-    scale: 2,
-    nullable: true,
-  })
-  @ApiProperty({
-    description: 'Social and community impact sub-score (0-100)',
-    nullable: true,
-    example: 82.5,
-  })
-  socialScore: number | null;
-
-  @Column({
-    name: 'governance_score',
-    type: 'decimal',
-    precision: 5,
-    scale: 2,
-    nullable: true,
-  })
-  @ApiProperty({
-    description: 'Governance and supply-chain transparency sub-score (0-100)',
-    nullable: true,
-    example: 83.0,
-  })
-  governanceScore: number | null;
-
-  @Column({ name: 'esg_rating', type: 'varchar', length: 16, nullable: true })
-  @ApiProperty({
-    description: 'Derived institutional ESG rating tier',
-    enum: ['AAA', 'AA', 'A', 'BBB', 'BB', 'B', 'CCC'],
-    nullable: true,
-    example: 'AA',
-  })
-  esgRating: string | null;
-
-  @Column({ name: 'esg_breakdown', type: 'simple-json', nullable: true })
-  @ApiProperty({
-    description: 'Detailed factor question answers and score breakdown',
-    nullable: true,
-  })
-  esgBreakdown: Record<string, any> | null;
-
-  @Column({
-    name: 'esg_status',
+    name: 'minimum_tier',
     type: 'varchar',
-    length: 32,
-    default: 'unrated',
+    default: 'retail',
   })
   @ApiProperty({
-    description: 'ESG review lifecycle state',
-    enum: ['unrated', 'pending_review', 'approved', 'rejected'],
-    example: 'approved',
+    description: 'Minimum investor accreditation tier required to invest',
+    enum: ['retail', 'accredited', 'institutional'],
+    example: 'retail',
   })
-  esgStatus: 'unrated' | 'pending_review' | 'approved' | 'rejected';
-
-  @Column({ name: 'esg_reviewed_at', type: 'timestamptz', nullable: true })
-  esgReviewedAt: Date | null;
-
-  @Column({ name: 'esg_reviewed_by', type: 'varchar', nullable: true })
-  esgReviewedBy: string | null;
-
-  @Column({ name: 'esg_review_notes', type: 'text', nullable: true })
-  esgReviewNotes: string | null;
+  minimumTier: AccreditationTier;
 }

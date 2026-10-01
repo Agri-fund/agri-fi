@@ -46,6 +46,7 @@ import { UpgradeModule } from './upgrade/upgrade.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { PublicApiModule } from './public-api/public-api.module';
 import { KycRulesModule } from './kyc-rules/kyc-rules.module';
+import { AccreditationModule } from './accreditation/accreditation.module';
 
 @Module({
   controllers: [AppController, PublicController],
@@ -121,6 +122,7 @@ import { KycRulesModule } from './kyc-rules/kyc-rules.module';
     PublicApiModule,
     ReferralsModule,
     KycRulesModule,
+    AccreditationModule,
   ],
   providers: [
     {

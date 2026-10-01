@@ -9,14 +9,24 @@ import {
 import { TradeDeal } from '../../trade-deals/entities/trade-deal.entity';
 import { User } from '../../auth/entities/user.entity';
 
-export type TxStatus = 'pending' | 'success' | 'failed';
+/**
+ * Shared status domain for `transaction_logs`.
+ * Mirrors migration 1745000000000 plus `pending_claim` used when investor
+ * payouts are parked as Stellar claimable balances.
+ */
+export enum TxStatus {
+  PENDING = 'pending',
+  SUCCESS = 'success',
+  FAILED = 'failed',
+  PENDING_CLAIM = 'pending_claim',
+}
 
 /**
- * Mirrors the `transaction_logs` table created by migration 1745000000000.
+ * Single shared entity for the `transaction_logs` table created by
+ * migration 1745000000000-CreateTransactionLogs.
  *
- * Every Stellar escrow operation (payout, distribution, retry) records a row
- * here so that admins can query failed payments from a single table and
- * trigger manual retries via the admin API.
+ * Previously duplicated in escrow and stellar modules; both now import this
+ * class so TypeORM registers exactly one mapping for the table (#950).
  */
 @Entity('transaction_logs')
 export class TransactionLog {
@@ -39,26 +49,24 @@ export class TransactionLog {
   @JoinColumn({ name: 'deal_id' })
   deal: TradeDeal | null;
 
-  /** Stellar transaction hash (64-char hex). May be null for failed attempts
-   *  that never reached the network. */
+  /** Stellar transaction hash. May be null for failed attempts that never reached the network. */
   @Column({ name: 'tx_hash', type: 'text', nullable: true })
   txHash: string | null;
 
-  /** Raw XDR envelope for replay / audit. May be null for broker-level failures. */
+  /** Raw XDR envelope for replay / audit. */
   @Column({ name: 'xdr_body', type: 'text', nullable: true })
   xdrBody: string | null;
 
-  /** Current lifecycle status of the transaction. */
   @Column({
     type: 'text',
-    default: 'pending',
+    default: TxStatus.PENDING,
   })
   status: TxStatus;
 
-  /** Machine-readable error code populated when status = 'failed'. */
+  /** Machine-readable error code populated when status = failed. */
   @Column({ name: 'error_code', type: 'text', nullable: true })
   errorCode: string | null;
 
-  @CreateDateColumn({ name: 'created_at' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 }
