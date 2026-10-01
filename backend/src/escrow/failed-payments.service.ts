@@ -6,7 +6,10 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { TransactionLog } from './entities/transaction-log.entity';
+import {
+  TransactionLog,
+  TxStatus,
+} from '../database/entities/transaction-log.entity';
 import { QueueService } from '../queue/queue.service';
 
 export interface FailedPaymentSummary {
@@ -54,7 +57,7 @@ export class FailedPaymentsService {
     const skip = (safePage - 1) * safeLimit;
 
     const [rows, total] = await this.txLogRepo.findAndCount({
-      where: { status: 'failed' },
+      where: { status: TxStatus.FAILED },
       relations: ['deal'],
       order: { createdAt: 'DESC' },
       take: safeLimit,
@@ -96,7 +99,7 @@ export class FailedPaymentsService {
       throw new NotFoundException(`Transaction log ${id} not found`);
     }
 
-    if (log.status !== 'failed') {
+    if (log.status !== TxStatus.FAILED) {
       throw new BadRequestException(
         `Transaction ${id} is not in failed state (current: ${log.status})`,
       );

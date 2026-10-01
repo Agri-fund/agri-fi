@@ -11,7 +11,10 @@ import { ConfigService } from '@nestjs/config';
 import { PinoLogger } from 'nestjs-pino';
 import { createHash } from 'crypto';
 import axios from 'axios';
-import { TransactionLog, TxStatus } from './entities/transaction-log.entity';
+import {
+  TransactionLog,
+  TxStatus,
+} from '../database/entities/transaction-log.entity';
 import {
   CursorPaginatedResult,
   decodeCursor,
@@ -41,7 +44,7 @@ import {
 } from './utils/transaction-chunker';
 import { HorizonFailoverClient } from './horizon-failover';
 import { InjectMetric } from '@willsoto/nestjs-prometheus';
-import { Counter } from 'prom-client';
+import { Counter, Histogram } from 'prom-client';
 
 export const SEQUENCE_REDIS_CLIENT = 'SEQUENCE_REDIS_CLIENT';
 const SEQUENCE_CACHE_TTL = 5; // seconds
@@ -106,6 +109,21 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     @Optional()
     @InjectMetric('horizon_status_stale_fallbacks_total')
     private readonly horizonStaleFallbackCounter: Counter<string> | null,
+    @Optional()
+    @InjectMetric('escrow_release_batch_duration_seconds')
+    private readonly batchDuration?: Histogram<string>,
+    @Optional()
+    @InjectMetric('escrow_release_batches_total')
+    private readonly batchesTotal?: Counter<string>,
+    @Optional()
+    @InjectMetric('escrow_release_claimable_balances_total')
+    private readonly claimableBalancesTotal?: Counter<string>,
+    @Optional()
+    @InjectMetric('escrow_stellar_tx_total')
+    private readonly stellarTxTotal?: Counter<string>,
+    @Optional()
+    @InjectMetric('escrow_stellar_tx_failures_total')
+    private readonly stellarTxFailures?: Counter<string>,
   ) {
     this.localSequenceCache = new Map();
     this.enableSequenceCache = true;
@@ -1127,6 +1145,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       const capturedBatch = batch;
       const capturedBatchStart = batchStart;
       const isLastBatch = batchIdx === batchCount - 1;
+      const batchStartedAt = process.hrtime.bigint();
 
       try {
         // #826 — use fee-bump retry to handle tx_insufficient_fee on congested networks
@@ -1210,6 +1229,11 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
 
         const txHash = (result as any).hash as string;
         txIds.push(txHash);
+        this.stellarTxTotal?.inc();
+        this.batchesTotal?.inc({ result: 'success' });
+        const batchElapsed =
+          Number(process.hrtime.bigint() - batchStartedAt) / 1e9;
+        this.batchDuration?.observe({ result: 'success' }, batchElapsed);
 
         // Log any claimable balances created in this batch
         const batchClaimable = claimableInvestors.filter(
@@ -1219,6 +1243,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         );
         for (const ci of batchClaimable) {
           ci.txHash = txHash;
+          this.claimableBalancesTotal?.inc();
           await this.saveLog({
             dealId: ci.walletAddress,
             txHash,
@@ -1226,6 +1251,12 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
           });
         }
       } catch (err: any) {
+        this.stellarTxTotal?.inc();
+        this.stellarTxFailures?.inc();
+        this.batchesTotal?.inc({ result: 'failure' });
+        const batchElapsed =
+          Number(process.hrtime.bigint() - batchStartedAt) / 1e9;
+        this.batchDuration?.observe({ result: 'failure' }, batchElapsed);
         this.logger.error(
           { batchIdx, totalBatches: batchCount },
           `Escrow release failed at batch ${batchIdx}: ${err.message}`,

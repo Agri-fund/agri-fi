@@ -1,5 +1,7 @@
-import { Controller, Logger, OnApplicationShutdown } from '@nestjs/common';
+import { Controller, Logger, OnApplicationShutdown, Optional } from '@nestjs/common';
 import { Ctx, EventPattern, Payload, RmqContext } from '@nestjs/microservices';
+import { InjectMetric } from '@willsoto/nestjs-prometheus';
+import { Counter } from 'prom-client';
 import { EscrowService } from './escrow.service';
 import { IdempotencyService } from '../queue/idempotency.service';
 import {
@@ -40,6 +42,9 @@ export class EscrowConsumer implements OnApplicationShutdown {
   constructor(
     private readonly escrowService: EscrowService,
     private readonly idempotency: IdempotencyService,
+    @Optional()
+    @InjectMetric('escrow_release_dlq_total')
+    private readonly dlqTotal?: Counter<string>,
   ) {}
 
   // ── Shutdown hook (#696) ────────────────────────────────────────────────────
@@ -151,20 +156,19 @@ export class EscrowConsumer implements OnApplicationShutdown {
       return;
     }
 
-    const job = this.processDealDelivered(
-      payload,
-      channel,
-      originalMsg,
-    ).finally(() => this.activeJobs.delete(job));
+    const job = this.processDealDelivered(payload, context).finally(() =>
+      this.activeJobs.delete(job),
+    );
 
     this.activeJobs.add(job);
   }
 
   private async processDealDelivered(
     payload: DealDeliveredPayload,
-    channel: any,
-    originalMsg: any,
+    context: RmqContext,
   ): Promise<void> {
+    const channel = context.getChannelRef();
+    const originalMsg = context.getMessage();
     const parsed = this.parsePayload(payload, context);
     if (!parsed) return;
 
@@ -212,6 +216,7 @@ export class EscrowConsumer implements OnApplicationShutdown {
             `Routing to DLQ. Last error: ${err.message}`,
           err.stack,
         );
+        this.dlqTotal?.inc({ reason: 'max_attempts_exhausted' });
         // nack without requeue → RabbitMQ dead-letters to DLX → DLQ
         channel.nack(originalMsg, false, false);
         return;
