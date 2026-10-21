@@ -56,6 +56,7 @@ import { TracingMiddleware } from './tracing/tracing.middleware';
 import { PlatformIntegrationsModule } from './platform-integrations/platform-integrations.module';
 import { StressTestingModule } from './stress-testing/stress-testing.module';
 import { LetterOfCreditModule } from './letter-of-credit/letter-of-credit.module';
+import { AmlMonitoringModule } from './aml/aml-monitoring.module';
 
 @Module({
   controllers: [AppController, PublicController],
@@ -142,6 +143,7 @@ import { LetterOfCreditModule } from './letter-of-credit/letter-of-credit.module
     PlatformIntegrationsModule,
     StressTestingModule,
     LetterOfCreditModule,
+    AmlMonitoringModule,
   ],
   providers: [
     {

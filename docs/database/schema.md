@@ -11,6 +11,45 @@ erDiagram
     Achievement {
         string id PK
     }
+    AmlAlert {
+        string id PK
+    }
+    AmlCase {
+        string id PK
+    }
+    AmlDispositionFeedback {
+        string id PK
+    }
+    AmlMonitoringRule {
+        string id PK
+    }
+    AmlMonitoringRun {
+        string id PK
+    }
+    AmlRegulatorySubmission {
+        string id PK
+    }
+    AmlSarReport {
+        string id PK
+    }
+    AmlScreeningResult {
+        string id PK
+    }
+    SanctionsListEntry {
+        string id PK
+    }
+    AMMLiquidityPosition {
+        string id PK
+    }
+    AMMMiningReward {
+        string id PK
+    }
+    AMMPool {
+        string id PK
+    }
+    AMMSwap {
+        string id PK
+    }
     InvestmentArchive {
         string id PK
     }
@@ -24,6 +63,9 @@ erDiagram
         string id PK
     }
     ApiKey {
+        string id PK
+    }
+    BiometricCredential {
         string id PK
     }
     KycSubmission {
@@ -50,6 +92,9 @@ erDiagram
     ChatParticipant {
         string id PK
     }
+    ChatbotConversation {
+        string id PK
+    }
     CollaborationPermission {
         string id PK
     }
@@ -57,6 +102,12 @@ erDiagram
         string id PK
     }
     ComplianceReport {
+        string id PK
+    }
+    RegulatoryRuleExecution {
+        string id PK
+    }
+    RegulatoryRule {
         string id PK
     }
     AdminAction {
@@ -110,6 +161,9 @@ erDiagram
     Investment {
         string id PK
     }
+    LiquiditySnapshot {
+        string id PK
+    }
     SecondaryOrder {
         string id PK
     }
@@ -156,6 +210,18 @@ erDiagram
         string id PK
     }
     PartnerApiUsage {
+        string id PK
+    }
+    NettingCycle {
+        string id PK
+    }
+    NettingObligation {
+        string id PK
+    }
+    MilestoneComment {
+        string id PK
+    }
+    MilestoneVerification {
         string id PK
     }
     ShipmentMilestone {
@@ -205,6 +271,20 @@ erDiagram
     %% Relationships
     AnnualInvestmentTotal }o--|| User : "ManyToOne"
     Achievement }o--|| User : "ManyToOne"
+    AmlAlert }o--|| AmlMonitoringRule : "ManyToOne"
+    AmlAlert }o--|| AmlCase : "ManyToOne"
+    AmlSarReport }o--|| AmlCase : "ManyToOne"
+    AMMLiquidityPosition }o--|| AMMPool : "ManyToOne"
+    AMMLiquidityPosition }o--|| User : "ManyToOne"
+    AMMMiningReward }o--|| AMMPool : "ManyToOne"
+    AMMMiningReward }o--|| User : "ManyToOne"
+    AMMPool }o--|| TradeDeal : "ManyToOne"
+    AMMPool }o--|| User : "ManyToOne"
+    AMMPool ||--o{ AMMLiquidityPosition : "OneToMany"
+    AMMPool ||--o{ AMMSwap : "OneToMany"
+    AMMSwap }o--|| AMMPool : "ManyToOne"
+    AMMSwap }o--|| User : "ManyToOne"
+    BiometricCredential }o--|| User : "ManyToOne"
     KycSubmission }o--|| User : "ManyToOne"
     ReferralCode }o--|| User : "ManyToOne"
     Referral }o--|| User : "ManyToOne"
@@ -232,6 +312,7 @@ erDiagram
     NotificationPreference }o--|| User : "ManyToOne"
     NotificationEntity }o--|| User : "ManyToOne"
     PushSubscriptionEntity }o--|| User : "ManyToOne"
+    MilestoneComment }o--|| ShipmentMilestone : "ManyToOne"
     DealCoFarmer }o--|| TradeDeal : "ManyToOne"
     DealCoFarmer }o--|| User : "ManyToOne"
     DealHealthAlert }o--|| TradeDeal : "ManyToOne"
