@@ -55,17 +55,7 @@ import { PublicApiModule } from './public-api/public-api.module';
 import { SelfHealingModule } from './self-healing/self-healing.module';
 import { KycRulesModule } from './kyc-rules/kyc-rules.module';
 import { AccreditationModule } from './accreditation/accreditation.module';
-import { ChatModule } from './chat/chat.module';
-import { WatchlistModule } from './watchlist/watchlist.module';
-import { CollaborationModule } from './collaboration/collaboration.module';
-import { OracleModule } from './oracles/oracle.module';
-import { TracingModule } from './tracing/tracing.module';
-import { TracingMiddleware } from './tracing/tracing.middleware';
-import { PlatformIntegrationsModule } from './platform-integrations/platform-integrations.module';
-import { StressTestingModule } from './stress-testing/stress-testing.module';
-import { LetterOfCreditModule } from './letter-of-credit/letter-of-credit.module';
-import { FederatedLearningModule } from './federated-learning/federated-learning.module';
-import { DidModule } from './did/did.module';
+import { ZkpModule } from './zkp/zkp.module';
 
 @Module({
   controllers: [AppController, PublicController],
@@ -126,15 +116,7 @@ import { DidModule } from './did/did.module';
     ReferralsModule,
     KycRulesModule,
     AccreditationModule,
-    ChatModule,
-    CollaborationModule,
-    OracleModule,
-    TracingModule,
-    PlatformIntegrationsModule,
-    StressTestingModule,
-    LetterOfCreditModule,
-    WatchlistModule,
-    DidModule,
+    ZkpModule,
   ],
   providers: [
     {
