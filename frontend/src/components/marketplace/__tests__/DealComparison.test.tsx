@@ -112,8 +112,8 @@ describe('DealComparison Component', () => {
       );
 
       expect(screen.getByText('Compare deals (2/3)')).toBeInTheDocument();
-      expect(screen.getByText('Cocoa')).toBeInTheDocument();
-      expect(screen.getByText('Maize')).toBeInTheDocument();
+      expect(screen.getAllByText('Cocoa').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('Maize').length).toBeGreaterThan(0);
     });
 
     it('should display all comparison metrics', () => {
@@ -132,6 +132,13 @@ describe('DealComparison Component', () => {
       expect(screen.getByText('Commodity')).toBeInTheDocument();
       expect(screen.getByText('Total Value')).toBeInTheDocument();
       expect(screen.getByText('Total Invested')).toBeInTheDocument();
+      // Sustainability metrics (#1185)
+      expect(screen.getByText('ESG Score & Rating')).toBeInTheDocument();
+      expect(screen.getByText('Carbon Footprint')).toBeInTheDocument();
+      expect(screen.getByText('Carbon Intensity')).toBeInTheDocument();
+      expect(screen.getByText('Emissions Breakdown')).toBeInTheDocument();
+      expect(screen.getByText('Eco-Certifications')).toBeInTheDocument();
+      expect(screen.getByText('Carbon Neutrality')).toBeInTheDocument();
     });
   });
 
@@ -140,13 +147,16 @@ describe('DealComparison Component', () => {
       const csv = generateComparisonCSV([mockDeal1, mockDeal2]);
 
       expect(csv).toContain('Metric,Cocoa,Maize');
-      expect(csv).toContain('Expected ROI,24.5%,18.0%');
-      expect(csv).toContain('Duration,180 days,120 days');
-      expect(csv).toContain('Funding progress,50.0%,66.7%');
-      expect(csv).toContain('Risk rating,Medium,Low');
-      expect(csv).toContain('Commodity,Cocoa,Maize');
+      expect(csv).toContain('Expected ROI,"24.5%","18.0%"');
+      expect(csv).toContain('Duration,"180 days","120 days"');
+      expect(csv).toContain('Funding progress,"50.0%","66.7%"');
+      expect(csv).toContain('Risk rating,"Medium","Low"');
+      expect(csv).toContain('Commodity,"Cocoa","Maize"');
       expect(csv).toContain('Total Value,"$50,000","$75,000"');
       expect(csv).toContain('Total Invested,"$25,000","$50,000"');
+      expect(csv).toContain('ESG Score & Rating');
+      expect(csv).toContain('Carbon Footprint');
+      expect(csv).toContain('Carbon Intensity');
     });
 
     it('should handle CSV values with special characters', () => {
@@ -159,8 +169,7 @@ describe('DealComparison Component', () => {
 
     it('should download CSV file on export button click', async () => {
       const user = userEvent.setup();
-      const createElementSpy = vi.spyOn(document, 'createElement');
-      const clickSpy = vi.fn();
+      const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
 
       render(
         <DealComparison
@@ -171,35 +180,16 @@ describe('DealComparison Component', () => {
       );
 
       const exportButton = screen.getByText('📥 Export CSV');
-      
-      // Mock anchor click
-      createElementSpy.mockImplementation((tag) => {
-        if (tag === 'a') {
-          return { click: clickSpy, setAttribute: vi.fn() } as any;
-        }
-        return document.createElement(tag);
-      });
-
       await user.click(exportButton);
 
       expect(clickSpy).toHaveBeenCalled();
-      createElementSpy.mockRestore();
+      clickSpy.mockRestore();
     });
 
     it('should include current date in CSV filename', async () => {
       const user = userEvent.setup();
-      const setAttributeSpy = vi.fn();
-      const createElementSpy = vi.spyOn(document, 'createElement');
-
-      createElementSpy.mockImplementation((tag) => {
-        if (tag === 'a') {
-          return {
-            click: vi.fn(),
-            setAttribute: setAttributeSpy,
-          } as any;
-        }
-        return document.createElement(tag);
-      });
+      const setAttributeSpy = vi.spyOn(HTMLAnchorElement.prototype, 'setAttribute');
+      const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
 
       render(
         <DealComparison
@@ -217,7 +207,8 @@ describe('DealComparison Component', () => {
       expect(downloadCall).toBeDefined();
       expect(downloadCall[1]).toMatch(/deal-comparison-\d{4}-\d{2}-\d{2}\.csv/);
 
-      createElementSpy.mockRestore();
+      setAttributeSpy.mockRestore();
+      clickSpy.mockRestore();
     });
   });
 

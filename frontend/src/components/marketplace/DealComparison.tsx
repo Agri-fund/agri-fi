@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Deal } from "@/lib/api";
 import { useCurrencyFormat } from "@/hooks/useCurrencyFormat";
+import { getDealSustainability } from "@/lib/sustainability";
 
 const COMPARISON_STORAGE_KEY = "agri-fi:deal-comparison";
 const COMPARISON_URL_PARAM = "compare";
@@ -34,6 +35,41 @@ function formatCsvCurrency(value: number | string | undefined): string {
 
 type CurrencyFormatter = (value: number | string, currency?: string, options?: { decimalPlaces?: number }) => string;
 
+function formatEsgScore(deal: Deal): string {
+  const s = deal.sustainability || getDealSustainability(deal);
+  return `${s.overallScore} (${s.rating})`;
+}
+
+function formatCarbonFootprint(deal: Deal): string {
+  const s = deal.sustainability || getDealSustainability(deal);
+  return `${s.carbonFootprint.totalEmissionsTonsCo2e} tCO2e`;
+}
+
+function formatCarbonIntensity(deal: Deal): string {
+  const s = deal.sustainability || getDealSustainability(deal);
+  return `${s.carbonFootprint.carbonIntensityKgPerUnit} kg/kg`;
+}
+
+function formatEmissionsBreakdown(deal: Deal): string {
+  const s = deal.sustainability || getDealSustainability(deal);
+  const b = s.carbonFootprint.breakdownPercent;
+  return `${b.transport}% transport, ${b.storage}% storage, ${b.processing}% processing`;
+}
+
+function formatCertifications(deal: Deal): string {
+  const s = deal.sustainability || getDealSustainability(deal);
+  return s.certifications.length > 0
+    ? s.certifications.map((c) => c.name).join('; ')
+    : 'None';
+}
+
+function formatCarbonStatus(deal: Deal): string {
+  const s = deal.sustainability || getDealSustainability(deal);
+  return s.carbonFootprint.offsetStatus.isOffset
+    ? '100% Net-Zero Certified'
+    : 'Gross (Offset Available)';
+}
+
 /**
  * Generates CSV content from comparison table
  */
@@ -49,6 +85,12 @@ function generateComparisonCSV(
     ["Commodity", (deal: Deal) => deal.commodity],
     ["Total Value", (deal: Deal) => formatCurrency(deal.total_value, "USD", { decimalPlaces: 0 })],
     ["Total Invested", (deal: Deal) => formatCurrency(deal.total_invested, "USD", { decimalPlaces: 0 })],
+    ["ESG Score & Rating", (deal: Deal) => formatEsgScore(deal)],
+    ["Carbon Footprint", (deal: Deal) => formatCarbonFootprint(deal)],
+    ["Carbon Intensity", (deal: Deal) => formatCarbonIntensity(deal)],
+    ["Emissions Breakdown", (deal: Deal) => formatEmissionsBreakdown(deal)],
+    ["Eco-Certifications", (deal: Deal) => formatCertifications(deal)],
+    ["Carbon Neutrality", (deal: Deal) => formatCarbonStatus(deal)],
   ] as const;
 
   const headers = ["Metric", ...deals.map((d) => d.commodity)];
@@ -112,7 +154,25 @@ export default function DealComparison({
     ["Commodity", (deal: Deal) => deal.commodity],
     ["Total Value", (deal: Deal) => formatCurrency(deal.total_value, "USD", { decimalPlaces: 0 })],
     ["Total Invested", (deal: Deal) => formatCurrency(deal.total_invested, "USD", { decimalPlaces: 0 })],
+    ["ESG Score & Rating", (deal: Deal) => formatEsgScore(deal)],
+    ["Carbon Footprint", (deal: Deal) => formatCarbonFootprint(deal)],
+    ["Carbon Intensity", (deal: Deal) => formatCarbonIntensity(deal)],
+    ["Emissions Breakdown", (deal: Deal) => formatEmissionsBreakdown(deal)],
+    ["Eco-Certifications", (deal: Deal) => formatCertifications(deal)],
+    ["Carbon Neutrality", (deal: Deal) => formatCarbonStatus(deal)],
   ] as const;
+
+  const lowestCarbonDealId =
+    deals.length > 1
+      ? [...deals].sort((a, b) => {
+          const sa = a.sustainability || getDealSustainability(a);
+          const sb = b.sustainability || getDealSustainability(b);
+          return (
+            sa.carbonFootprint.carbonIntensityKgPerUnit -
+            sb.carbonFootprint.carbonIntensityKgPerUnit
+          );
+        })[0]?.id
+      : null;
 
   // Persist comparison to localStorage
   useEffect(() => {
@@ -216,21 +276,28 @@ export default function DealComparison({
                   key={deal.id}
                   className="pb-2 pr-4 align-top font-semibold text-slate-900"
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <Link
-                      href={`/marketplace/${deal.id}`}
-                      className="capitalize hover:text-brand-700"
-                    >
-                      {deal.commodity}
-                    </Link>
-                    <button
-                      type="button"
-                      onClick={() => onRemove(deal.id)}
-                      aria-label={`Remove ${deal.commodity} from comparison`}
-                      className="text-slate-400 hover:text-slate-900"
-                    >
-                      ×
-                    </button>
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <Link
+                        href={`/marketplace/${deal.id}`}
+                        className="capitalize hover:text-brand-700"
+                      >
+                        {deal.commodity}
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => onRemove(deal.id)}
+                        aria-label={`Remove ${deal.commodity} from comparison`}
+                        className="text-slate-400 hover:text-slate-900"
+                      >
+                        ×
+                      </button>
+                    </div>
+                    {deal.id === lowestCarbonDealId && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded w-fit">
+                        🌱 Lowest Footprint
+                      </span>
+                    )}
                   </div>
                 </th>
               ))}

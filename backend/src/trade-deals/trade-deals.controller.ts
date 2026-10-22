@@ -588,6 +588,37 @@ export class TradeDealsController {
     return this.esgScoringService.getEsgAnalytics();
   }
 
+  @Get(':id/carbon-footprint')
+  @ApiOperation({ summary: 'Calculate detailed carbon footprint for a trade deal (transport, storage, processing)' })
+  @ApiParam({ name: 'id', description: 'Trade deal UUID' })
+  async getDealCarbonFootprint(
+    @Param('id') id: string,
+    @Query('distanceKm') distanceKm?: number,
+    @Query('transportMode') transportMode?: string,
+    @Query('storageDays') storageDays?: number,
+    @Query('weightTons') weightTons?: number,
+  ) {
+    return this.esgScoringService.calculateDealCarbonFootprint(id, {
+      distanceKm: distanceKm ? Number(distanceKm) : undefined,
+      transportMode,
+      storageDays: storageDays ? Number(storageDays) : undefined,
+      weightTons: weightTons ? Number(weightTons) : undefined,
+    });
+  }
+
+  @Post(':id/carbon-offset')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @ApiBearerAuth('jwt')
+  @ApiOperation({ summary: 'Purchase and retire certified carbon offsets to neutralize trade deal footprint' })
+  @ApiParam({ name: 'id', description: 'Trade deal UUID' })
+  async retireCarbonOffset(
+    @Param('id') id: string,
+    @Request() req: AuthRequest,
+    @Body() dto: { projectId: string; tons: number; paymentMethod?: string },
+  ) {
+    return this.esgScoringService.retireCarbonOffset(id, req.user.id, dto);
+  }
+
   // ── Predictive text & smart suggestions (#1180) ───────────────────────────
 
   @Get('suggestions')
