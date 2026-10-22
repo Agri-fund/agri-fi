@@ -8,6 +8,18 @@ import StatusBadge from '@/components/StatusBadge';
 import { InvestmentModal } from './InvestmentModal';
 import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
+import { getDealSustainability } from '@/lib/sustainability';
+import CarbonFootprintWidget from './CarbonFootprintWidget';
+import EcoCertificationBadges from './EcoCertificationBadges';
+import SustainabilityRecommendations from './SustainabilityRecommendations';
+import TrustBadges from './TrustBadges';
+import InvestorTestimonials from './InvestorTestimonials';
+import DealSuccessStories from './DealSuccessStories';
+import CommunityRatings from './CommunityRatings';
+import DealForum from './DealForum';
+import ExpertEndorsements from './ExpertEndorsements';
+import SocialShareModal from './SocialShareModal';
+import TrustAnalyticsWidget from './TrustAnalyticsWidget';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -109,6 +121,7 @@ export default function DealDetails({ dealId }: DealDetailsProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showInvestModal, setShowInvestModal] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -151,6 +164,7 @@ export default function DealDetails({ dealId }: DealDetailsProps) {
   const tokensLeft = Math.max(0, Number(deal.token_count) - Math.floor(Number(deal.total_invested) / 100));
   const canInvest = deal.status === 'open' && tokensLeft > 0;
   const tokenPrice = formatCurrency(100, 'USD', { decimalPlaces: 0 });
+  const sustainability = deal.sustainability || getDealSustainability(deal);
 
   return (
     <>
@@ -166,10 +180,36 @@ export default function DealDetails({ dealId }: DealDetailsProps) {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-foreground capitalize">{deal.commodity}</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold text-foreground capitalize">{deal.commodity}</h1>
+            <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+              🌱 ESG {sustainability.overallScore} ({sustainability.rating})
+            </span>
+          </div>
           <p className="text-sm text-muted-foreground font-mono mt-1">{deal.token_symbol}</p>
+          {sustainability.certifications.length > 0 && (
+            <div className="mt-2.5">
+              <EcoCertificationBadges certifications={sustainability.certifications} size="sm" />
+            </div>
+          )}
         </div>
-        <StatusBadge status={deal.status} />
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowShareModal(true)}
+            className="btn btn-sm border border-border bg-surface hover:bg-muted text-foreground flex items-center gap-1.5 cursor-pointer shadow-sm text-xs font-semibold"
+            aria-label="Share deal"
+          >
+            <span>📣</span>
+            <span>Share & Refer</span>
+          </button>
+          <StatusBadge status={deal.status} />
+        </div>
+      </div>
+
+      {/* Verified Protocol Trust Badges (#1182) */}
+      <div className="mb-6">
+        <TrustBadges />
       </div>
 
       <div className="grid grid-cols-1 gap-6 pb-40 lg:grid-cols-3 lg:pb-0">
@@ -233,6 +273,16 @@ export default function DealDetails({ dealId }: DealDetailsProps) {
             </div>
           </section>
 
+          {/* Sustainability & Carbon Tracking Widget (#1185) */}
+          <CarbonFootprintWidget
+            deal={deal}
+            sustainability={sustainability}
+            onDealUpdated={(updated) => setDeal(updated)}
+          />
+
+          {/* Sustainability Recommendations & Optimization (#1185) */}
+          <SustainabilityRecommendations deal={deal} />
+
           {/* Documents */}
           {deal.documents && deal.documents.length > 0 && (
             <section className="card p-6" aria-labelledby="documents-heading">
@@ -275,7 +325,27 @@ export default function DealDetails({ dealId }: DealDetailsProps) {
                 ))}
               </ol>
             </section>
-          )}
+          {/* Expert Endorsements (#1182) */}
+          <ExpertEndorsements dealId={deal.id} />
+
+          {/* Investor Testimonials & Reviews (#1182) */}
+          <InvestorTestimonials
+            dealId={deal.id}
+            dealTitle={deal.commodity}
+            commodity={deal.commodity}
+          />
+
+          {/* Community Ratings (#1182) */}
+          <CommunityRatings initialCategory="farmer" />
+
+          {/* Community Q&A & Deal Forum (#1182) */}
+          <DealForum dealId={deal.id} dealTitle={deal.commodity} />
+
+          {/* Deal Success Stories & Historical Repayments (#1182) */}
+          <DealSuccessStories />
+
+          {/* Social Proof Trust Analytics (#1182) */}
+          <TrustAnalyticsWidget />
         </div>
 
         {/* ── Right: Investment panel ──────────────────────────────────────── */}
@@ -349,6 +419,17 @@ export default function DealDetails({ dealId }: DealDetailsProps) {
       {/* Investment modal */}
       {showInvestModal && (
         <InvestmentModal deal={deal} onClose={() => setShowInvestModal(false)} />
+      )}
+
+      {/* Social Share & Referral Modal (#1182) */}
+      {showShareModal && (
+        <SocialShareModal
+          dealTitle={deal.commodity}
+          dealId={deal.id}
+          roi={deal.annual_roi ? (Number(deal.annual_roi) * 100).toFixed(1) : undefined}
+          commodity={deal.commodity}
+          onClose={() => setShowShareModal(false)}
+        />
       )}
     </>
   );

@@ -66,6 +66,7 @@ import { StressTestingModule } from './stress-testing/stress-testing.module';
 import { LetterOfCreditModule } from './letter-of-credit/letter-of-credit.module';
 import { FederatedLearningModule } from './federated-learning/federated-learning.module';
 import { DidModule } from './did/did.module';
+import { SocialProofModule } from './social-proof/social-proof.module';
 
 @Module({
   controllers: [AppController, PublicController],
@@ -135,6 +136,7 @@ import { DidModule } from './did/did.module';
     LetterOfCreditModule,
     WatchlistModule,
     DidModule,
+    SocialProofModule,
   ],
   providers: [
     {

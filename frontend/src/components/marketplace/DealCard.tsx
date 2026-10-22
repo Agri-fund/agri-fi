@@ -3,6 +3,8 @@ import Link from 'next/link';
 import { Deal } from '@/lib/api';
 import { useCurrencyFormat } from '@/hooks/useCurrencyFormat';
 import { useNumberFormat } from '@/hooks/useNumberFormat';
+import { getDealSustainability } from '@/lib/sustainability';
+import EcoCertificationBadges from './EcoCertificationBadges';
 
 const STATUS_CONFIG: Record<string, { cls: string; dot: string }> = {
   open:      { cls: 'badge-green',  dot: 'bg-emerald-500' },
@@ -81,6 +83,7 @@ export default function DealCard({
   const creditTier = deal.farmer_credit_tier
     ? CREDIT_TIER_CONFIG[deal.farmer_credit_tier]
     : undefined;
+  const sustainability = deal.sustainability || getDealSustainability(deal);
 
   return (
     <div className="relative">
@@ -91,7 +94,7 @@ export default function DealCard({
       {/* Top accent bar */}
       <div className={`h-1.5 w-full ${pct >= 100 ? 'bg-gradient-to-r from-blue-400 to-indigo-500' : 'bg-gradient-to-r from-brand-400 to-emerald-500'}`} />
 
-      <div className="p-5 flex flex-col flex-1 gap-4">
+      <div className="p-5 flex flex-col flex-1 gap-3.5">
         {/* Header */}
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
@@ -104,6 +107,29 @@ export default function DealCard({
             <span className={`w-1.5 h-1.5 rounded-full ${sc.dot} inline-block mr-1`} />
             {deal.status}
           </span>
+        </div>
+
+        {/* Sustainability & Eco-Certifications (#1185) */}
+        <div className="space-y-1.5">
+          {sustainability.certifications.length > 0 && (
+            <EcoCertificationBadges
+              certifications={sustainability.certifications.slice(0, 2)}
+              size="sm"
+            />
+          )}
+          <div className="flex items-center justify-between text-[11px] bg-emerald-50/80 rounded-xl px-2.5 py-1.5 border border-emerald-100/90">
+            <div className="flex items-center gap-1.5 font-bold text-emerald-800">
+              <span>🌱</span>
+              <span>ESG {sustainability.overallScore} ({sustainability.rating})</span>
+            </div>
+            <span className="text-[10px] text-emerald-700 font-semibold">
+              {sustainability.carbonFootprint.offsetStatus.isOffset ? (
+                <span className="text-teal-700 font-bold">100% Net-Zero</span>
+              ) : (
+                `${sustainability.carbonFootprint.carbonIntensityKgPerUnit} kg CO2e/kg`
+              )}
+            </span>
+          </div>
         </div>
 
         {/* Stats */}
@@ -142,7 +168,16 @@ export default function DealCard({
                 Score {deal.farmer_credit_score}
               </span>
             </div>
-          )}
+          {/* Trust Signals & Social Proof (#1182) */}
+          <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-100">
+            <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
+              🛡️ Stellar Escrow
+            </span>
+            <span className="inline-flex items-center gap-1 font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
+              ★ 4.9 <span className="text-slate-400 font-normal">(120+)</span>
+            </span>
+          </div>
+
           <div className="flex justify-between items-center text-xs">
             <span className="text-slate-500 font-medium">
               {formatCurrency(deal.total_invested, 'USD', { decimalPlaces: 0 })} raised

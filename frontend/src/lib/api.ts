@@ -1,5 +1,10 @@
 import { getAuthToken, setAuthToken, clearAuthToken } from "./auth-token";
 import { captureTraceId, traceHeaders } from "./tracing";
+import type {
+  SustainabilityMetrics,
+  CarbonFootprintDetails,
+  EcoCertification,
+} from "./sustainability";
 
 export const API_BASE =
   (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001").replace(/\/+$/, "");
@@ -110,6 +115,10 @@ export interface Deal {
   farmer_credit_score?: number | null;
   /** Credit tier of the farmer behind the deal (#1160) */
   farmer_credit_tier?: CreditScoreTier | null;
+  /** Sustainability metrics and carbon tracking (#1185) */
+  sustainability?: SustainabilityMetrics | null;
+  carbon_footprint?: CarbonFootprintDetails | null;
+  eco_certifications?: EcoCertification[] | null;
 }
 
 /** One month of a farmer's credit score history (#1160) */
@@ -369,6 +378,9 @@ function normalizeDeal(raw: any): Deal {
     esg_rating: raw.esg_rating ?? raw.esgRating ?? null,
     esg_status: raw.esg_status ?? raw.esgStatus ?? null,
     esg_breakdown: raw.esg_breakdown ?? raw.esgBreakdown ?? null,
+    sustainability: raw.sustainability ?? null,
+    carbon_footprint: raw.carbon_footprint ?? raw.carbonFootprint ?? null,
+    eco_certifications: raw.eco_certifications ?? raw.ecoCertifications ?? null,
   };
 }
 
@@ -679,6 +691,32 @@ export const apiClient = {
   // GET /trade-deals/:id/esg-score
   async getDealEsgScore(dealId: string): Promise<any> {
     return apiFetch(`/trade-deals/${dealId}/esg-score`);
+  },
+
+  // Sustainability tracking and carbon footprint endpoints (#1185)
+  async getDealCarbonFootprint(dealId: string): Promise<CarbonFootprintDetails> {
+    return apiFetch(`/trade-deals/${dealId}/carbon-footprint`);
+  },
+
+  async purchaseCarbonOffset(
+    dealId: string,
+    data: { projectId: string; tons: number; paymentMethod?: string }
+  ): Promise<any> {
+    return apiFetch(`/trade-deals/${dealId}/carbon-offset`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async getDealSustainabilityReport(
+    dealId: string,
+    type: "investor" | "regulator" = "investor"
+  ): Promise<any> {
+    return apiFetch(`/trade-deals/${dealId}/esg-report?type=${type}`);
+  },
+
+  async getPlatformSustainabilityAnalytics(): Promise<any> {
+    return apiFetch(`/trade-deals/esg/analytics`);
   },
 
   getChatConversations(): Promise<ChatConversation[]> {

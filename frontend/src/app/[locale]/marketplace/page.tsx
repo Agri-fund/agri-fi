@@ -9,14 +9,121 @@ import Pagination from "@/components/ui/Pagination";
 import DealCard from "@/components/marketplace/DealCard";
 import DealComparison from "@/components/marketplace/DealComparison";
 import { useCurrencyFormat } from "@/hooks/useCurrencyFormat";
+import { getDealSustainability } from "@/lib/sustainability";
 
 const LIMIT = 12;
 const SEARCH_DEBOUNCE_MS = 300;
 const SKELETON_FALLBACK_COUNT = 6;
+const SESSION_KEY = "marketplace.filters.v1";
+
+const COMMODITIES = ["maize", "wheat", "coffee", "cocoa", "rice", "soybean"];
+const DURATION_OPTIONS = [
+  "<3 months",
+  "3-6 months",
+  "6-12 months",
+  ">12 months",
+] as const;
+const STATUS_OPTIONS = ["open", "almost funded", "fully funded"] as const;
+const RISK_OPTIONS = ["Low", "Medium", "High"] as const;
+
+interface Filters {
+  q: string;
+  commodity: string[];
+  country: string;
+  region: string;
+  minAmount: number;
+  maxAmount: number;
+  minRoi: number;
+  maxRoi: number;
+  duration: string;
+  riskRating: string;
+  status: string;
+  sortBy: string;
+  // Sustainability & ESG criteria (#1185)
+  minEsgScore: number;
+  esgRating: string;
+  certification: string;
+  carbonNeutralOnly: boolean;
+}
+
+const DEFAULT_FILTERS: Filters = {
+  q: "",
+  commodity: [],
+  country: "",
+  region: "",
+  minAmount: 0,
+  maxAmount: 5000,
+  minRoi: 0,
+  maxRoi: 100,
+  duration: "",
+  riskRating: "",
+  status: "",
+  sortBy: "newest",
+  minEsgScore: 0,
+  esgRating: "",
+  certification: "",
+  carbonNeutralOnly: false,
+};
 
 function parsePageParam(raw: string | null): number {
   const parsed = raw ? Number.parseInt(raw, 10) : NaN;
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+}
+
+function parseFilters(params: URLSearchParams): Filters {
+  const commodity =
+    params
+      .get("commodity")
+      ?.split(",")
+      .map((item) => item.trim())
+      .filter(Boolean) ?? [];
+  return {
+    q: params.get("q") ?? "",
+    commodity,
+    country: params.get("country") ?? "",
+    region: params.get("region") ?? "",
+    minAmount: Number(params.get("minAmount") ?? DEFAULT_FILTERS.minAmount),
+    maxAmount: Number(params.get("maxAmount") ?? DEFAULT_FILTERS.maxAmount),
+    minRoi: Number(params.get("minRoi") ?? DEFAULT_FILTERS.minRoi),
+    maxRoi: Number(params.get("maxRoi") ?? DEFAULT_FILTERS.maxRoi),
+    duration: params.get("duration") ?? "",
+    riskRating: params.get("riskRating") ?? "",
+    status: params.get("status") ?? "",
+    sortBy: params.get("sortBy") ?? "newest",
+    minEsgScore: Number(params.get("minEsgScore") ?? 0),
+    esgRating: params.get("esgRating") ?? "",
+    certification: params.get("certification") ?? "",
+    carbonNeutralOnly: params.get("carbonNeutral") === "true",
+  };
+}
+
+function buildQuery(filters: Filters, page: number): string {
+  const params = new URLSearchParams();
+  if (filters.q) params.set("q", filters.q);
+  if (filters.commodity.length > 0)
+    params.set("commodity", filters.commodity.join(","));
+  if (filters.country) params.set("country", filters.country);
+  if (filters.region) params.set("region", filters.region);
+  if (filters.minAmount > 0) params.set("minAmount", String(filters.minAmount));
+  if (filters.maxAmount < DEFAULT_FILTERS.maxAmount)
+    params.set("maxAmount", String(filters.maxAmount));
+  if (filters.minRoi > 0) params.set("minRoi", String(filters.minRoi));
+  if (filters.maxRoi < DEFAULT_FILTERS.maxRoi)
+    params.set("maxRoi", String(filters.maxRoi));
+  if (filters.duration) params.set("duration", filters.duration);
+  if (filters.riskRating) params.set("riskRating", filters.riskRating);
+  if (filters.status) params.set("status", filters.status);
+  if (filters.sortBy && filters.sortBy !== "newest")
+    params.set("sortBy", filters.sortBy);
+  if (filters.minEsgScore > 0)
+    params.set("minEsgScore", String(filters.minEsgScore));
+  if (filters.esgRating && filters.esgRating !== "all")
+    params.set("esgRating", filters.esgRating);
+  if (filters.certification && filters.certification !== "all")
+    params.set("certification", filters.certification);
+  if (filters.carbonNeutralOnly) params.set("carbonNeutral", "true");
+  if (page > 1) params.set("page", String(page));
+  return params.toString();
 }
 
 const SORT_OPTIONS = [
@@ -39,6 +146,11 @@ function MarketplaceContent() {
     | "ASC"
     | "DESC";
 
+  const [filters, setFilters] = useState<Filters>(() =>
+    parseFilters(searchParams),
+  );
+  const [searchInput, setSearchInput] = useState(filters.q);
+  const [page, setPage] = useState(urlPage);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -247,8 +359,63 @@ function MarketplaceContent() {
         onRemove: () =>
           setFilters((c) => ({ ...c, maxRoi: DEFAULT_FILTERS.maxRoi })),
       });
+    // ESG chips (#1185)
+    if (filters.minEsgScore > 0)
+      chips.push({
+        key: "minEsgScore",
+        label: `Min ESG: ${filters.minEsgScore}+`,
+        onRemove: () => setFilters((c) => ({ ...c, minEsgScore: 0 })),
+      });
+    if (filters.esgRating && filters.esgRating !== "all")
+      chips.push({
+        key: "esgRating",
+        label: `ESG: ${filters.esgRating}`,
+        onRemove: () => setFilters((c) => ({ ...c, esgRating: "" })),
+      });
+    if (filters.certification && filters.certification !== "all")
+      chips.push({
+        key: "certification",
+        label: `Cert: ${filters.certification.replace("_", " ")}`,
+        onRemove: () => setFilters((c) => ({ ...c, certification: "" })),
+      });
+    if (filters.carbonNeutralOnly)
+      chips.push({
+        key: "carbonNeutral",
+        label: "100% Carbon Neutral",
+        onRemove: () => setFilters((c) => ({ ...c, carbonNeutralOnly: false })),
+      });
     return chips;
   }, [filters, formatCurrency]);
+
+  const filteredDeals = useMemo(() => {
+    return deals.filter((deal) => {
+      const s = deal.sustainability || getDealSustainability(deal);
+
+      if (filters.minEsgScore > 0 && s.overallScore < filters.minEsgScore) {
+        return false;
+      }
+      if (
+        filters.esgRating &&
+        filters.esgRating !== "all" &&
+        s.rating !== filters.esgRating
+      ) {
+        return false;
+      }
+      if (filters.certification && filters.certification !== "all") {
+        const hasCert = s.certifications.some(
+          (c) => c.type === filters.certification,
+        );
+        if (!hasCert) return false;
+      }
+      if (
+        filters.carbonNeutralOnly &&
+        !s.carbonFootprint.offsetStatus.isOffset
+      ) {
+        return false;
+      }
+      return true;
+    });
+  }, [deals, filters]);
 
   const clearAll = () => {
     setSearchInput("");
@@ -316,19 +483,36 @@ function MarketplaceContent() {
       </nav>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-        <div className="mb-8">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="badge-green">Live</span>
-            <span className="text-xs text-slate-400">
-              {total} open deal{total !== 1 ? "s" : ""}
-            </span>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="badge-green">Live</span>
+              <span className="text-xs text-slate-400">
+                {total} open deal{total !== 1 ? "s" : ""}
+              </span>
+            </div>
+            <h1 className="text-4xl font-black text-slate-900 tracking-tight mb-2">
+              Marketplace
+            </h1>
+            <p className="text-slate-500 text-lg">
+              Browse open agricultural investment opportunities
+            </p>
+          <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+            <Link
+              href="/community"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-primary/10 hover:bg-primary/20 border border-primary/20 text-primary font-bold text-xs shadow-sm transition-all"
+            >
+              <span className="text-base">👥</span>
+              <span>Community & Trust Hub →</span>
+            </Link>
+            <Link
+              href="/marketplace/sustainability"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 font-bold text-xs shadow-sm transition-all"
+            >
+              <span className="text-base">🌱</span>
+              <span>Sustainability Analytics →</span>
+            </Link>
           </div>
-          <h1 className="text-4xl font-black text-slate-900 tracking-tight mb-2">
-            Marketplace
-          </h1>
-          <p className="text-slate-500 text-lg">
-            Browse open agricultural investment opportunities
-          </p>
         </div>
 
         <div className="mb-6 flex flex-col gap-3 lg:flex-row lg:items-center">
@@ -678,13 +862,93 @@ function MarketplaceContent() {
                   ))}
                 </select>
               </div>
+
+              {/* ── Sustainability & ESG Filters (#1185) ──────────────────── */}
+              <div className="pt-4 border-t border-slate-100 space-y-3">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-800 uppercase tracking-wider">
+                  <span>🌱</span>
+                  <span>Sustainability & ESG</span>
+                </div>
+
+                <div className="grid gap-2.5">
+                  <select
+                    className="input bg-white text-xs"
+                    value={filters.minEsgScore || ""}
+                    onChange={(e) => {
+                      setFilters((current) => ({
+                        ...current,
+                        minEsgScore: Number(e.target.value) || 0,
+                      }));
+                      setPage(1);
+                    }}
+                  >
+                    <option value="">Min ESG Score: Any</option>
+                    <option value="60">60+ (Moderate)</option>
+                    <option value="70">70+ (Sustainable)</option>
+                    <option value="80">80+ (High ESG)</option>
+                    <option value="90">90+ (Pioneer / AAA)</option>
+                  </select>
+
+                  <select
+                    className="input bg-white text-xs"
+                    value={filters.esgRating}
+                    onChange={(e) => {
+                      setFilters((current) => ({
+                        ...current,
+                        esgRating: e.target.value,
+                      }));
+                      setPage(1);
+                    }}
+                  >
+                    <option value="">ESG Rating: All</option>
+                    <option value="AAA">AAA (Pioneer)</option>
+                    <option value="AA">AA (High ESG)</option>
+                    <option value="A">A (Sustainable)</option>
+                    <option value="BBB">BBB (Moderate)</option>
+                  </select>
+
+                  <select
+                    className="input bg-white text-xs"
+                    value={filters.certification}
+                    onChange={(e) => {
+                      setFilters((current) => ({
+                        ...current,
+                        certification: e.target.value,
+                      }));
+                      setPage(1);
+                    }}
+                  >
+                    <option value="">Eco-Certifications: All</option>
+                    <option value="organic">🌱 Organic Certified</option>
+                    <option value="fair_trade">🤝 Fairtrade Certified</option>
+                    <option value="carbon_neutral">🌍 Carbon Neutral</option>
+                    <option value="rainforest_alliance">🐸 Rainforest Alliance</option>
+                  </select>
+
+                  <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer pt-1">
+                    <input
+                      type="checkbox"
+                      checked={filters.carbonNeutralOnly}
+                      onChange={(e) => {
+                        setFilters((current) => ({
+                          ...current,
+                          carbonNeutralOnly: e.target.checked,
+                        }));
+                        setPage(1);
+                      }}
+                      className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500"
+                    />
+                    <span>100% Carbon Neutral Only</span>
+                  </label>
+                </div>
+              </div>
             </div>
           </aside>
 
           <main>
             <div className="mb-4 flex flex-wrap items-center gap-2">
               <span className="text-sm font-semibold text-slate-700">
-                Showing {deals.length} of {total} deals
+                Showing {filteredDeals.length} of {total} deals
               </span>
               {activeChips.map((chip) => (
                 <button
@@ -708,14 +972,14 @@ function MarketplaceContent() {
 
             {loading ? (
               <MarketplaceSkeleton count={6} />
-            ) : deals.length === 0 ? (
+            ) : filteredDeals.length === 0 ? (
               <div className="card p-16 text-center">
                 <p className="text-5xl mb-4">🌾</p>
                 <h3 className="font-bold text-slate-900 text-xl mb-2">
                   No deals found
                 </h3>
                 <p className="text-slate-500">
-                  Try adjusting your filters or search terms.
+                  Try adjusting your filters or sustainability criteria.
                 </p>
                 <button onClick={clearAll} className="btn-primary mt-4 mx-auto">
                   Clear filters
@@ -723,7 +987,7 @@ function MarketplaceContent() {
               </div>
             ) : (
               <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-5">
-                {deals.map((deal) => (
+                {filteredDeals.map((deal) => (
                   <DealCard
                     key={deal.id}
                     deal={deal}
