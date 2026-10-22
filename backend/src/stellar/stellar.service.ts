@@ -227,6 +227,62 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     return this.platformKeypair.publicKey();
   }
 
+  getInsuranceEscrowPublicKey(escrowSecret: string): string {
+    return Keypair.fromSecret(escrowSecret).publicKey();
+  }
+
+  /**
+   * Disburses insurer-funded USDC independently of investor deal escrow.
+   * Uses a claim-specific memo and claimable balance when the beneficiary has
+   * no USDC trustline, so funds are never redirected through deal settlement.
+   */
+  async releaseInsurancePayout(
+    escrowSecret: string,
+    beneficiary: string,
+    amount: number,
+    claimId: string,
+  ): Promise<string> {
+    const escrowKeypair = Keypair.fromSecret(escrowSecret);
+    const payoutAmount = new BigNumber(amount);
+    if (!payoutAmount.isFinite() || payoutAmount.isLessThanOrEqualTo(0)) {
+      throw new Error('Invalid insurance payout amount');
+    }
+    const amountString = payoutAmount.toFixed(7);
+    const account = await this.server.loadAccount(escrowKeypair.publicKey());
+    const beneficiaryAccount = await this.server.loadAccount(beneficiary);
+    const txBuilder = new TransactionBuilder(account, {
+      fee: BASE_FEE,
+      networkPassphrase: this.networkPassphrase,
+      timebounds: this.getTransactionTimebounds(),
+    });
+
+    if (await this.hasTrustline(beneficiaryAccount, this.usdcAsset)) {
+      txBuilder.addOperation(
+        Operation.payment({
+          destination: beneficiary,
+          asset: this.usdcAsset,
+          amount: amountString,
+        }),
+      );
+    } else {
+      txBuilder.addOperation(
+        Operation.createClaimableBalance({
+          asset: this.usdcAsset,
+          amount: amountString,
+          claimants: [
+            new Claimant(beneficiary, Claimant.predicateUnconditional()),
+          ],
+        }),
+      );
+    }
+
+    txBuilder.addMemo(Memo.text(`claim:${claimId.slice(0, 22)}`));
+    const transaction = txBuilder.build();
+    transaction.sign(escrowKeypair);
+    const result = await this.submitWithRetrySigned(transaction, [escrowKeypair]);
+    return (result as any).hash as string;
+  }
+
   private getTransactionTimebounds(
     maxSeconds = TIMEBOUNDS_SECONDS,
   ): { minTime: number; maxTime: number } {
