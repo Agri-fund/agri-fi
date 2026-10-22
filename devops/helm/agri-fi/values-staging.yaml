@@ -1,0 +1,20 @@
+environment: staging
+backend:
+  replicaCount: 2
+  autoscaling:
+    minReplicas: 2
+    maxReplicas: 5
+frontend:
+  replicaCount: 2
+  autoscaling:
+    minReplicas: 2
+    maxReplicas: 5
+postgres:
+  storage: 20Gi
+redis:
+  storage: 1Gi
+rabbitmq:
+  storage: 2Gi
+ingress:
+  frontendHost: staging.agri-fi.example.com
+  backendHost: api.staging.agri-fi.example.com

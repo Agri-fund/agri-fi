@@ -79,6 +79,14 @@ self.addEventListener("activate", (event) => {
 
 // ── Message: handle cache invalidation and other commands from client ────────
 self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "AGRIFI_OFFLINE_SYNC") {
+    event.waitUntil(self.registration.showNotification("AgriFi sync", {
+      body: "Offline changes are ready to synchronize.",
+      icon: "/icon-192.png",
+      tag: "agrifi-offline-sync",
+      data: { url: "/", eventType: "sync" },
+    }));
+  }
   if (event.data && event.data.type === "CLEAR_CACHE") {
     console.log("[SW] Clear cache command received");
     event.waitUntil(
@@ -237,6 +245,15 @@ async function cacheFirstStrategy(request) {
     });
   }
 }
+
+// ── Background sync: prompt active clients to replay the IndexedDB queue ──────
+self.addEventListener("sync", (event) => {
+  if (event.tag !== "agrifi-offline-sync") return;
+  event.waitUntil((async () => {
+    const clientList = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    clientList.forEach((client) => client.postMessage({ type: "AGRIFI_OFFLINE_SYNC" }));
+  })());
+});
 
 // ── Push: display a notification for every incoming push message ─────────────
 self.addEventListener("push", (event) => {

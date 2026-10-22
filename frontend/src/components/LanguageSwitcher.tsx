@@ -6,6 +6,7 @@ import { useTransition } from "react";
 
 const languages = [
   { code: "en", name: "English" },
+  { code: "es", name: "Español" },
   { code: "sw", name: "Swahili" },
   { code: "fr", name: "Français" },
   { code: "pt", name: "Português" },
@@ -18,6 +19,9 @@ export function LanguageSwitcher() {
   const [isPending, startTransition] = useTransition();
 
   const switchLocale = (newLocale: string) => {
+    document.cookie = `NEXT_LOCALE=${newLocale}; path=/; max-age=31536000; samesite=lax`;
+    localStorage.setItem("preferredLanguage", newLocale);
+
     startTransition(() => {
       router.replace(pathname, { locale: newLocale });
     });
@@ -26,6 +30,7 @@ export function LanguageSwitcher() {
   return (
     <div className="relative">
       <select
+        aria-label="Language"
         value={locale}
         onChange={(e) => switchLocale(e.target.value)}
         disabled={isPending}

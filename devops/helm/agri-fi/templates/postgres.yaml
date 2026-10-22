@@ -1,0 +1,44 @@
+{{- if .Values.postgres.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Release.Name }}-postgres
+spec:
+  serviceName: {{ .Release.Name }}-postgres
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: postgres, app.kubernetes.io/instance: {{ .Release.Name }}}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: postgres, app.kubernetes.io/instance: {{ .Release.Name }}}
+    spec:
+      containers:
+        - name: postgres
+          image: {{ .Values.postgres.image }}
+          ports:
+            - {name: postgres, containerPort: 5432}
+          env:
+            - {name: POSTGRES_DB, value: {{ .Values.postgres.database | quote }}}
+            - name: POSTGRES_USER
+              valueFrom: {secretKeyRef: {name: {{ .Values.secrets.existingSecret }}, key: {{ .Values.secrets.databaseUserKey }}, optional: true}}
+            - name: POSTGRES_PASSWORD
+              valueFrom: {secretKeyRef: {name: {{ .Values.secrets.existingSecret }}, key: {{ .Values.secrets.databasePasswordKey }}, optional: true}}
+          readinessProbe: {tcpSocket: {port: postgres}, initialDelaySeconds: 10, periodSeconds: 10}
+          livenessProbe: {tcpSocket: {port: postgres}, initialDelaySeconds: 30, periodSeconds: 20}
+          volumeMounts:
+            - {name: postgres-data, mountPath: /var/lib/postgresql/data}
+  volumeClaimTemplates:
+    - metadata: {name: postgres-data}
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources: {requests: {storage: {{ .Values.postgres.storage }}}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: {{ .Release.Name }}-postgres}
+spec:
+  clusterIP: None
+  selector: {app.kubernetes.io/name: postgres, app.kubernetes.io/instance: {{ .Release.Name }}}
+  ports:
+    - {name: postgres, port: 5432, targetPort: postgres}
+{{- end }}

@@ -25,6 +25,25 @@ AgriFi is now a Progressive Web App (PWA), installable on Android and iOS for a 
 3. Tap **Add** to confirm
 4. Opens in standalone mode with Agri-Fi branding
 
+## Offline Transaction Queue
+
+The frontend stores offline mutations in the IndexedDB database `agrifi-offline`, in the `operations` object store. The queue implementation is in `src/lib/offlineQueue.ts` and supports:
+
+- Shipment milestone submission with optimistic UI feedback and automatic replay
+- Investment draft persistence until the user reconnects and completes wallet signing
+- Last-write-wins conflict handling for repeated edits to the same resource key
+- Retry counts and manual sync from the mobile offline status indicator
+- Background Sync registration where the browser supports `navigator.serviceWorker.sync`
+
+Authentication, KYC document verification, wallet connection, and signed investment submission always require an online session. Offline milestone evidence must be recorded again with evidence files once connectivity returns because evidence uploads require an active network connection.
+
+### Background Sync and Cache Behavior
+
+- Static JavaScript, CSS, images, fonts, and icons use cache-first responses.
+- Read-only deal, investment, dashboard, marketplace, and notification APIs use stale-while-revalidate responses.
+- Mutating requests are never handled by the GET-only service worker cache; they are persisted in IndexedDB and replayed with the current auth token.
+- The service worker sends `AGRIFI_OFFLINE_SYNC` to active clients, allowing the real queue status component to flush pending milestones.
+
 ## Testing PWA Features
 
 ### 1. Service Worker Registration

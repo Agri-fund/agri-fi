@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-config
+  labels: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/environment: {{ .Values.environment }}}
+data:
+  DATABASE_HOST: {{ printf "%s-postgres" .Release.Name | quote }}
+  DATABASE_PORT: {{ .Values.config.databasePort | quote }}
+  REDIS_HOST: {{ printf "%s-redis" .Release.Name | quote }}
+  REDIS_PORT: {{ .Values.config.redisPort | quote }}
+  RABBITMQ_HOST: {{ printf "%s-rabbitmq" .Release.Name | quote }}
+  RABBITMQ_PORT: {{ .Values.config.rabbitmqPort | quote }}
+  NEXT_PUBLIC_API_URL: "http://{{ .Release.Name }}-backend"
+  BACKEND_URL: "http://{{ .Release.Name }}-backend"

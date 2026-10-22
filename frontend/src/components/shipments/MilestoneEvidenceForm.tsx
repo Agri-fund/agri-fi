@@ -3,6 +3,7 @@
 import React, { useState, useCallback } from 'react';
 import { useDropzone, FileWithPath } from 'react-dropzone';
 import { getAuthToken } from '@/lib/auth-token';
+import { enqueueOfflineOperation, registerBackgroundSync } from '@/lib/offlineQueue';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3001';
 
@@ -154,6 +155,26 @@ export function MilestoneEvidenceForm({
 
     setUploading(true);
     setUploadProgress(0);
+
+    if (!navigator.onLine) {
+      await enqueueOfflineOperation({
+        resourceKey: `shipment-milestone:${tradeDealId}:${milestoneType}`,
+        type: 'shipment-milestone',
+        method: 'POST',
+        endpoint: `${API_BASE}/v1/shipments/milestones`,
+        body: {
+          trade_deal_id: tradeDealId,
+          milestone: milestoneType,
+          notes: notes.trim() || undefined,
+          location: location ?? undefined,
+        },
+      });
+      await registerBackgroundSync();
+      setUploadProgress(100);
+      onSuccess?.({ queued: true, optimistic: true, trade_deal_id: tradeDealId, milestone: milestoneType });
+      setUploading(false);
+      return;
+    }
 
     try {
       // 1. Upload all evidence files concurrently

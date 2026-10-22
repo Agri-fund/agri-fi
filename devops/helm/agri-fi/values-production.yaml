@@ -1,0 +1,20 @@
+environment: production
+backend:
+  replicaCount: 3
+  autoscaling:
+    minReplicas: 3
+    maxReplicas: 8
+frontend:
+  replicaCount: 3
+  autoscaling:
+    minReplicas: 3
+    maxReplicas: 10
+postgres:
+  storage: 100Gi
+redis:
+  storage: 10Gi
+rabbitmq:
+  storage: 20Gi
+ingress:
+  frontendHost: agri-fi.example.com
+  backendHost: api.agri-fi.example.com

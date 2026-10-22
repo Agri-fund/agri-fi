@@ -9,6 +9,7 @@ import { MilestoneVerification } from './entities/milestone-verification.entity'
 import { ShipmentSensorReading } from './entities/shipment-sensor-reading.entity';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
 import { QueueModule } from '../queue/queue.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { QueueModule } from '../queue/queue.module';
       TradeDeal,
     ]),
     QueueModule,
+    NotificationsModule,
   ],
   controllers: [ShipmentsController],
   providers: [ShipmentsService, SensorReadingsService],

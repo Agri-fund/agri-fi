@@ -4,12 +4,13 @@ import {
   OnGatewayConnection,
   OnGatewayDisconnect,
   OnGatewayInit,
+  SubscribeMessage,
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { OptionalWsJwtGuard } from './ws-jwt.guard';
-
+import { NotificationsService } from './notifications.service';
 /** Rooms that unauthenticated sockets are allowed to join. */
 export const PUBLIC_ROOMS = ['deal_funding_progress'] as const;
 
@@ -25,6 +26,15 @@ export class NotificationsGateway
 
   @WebSocketServer()
   server: Server;
+
+  private readonly connectionsByUser = new Map<string, number>();
+  private readonly maxConnectionsPerUser = Number(process.env.WS_MAX_CONNECTIONS_PER_USER ?? 10);
+
+  private getUserId(client: Socket): string | undefined {
+    const user = (client as any).data?.user ?? (client as any).user;
+    const userId = user?.id ?? user?.sub;
+    return userId ? String(userId) : undefined;
+  }
 
   constructor(
     private readonly jwtService: JwtService,
@@ -55,11 +65,19 @@ export class NotificationsGateway
   }
 
   async handleConnection(client: Socket): Promise<void> {
-    const user = (client as any).user;
-    if (user?.id) {
+    const userId = this.getUserId(client);
+    if (userId) {
+      const current = this.connectionsByUser.get(userId) ?? 0;
+      if (current >= this.maxConnectionsPerUser) {
+        client.emit('rate_limit_error', { message: 'Too many active notification connections' });
+        client.disconnect(true);
+        return;
+      }
+      this.connectionsByUser.set(userId, current + 1);
+      void client.join(`user:${userId}`);
       this.logger.debug(`Authenticated client connected: ${client.id}`);
       const unreadCount = await this.notificationsService.getUnreadCount(
-        user.id,
+        userId,
       );
       client.emit('handshake_response', { unreadCount });
       client.emit('unread_count', { count: unreadCount });
@@ -74,6 +92,12 @@ export class NotificationsGateway
   }
 
   handleDisconnect(client: Socket): void {
+    const userId = this.getUserId(client);
+    if (userId) {
+      const current = this.connectionsByUser.get(userId) ?? 1;
+      if (current <= 1) this.connectionsByUser.delete(userId);
+      else this.connectionsByUser.set(userId, current - 1);
+    }
     this.logger.debug(`Client disconnected: ${client.id}`);
   }
 
@@ -81,15 +105,38 @@ export class NotificationsGateway
    * Subscribe a socket to a room. Sensitive rooms require authentication;
    * anonymous sockets are rejected server-side.
    */
+  @SubscribeMessage('subscribe')
   handleSubscribe(client: Socket, room: string): void {
     const isPublic = (PUBLIC_ROOMS as readonly string[]).includes(room);
-    const user = (client as any).user;
+    const userId = this.getUserId(client);
 
-    if (!isPublic && !user?.id) {
+    if (!isPublic && !userId) {
       client.emit('auth_error', { message: 'Authentication required' });
       return;
     }
 
+    if (room.startsWith('user:') && room !== `user:${userId}`) {
+      client.emit('auth_error', { message: 'Cannot subscribe to another user room' });
+      return;
+    }
+
     client.join(room);
+  }
+
+  publishDealStatusChanged(payload: { dealId: string; status: string; title?: string; message?: string }) {
+    this.server?.to(`deal:${payload.dealId}`).emit('deal.status_changed', payload);
+    this.server?.to('deal_funding_progress').emit('deal.status_changed', payload);
+  }
+
+  publishMilestoneReached(payload: { dealId: string; milestone: string; title?: string; message?: string }) {
+    this.server?.to(`deal:${payload.dealId}`).emit('milestone.reached', payload);
+  }
+
+  publishInvestmentConfirmed(payload: { userId: string; dealId: string; investmentId: string; title?: string; message?: string }) {
+    this.server?.to(`user:${payload.userId}`).emit('investment.confirmed', payload);
+  }
+
+  publishEscrowReleased(payload: { userId: string; dealId: string; amountUsd?: number; title?: string; message?: string }) {
+    this.server?.to(`user:${payload.userId}`).emit('escrow.released', payload);
   }
 }
