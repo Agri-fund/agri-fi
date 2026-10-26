@@ -72,6 +72,8 @@ export const Header: React.FC<HeaderProps> = ({ user, onLogout }) => {
     { label: t('nav.marketplace'), href: '/marketplace' },
     { label: 'Yield Farming', href: '/yield-farming' },
     { label: 'Factoring', href: '/invoice-factoring' },
+    { label: 'Search', href: '/search' },
+    { label: 'Social Trading', href: '/social' },
     { label: t('nav.documents'), href: '/dashboard/documents' },
     { label: 'Messages', href: '/dashboard/messages' },
     { label: t('nav.settings'), href: '/settings' },
