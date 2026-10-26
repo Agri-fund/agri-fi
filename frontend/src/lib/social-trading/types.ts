@@ -258,20 +258,36 @@ export interface CopyRejection {
   details: Record<string, string | number>;
 }
 
-export type CopyDecision =
-  | {
-      accepted: true;
-      reason: null;
-      message: string;
-      order: CopyOrder;
-    }
-  | {
-      accepted: false;
-      reason: CopyRejectionCode;
-      message: string;
-      rejection: CopyRejection;
-      proposedAmountUsd: number;
-    };
+export interface AcceptedCopyDecision {
+  accepted: true;
+  reason: null;
+  message: string;
+  order: CopyOrder;
+}
+
+export interface RejectedCopyDecision {
+  accepted: false;
+  reason: CopyRejectionCode;
+  message: string;
+  rejection: CopyRejection;
+  proposedAmountUsd: number;
+}
+
+export type CopyDecision = AcceptedCopyDecision | RejectedCopyDecision;
+
+// Discriminated-union narrowing on `accepted` needs strictNullChecks, which this
+// project does not enable, so consumers narrow through these predicates instead.
+export function isAcceptedCopyDecision(
+  decision: CopyDecision,
+): decision is AcceptedCopyDecision {
+  return decision.accepted === true;
+}
+
+export function isRejectedCopyDecision(
+  decision: CopyDecision,
+): decision is RejectedCopyDecision {
+  return decision.accepted === false;
+}
 
 export interface LeaderboardEntry {
   rank: number;

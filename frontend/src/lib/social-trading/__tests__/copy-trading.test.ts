@@ -26,6 +26,7 @@ import {
   upsertCopyConfig,
   validateCopyConfig,
 } from '../copy-trading';
+import { isAcceptedCopyDecision, isRejectedCopyDecision } from '../types';
 import type { CopyTradeEvent, PortfolioState } from '../types';
 
 const CONFIG = makeCopyConfig('f1', 't1', {
@@ -137,7 +138,7 @@ describe('planCopyOrder accepted paths', () => {
   it('sizes, fees and tags a proportional mirror', () => {
     const decision = planCopyOrder(trade(), CONFIG, portfolio());
     expect(decision.accepted).toBe(true);
-    if (!decision.accepted) throw new Error('expected acceptance');
+    if (!isAcceptedCopyDecision(decision)) throw new Error('expected acceptance');
     expect(decision.reason).toBeNull();
     expect(decision.order).toMatchObject({
       id: 'copy:cfg1:deal-1',
@@ -163,7 +164,7 @@ describe('planCopyOrder accepted paths', () => {
     const config = { ...CONFIG, mode: 'fixed' as const, fixedAmountUsd: 300 };
     const decision = planCopyOrder(trade({ amountUsd: 40_000 }), config, portfolio());
     expect(decision.accepted).toBe(true);
-    if (!decision.accepted) throw new Error('expected acceptance');
+    if (!isAcceptedCopyDecision(decision)) throw new Error('expected acceptance');
     expect(decision.order.amountUsd).toBe(300);
     expect(decision.order.feeUsd).toBe(0.9);
     expect(decision.order.sizingBasis).toBe('fixed');
@@ -173,7 +174,7 @@ describe('planCopyOrder accepted paths', () => {
     const config = { ...CONFIG, mode: 'inverse_risk' as const, riskBudgetPct: 5 };
     const decision = planCopyOrder(trade({ riskRating: 'Medium' }), config, portfolio());
     expect(decision.accepted).toBe(true);
-    if (!decision.accepted) throw new Error('expected acceptance');
+    if (!isAcceptedCopyDecision(decision)) throw new Error('expected acceptance');
     expect(decision.order.amountUsd).toBe(150);
   });
 
@@ -195,7 +196,7 @@ describe('planCopyOrder accepted paths', () => {
       portfolio({ monthSpendUsd: 1200 }),
     );
     expect(decision.accepted).toBe(true);
-    if (!decision.accepted) throw new Error('expected acceptance');
+    if (!isAcceptedCopyDecision(decision)) throw new Error('expected acceptance');
     expect(decision.order.sizedAmountUsd).toBe(800);
     expect(decision.order.amountUsd).toBe(300);
     expect(decision.order.feeUsd).toBe(0.9);
@@ -204,7 +205,7 @@ describe('planCopyOrder accepted paths', () => {
   it('honours an explicit creation timestamp over the trade date', () => {
     const decision = planCopyOrder(trade(), CONFIG, portfolio(), { now: '2026-09-06T10:00:00.000Z' });
     expect(decision.accepted).toBe(true);
-    if (!decision.accepted) throw new Error('expected acceptance');
+    if (!isAcceptedCopyDecision(decision)) throw new Error('expected acceptance');
     expect(decision.order.createdAt).toBe('2026-09-06T10:00:00.000Z');
   });
 });
@@ -214,7 +215,7 @@ describe('planCopyOrder rejections', () => {
     for (const amount of [0, -500, Number.NaN]) {
       const decision = planCopyOrder(trade({ amountUsd: amount }), CONFIG, portfolio());
       expect(decision.accepted).toBe(false);
-      if (decision.accepted) throw new Error('expected rejection');
+      if (!isRejectedCopyDecision(decision)) throw new Error('expected rejection');
       expect(decision.reason).toBe('INVALID_INPUT');
       expect(decision.proposedAmountUsd).toBe(0);
       expect(decision.rejection.code).toBe('INVALID_INPUT');
@@ -245,7 +246,7 @@ describe('planCopyOrder rejections', () => {
   it('COPY_DISABLED when the switch is off', () => {
     const decision = planCopyOrder(trade(), { ...CONFIG, enabled: false }, portfolio());
     expect(decision.accepted).toBe(false);
-    if (decision.accepted) throw new Error('expected rejection');
+    if (!isRejectedCopyDecision(decision)) throw new Error('expected rejection');
     expect(decision.reason).toBe('COPY_DISABLED');
     expect(decision.rejection.details.traderId).toBe('t1');
     expect(decision.message).toBe('Copy trading is switched off for this trader.');
@@ -261,7 +262,7 @@ describe('planCopyOrder rejections', () => {
   it('NOT_FOLLOWING when the follow relationship is absent', () => {
     const decision = planCopyOrder(trade(), CONFIG, portfolio(), { following: false });
     expect(decision.accepted).toBe(false);
-    if (decision.accepted) throw new Error('expected rejection');
+    if (!isRejectedCopyDecision(decision)) throw new Error('expected rejection');
     expect(decision.reason).toBe('NOT_FOLLOWING');
     expect(decision.rejection.details).toMatchObject({
       traderId: 't1',
@@ -282,7 +283,7 @@ describe('planCopyOrder rejections', () => {
       portfolio(),
     );
     expect(byDeal.reason).toBe('BLACKLISTED');
-    if (byDeal.accepted) throw new Error('expected rejection');
+    if (!isRejectedCopyDecision(byDeal)) throw new Error('expected rejection');
     expect(byDeal.rejection.details.matched).toBe('deal-9');
 
     const byCommodity = planCopyOrder(
@@ -291,7 +292,7 @@ describe('planCopyOrder rejections', () => {
       portfolio(),
     );
     expect(byCommodity.reason).toBe('BLACKLISTED');
-    if (byCommodity.accepted) throw new Error('expected rejection');
+    if (!isRejectedCopyDecision(byCommodity)) throw new Error('expected rejection');
     expect(byCommodity.rejection.details.matched).toBe('Cocoa');
 
     const byRegion = planCopyOrder(
@@ -316,7 +317,7 @@ describe('planCopyOrder rejections', () => {
   it('DUPLICATE when the deal is already copied', () => {
     const decision = planCopyOrder(trade(), CONFIG, portfolio({ copiedDealIds: ['deal-0', 'deal-1'] }));
     expect(decision.accepted).toBe(false);
-    if (decision.accepted) throw new Error('expected rejection');
+    if (!isRejectedCopyDecision(decision)) throw new Error('expected rejection');
     expect(decision.reason).toBe('DUPLICATE');
     expect(decision.rejection.details.dealId).toBe('deal-1');
   });
@@ -328,7 +329,7 @@ describe('planCopyOrder rejections', () => {
       portfolio({ autoStop: { active: true, reason: 'Stopped earlier.', at: '2026-09-01' } }),
     );
     expect(decision.accepted).toBe(false);
-    if (decision.accepted) throw new Error('expected rejection');
+    if (!isRejectedCopyDecision(decision)) throw new Error('expected rejection');
     expect(decision.reason).toBe('AUTO_STOP_ACTIVE');
     expect(decision.rejection.details.trigger).toBe('Stopped earlier.');
   });
@@ -336,7 +337,7 @@ describe('planCopyOrder rejections', () => {
   it('AUTO_STOP_ACTIVE when drawdown reaches the limit', () => {
     const decision = planCopyOrder(trade(), CONFIG, portfolio({ drawdownPct: 8 }));
     expect(decision.reason).toBe('AUTO_STOP_ACTIVE');
-    if (decision.accepted) throw new Error('expected rejection');
+    if (!isRejectedCopyDecision(decision)) throw new Error('expected rejection');
     expect(decision.rejection.details.trigger).toBe('Drawdown 8% has reached your 8% limit.');
   });
 
@@ -352,7 +353,7 @@ describe('planCopyOrder rejections', () => {
       portfolio({ unrealizedPct: 12 }),
     );
     expect(decision.reason).toBe('AUTO_STOP_ACTIVE');
-    if (decision.accepted) throw new Error('expected rejection');
+    if (!isRejectedCopyDecision(decision)) throw new Error('expected rejection');
     expect(decision.rejection.details.trigger).toBe(
       'Unrealised gain 12% reached your +12% target.',
     );
@@ -365,7 +366,7 @@ describe('planCopyOrder rejections', () => {
       portfolio(),
     );
     expect(decision.accepted).toBe(false);
-    if (decision.accepted) throw new Error('expected rejection');
+    if (!isRejectedCopyDecision(decision)) throw new Error('expected rejection');
     expect(decision.reason).toBe('BELOW_MINIMUM');
     expect(decision.proposedAmountUsd).toBe(90);
     expect(decision.rejection.details).toMatchObject({
@@ -379,14 +380,14 @@ describe('planCopyOrder rejections', () => {
     const config = { ...CONFIG, mode: 'inverse_risk' as const, riskBudgetPct: 5 };
     const decision = planCopyOrder(trade({ riskRating: 'High' }), config, portfolio());
     expect(decision.reason).toBe('BELOW_MINIMUM');
-    if (decision.accepted) throw new Error('expected rejection');
+    if (!isRejectedCopyDecision(decision)) throw new Error('expected rejection');
     expect(decision.proposedAmountUsd).toBe(75);
   });
 
   it('MONTHLY_LIMIT_REACHED once the allowance is spent', () => {
     const decision = planCopyOrder(trade(), CONFIG, portfolio({ monthSpendUsd: 1500 }));
     expect(decision.accepted).toBe(false);
-    if (decision.accepted) throw new Error('expected rejection');
+    if (!isRejectedCopyDecision(decision)) throw new Error('expected rejection');
     expect(decision.reason).toBe('MONTHLY_LIMIT_REACHED');
     expect(decision.proposedAmountUsd).toBe(1000);
     expect(decision.rejection.details).toMatchObject({
@@ -399,7 +400,7 @@ describe('planCopyOrder rejections', () => {
   it('MONTHLY_LIMIT_REACHED when the leftover allowance is below the floor', () => {
     const decision = planCopyOrder(trade(), CONFIG, portfolio({ monthSpendUsd: 1420 }));
     expect(decision.reason).toBe('MONTHLY_LIMIT_REACHED');
-    if (decision.accepted) throw new Error('expected rejection');
+    if (!isRejectedCopyDecision(decision)) throw new Error('expected rejection');
     expect(decision.rejection.details).toMatchObject({
       remainingAllowanceUsd: 80,
       minTradeValue: 100,
@@ -409,7 +410,7 @@ describe('planCopyOrder rejections', () => {
   it('EXCEEDS_PER_TRADE_LIMIT rejects instead of silently capping', () => {
     const decision = planCopyOrder(trade({ amountUsd: 50_000 }), CONFIG, portfolio());
     expect(decision.accepted).toBe(false);
-    if (decision.accepted) throw new Error('expected rejection');
+    if (!isRejectedCopyDecision(decision)) throw new Error('expected rejection');
     expect(decision.reason).toBe('EXCEEDS_PER_TRADE_LIMIT');
     expect(decision.proposedAmountUsd).toBe(5000);
     expect(decision.rejection.details).toMatchObject({
@@ -431,7 +432,7 @@ describe('planCopyOrder rejections', () => {
   it('INSUFFICIENT_BALANCE once cash cannot cover the ticket and fee', () => {
     const decision = planCopyOrder(trade(), CONFIG, portfolio({ cashUsd: 900 }));
     expect(decision.accepted).toBe(false);
-    if (decision.accepted) throw new Error('expected rejection');
+    if (!isRejectedCopyDecision(decision)) throw new Error('expected rejection');
     expect(decision.reason).toBe('INSUFFICIENT_BALANCE');
     expect(decision.proposedAmountUsd).toBe(1000);
     expect(decision.rejection.details).toMatchObject({ cashUsd: 900, requiredUsd: 1003 });
@@ -445,7 +446,7 @@ describe('planCopyOrder rejections', () => {
       portfolio({ cashUsd: 1200 }),
     );
     expect(decision.reason).toBe('INSUFFICIENT_BALANCE');
-    if (decision.accepted) throw new Error('expected rejection');
+    if (!isRejectedCopyDecision(decision)) throw new Error('expected rejection');
     // Sized 2000, clamped to the 1500 monthly allowance, but 1504.50 is more than 1200 cash.
     expect(decision.proposedAmountUsd).toBe(1500);
     expect(decision.rejection.details).toMatchObject({
@@ -504,7 +505,7 @@ describe('portfolio bookkeeping', () => {
   it('applies orders to cash, month spend, positions and the duplicate set', () => {
     const decision = planCopyOrder(trade(), CONFIG, portfolio());
     expect(decision.accepted).toBe(true);
-    if (!decision.accepted) throw new Error('expected acceptance');
+    if (!isAcceptedCopyDecision(decision)) throw new Error('expected acceptance');
     const next = applyCopyOrders(portfolio(), [decision.order]);
 
     expect(next.cashUsd).toBe(3997);
@@ -528,7 +529,7 @@ describe('portfolio bookkeeping', () => {
 
   it('deduplicates copied deal ids when two orders share a deal', () => {
     const order = planCopyOrder(trade(), CONFIG, portfolio());
-    if (!order.accepted) throw new Error('expected acceptance');
+    if (!isAcceptedCopyDecision(order)) throw new Error('expected acceptance');
     const next = applyCopyOrders(portfolio({ copiedDealIds: ['deal-1'] }), [order.order]);
     expect(next.copiedDealIds).toEqual(['deal-1']);
     expect(next.positions).toHaveLength(1);
@@ -536,7 +537,7 @@ describe('portfolio bookkeeping', () => {
 
   it('compounds a 5% mark and re-baselines the peak', () => {
     const decision = planCopyOrder(trade(), CONFIG, portfolio());
-    if (!decision.accepted) throw new Error('expected acceptance');
+    if (!isAcceptedCopyDecision(decision)) throw new Error('expected acceptance');
     const opened = applyCopyOrders(portfolio(), [decision.order]);
     const marked = markToMarket(opened, 5);
 
@@ -557,7 +558,7 @@ describe('portfolio bookkeeping', () => {
 
   it('credits cash when a position closes', () => {
     const decision = planCopyOrder(trade(), CONFIG, portfolio());
-    if (!decision.accepted) throw new Error('expected acceptance');
+    if (!isAcceptedCopyDecision(decision)) throw new Error('expected acceptance');
     const opened = applyCopyOrders(portfolio(), [decision.order]);
     const closed = closePosition(opened, 'deal-1');
     expect(closed.positions).toEqual([]);
@@ -661,14 +662,14 @@ describe('simulateCopyWindow', () => {
     const result = simulateCopyWindow(WINDOW, SIM_CONFIG, portfolio());
     const second = result.decisions[1].decision;
     expect(second.accepted).toBe(true);
-    if (!second.accepted) throw new Error('expected acceptance');
+    if (!isAcceptedCopyDecision(second)) throw new Error('expected acceptance');
     // Sized from the marked 5077 follower equity, then clamped to the 500 left.
     expect(second.order.sizedAmountUsd).toBe(812.32);
     expect(second.order.amountUsd).toBe(500);
 
     const fourth = result.decisions[3].decision;
     expect(fourth.accepted).toBe(false);
-    if (fourth.accepted) throw new Error('expected rejection');
+    if (!isRejectedCopyDecision(fourth)) throw new Error('expected rejection');
     expect(fourth.rejection.details).toMatchObject({
       drawdownPct: 15.65,
       unrealizedPct: -13.31,

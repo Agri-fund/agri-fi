@@ -12,6 +12,7 @@
  */
 
 import { currentPeriod } from './profiles';
+import { isAcceptedCopyDecision } from './types';
 import type {
   CopyConfig,
   CopyDecision,
@@ -483,7 +484,7 @@ export function simulateCopyWindow(
     });
     decisions.push({ trade, decision });
 
-    if (decision.accepted) {
+    if (isAcceptedCopyDecision(decision)) {
       state = applyCopyOrders(state, [decision.order]);
       orders.push(decision.order);
       if (markAfterEach) state = markToMarket(state, trade.realizedRoiPct ?? trade.expectedRoiPct);
