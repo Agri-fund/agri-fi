@@ -1,0 +1,20 @@
+environment: dev
+backend:
+  replicaCount: 1
+  autoscaling:
+    minReplicas: 1
+    maxReplicas: 3
+frontend:
+  replicaCount: 1
+  autoscaling:
+    minReplicas: 1
+    maxReplicas: 3
+postgres:
+  storage: 5Gi
+redis:
+  storage: 512Mi
+rabbitmq:
+  storage: 1Gi
+ingress:
+  frontendHost: dev.agri-fi.example.com
+  backendHost: api.dev.agri-fi.example.com

@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ForbiddenException,
   UnprocessableEntityException,
+  Optional,
 } from '@nestjs/common';
 import { PinoLogger } from 'nestjs-pino';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -14,6 +15,7 @@ import {
 import { MilestoneComment } from './entities/milestone-comment.entity';
 import { MilestoneVerification } from './entities/milestone-verification.entity';
 import { CreateMilestoneDto } from './dto/create-milestone.dto';
+import { NotificationsGateway } from '../notifications/notifications.gateway';
 import {
   CreateMilestoneCommentDto,
   MilestoneCommentResponseDto,
@@ -51,6 +53,7 @@ export class ShipmentsService {
     private readonly queueService: QueueService,
     private readonly config: ConfigService,
     private readonly dataSource: DataSource,
+    @Optional() private readonly notificationsGateway?: NotificationsGateway,
   ) {
     (this.logger as any).setContext(ShipmentsService.name);
   }
@@ -154,6 +157,22 @@ export class ShipmentsService {
           { dealId: dto.trade_deal_id },
           'Deal transitioned to delivered — escrow release job enqueued',
         );
+      }
+
+      this.notificationsGateway?.publishMilestoneReached({
+        dealId: dto.trade_deal_id,
+        milestone: dto.milestone,
+        title: 'Shipment milestone reached',
+        message: `${dto.milestone} milestone recorded for the deal`,
+      });
+
+      if (dto.milestone === 'importer') {
+        this.notificationsGateway?.publishDealStatusChanged({
+          dealId: dto.trade_deal_id,
+          status: 'delivered',
+          title: 'Deal status changed',
+          message: 'The deal is now delivered',
+        });
       }
 
       return savedMilestone;

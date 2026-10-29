@@ -32,6 +32,7 @@ import { InvestmentEventStore } from './investment-event-store.service';
 import { OfacSanctionsCheckService } from '../auth/utils/ofac-sanctions-check';
 import { AnnualCapService } from '../accreditation/annual-cap.service';
 import { ReferralService } from '../auth/referral.service';
+import { NotificationsGateway } from '../notifications/notifications.gateway';
 
 export interface CreateInvestmentResult {
   investment: Investment;
@@ -71,6 +72,7 @@ export class InvestmentsService {
     @Optional() private readonly eventStore?: InvestmentEventStore,
     @Optional() private readonly annualCapService?: AnnualCapService,
     @Optional() private readonly referralService?: ReferralService,
+    @Optional() private readonly notificationsGateway?: NotificationsGateway,
   ) {}
 
   private coolingOffHours(): number {
@@ -408,6 +410,23 @@ export class InvestmentsService {
       { stellarTxId },
       investorId,
     );
+
+    this.notificationsGateway?.publishInvestmentConfirmed({
+      userId: investorId,
+      dealId: tradeDeal.id,
+      investmentId,
+      title: 'Investment confirmed',
+      message: 'Your investment has been confirmed on-chain',
+    });
+
+    if (becameFunded) {
+      this.notificationsGateway?.publishDealStatusChanged({
+        dealId: tradeDeal.id,
+        status: 'funded',
+        title: 'Deal status changed',
+        message: 'The deal is now fully funded',
+      });
+    }
 
     // Return the updated investment by fetching it from the database
     const updatedInvestment = await this.investmentRepo.findOne({

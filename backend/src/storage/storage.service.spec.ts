@@ -1,7 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { ConflictException, ServiceUnavailableException } from '@nestjs/common';
+import { getRepositoryToken } from '@nestjs/typeorm';
 import { StorageService } from './storage.service';
+import { StorageContent } from './entities/storage-content.entity';
 import axios from 'axios';
 import { createHash } from 'crypto';
 
@@ -22,12 +24,21 @@ function cidV0For(data: Buffer): string {
 
 jest.mock('axios');
 const mockedAxios = axios as jest.Mocked<typeof axios>;
+const mockContentRepository = {
+  find: jest.fn(),
+  findOneBy: jest.fn(),
+  create: jest.fn((content) => content),
+  save: jest.fn((content) => Promise.resolve(content)),
+  delete: jest.fn(),
+  createQueryBuilder: jest.fn(),
+};
 
 // Mock @aws-sdk/client-s3
 const mockS3Send = jest.fn();
 jest.mock('@aws-sdk/client-s3', () => ({
   S3Client: jest.fn().mockImplementation(() => ({ send: mockS3Send })),
   PutObjectCommand: jest.fn().mockImplementation((input) => input),
+  DeleteObjectCommand: jest.fn().mockImplementation((input) => input),
 }));
 
 const mockConfig = (overrides: Record<string, string> = {}) => ({
@@ -52,11 +63,16 @@ describe('StorageService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    mockContentRepository.findOneBy.mockResolvedValue(null);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         StorageService,
         { provide: ConfigService, useValue: mockConfig() },
+        {
+          provide: getRepositoryToken(StorageContent),
+          useValue: mockContentRepository,
+        },
       ],
     }).compile();
 
@@ -86,6 +102,40 @@ describe('StorageService', () => {
             Authorization: 'Bearer test-token',
           }),
         }),
+      );
+    });
+
+    it('replicates uploaded content to configured IPFS Cluster nodes', async () => {
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          StorageService,
+          {
+            provide: ConfigService,
+            useValue: mockConfig({
+              IPFS_CLUSTER_APIS: 'http://cluster-a:9094',
+              IPFS_MIN_REPLICAS: '2',
+              IPFS_CLUSTER_REPLICATION_MIN: '2',
+              IPFS_CLUSTER_REPLICATION_MAX: '2',
+            }),
+          },
+          {
+            provide: getRepositoryToken(StorageContent),
+            useValue: mockContentRepository,
+          },
+        ],
+      }).compile();
+      mockedAxios.post.mockResolvedValue({ data: { cid: 'QmTestCID123' } });
+
+      const result = await module.get(StorageService).upload(file, mimeType);
+
+      expect(result.hash).toBe('QmTestCID123');
+      expect(mockedAxios.post).toHaveBeenCalledWith(
+        'http://cluster-a:9094/pins/QmTestCID123?replication-min=2&replication-max=2',
+        {},
+        expect.objectContaining({ timeout: 15_000 }),
+      );
+      expect(mockContentRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({ cid: 'QmTestCID123', replicaCount: 3 }),
       );
     });
   });
@@ -165,6 +215,94 @@ describe('StorageService', () => {
 
       await expect(service.fetchAndVerifyIpfsDocument(cid)).rejects.toThrow(
         ConflictException,
+      );
+    });
+  });
+
+  describe('retention controls', () => {
+    it('archives verified bytes to S3 before releasing cluster pins', async () => {
+      const cid = cidV0For(file);
+      const record = {
+        cid,
+        sizeBytes: file.length,
+        replicaCount: 1,
+        archived: false,
+        archiveKey: null,
+        legalHold: false,
+        retentionUntil: null,
+      };
+      mockContentRepository.findOneBy.mockResolvedValue(record);
+      mockedAxios.get.mockResolvedValue({ data: file });
+      mockedAxios.delete.mockResolvedValue({ data: {} });
+      mockS3Send.mockResolvedValue({});
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          StorageService,
+          {
+            provide: ConfigService,
+            useValue: mockConfig({
+              IPFS_CLUSTER_APIS: 'http://cluster-a:9094',
+            }),
+          },
+          {
+            provide: getRepositoryToken(StorageContent),
+            useValue: mockContentRepository,
+          },
+        ],
+      }).compile();
+
+      await module.get(StorageService).archiveContent(cid);
+
+      expect(mockS3Send).toHaveBeenCalledWith(
+        expect.objectContaining({ Key: `ipfs-archive/${cid}`, Body: file }),
+      );
+      expect(mockedAxios.delete).toHaveBeenCalledWith(
+        `http://cluster-a:9094/pins/${cid}`,
+        expect.any(Object),
+      );
+      expect(mockContentRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          archived: true,
+          archiveKey: `ipfs-archive/${cid}`,
+          replicaCount: 0,
+        }),
+      );
+    });
+
+    it('refuses erasure while a content retention date is active', async () => {
+      mockContentRepository.findOneBy.mockResolvedValue({
+        cid: 'QmTestCID123',
+        legalHold: false,
+        retentionUntil: new Date(Date.now() + 60_000),
+      });
+
+      await expect(service.eraseContent('QmTestCID123')).rejects.toThrow(
+        ConflictException,
+      );
+      expect(mockContentRepository.delete).not.toHaveBeenCalled();
+    });
+
+    it('does not claim erasure without a configured unpin provider', async () => {
+      mockContentRepository.findOneBy.mockResolvedValue({
+        cid: 'QmTestCID123',
+        legalHold: false,
+        retentionUntil: null,
+      });
+
+      await expect(service.eraseContent('QmTestCID123')).rejects.toThrow(
+        ServiceUnavailableException,
+      );
+      expect(mockContentRepository.delete).not.toHaveBeenCalled();
+    });
+
+    it('backfills inventory when pinning an existing CID', async () => {
+      const cid = cidV0For(file);
+      mockedAxios.post.mockResolvedValue({ data: {} });
+
+      await expect(service.pinContent(cid)).resolves.toBe(1);
+
+      expect(mockContentRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({ cid, sizeBytes: 0, replicaCount: 1 }),
       );
     });
   });

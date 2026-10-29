@@ -12,6 +12,7 @@ This directory contains the record of significant architectural decisions made i
 | [ADR-003](./ADR-003-postgres-row-level-security.md) | Postgres Row Level Security (RLS) & RLS Service | Accepted | 2026-09-25 |
 | [ADR-004](./ADR-004-queue-aes-gcm-encryption.md) | Queue Encryption via AES-GCM Envelope Encryption | Accepted | 2026-09-25 |
 | [ADR-005](./ADR-005-per-deal-issuer-keypair-management.md) | Per-Deal Issuer Keypair Management | Accepted | 2026-09-25 |
+| [ADR-006](./ADR-006-aml-in-process-monitoring.md) | In-Process AML Monitoring over a Projected Cash-Flow View | Accepted | 2026-10-21 |
 
 ---
 

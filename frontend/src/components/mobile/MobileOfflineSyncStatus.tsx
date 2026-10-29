@@ -1,7 +1,12 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useHapticFeedback } from "@/hooks/useHapticFeedback";
+import {
+  flushOfflineOperations,
+  getOfflineOperations,
+  registerBackgroundSync,
+} from "@/lib/offlineQueue";
 
 export const MobileOfflineSyncStatus: React.FC = () => {
   const [isOnline, setIsOnline] = useState(true);
@@ -9,13 +14,40 @@ export const MobileOfflineSyncStatus: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const { trigger } = useHapticFeedback();
 
+  const refreshQueueCount = useCallback(async () => {
+    try {
+      const operations = await getOfflineOperations();
+      setPendingSyncCount(operations.length);
+    } catch {
+      setPendingSyncCount(0);
+    }
+  }, []);
+
+  const syncQueue = useCallback(async () => {
+    if (!navigator.onLine) return;
+    setIsSyncing(true);
+    try {
+      await flushOfflineOperations();
+      await refreshQueueCount();
+      trigger("success");
+    } catch {
+      trigger("warning");
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [refreshQueueCount, trigger]);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
 
     setIsOnline(navigator.onLine);
+    void refreshQueueCount();
+    void registerBackgroundSync();
+
     const handleOnline = () => {
       setIsOnline(true);
       trigger("success");
+      void syncQueue();
     };
     const handleOffline = () => {
       setIsOnline(false);
@@ -24,32 +56,22 @@ export const MobileOfflineSyncStatus: React.FC = () => {
 
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
-
-    // Mock check for pending offline indexedDb/localStorage queue
-    const queue = localStorage.getItem("agrifi_offline_queue");
-    if (queue) {
-      try {
-        setPendingSyncCount(JSON.parse(queue).length);
-      } catch {}
-    }
+    const handleServiceWorkerSync = (event: MessageEvent) => {
+      if (event.data?.type === "AGRIFI_OFFLINE_SYNC") void syncQueue();
+    };
+    navigator.serviceWorker?.addEventListener('message', handleServiceWorkerSync);
 
     return () => {
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
+      navigator.serviceWorker?.removeEventListener('message', handleServiceWorkerSync);
     };
-  }, [trigger]);
+  }, [refreshQueueCount, syncQueue, trigger]);
 
   const handleManualSync = () => {
     if (!isOnline) return;
-    setIsSyncing(true);
     trigger("medium");
-
-    setTimeout(() => {
-      setPendingSyncCount(0);
-      localStorage.removeItem("agrifi_offline_queue");
-      setIsSyncing(false);
-      trigger("success");
-    }, 1200);
+    void syncQueue();
   };
 
   if (isOnline && pendingSyncCount === 0) return null;

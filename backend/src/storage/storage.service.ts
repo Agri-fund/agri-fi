@@ -7,16 +7,21 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { InjectRepository } from '@nestjs/typeorm';
 import {
   S3Client,
   PutObjectCommand,
   GetObjectCommand,
+  DeleteObjectCommand,
   RestoreObjectCommand,
   HeadObjectCommand,
 } from '@aws-sdk/client-s3';
 import axios from 'axios';
 import { randomUUID } from 'crypto';
+import { Cron, CronExpression } from '@nestjs/schedule';
+import { Repository } from 'typeorm';
 import { isValidIpfsCid, verifyIpfsContent } from '../documents/ipfs-cid';
+import { StorageContent } from './entities/storage-content.entity';
 
 export interface StorageResult {
   hash: string;
@@ -31,21 +36,97 @@ export interface RestoreStatus {
   message: string;
 }
 
+interface CachedContent {
+  data: Buffer;
+  expiresAt: number;
+}
+
+export interface StorageAnalytics {
+  contentCount: number;
+  totalBytes: number;
+  estimatedMonthlyCost: number;
+  underReplicatedCount: number;
+  archivedCount: number;
+  unaccessedCount: number;
+  retrievalCount: number;
+  averageRetrievalMs: number;
+}
+
 @Injectable()
 export class StorageService {
   private readonly logger = new Logger(StorageService.name);
   private readonly s3: S3Client;
   private readonly ipfsGateway: string;
   private readonly ipfsToken: string;
+  private readonly ipfsUnpinEndpoint: string;
+  private readonly ipfsGateways: string[];
+  private readonly clusterApis: string[];
+  private readonly clusterReplicationMin: number;
+  private readonly clusterReplicationMax: number;
+  private readonly clusterAuth:
+    { username: string; password: string } | undefined;
+  private readonly pinataJwt: string;
+  private readonly cdnGateway: string;
+  private readonly minimumReplicas: number;
+  private readonly cacheTtlMs: number;
+  private readonly costPerGbMonth: number;
   private readonly s3Bucket: string;
   private readonly s3Region: string;
+  private readonly hotContent = new Map<string, CachedContent>();
 
-  constructor(private readonly config: ConfigService) {
+  constructor(
+    private readonly config: ConfigService,
+    @InjectRepository(StorageContent)
+    private readonly contentRepository: Repository<StorageContent>,
+  ) {
     this.ipfsGateway = config.get<string>(
       'IPFS_GATEWAY',
       'https://api.web3.storage',
     );
     this.ipfsToken = config.get<string>('IPFS_TOKEN', '');
+    this.ipfsUnpinEndpoint = config.get<string>('IPFS_UNPIN_ENDPOINT', '');
+    this.ipfsGateways = [
+      this.ipfsGateway,
+      ...config
+        .get<string>('IPFS_GATEWAYS', '')
+        .split(',')
+        .map((gateway) => gateway.trim().replace(/\/$/, ''))
+        .filter(Boolean),
+    ].filter((gateway, index, gateways) => gateways.indexOf(gateway) === index);
+    this.clusterApis = config
+      .get<string>('IPFS_CLUSTER_APIS', '')
+      .split(',')
+      .map((api) => api.trim().replace(/\/$/, ''))
+      .filter(Boolean);
+    this.clusterReplicationMin = Math.max(
+      1,
+      Number(config.get<string>('IPFS_CLUSTER_REPLICATION_MIN', '2')) || 2,
+    );
+    this.clusterReplicationMax = Math.max(
+      this.clusterReplicationMin,
+      Number(config.get<string>('IPFS_CLUSTER_REPLICATION_MAX', '3')) || 3,
+    );
+    const clusterUsername = config.get<string>('IPFS_CLUSTER_USER', '');
+    const clusterPassword = config.get<string>('IPFS_CLUSTER_PASSWORD', '');
+    this.clusterAuth = clusterUsername
+      ? { username: clusterUsername, password: clusterPassword }
+      : undefined;
+    this.pinataJwt = config.get<string>('PINATA_JWT', '');
+    this.cdnGateway = config
+      .get<string>('IPFS_CDN_GATEWAY', '')
+      .replace(/\/$/, '');
+    this.minimumReplicas = Math.max(
+      1,
+      Number(config.get<string>('IPFS_MIN_REPLICAS', '1')) || 1,
+    );
+    this.cacheTtlMs = Math.max(
+      0,
+      Number(config.get<string>('IPFS_HOT_CACHE_TTL_SECONDS', '300')) * 1000,
+    );
+    this.costPerGbMonth = Math.max(
+      0,
+      Number(config.get<string>('IPFS_COST_PER_GB_MONTH', '0')) || 0,
+    );
     this.s3Bucket = config.get<string>('AWS_S3_BUCKET', '');
     this.s3Region = config.get<string>('AWS_REGION', 'us-east-1');
 
@@ -81,7 +162,7 @@ export class StorageService {
   async getUrl(hash: string): Promise<string> {
     // S3 keys contain '/' or start with a UUID pattern; CIDs start with 'Qm' or 'bafy'
     if (hash.startsWith('Qm') || hash.startsWith('bafy')) {
-      return `${this.ipfsGateway}/ipfs/${hash}`;
+      return `${this.cdnGateway || this.ipfsGateway}/ipfs/${hash}`;
     }
     return `https://${this.s3Bucket}.s3.${this.s3Region}.amazonaws.com/${hash}`;
   }
@@ -90,44 +171,94 @@ export class StorageService {
    * Fetches an IPFS document and verifies its bytes against the stored CID.
    * Gateway responses are untrusted until this check succeeds.
    */
-  async fetchAndVerifyIpfsDocument(cidString: string): Promise<Buffer> {
+  async fetchAndVerifyIpfsDocument(
+    cidString: string,
+    useCache = true,
+  ): Promise<Buffer> {
     if (!isValidIpfsCid(cidString)) {
       throw new UnprocessableEntityException('Stored IPFS CID is invalid.');
     }
 
-    try {
-      const response = await axios.get(
-        `${this.ipfsGateway.replace(/\/$/, '')}/ipfs/${cidString}`,
-        {
-          responseType: 'arraybuffer',
-          headers: this.ipfsToken
-            ? { Authorization: `Bearer ${this.ipfsToken}` }
-            : undefined,
-        },
-      );
-      const data = Buffer.from(response.data);
-      if (!verifyIpfsContent(cidString, data)) {
-        this.logger.error(`IPFS CID mismatch for ${cidString}`);
-        throw new ConflictException(
-          'Retrieved document content does not match its stored IPFS CID.',
+    const inventory = await this.contentRepository.findOneBy({
+      cid: cidString,
+    });
+    if (inventory?.archived && inventory.archiveKey) {
+      const archived = await this.getDocument(inventory.archiveKey);
+      if (!archived.data) {
+        throw new ServiceUnavailableException(
+          `Archived document is restoring from S3: ${archived.status.message}`,
         );
       }
-
-      return data;
-    } catch (err: any) {
-      if (
-        err instanceof ConflictException ||
-        err instanceof UnprocessableEntityException
-      ) {
-        throw err;
+      if (!verifyIpfsContent(cidString, archived.data)) {
+        throw new ConflictException(
+          'Archived document does not match its stored IPFS CID.',
+        );
       }
-      this.logger.error(
-        `Failed to retrieve IPFS document ${cidString}: ${err.message}`,
-      );
-      throw new ServiceUnavailableException(
-        `Failed to retrieve IPFS document: ${err.message}`,
+      await this.recordAccess(cidString, 0);
+      return archived.data;
+    }
+
+    const cached = useCache ? this.hotContent.get(cidString) : undefined;
+    if (cached && cached.expiresAt > Date.now()) {
+      this.hotContent.delete(cidString);
+      this.hotContent.set(cidString, cached);
+      await this.recordAccess(cidString, 0);
+      return cached.data;
+    }
+    if (useCache) this.hotContent.delete(cidString);
+
+    let lastError: Error | undefined;
+    let integrityError: ConflictException | undefined;
+    const retrievalStartedAt = Date.now();
+    for (const gateway of this.ipfsGateways) {
+      try {
+        const response = await axios.get(`${gateway}/ipfs/${cidString}`, {
+          responseType: 'arraybuffer',
+          headers:
+            gateway === this.ipfsGateway && this.ipfsToken
+              ? { Authorization: `Bearer ${this.ipfsToken}` }
+              : undefined,
+          timeout: 10_000,
+        });
+        const data = Buffer.from(response.data);
+        if (!verifyIpfsContent(cidString, data)) {
+          this.logger.error(
+            `IPFS CID mismatch for ${cidString} from ${gateway}`,
+          );
+          throw new ConflictException(
+            'Retrieved document content does not match its stored IPFS CID.',
+          );
+        }
+
+        if (useCache) this.cacheContent(cidString, data);
+        await this.recordAccess(cidString, Date.now() - retrievalStartedAt);
+        return data;
+      } catch (err: any) {
+        if (err instanceof ConflictException) {
+          integrityError = err;
+        } else {
+          lastError = err;
+        }
+      }
+    }
+
+    try {
+      await this.replicateCid(cidString);
+    } catch (err: any) {
+      this.logger.warn(
+        `Could not repair IPFS pins for ${cidString}: ${err.message}`,
       );
     }
+    if (integrityError) throw integrityError;
+    if (lastError) {
+      this.logger.error(
+        `Failed to retrieve IPFS document ${cidString}: ${lastError.message}`,
+      );
+      throw new ServiceUnavailableException(
+        `Failed to retrieve IPFS document: ${lastError.message}`,
+      );
+    }
+    throw new ServiceUnavailableException('No IPFS gateway is configured.');
   }
 
   /**
@@ -205,6 +336,331 @@ export class StorageService {
       this.logger.error(`Failed to retrieve document ${s3Key}: ${err.message}`);
       throw new ServiceUnavailableException(
         `Failed to retrieve document: ${err.message}`,
+      );
+    }
+  }
+
+  async getStorageAnalytics(): Promise<StorageAnalytics> {
+    const records = await this.contentRepository.find();
+    const now = Date.now();
+    const unusedBefore = now - 90 * 24 * 60 * 60 * 1000;
+    const totalBytes = records.reduce(
+      (total, record) => total + Number(record.sizeBytes || 0),
+      0,
+    );
+    const retrievalCount = records.reduce(
+      (total, record) => total + Number(record.retrievalCount || 0),
+      0,
+    );
+    const weightedRetrievalMs = records.reduce(
+      (total, record) =>
+        total +
+        Number(record.averageRetrievalMs || 0) *
+          Number(record.retrievalCount || 0),
+      0,
+    );
+
+    return {
+      contentCount: records.length,
+      totalBytes,
+      estimatedMonthlyCost: (totalBytes / 1_000_000_000) * this.costPerGbMonth,
+      underReplicatedCount: records.filter(
+        (record) =>
+          !record.archived && record.replicaCount < this.minimumReplicas,
+      ).length,
+      archivedCount: records.filter((record) => record.archived).length,
+      unaccessedCount: records.filter(
+        (record) =>
+          !record.lastAccessedAt && record.createdAt.getTime() < unusedBefore,
+      ).length,
+      retrievalCount,
+      averageRetrievalMs:
+        retrievalCount > 0 ? weightedRetrievalMs / retrievalCount : 0,
+    };
+  }
+
+  async getCleanupCandidates(idleDays = 90): Promise<StorageContent[]> {
+    const unusedBefore = Date.now() - idleDays * 24 * 60 * 60 * 1000;
+    const records = await this.contentRepository.find();
+    return records.filter((record) => {
+      const lastActivity = record.lastAccessedAt || record.createdAt;
+      const retentionExpired =
+        !record.retentionUntil || record.retentionUntil.getTime() <= Date.now();
+      return (
+        !record.legalHold &&
+        retentionExpired &&
+        lastActivity.getTime() < unusedBefore
+      );
+    });
+  }
+
+  async setRetentionPolicy(
+    cid: string,
+    retentionUntil: Date | null,
+    legalHold = false,
+  ): Promise<void> {
+    const record = await this.requireContent(cid);
+    record.retentionUntil = retentionUntil;
+    record.legalHold = legalHold;
+    await this.contentRepository.save(record);
+  }
+
+  async archiveContent(cid: string): Promise<void> {
+    const record = await this.requireContent(cid);
+    if (!this.hasUnpinProvider()) {
+      throw new ServiceUnavailableException(
+        'Cannot archive IPFS content without a configured unpin provider.',
+      );
+    }
+    const content = await this.fetchAndVerifyIpfsDocument(cid, false);
+    const archiveKey = `ipfs-archive/${cid}`;
+    await this.s3.send(
+      new PutObjectCommand({
+        Bucket: this.s3Bucket,
+        Key: archiveKey,
+        Body: content,
+        ContentType: 'application/octet-stream',
+      }),
+    );
+    await this.unpinContent(cid);
+    record.archived = true;
+    record.archiveKey = archiveKey;
+    record.replicaCount = 0;
+    await this.contentRepository.save(record);
+    this.hotContent.delete(cid);
+  }
+
+  async eraseContent(cid: string, overrideRetention = false): Promise<void> {
+    const record = await this.requireContent(cid);
+    if (record.legalHold) {
+      throw new ConflictException(
+        'Content is under legal hold and cannot be erased.',
+      );
+    }
+    if (
+      !overrideRetention &&
+      record.retentionUntil &&
+      record.retentionUntil.getTime() > Date.now()
+    ) {
+      throw new ConflictException('Content retention period has not expired.');
+    }
+
+    this.hotContent.delete(cid);
+    await this.unpinContent(cid);
+    if (record.archiveKey) {
+      await this.s3.send(
+        new DeleteObjectCommand({
+          Bucket: this.s3Bucket,
+          Key: record.archiveKey,
+        }),
+      );
+    }
+    await this.contentRepository.delete({ cid });
+  }
+
+  private hasUnpinProvider(): boolean {
+    return Boolean(
+      this.ipfsUnpinEndpoint || this.clusterApis.length || this.pinataJwt,
+    );
+  }
+
+  private async unpinContent(cid: string): Promise<void> {
+    const unpinOperations: Promise<unknown>[] = [];
+    if (this.ipfsUnpinEndpoint) {
+      const endpoint = this.ipfsUnpinEndpoint.includes('{cid}')
+        ? this.ipfsUnpinEndpoint.replace('{cid}', encodeURIComponent(cid))
+        : `${this.ipfsUnpinEndpoint.replace(/\/$/, '')}/${encodeURIComponent(cid)}`;
+      unpinOperations.push(
+        axios.delete(endpoint, {
+          headers: this.ipfsToken
+            ? { Authorization: `Bearer ${this.ipfsToken}` }
+            : undefined,
+          timeout: 10_000,
+          validateStatus: (status) =>
+            (status >= 200 && status < 300) || status === 404,
+        }),
+      );
+    }
+    for (const api of this.clusterApis) {
+      unpinOperations.push(
+        axios.delete(`${api}/pins/${encodeURIComponent(cid)}`, {
+          auth: this.clusterAuth,
+          timeout: 10_000,
+          validateStatus: (status) =>
+            (status >= 200 && status < 300) || status === 404,
+        }),
+      );
+    }
+    if (this.pinataJwt) {
+      unpinOperations.push(
+        axios.delete(
+          `https://api.pinata.cloud/pinning/unpin/${encodeURIComponent(cid)}`,
+          {
+            headers: { Authorization: `Bearer ${this.pinataJwt}` },
+            timeout: 10_000,
+            validateStatus: (status) =>
+              (status >= 200 && status < 300) || status === 404,
+          },
+        ),
+      );
+    }
+    if (!unpinOperations.length) {
+      throw new ServiceUnavailableException(
+        'No IPFS unpin provider is configured; content was not erased.',
+      );
+    }
+    await Promise.all(unpinOperations);
+  }
+
+  async pinContent(cid: string): Promise<number> {
+    if (!isValidIpfsCid(cid)) {
+      throw new UnprocessableEntityException('IPFS CID is invalid.');
+    }
+    const replicaCount = await this.replicateCid(cid);
+    const existing = await this.contentRepository.findOneBy({ cid });
+    await this.saveInventory(
+      cid,
+      Number(existing?.sizeBytes || 0),
+      replicaCount,
+    );
+    return replicaCount;
+  }
+
+  @Cron(CronExpression.EVERY_6_HOURS)
+  async verifyTrackedContent(): Promise<void> {
+    const records = await this.contentRepository.find({
+      take: 100,
+      order: { updatedAt: 'ASC' },
+    });
+    for (const record of records) {
+      try {
+        await this.fetchAndVerifyIpfsDocument(record.cid, false);
+        record.lastVerifiedAt = new Date();
+        if (!record.archived && record.replicaCount < this.minimumReplicas) {
+          record.replicaCount = await this.replicateCid(record.cid);
+        }
+        await this.contentRepository.save(record);
+      } catch (err: any) {
+        this.logger.error(
+          `Integrity check failed for ${record.cid}: ${err.message}`,
+        );
+        try {
+          record.replicaCount = await this.replicateCid(record.cid);
+          await this.contentRepository.save(record);
+        } catch (repairError: any) {
+          this.logger.error(
+            `Pin repair failed for ${record.cid}: ${repairError.message}`,
+          );
+        }
+      }
+    }
+  }
+
+  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
+  async eraseExpiredContent(): Promise<void> {
+    const expired = await this.contentRepository
+      .createQueryBuilder('content')
+      .where('content.retentionUntil <= :now', { now: new Date() })
+      .andWhere('content.legalHold = false')
+      .getMany();
+    for (const record of expired) {
+      try {
+        await this.eraseContent(record.cid);
+      } catch (err: any) {
+        this.logger.error(
+          `Could not erase expired content ${record.cid}: ${err.message}`,
+        );
+      }
+    }
+  }
+
+  private async requireContent(cid: string): Promise<StorageContent> {
+    const record = await this.contentRepository.findOneBy({ cid });
+    if (!record) throw new NotFoundException('Storage content was not found.');
+    return record;
+  }
+
+  private cacheContent(cid: string, data: Buffer): void {
+    if (!this.cacheTtlMs) return;
+    this.hotContent.delete(cid);
+    this.hotContent.set(cid, {
+      data,
+      expiresAt: Date.now() + this.cacheTtlMs,
+    });
+    while (this.hotContent.size > 100) {
+      const oldest = this.hotContent.keys().next().value;
+      if (!oldest) break;
+      this.hotContent.delete(oldest);
+    }
+  }
+
+  private async recordAccess(cid: string, retrievalMs: number): Promise<void> {
+    try {
+      const record = await this.contentRepository.findOneBy({ cid });
+      if (!record) return;
+      const count = Number(record.retrievalCount || 0);
+      record.averageRetrievalMs =
+        (Number(record.averageRetrievalMs || 0) * count + retrievalMs) /
+        (count + 1);
+      record.retrievalCount = count + 1;
+      record.lastAccessedAt = new Date();
+      await this.contentRepository.save(record);
+    } catch (err: any) {
+      this.logger.warn(`Could not record access for ${cid}: ${err.message}`);
+    }
+  }
+
+  private async replicateCid(cid: string): Promise<number> {
+    const replication = await Promise.allSettled([
+      ...this.clusterApis.map((api) =>
+        axios.post(
+          `${api}/pins/${encodeURIComponent(cid)}?replication-min=${this.clusterReplicationMin}&replication-max=${this.clusterReplicationMax}`,
+          {},
+          { auth: this.clusterAuth, timeout: 15_000 },
+        ),
+      ),
+      ...(this.pinataJwt
+        ? [
+            axios.post(
+              'https://api.pinata.cloud/pinning/pinByHash',
+              { hashToPin: cid },
+              {
+                headers: { Authorization: `Bearer ${this.pinataJwt}` },
+                timeout: 15_000,
+              },
+            ),
+          ]
+        : []),
+    ]);
+    const clusterReplicaCount = replication.reduce((total, result, index) => {
+      if (result.status !== 'fulfilled') return total;
+      const isCluster = index < this.clusterApis.length;
+      return total + (isCluster ? this.clusterReplicationMin : 1);
+    }, 0);
+    const replicaCount = 1 + clusterReplicaCount;
+    if (replicaCount < this.minimumReplicas) {
+      throw new Error(
+        `CID ${cid} has ${replicaCount} replicas; ${this.minimumReplicas} required.`,
+      );
+    }
+    return replicaCount;
+  }
+
+  private async saveInventory(
+    cid: string,
+    sizeBytes: number,
+    replicaCount: number,
+  ): Promise<void> {
+    try {
+      const existing = await this.contentRepository.findOneBy({ cid });
+      const record = existing || this.contentRepository.create({ cid });
+      record.sizeBytes = sizeBytes;
+      record.replicaCount = replicaCount;
+      record.lastVerifiedAt = new Date();
+      await this.contentRepository.save(record);
+    } catch (err: any) {
+      this.logger.error(
+        `Could not persist storage inventory for ${cid}: ${err.message}`,
       );
     }
   }
@@ -332,9 +788,12 @@ export class StorageService {
       throw new Error('IPFS response did not include a CID.');
     }
 
+    const replicaCount = await this.replicateCid(cid);
+    await this.saveInventory(cid, file.length, replicaCount);
+
     return {
       hash: cid,
-      url: `${this.ipfsGateway}/ipfs/${cid}`,
+      url: `${this.cdnGateway || this.ipfsGateway}/ipfs/${cid}`,
     };
   }
 

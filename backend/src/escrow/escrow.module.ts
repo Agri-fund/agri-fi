@@ -17,6 +17,7 @@ import { MilestonePartialReleaseService } from './milestone-partial-release.serv
 import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.entity';
 import { ESCROW_METRICS_PROVIDERS } from './escrow-metrics.providers';
 import { EscrowFailedPaymentsMetrics } from './escrow-failed-payments.metrics';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { EscrowFailedPaymentsMetrics } from './escrow-failed-payments.metrics';
     StellarModule,
     QueueModule,
     EscrowDlqModule,
+    NotificationsModule,
   ],
   controllers: [EscrowConsumer],
   providers: [

@@ -1,5 +1,6 @@
 import { getAuthToken, setAuthToken, clearAuthToken } from "./auth-token";
 import { captureTraceId, traceHeaders } from "./tracing";
+import { enqueueOfflineOperation, registerBackgroundSync } from "./offlineQueue";
 
 export const API_BASE =
   (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001").replace(/\/+$/, "");
@@ -582,9 +583,29 @@ export const apiClient = {
       notes?: string;
     },
   ) {
+    const body = { trade_deal_id: dealId, ...data };
+
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      await enqueueOfflineOperation({
+        resourceKey: `shipment-milestone:${dealId}:${data.milestone}`,
+        type: 'shipment-milestone',
+        method: 'POST',
+        endpoint: `${API_BASE}${API_VERSION}/shipments/milestones`,
+        body,
+      });
+      await registerBackgroundSync();
+      return {
+        queued: true,
+        optimistic: true,
+        trade_deal_id: dealId,
+        ...data,
+        recorded_at: new Date().toISOString(),
+      };
+    }
+
     return apiFetch("/shipments/milestones", {
       method: "POST",
-      body: JSON.stringify({ trade_deal_id: dealId, ...data }),
+      body: JSON.stringify(body),
     });
   },
 

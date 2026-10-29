@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { getAuthToken } from '@/lib/auth-token';
-import { DashboardLayout } from '@/components/DashboardLayout';
+import DashboardLayout from '@/components/DashboardLayout';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3001';
 
@@ -14,11 +14,19 @@ type PlanStatus = 'active' | 'paused' | 'cancelled';
 
 interface AutoInvestPlan {
   id: string;
+  name: string;
   amountUsd: string;
   cadence: Cadence;
   fundingWallet: string;
   maxRiskScore: string;
   dealTypeFilter: string[] | null;
+  minimumExpectedRoi: string | null;
+  regionFilter: string[] | null;
+  maxDurationDays: number | null;
+  maxPositionUsd: string | null;
+  isPublic: boolean;
+  version: number;
+  versionHistory: Array<{ version: number; createdAt: string }>;
   status: PlanStatus;
   dailyCapUsd: string | null;
   consecutiveFailures: number;
@@ -27,13 +35,39 @@ interface AutoInvestPlan {
   createdAt: string;
 }
 
+interface StrategyTemplate {
+  id: string;
+  name: string;
+  description: string;
+  minimumExpectedRoi?: number;
+  regionFilter?: string[];
+  maxRiskScore: number;
+  maxDurationDays?: number;
+  dealTypeFilter?: string[];
+  maxPositionUsd?: number;
+}
+
+interface BacktestResult {
+  historicalDealsScanned: number;
+  matchedDeals: number;
+  averageExpectedRoiPct: number | null;
+  realizedWinRatePct: number | null;
+  realizedReturnsAvailable: boolean;
+  maxDrawdownPct: number | null;
+}
+
 const planSchema = z.object({
+  name: z.string().min(1, 'Strategy name is required').max(120),
   amountUsd: z.coerce.number().min(100, 'Minimum $100'),
   cadence: z.enum(['weekly', 'biweekly', 'monthly']),
   fundingWallet: z.string().min(1, 'Funding wallet is required'),
   maxRiskScore: z.coerce.number().min(0).max(100).default(75),
   dealTypeFilter: z.string().optional(),
   dailyCapUsd: z.coerce.number().min(100).optional().nullable(),
+  minimumExpectedRoi: z.coerce.number().min(0).max(1000).optional().nullable(),
+  regionFilter: z.string().optional(),
+  maxDurationDays: z.coerce.number().int().min(1).optional().nullable(),
+  maxPositionUsd: z.coerce.number().min(100).optional().nullable(),
 });
 
 type PlanFormValues = z.infer<typeof planSchema>;
@@ -72,11 +106,19 @@ function PlanCard({
   onPause,
   onResume,
   onCancel,
+  onBacktest,
+  onShare,
+  backtest,
+  loadingBacktest,
 }: {
   plan: AutoInvestPlan;
   onPause: (id: string) => void;
   onResume: (id: string) => void;
   onCancel: (id: string) => void;
+  onBacktest: (id: string) => void;
+  onShare: (id: string, isPublic: boolean) => void;
+  backtest?: BacktestResult;
+  loadingBacktest: boolean;
 }) {
   const nextRun = new Date(plan.nextRunAt);
   const isOverdue = plan.status === 'active' && nextRun < new Date();
@@ -89,7 +131,8 @@ function PlanCard({
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-mono text-slate-400">{plan.id.slice(0, 8)}…</p>
+          <p className="text-sm font-medium text-slate-900">{plan.name}</p>
+          <p className="text-xs font-mono text-slate-400">v{plan.version} · {plan.id.slice(0, 8)}…</p>
           <p className="text-2xl font-bold text-slate-900 mt-0.5">
             ${Number(plan.amountUsd).toLocaleString()}{' '}
             <span className="text-base font-normal text-slate-500">/ {CADENCE_LABELS[plan.cadence]}</span>
@@ -122,6 +165,15 @@ function PlanCard({
             <dd className="text-slate-800">{plan.dealTypeFilter.join(', ')}</dd>
           </div>
         ) : null}
+        {plan.minimumExpectedRoi !== null && plan.minimumExpectedRoi !== undefined && (
+          <div><dt className="text-slate-500">Minimum expected ROI</dt><dd className="text-slate-800">{Number(plan.minimumExpectedRoi).toFixed(1)}%</dd></div>
+        )}
+        {plan.regionFilter?.length ? (
+          <div><dt className="text-slate-500">Regions</dt><dd className="text-slate-800">{plan.regionFilter.join(', ')}</dd></div>
+        ) : null}
+        {plan.maxPositionUsd && (
+          <div><dt className="text-slate-500">Position limit</dt><dd className="text-slate-800">${Number(plan.maxPositionUsd).toLocaleString()}</dd></div>
+        )}
         <div>
           <dt className="text-slate-500">Next Run</dt>
           <dd className={`${isOverdue ? 'text-amber-600 font-medium' : 'text-slate-800'}`}>
@@ -138,6 +190,42 @@ function PlanCard({
           </div>
         )}
       </dl>
+
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
+        <span>{plan.versionHistory?.length ?? 0} previous version{plan.versionHistory?.length === 1 ? '' : 's'}</span>
+        <span>{plan.isPublic ? 'Shared with community' : 'Private'}</span>
+      </div>
+      {!!plan.versionHistory?.length && (
+        <details className="text-xs text-slate-500">
+          <summary className="cursor-pointer">Version history</summary>
+          <ol className="mt-2 space-y-1 pl-4">
+            {plan.versionHistory.map(item => (
+              <li key={item.version}>v{item.version} · {new Date(item.createdAt).toLocaleDateString()}</li>
+            ))}
+          </ol>
+        </details>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="button" onClick={() => onBacktest(plan.id)} disabled={loadingBacktest} className="rounded border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 disabled:opacity-50">
+          {loadingBacktest ? 'Testing…' : 'Run backtest'}
+        </button>
+        <button type="button" onClick={() => onShare(plan.id, !plan.isPublic)} className="rounded border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700">
+          {plan.isPublic ? 'Stop sharing' : 'Share strategy'}
+        </button>
+      </div>
+
+      {backtest && (
+        <div className="border-t border-slate-100 pt-3" aria-live="polite">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Historical estimate · {backtest.historicalDealsScanned} deals scanned</p>
+          <dl className="mt-2 grid grid-cols-3 gap-2 text-sm">
+            <div><dt className="text-xs text-slate-500">Matches</dt><dd className="font-medium">{backtest.matchedDeals}</dd></div>
+            <div><dt className="text-xs text-slate-500">Expected ROI</dt><dd className="font-medium">{backtest.averageExpectedRoiPct === null ? '—' : `${backtest.averageExpectedRoiPct.toFixed(1)}%`}</dd></div>
+            <div><dt className="text-xs text-slate-500">Realized win rate</dt><dd className="font-medium">{backtest.realizedWinRatePct === null ? 'N/A' : `${backtest.realizedWinRatePct.toFixed(0)}%`}</dd></div>
+          </dl>
+          <p className="mt-2 text-xs text-slate-500">Expected returns use deal estimates, not realized outcomes. Drawdown is unavailable without executed investment history.</p>
+        </div>
+      )}
 
       {/* Failure warning */}
       {plan.consecutiveFailures > 0 && (
@@ -180,7 +268,13 @@ function PlanCard({
   );
 }
 
-function CreatePlanForm({ onCreated }: { onCreated: () => void }) {
+function CreatePlanForm({
+  onCreated,
+  templates,
+}: {
+  onCreated: () => void;
+  templates: StrategyTemplate[];
+}) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -188,10 +282,11 @@ function CreatePlanForm({ onCreated }: { onCreated: () => void }) {
     register,
     handleSubmit,
     reset,
+    setValue,
     formState: { errors },
   } = useForm<PlanFormValues>({
     resolver: zodResolver(planSchema),
-    defaultValues: { maxRiskScore: 75, cadence: 'monthly' },
+    defaultValues: { name: '', maxRiskScore: 75, cadence: 'monthly' },
   });
 
   const onSubmit = async (data: PlanFormValues) => {
@@ -201,16 +296,24 @@ function CreatePlanForm({ onCreated }: { onCreated: () => void }) {
       const commodities = data.dealTypeFilter
         ? data.dealTypeFilter.split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
         : undefined;
+      const regions = data.regionFilter
+        ? data.regionFilter.split(',').map(s => s.trim()).filter(Boolean)
+        : undefined;
 
       await apiFetch('/auto-invest/plans', {
         method: 'POST',
         body: JSON.stringify({
+          name: data.name,
           amountUsd: data.amountUsd,
           cadence: data.cadence,
           fundingWallet: data.fundingWallet,
           maxRiskScore: data.maxRiskScore,
           dealTypeFilter: commodities?.length ? commodities : undefined,
           dailyCapUsd: data.dailyCapUsd ?? undefined,
+          minimumExpectedRoi: data.minimumExpectedRoi ?? undefined,
+          regionFilter: regions?.length ? regions : undefined,
+          maxDurationDays: data.maxDurationDays ?? undefined,
+          maxPositionUsd: data.maxPositionUsd ?? undefined,
         }),
       });
       reset();
@@ -224,6 +327,35 @@ function CreatePlanForm({ onCreated }: { onCreated: () => void }) {
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" aria-label="Create auto-invest plan">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label htmlFor="aip-template" className="block text-sm font-medium text-slate-700 mb-1">Start from a template</label>
+          <select
+            id="aip-template"
+            defaultValue=""
+            onChange={(event) => {
+              const template = templates.find((item) => item.id === event.target.value);
+              if (!template) return;
+              setValue('name', template.name);
+              setValue('minimumExpectedRoi', template.minimumExpectedRoi ?? null);
+              setValue('regionFilter', template.regionFilter?.join(', ') ?? '');
+              setValue('maxRiskScore', template.maxRiskScore);
+              setValue('maxDurationDays', template.maxDurationDays ?? null);
+              setValue('dealTypeFilter', template.dealTypeFilter?.join(', ') ?? '');
+              setValue('maxPositionUsd', template.maxPositionUsd ?? null);
+            }}
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          >
+            <option value="">Blank strategy</option>
+            {templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label htmlFor="aip-name" className="block text-sm font-medium text-slate-700 mb-1">Strategy name</label>
+          <input id="aip-name" {...register('name')} placeholder="Africa cocoa growth" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" aria-invalid={!!errors.name} />
+          {errors.name && <p role="alert" className="text-xs text-red-600 mt-0.5">{errors.name.message}</p>}
+        </div>
+      </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {/* Amount */}
         <div>
@@ -324,6 +456,22 @@ function CreatePlanForm({ onCreated }: { onCreated: () => void }) {
           />
           <p className="text-xs text-slate-400 mt-0.5">Leave blank to invest in any commodity</p>
         </div>
+        <div>
+          <label htmlFor="aip-roi" className="block text-sm font-medium text-slate-700 mb-1">Minimum expected ROI (%)</label>
+          <input id="aip-roi" type="number" min={0} max={1000} step={0.5} {...register('minimumExpectedRoi')} placeholder="15" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+        </div>
+        <div>
+          <label htmlFor="aip-region" className="block text-sm font-medium text-slate-700 mb-1">Region filter</label>
+          <input id="aip-region" {...register('regionFilter')} placeholder="Africa, Ghana" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+        </div>
+        <div>
+          <label htmlFor="aip-duration" className="block text-sm font-medium text-slate-700 mb-1">Maximum duration (days)</label>
+          <input id="aip-duration" type="number" min={1} step={1} {...register('maxDurationDays')} placeholder="365" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+        </div>
+        <div>
+          <label htmlFor="aip-position" className="block text-sm font-medium text-slate-700 mb-1">Maximum per-deal position (USD)</label>
+          <input id="aip-position" type="number" min={100} step={100} {...register('maxPositionUsd')} placeholder="5000" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+        </div>
       </div>
 
       {error && (
@@ -346,6 +494,10 @@ function CreatePlanForm({ onCreated }: { onCreated: () => void }) {
 
 export default function AutoInvestPlansPage() {
   const [plans, setPlans] = useState<AutoInvestPlan[]>([]);
+  const [templates, setTemplates] = useState<StrategyTemplate[]>([]);
+  const [communityStrategies, setCommunityStrategies] = useState<Array<Pick<AutoInvestPlan, 'id' | 'name' | 'version' | 'minimumExpectedRoi' | 'maxRiskScore'>>> ([]);
+  const [backtests, setBacktests] = useState<Record<string, BacktestResult>>({});
+  const [backtestLoading, setBacktestLoading] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -364,6 +516,44 @@ export default function AutoInvestPlansPage() {
   }, []);
 
   useEffect(() => { fetchPlans(); }, [fetchPlans]);
+
+  useEffect(() => {
+    apiFetch<StrategyTemplate[]>('/auto-invest/plans/templates').then(setTemplates).catch(() => setTemplates([]));
+    apiFetch<Array<Pick<AutoInvestPlan, 'id' | 'name' | 'version' | 'minimumExpectedRoi' | 'maxRiskScore'>>>('/auto-invest/plans/community')
+      .then(setCommunityStrategies)
+      .catch(() => setCommunityStrategies([]));
+  }, []);
+
+  const handleBacktest = async (id: string) => {
+    setBacktestLoading(current => ({ ...current, [id]: true }));
+    const to = new Date();
+    const from = new Date(to);
+    from.setFullYear(from.getFullYear() - 1);
+    try {
+      const result = await apiFetch<BacktestResult>(
+        `/auto-invest/plans/${id}/backtest?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}`,
+      );
+      setBacktests(current => ({ ...current, [id]: result }));
+    } catch (err: any) {
+      setFetchError(err.message);
+    } finally {
+      setBacktestLoading(current => ({ ...current, [id]: false }));
+    }
+  };
+
+  const handleShare = async (id: string, isPublic: boolean) => {
+    try {
+      await apiFetch(`/auto-invest/plans/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ isPublic }),
+      });
+      await fetchPlans();
+      const shared = await apiFetch<Array<Pick<AutoInvestPlan, 'id' | 'name' | 'version' | 'minimumExpectedRoi' | 'maxRiskScore'>>>('/auto-invest/plans/community');
+      setCommunityStrategies(shared);
+    } catch (err: any) {
+      setFetchError(err.message);
+    }
+  };
 
   const handlePause = async (id: string) => {
     try {
@@ -405,7 +595,7 @@ export default function AutoInvestPlansPage() {
           <div>
             <h1 className="text-2xl font-bold text-slate-900">Auto-Invest Plans</h1>
             <p className="text-slate-500 text-sm mt-1">
-              Recurring dollar-cost averaging — funds are automatically allocated to best-fit open deals.
+              Deal criteria are scanned on schedule. Matching opportunities alert you for wallet signing before funds move.
             </p>
           </div>
           <button
@@ -441,6 +631,7 @@ export default function AutoInvestPlansPage() {
           >
             <h2 className="text-base font-semibold text-slate-900 mb-4">New Auto-Invest Plan</h2>
             <CreatePlanForm
+              templates={templates}
               onCreated={() => {
                 setShowForm(false);
                 fetchPlans();
@@ -477,7 +668,7 @@ export default function AutoInvestPlansPage() {
             <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">Active ({activePlans.length})</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {activePlans.map(p => (
-                <PlanCard key={p.id} plan={p} onPause={handlePause} onResume={handleResume} onCancel={handleCancel} />
+                <PlanCard key={p.id} plan={p} onPause={handlePause} onResume={handleResume} onCancel={handleCancel} onBacktest={handleBacktest} onShare={handleShare} backtest={backtests[p.id]} loadingBacktest={!!backtestLoading[p.id]} />
               ))}
             </div>
           </section>
@@ -489,7 +680,7 @@ export default function AutoInvestPlansPage() {
             <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">Paused ({pausedPlans.length})</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {pausedPlans.map(p => (
-                <PlanCard key={p.id} plan={p} onPause={handlePause} onResume={handleResume} onCancel={handleCancel} />
+                <PlanCard key={p.id} plan={p} onPause={handlePause} onResume={handleResume} onCancel={handleCancel} onBacktest={handleBacktest} onShare={handleShare} backtest={backtests[p.id]} loadingBacktest={!!backtestLoading[p.id]} />
               ))}
             </div>
           </section>
@@ -501,7 +692,7 @@ export default function AutoInvestPlansPage() {
             <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">Cancelled ({cancelledPlans.length})</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 opacity-60">
               {cancelledPlans.map(p => (
-                <PlanCard key={p.id} plan={p} onPause={handlePause} onResume={handleResume} onCancel={handleCancel} />
+                <PlanCard key={p.id} plan={p} onPause={handlePause} onResume={handleResume} onCancel={handleCancel} onBacktest={handleBacktest} onShare={handleShare} backtest={backtests[p.id]} loadingBacktest={!!backtestLoading[p.id]} />
               ))}
             </div>
           </section>
@@ -512,7 +703,7 @@ export default function AutoInvestPlansPage() {
           <div className="text-center py-16">
             <div className="text-4xl mb-3">🔄</div>
             <p className="text-slate-600 font-medium">No auto-invest plans yet</p>
-            <p className="text-slate-400 text-sm mt-1">Create your first plan to start dollar-cost averaging into open deals.</p>
+            <p className="text-slate-400 text-sm mt-1">Create a strategy to receive alerts when open deals match your criteria.</p>
             <button
               onClick={() => setShowForm(true)}
               className="mt-4 rounded-lg bg-brand-600 text-white text-sm font-medium py-2 px-6 hover:bg-brand-700 transition-colors"
@@ -520,6 +711,22 @@ export default function AutoInvestPlansPage() {
               Create First Plan
             </button>
           </div>
+        )}
+
+        {communityStrategies.length > 0 && (
+          <section aria-label="Community strategies" className="border-t border-slate-200 pt-6">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 mb-3">Shared strategies</h2>
+            <div className="divide-y divide-slate-200">
+              {communityStrategies.map(strategy => (
+                <div key={strategy.id} className="flex items-center justify-between gap-4 py-3">
+                  <div>
+                    <p className="text-sm font-medium text-slate-900">{strategy.name}</p>
+                    <p className="text-xs text-slate-500">v{strategy.version} · Risk ceiling {Number(strategy.maxRiskScore).toFixed(0)}{strategy.minimumExpectedRoi !== null ? ` · Expected ROI floor ${Number(strategy.minimumExpectedRoi).toFixed(1)}%` : ''}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
         )}
       </main>
     </DashboardLayout>

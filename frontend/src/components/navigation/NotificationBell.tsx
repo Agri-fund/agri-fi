@@ -151,6 +151,11 @@ export const NotificationBell: React.FC = () => {
       const socket = io('/notifications', {
         auth: { token },
         transports: ['websocket'],
+        reconnection: true,
+        reconnectionAttempts: 10,
+        reconnectionDelay: 500,
+        reconnectionDelayMax: 10000,
+        randomizationFactor: 0.5,
       });
 
       socket.on('handshake_response', (data: { unreadCount: number }) => {
@@ -164,6 +169,33 @@ export const NotificationBell: React.FC = () => {
       socket.on('new_notification', (newNotif: NotificationItem) => {
         setUnreadCount((prev) => prev + 1);
         setNotifications((prev) => [newNotif, ...prev.slice(0, 9)]);
+      });
+
+      const addRealtimeNotification = (event: {
+        dealId?: string;
+        investmentId?: string;
+        milestone?: string;
+        status?: string;
+        title?: string;
+        message?: string;
+      }) => {
+        setUnreadCount((prev) => prev + 1);
+        setNotifications((prev) => [{
+          id: event.investmentId ?? event.dealId ?? crypto.randomUUID(),
+          type: event.status === 'completed' ? 'payment' : 'deal',
+          title: event.title ?? 'Platform update',
+          message: event.message ?? 'A real-time platform event arrived',
+          createdAt: new Date().toISOString(),
+        }, ...prev.slice(0, 9)]);
+      };
+
+      socket.on('deal.status_changed', addRealtimeNotification);
+      socket.on('milestone.reached', addRealtimeNotification);
+      socket.on('investment.confirmed', addRealtimeNotification);
+      socket.on('escrow.released', addRealtimeNotification);
+
+      socket.on('rate_limit_error', () => {
+        socket.disconnect();
       });
 
       socketRef.current = socket;

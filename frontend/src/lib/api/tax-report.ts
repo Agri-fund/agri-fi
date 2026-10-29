@@ -140,3 +140,151 @@ export async function getTaxSettings(
 
   return response.json();
 }
+
+// ─── Tax Automation API Endpoints ────────────────────────────────────────
+
+/**
+ * Fetches tax calculation results for a year and jurisdiction.
+ */
+export async function getTaxCalculation(
+  year: number,
+  jurisdiction: JurisdictionCode,
+  token?: string,
+): Promise<unknown> {
+  const response = await fetch(
+    `/api/tax/calculation?year=${year}&jurisdiction=${jurisdiction}`,
+    {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to fetch tax calculation: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+/**
+ * Fetches tax optimization suggestions.
+ */
+export async function getTaxOptimization(
+  year: number,
+  token?: string,
+): Promise<unknown> {
+  const response = await fetch(`/api/tax/optimization?year=${year}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch tax optimization: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+/**
+ * Fetches withholding records for a tax year.
+ */
+export async function getTaxWithholding(
+  year: number,
+  token?: string,
+): Promise<unknown> {
+  const response = await fetch(`/api/tax/withholding?year=${year}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch withholding: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+/**
+ * Fetches tax deadline alerts.
+ */
+export async function getTaxDeadlines(
+  year: number,
+  token?: string,
+): Promise<unknown> {
+  const response = await fetch(`/api/tax/deadlines?year=${year}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch tax deadlines: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+/**
+ * Fetches compliance verification report.
+ */
+export async function getTaxCompliance(
+  year: number,
+  token?: string,
+): Promise<unknown> {
+  const response = await fetch(`/api/tax/compliance?year=${year}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch compliance: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+/**
+ * Exports tax data for accountant review.
+ */
+export async function exportForAccountant(
+  year: number,
+  format: 'csv' | 'json' | 'quickbooks_csv' | 'turbotax_csv' = 'csv',
+  token?: string,
+): Promise<Blob> {
+  const response = await fetch(
+    `/api/tax/accountant-export?year=${year}&format=${format}`,
+    {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to export for accountant: ${response.statusText}`);
+  }
+  return response.blob();
+}
+
+/**
+ * Fetches stored tax documents.
+ */
+export async function getTaxDocuments(
+  year: number,
+  token?: string,
+): Promise<unknown> {
+  const response = await fetch(`/api/tax/documents?year=${year}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch tax documents: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+/**
+ * Uploads a tax document for secure storage.
+ */
+export async function uploadTaxDocument(
+  data: {
+    taxYear: number;
+    jurisdiction: JurisdictionCode;
+    documentType: string;
+    fileName: string;
+  },
+  token?: string,
+): Promise<unknown> {
+  const response = await fetch('/api/tax/documents', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token && { Authorization: `Bearer ${token}` }),
+    },
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to upload tax document: ${response.statusText}`);
+  }
+  return response.json();
+}

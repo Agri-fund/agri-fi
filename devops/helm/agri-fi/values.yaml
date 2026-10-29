@@ -1,0 +1,81 @@
+environment: dev
+
+backend:
+  enabled: true
+  image:
+    repository: agri-fi/backend
+    tag: latest
+    pullPolicy: IfNotPresent
+  replicaCount: 2
+  service:
+    port: 80
+    targetPort: 3001
+  resources:
+    requests: {cpu: 250m, memory: 256Mi}
+    limits: {cpu: 500m, memory: 512Mi}
+  healthPath: /health
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
+
+frontend:
+  enabled: true
+  image:
+    repository: agri-fi/frontend
+    tag: latest
+    pullPolicy: IfNotPresent
+  replicaCount: 2
+  service:
+    port: 80
+    targetPort: 3000
+  resources:
+    requests: {cpu: 200m, memory: 256Mi}
+    limits: {cpu: 400m, memory: 512Mi}
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 80
+
+postgres:
+  enabled: true
+  image: postgres:16-alpine
+  storage: 20Gi
+  database: agric_onchain
+
+redis:
+  enabled: true
+  image: redis:7-alpine
+  storage: 1Gi
+
+rabbitmq:
+  enabled: true
+  image: rabbitmq:3.13-management-alpine
+  storage: 2Gi
+
+config:
+  databaseHost: agri-fi-postgres
+  databasePort: 5432
+  redisHost: agri-fi-redis
+  redisPort: 6379
+  rabbitmqHost: agri-fi-rabbitmq
+  rabbitmqPort: 5672
+
+secrets:
+  existingSecret: agri-fi-backend-secrets
+  databaseUserKey: DATABASE_USER
+  databasePasswordKey: DATABASE_PASSWORD
+  rabbitmqUserKey: RABBITMQ_USER
+  rabbitmqPasswordKey: RABBITMQ_PASSWORD
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+  frontendHost: agri-fi.example.com
+  backendHost: api.agri-fi.example.com
+  tlsSecretName: agri-fi-tls

@@ -2,18 +2,22 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { ForbiddenException, NotFoundException, ConflictException } from '@nestjs/common';
-import { AutoInvestService } from '../../../src/investments/auto-invest.service';
-import { AutoInvestPlan } from '../../../src/investments/entities/auto-invest-plan.entity';
-import { TradeDeal } from '../../../src/trade-deals/entities/trade-deal.entity';
-import { User } from '../../../src/auth/entities/user.entity';
-import { CreateAutoInvestPlanDto } from '../../../src/investments/dto/auto-invest-plan.dto';
+import { AutoInvestService } from './auto-invest.service';
+import { AutoInvestPlan } from './entities/auto-invest-plan.entity';
+import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
+import { RiskScoringService } from '../trade-deals/risk-scoring.service';
+import { User } from '../auth/entities/user.entity';
+import { CreateAutoInvestPlanDto } from './dto/auto-invest-plan.dto';
+import { NotificationsService } from '../notifications/notifications.service';
+import { QueueService } from '../queue/queue.service';
+import { PinoLogger } from 'nestjs-pino';
 
 const INVESTOR_ID = 'investor-uuid-1234';
 
 function mockUser(overrides: Partial<User> = {}): User {
   return {
     id: INVESTOR_ID,
-    kycStatus: 'approved',
+    kycStatus: 'verified',
     role: 'investor',
     ...overrides,
   } as unknown as User;
@@ -23,11 +27,19 @@ function mockPlan(overrides: Partial<AutoInvestPlan> = {}): AutoInvestPlan {
   return {
     id: 'plan-uuid-5678',
     investorId: INVESTOR_ID,
+    name: 'Test strategy',
     amountUsd: 500 as any,
     cadence: 'monthly',
     fundingWallet: 'GTEST123',
     maxRiskScore: 75 as any,
     dealTypeFilter: null,
+    minimumExpectedRoi: null,
+    regionFilter: null,
+    maxDurationDays: null,
+    maxPositionUsd: null,
+    isPublic: false,
+    version: 1,
+    versionHistory: [],
     status: 'active',
     dailyCapUsd: null,
     consecutiveFailures: 0,
@@ -89,10 +101,10 @@ describe('AutoInvestService — plan CRUD (#1001)', () => {
         { provide: getRepositoryToken(AutoInvestPlan), useValue: planRepo },
         { provide: getRepositoryToken(TradeDeal), useValue: repos.dealRepo },
         { provide: getRepositoryToken(User), useValue: userRepo },
-        { provide: 'RiskScoringService', useValue: svcs.riskScoringService },
-        { provide: 'NotificationsService', useValue: svcs.notificationsService },
-        { provide: 'QueueService', useValue: svcs.queueService },
-        { provide: 'nestjs-pino/PinoLogger', useValue: svcs.logger },
+        { provide: RiskScoringService, useValue: svcs.riskScoringService },
+        { provide: NotificationsService, useValue: svcs.notificationsService },
+        { provide: QueueService, useValue: svcs.queueService },
+        { provide: PinoLogger, useValue: svcs.logger },
         { provide: DataSource, useValue: svcs.dataSource },
       ],
     }).compile();
@@ -164,6 +176,27 @@ describe('AutoInvestService — plan CRUD (#1001)', () => {
     });
   });
 
+  describe('strategy versioning', () => {
+    it('stores the previous criteria snapshot when a strategy is edited', async () => {
+      const plan = mockPlan();
+      planRepo.findOne.mockResolvedValue(plan);
+      planRepo.save.mockImplementation(async (saved: any) => saved);
+
+      const updated = await service.updatePlan(plan.id, INVESTOR_ID, {
+        minimumExpectedRoi: 15,
+      });
+
+      expect(updated.version).toBe(2);
+      expect(updated.versionHistory).toEqual([
+        expect.objectContaining({
+          version: 1,
+          snapshot: expect.objectContaining({ minimumExpectedRoi: null }),
+        }),
+      ]);
+      expect(updated.minimumExpectedRoi).toBe(15);
+    });
+  });
+
   describe('pausePlan', () => {
     it('sets status to paused', async () => {
       planRepo.findOne.mockResolvedValue(mockPlan());
@@ -220,10 +253,10 @@ describe('AutoInvestService — allocation pipeline (#1001)', () => {
         { provide: getRepositoryToken(AutoInvestPlan), useValue: planRepo },
         { provide: getRepositoryToken(TradeDeal), useValue: dealRepo },
         { provide: getRepositoryToken(User), useValue: repos.userRepo },
-        { provide: 'RiskScoringService', useValue: riskScoringService },
-        { provide: 'NotificationsService', useValue: notificationsService },
-        { provide: 'QueueService', useValue: queueService },
-        { provide: 'nestjs-pino/PinoLogger', useValue: svcs.logger },
+        { provide: RiskScoringService, useValue: riskScoringService },
+        { provide: NotificationsService, useValue: notificationsService },
+        { provide: QueueService, useValue: queueService },
+        { provide: PinoLogger, useValue: svcs.logger },
         { provide: DataSource, useValue: svcs.dataSource },
       ],
     }).compile();
@@ -231,8 +264,12 @@ describe('AutoInvestService — allocation pipeline (#1001)', () => {
     service = module.get(AutoInvestService);
   });
 
-  it('enqueues investment.fund for an eligible deal', async () => {
-    const plan = mockPlan({ nextRunAt: new Date(Date.now() - 1000) });
+  it('alerts about an eligible deal without submitting an unsigned transaction', async () => {
+    const plan = mockPlan({
+      nextRunAt: new Date(Date.now() - 1000),
+      maxPositionUsd: 300 as any,
+      dailyCapUsd: 200 as any,
+    });
     planRepo.find.mockResolvedValue([plan]);
     planRepo.save.mockImplementation(async (p: any) => p);
 
@@ -252,11 +289,16 @@ describe('AutoInvestService — allocation pipeline (#1001)', () => {
 
     await service.runAllocationCycle();
 
-    expect(queueService.enqueueInvestmentFund).toHaveBeenCalledWith(
+    expect(queueService.enqueueInvestmentFund).not.toHaveBeenCalled();
+    expect(notificationsService.createNotification).toHaveBeenCalledWith(
       expect.objectContaining({
-        tokenAmount: 5, // $500 / $100 = 5 tokens
-        amountUsd: 500,
-        investorWallet: 'GTEST123',
+        title: 'Auto-Invest: Deal Matched',
+        metadataJson: expect.objectContaining({
+          event: 'matched_awaiting_signature',
+          dealId: 'deal-001',
+          tokenAmount: 2,
+          amountUsd: 200,
+        }),
       }),
     );
   });
@@ -315,7 +357,7 @@ describe('AutoInvestService — allocation pipeline (#1001)', () => {
     expect(queueService.enqueueInvestmentFund).not.toHaveBeenCalled();
   });
 
-  it('auto-pauses plan after 3 consecutive failures', async () => {
+  it('does not count a signature-required match as an execution failure', async () => {
     const plan = mockPlan({
       nextRunAt: new Date(Date.now() - 1000),
       consecutiveFailures: 2,
@@ -337,15 +379,13 @@ describe('AutoInvestService — allocation pipeline (#1001)', () => {
       },
     ]);
 
-    queueService.enqueueInvestmentFund.mockRejectedValue(new Error('Queue error'));
-
     await service.runAllocationCycle();
 
     const savedPlan = planRepo.save.mock.calls[planRepo.save.mock.calls.length - 1][0];
-    expect(savedPlan.status).toBe('paused');
-    expect(savedPlan.consecutiveFailures).toBe(3);
+    expect(savedPlan.status).toBe('active');
+    expect(savedPlan.consecutiveFailures).toBe(2);
     expect(notificationsService.createNotification).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'Auto-Invest Plan Paused' }),
+      expect.objectContaining({ title: 'Auto-Invest: Deal Matched' }),
     );
   });
 
@@ -353,6 +393,40 @@ describe('AutoInvestService — allocation pipeline (#1001)', () => {
     planRepo.find.mockResolvedValue([]);
     await service.runAllocationCycle();
     expect(queueService.enqueueInvestmentFund).not.toHaveBeenCalled();
+  });
+
+  it('backtests criteria against historical deals and labels ROI as estimated', async () => {
+    const plan = mockPlan({ minimumExpectedRoi: 12 as any, regionFilter: ['Africa'] });
+    planRepo.findOne.mockResolvedValue(plan);
+    dealRepo.find.mockResolvedValue([
+      {
+        id: 'historical-africa-deal',
+        commodity: 'cocoa',
+        farmLocation: 'Ghana, Africa',
+        expectedRoi: 20,
+        durationDays: 120,
+        riskScore: 30,
+      },
+      {
+        id: 'historical-low-roi-deal',
+        commodity: 'coffee',
+        farmLocation: 'Ghana, Africa',
+        expectedRoi: 8,
+        durationDays: 120,
+        riskScore: 30,
+      },
+    ] as TradeDeal[]);
+
+    const result = await service.backtestPlan(
+      'plan-uuid-5678',
+      INVESTOR_ID,
+      '2025-01-01T00:00:00.000Z',
+      '2026-01-01T00:00:00.000Z',
+    );
+
+    expect(result.matchedDeals).toBe(1);
+    expect(result.averageExpectedRoiPct).toBe(20);
+    expect(result.realizedReturnsAvailable).toBe(false);
   });
 
   it('sends notification when no open deals exist', async () => {

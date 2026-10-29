@@ -66,6 +66,42 @@ export class AutoInvestController {
     return this.autoInvestService.findByInvestor((req.user as User).id);
   }
 
+  @Get('templates')
+  @ApiOperation({ summary: 'List pre-built investment strategy templates' })
+  async templates() {
+    return this.autoInvestService.listStrategyTemplates();
+  }
+
+  @Get('community')
+  @ApiOperation({ summary: 'List strategies shared by the investor community' })
+  async community() {
+    return this.autoInvestService.listCommunityStrategies();
+  }
+
+  @Get(':id/versions')
+  @ApiOperation({ summary: 'Get the version history for an owned strategy' })
+  async versions(@Request() req: AuthRequest, @Param('id') id: string) {
+    return this.autoInvestService.getPlanVersions(id, (req.user as User).id);
+  }
+
+  @Get(':id/backtest')
+  @ApiOperation({ summary: 'Backtest an owned strategy against historical deal listings' })
+  @ApiQuery({ name: 'from', required: true, example: '2025-01-01T00:00:00.000Z' })
+  @ApiQuery({ name: 'to', required: true, example: '2026-01-01T00:00:00.000Z' })
+  async backtest(
+    @Request() req: AuthRequest,
+    @Param('id') id: string,
+    @Query('from') from: string,
+    @Query('to') to: string,
+  ) {
+    return this.autoInvestService.backtestPlan(
+      id,
+      (req.user as User).id,
+      from,
+      to,
+    );
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get a specific auto-invest plan' })
   @ApiParam({ name: 'id', description: 'Plan UUID' })

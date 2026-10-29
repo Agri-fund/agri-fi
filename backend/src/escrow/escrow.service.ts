@@ -18,6 +18,7 @@ import { StellarService, InvestorShare } from '../stellar/stellar.service';
 import { QueueService } from '../queue/queue.service';
 import { IdempotencyService } from '../queue/idempotency.service';
 import { Keypair } from '@stellar/stellar-sdk';
+import { NotificationsGateway } from '../notifications/notifications.gateway';
 
 interface DealDeliveredPayload {
   tradeDealId: string;
@@ -40,6 +41,7 @@ export class EscrowService {
     private readonly config: ConfigService,
     private readonly dataSource: DataSource,
     private readonly logger: PinoLogger,
+    @Optional() private readonly notificationsGateway?: NotificationsGateway,
     @Optional()
     @InjectMetric('escrow_release_attempts_total')
     private readonly releaseAttempts?: Counter<string>,
@@ -277,6 +279,23 @@ export class EscrowService {
         this.logger.info(
           `Deal ${tradeDealId} committed to completed. Stellar TX: ${stellarTxId}`,
         );
+
+        for (const investment of investments) {
+          if (investment.investor?.id) {
+            this.notificationsGateway?.publishEscrowReleased({
+              userId: investment.investor.id,
+              dealId: tradeDealId,
+              title: 'Escrow released',
+              message: 'Escrow funds have been released for the completed deal',
+            });
+          }
+        }
+        this.notificationsGateway?.publishDealStatusChanged({
+          dealId: tradeDealId,
+          status: 'completed',
+          title: 'Deal status changed',
+          message: 'The deal is complete and escrow has been released',
+        });
       } catch (dbError) {
         // Roll back all DB writes atomically. The Stellar release already
         // happened, so we log the Stellar TX ID for manual reconciliation.

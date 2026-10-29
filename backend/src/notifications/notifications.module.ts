@@ -63,6 +63,7 @@ import { SmsNotificationHelper } from './sms-notification-helper';
   ],
   exports: [
     NotificationsService,
+    NotificationsGateway,
     EmailTemplateService,
     NotificationPreferencesService,
     PushNotificationService,

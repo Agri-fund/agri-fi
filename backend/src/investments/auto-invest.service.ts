@@ -6,11 +6,14 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, LessThanOrEqual, DataSource } from 'typeorm';
+import { Repository, LessThanOrEqual, Between } from 'typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PinoLogger } from 'nestjs-pino';
-import { v4 as uuidv4 } from 'uuid';
-import { AutoInvestPlan, AutoInvestCadence } from './entities/auto-invest-plan.entity';
+import {
+  AutoInvestPlan,
+  AutoInvestCadence,
+  AutoInvestPlanVersion,
+} from './entities/auto-invest-plan.entity';
 import {
   CreateAutoInvestPlanDto,
   UpdateAutoInvestPlanDto,
@@ -18,14 +21,95 @@ import {
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
 import { RiskScoringService } from '../trade-deals/risk-scoring.service';
 import { NotificationsService } from '../notifications/notifications.service';
-import { QueueService } from '../queue/queue.service';
 import { User } from '../auth/entities/user.entity';
-
-/** Maximum consecutive failures before a plan is auto-paused */
-const MAX_CONSECUTIVE_FAILURES = 3;
 
 /** How many open deals to evaluate per plan run (prevents runaway scans) */
 const MAX_DEALS_TO_EVALUATE = 20;
+const MAX_BACKTEST_DEALS = 2000;
+
+const STRATEGY_TEMPLATES = [
+  {
+    id: 'africa-growth',
+    name: 'Africa growth',
+    description: 'Higher expected ROI deals located in Africa with a moderate risk ceiling.',
+    minimumExpectedRoi: 15,
+    regionFilter: ['Africa'],
+    maxRiskScore: 65,
+  },
+  {
+    id: 'capital-preservation',
+    name: 'Capital preservation',
+    description: 'Lower-risk deals with a shorter duration and broad commodity coverage.',
+    minimumExpectedRoi: 5,
+    maxRiskScore: 35,
+    maxDurationDays: 180,
+  },
+  {
+    id: 'cocoa-income',
+    name: 'Cocoa income',
+    description: 'Cocoa deals with a minimum expected return and a capped position size.',
+    minimumExpectedRoi: 10,
+    maxRiskScore: 60,
+    dealTypeFilter: ['cocoa'],
+    maxPositionUsd: 1000,
+  },
+];
+
+function strategySnapshot(plan: AutoInvestPlan): Record<string, unknown> {
+  return {
+    name: plan.name,
+    amountUsd: plan.amountUsd,
+    cadence: plan.cadence,
+    maxRiskScore: plan.maxRiskScore,
+    dealTypeFilter: plan.dealTypeFilter,
+    minimumExpectedRoi: plan.minimumExpectedRoi,
+    regionFilter: plan.regionFilter,
+    maxDurationDays: plan.maxDurationDays,
+    maxPositionUsd: plan.maxPositionUsd,
+    dailyCapUsd: plan.dailyCapUsd,
+    isPublic: plan.isPublic,
+  };
+}
+
+function matchesPlanCriteria(plan: AutoInvestPlan, deal: TradeDeal): boolean {
+  if (
+    plan.dealTypeFilter?.length &&
+    !plan.dealTypeFilter.some(
+      (commodity) => commodity.toLowerCase() === deal.commodity.toLowerCase(),
+    )
+  ) {
+    return false;
+  }
+
+  if (
+    plan.minimumExpectedRoi !== null &&
+    plan.minimumExpectedRoi !== undefined &&
+    (deal.expectedRoi === null ||
+      deal.expectedRoi === undefined ||
+      Number(deal.expectedRoi) < Number(plan.minimumExpectedRoi))
+  ) {
+    return false;
+  }
+
+  if (
+    plan.maxDurationDays !== null &&
+    plan.maxDurationDays !== undefined &&
+    (deal.durationDays === null ||
+      deal.durationDays === undefined ||
+      deal.durationDays > plan.maxDurationDays)
+  ) {
+    return false;
+  }
+
+  if (plan.regionFilter?.length) {
+    const location = (deal.farmLocation ?? '').toLowerCase();
+    if (!plan.regionFilter.some((region) => location.includes(region.toLowerCase()))) {
+      return false;
+    }
+  }
+
+  return true;
+}
 
 function addCadenceDays(date: Date, cadence: AutoInvestCadence): Date {
   const result = new Date(date);
@@ -46,8 +130,6 @@ export class AutoInvestService {
     private readonly userRepo: Repository<User>,
     private readonly riskScoringService: RiskScoringService,
     private readonly notificationsService: NotificationsService,
-    private readonly queueService: QueueService,
-    private readonly dataSource: DataSource,
     private readonly logger: PinoLogger,
   ) {
     (this.logger as any).setContext(AutoInvestService.name);
@@ -68,17 +150,25 @@ export class AutoInvestService {
     if (investor.role !== 'investor') {
       throw new ForbiddenException('Only investors can create auto-invest plans.');
     }
-    if (investor.kycStatus !== 'approved') {
-      throw new ForbiddenException('KYC must be approved before creating an auto-invest plan.');
+    if (investor.kycStatus !== 'verified') {
+      throw new ForbiddenException('KYC must be verified before creating an auto-invest plan.');
     }
 
     const plan = this.planRepo.create({
       investorId,
+      name: dto.name?.trim() || 'Auto-invest strategy',
       amountUsd: dto.amountUsd,
       cadence: dto.cadence,
       fundingWallet: dto.fundingWallet,
       maxRiskScore: dto.maxRiskScore ?? 75,
       dealTypeFilter: dto.dealTypeFilter ?? null,
+      minimumExpectedRoi: dto.minimumExpectedRoi ?? null,
+      regionFilter: dto.regionFilter ?? null,
+      maxDurationDays: dto.maxDurationDays ?? null,
+      maxPositionUsd: dto.maxPositionUsd ?? null,
+      isPublic: false,
+      version: 1,
+      versionHistory: [],
       dailyCapUsd: dto.dailyCapUsd ?? null,
       status: 'active',
       consecutiveFailures: 0,
@@ -117,14 +207,109 @@ export class AutoInvestService {
       throw new ConflictException('Cannot update a cancelled plan.');
     }
 
+    if (Object.keys(dto).length > 0) {
+      const history: AutoInvestPlanVersion[] = plan.versionHistory ?? [];
+      history.push({
+        version: plan.version,
+        snapshot: strategySnapshot(plan),
+        createdAt: new Date().toISOString(),
+      });
+      plan.versionHistory = history;
+      plan.version += 1;
+    }
+
+    if (dto.name !== undefined) plan.name = dto.name.trim();
     if (dto.amountUsd !== undefined) plan.amountUsd = dto.amountUsd;
     if (dto.cadence !== undefined) plan.cadence = dto.cadence;
     if (dto.fundingWallet !== undefined) plan.fundingWallet = dto.fundingWallet;
     if (dto.maxRiskScore !== undefined) plan.maxRiskScore = dto.maxRiskScore;
     if (dto.dealTypeFilter !== undefined) plan.dealTypeFilter = dto.dealTypeFilter ?? null;
     if (dto.dailyCapUsd !== undefined) plan.dailyCapUsd = dto.dailyCapUsd ?? null;
+    if (dto.minimumExpectedRoi !== undefined) plan.minimumExpectedRoi = dto.minimumExpectedRoi ?? null;
+    if (dto.regionFilter !== undefined) plan.regionFilter = dto.regionFilter ?? null;
+    if (dto.maxDurationDays !== undefined) plan.maxDurationDays = dto.maxDurationDays ?? null;
+    if (dto.maxPositionUsd !== undefined) plan.maxPositionUsd = dto.maxPositionUsd ?? null;
+    if (dto.isPublic !== undefined) plan.isPublic = dto.isPublic;
 
     return this.planRepo.save(plan);
+  }
+
+  async listCommunityStrategies(): Promise<Array<Record<string, unknown>>> {
+    const plans = await this.planRepo.find({
+      where: { status: 'active', isPublic: true },
+      order: { updatedAt: 'DESC' },
+      take: 100,
+    });
+
+    return plans.map((plan) => ({
+      id: plan.id,
+      name: plan.name,
+      version: plan.version,
+      maxRiskScore: plan.maxRiskScore,
+      dealTypeFilter: plan.dealTypeFilter,
+      minimumExpectedRoi: plan.minimumExpectedRoi,
+      regionFilter: plan.regionFilter,
+      maxDurationDays: plan.maxDurationDays,
+      maxPositionUsd: plan.maxPositionUsd,
+      updatedAt: plan.updatedAt,
+    }));
+  }
+
+  listStrategyTemplates() {
+    return STRATEGY_TEMPLATES;
+  }
+
+  async getPlanVersions(planId: string, investorId: string) {
+    const plan = await this.findOne(planId, investorId);
+    return {
+      currentVersion: plan.version,
+      current: strategySnapshot(plan),
+      history: plan.versionHistory ?? [],
+    };
+  }
+
+  async backtestPlan(
+    planId: string,
+    investorId: string,
+    from: string,
+    to: string,
+  ) {
+    const plan = await this.findOne(planId, investorId);
+    const start = new Date(from);
+    const end = new Date(to);
+    if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || start >= end) {
+      throw new BadRequestException('Backtest dates must be valid and the start must be before the end.');
+    }
+
+    const deals = await this.dealRepo.find({
+      where: { createdAt: Between(start, end) },
+      order: { createdAt: 'ASC' },
+      take: MAX_BACKTEST_DEALS,
+    });
+    const candidates = deals.filter((deal) => matchesPlanCriteria(plan, deal));
+    const eligible = candidates.filter((deal) => {
+      return deal.riskScore !== null &&
+        deal.riskScore !== undefined &&
+        Number(deal.riskScore) <= Number(plan.maxRiskScore);
+    });
+    const roiValues = eligible
+      .map((deal) => deal.expectedRoi)
+      .filter((roi): roi is number => roi !== null && roi !== undefined)
+      .map(Number);
+
+    return {
+      from: start.toISOString(),
+      to: end.toISOString(),
+      historicalDealsScanned: deals.length,
+      matchedDeals: eligible.length,
+      averageExpectedRoiPct: roiValues.length
+        ? roiValues.reduce((sum, roi) => sum + roi, 0) / roiValues.length
+        : null,
+      realizedWinRatePct: null,
+      maxDrawdownPct: null,
+      realizedReturnsAvailable: false,
+      capped: deals.length === MAX_BACKTEST_DEALS,
+    };
   }
 
   async pausePlan(planId: string, investorId: string, paused: boolean): Promise<AutoInvestPlan> {
@@ -165,8 +350,9 @@ export class AutoInvestService {
   // ─── Cron allocation pipeline ──────────────────────────────────────────────
 
   /**
-   * Runs every 15 minutes. Evaluates all active plans whose next_run_at has
-   * elapsed, selects best-fit open deals, and enqueues investment.fund jobs.
+  * Runs every 30 minutes. Evaluates active plans whose next_run_at has
+  * elapsed and alerts investors about the best-fit open deal. Settlement
+  * requires an investor-signed transaction in the existing investment flow.
    */
   @Cron(CronExpression.EVERY_30_MINUTES)
   async runAllocationCycle(): Promise<void> {
@@ -202,30 +388,8 @@ export class AutoInvestService {
   }
 
   private async executePlan(plan: AutoInvestPlan, now: Date): Promise<void> {
-    const dailyCapUsd = plan.dailyCapUsd ? Number(plan.dailyCapUsd) : null;
     const amountUsd = Number(plan.amountUsd);
     const maxRiskScore = Number(plan.maxRiskScore);
-
-    // ── Daily cap check ────────────────────────────────────────────────────
-    if (dailyCapUsd !== null) {
-      const todayStart = new Date(now);
-      todayStart.setHours(0, 0, 0, 0);
-
-      // We track today's allocation via auto_invest_executions (simplified:
-      // use plan's lastRunAt date to detect same-day runs)
-      if (
-        plan.lastRunAt &&
-        plan.lastRunAt >= todayStart &&
-        amountUsd >= dailyCapUsd
-      ) {
-        this.logger.info(
-          { planId: plan.id },
-          'Auto-invest: daily cap reached, skipping run',
-        );
-        await this.advancePlanSchedule(plan, now);
-        return;
-      }
-    }
 
     // ── Select eligible deals ──────────────────────────────────────────────
     const candidateDeals = await this.dealRepo.find({
@@ -246,10 +410,7 @@ export class AutoInvestService {
 
     for (const deal of candidateDeals) {
       // Apply commodity filter
-      if (
-        plan.dealTypeFilter?.length &&
-        !plan.dealTypeFilter.includes(deal.commodity.toLowerCase())
-      ) {
+      if (!matchesPlanCriteria(plan, deal)) {
         continue;
       }
 
@@ -299,7 +460,18 @@ export class AutoInvestService {
 
     // ── Compute token amount (clamped to remaining capacity) ──────────────
     const remaining = Number(selectedDeal.totalValue) - Number(selectedDeal.totalInvested);
-    const effectiveAmount = Math.min(amountUsd, remaining);
+    const maxPositionUsd = plan.maxPositionUsd
+      ? Number(plan.maxPositionUsd)
+      : Number.POSITIVE_INFINITY;
+    const dailyCapUsd = plan.dailyCapUsd
+      ? Number(plan.dailyCapUsd)
+      : Number.POSITIVE_INFINITY;
+    const effectiveAmount = Math.min(
+      amountUsd,
+      remaining,
+      maxPositionUsd,
+      dailyCapUsd,
+    );
     const tokenAmount = Math.floor(effectiveAmount / 100);
 
     if (tokenAmount < 1) {
@@ -311,63 +483,22 @@ export class AutoInvestService {
       return;
     }
 
-    // ── Check funding wallet has sufficient balance ────────────────────────
-    // (In production this should query Stellar balance; here we optimistically
-    //  proceed and let the queue processor handle failures)
-
-    // ── Enqueue investment.fund with idempotency key ───────────────────────
-    const idempotencyKey = `auto-invest-${plan.id}-${now.toISOString().slice(0, 10)}`;
-
-    try {
-      await this.queueService.enqueueInvestmentFund({
-        investmentId: uuidv4(),
-        signedXdr: '', // Queue processor handles signing via escrow key
-        escrowPublicKey: selectedDeal.escrowPublicKey ?? '',
-        encryptedEscrowSecret: selectedDeal.escrowSecretKey ?? '',
-        assetCode: selectedDeal.tokenSymbol ?? '',
+    this.logger.info(
+      {
+        planId: plan.id,
+        dealId: selectedDeal.id,
         tokenAmount,
-        investorWallet: plan.fundingWallet,
         amountUsd: tokenAmount * 100,
-        correlationId: idempotencyKey,
-      });
-
-      this.logger.info(
-        {
-          planId: plan.id,
-          dealId: selectedDeal.id,
-          tokenAmount,
-          amountUsd: tokenAmount * 100,
-          idempotencyKey,
-        },
-        'Auto-invest: investment.fund enqueued',
-      );
-
-      // ── Success path ──────────────────────────────────────────────────────
-      plan.consecutiveFailures = 0;
-      plan.lastRunAt = now;
-      await this.advancePlanSchedule(plan, now);
-      await this.notifyInvestor(plan, 'allocated', { dealId: selectedDeal.id, tokenAmount, amountUsd: tokenAmount * 100 });
-    } catch (err: any) {
-      this.logger.error(
-        { planId: plan.id, error: err.message },
-        'Auto-invest: failed to enqueue investment',
-      );
-
-      plan.consecutiveFailures += 1;
-
-      if (plan.consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-        plan.status = 'paused';
-        this.logger.warn(
-          { planId: plan.id },
-          `Auto-invest: plan paused after ${MAX_CONSECUTIVE_FAILURES} consecutive failures`,
-        );
-        await this.notifyInvestor(plan, 'paused_due_to_failures');
-      }
-
-      plan.nextRunAt = addCadenceDays(now, plan.cadence);
-      await this.planRepo.save(plan);
-      throw err;
-    }
+      },
+      'Auto-invest: matched deal requires an investor-signed transaction',
+    );
+    plan.lastRunAt = now;
+    await this.advancePlanSchedule(plan, now);
+    await this.notifyInvestor(plan, 'matched_awaiting_signature', {
+      dealId: selectedDeal.id,
+      tokenAmount,
+      amountUsd: tokenAmount * 100,
+    });
   }
 
   private async advancePlanSchedule(plan: AutoInvestPlan, now: Date): Promise<void> {
@@ -377,14 +508,17 @@ export class AutoInvestService {
 
   private async notifyInvestor(
     plan: AutoInvestPlan,
-    event: 'allocated' | 'skipped_no_deals' | 'skipped_no_eligible_deals' | 'paused_due_to_failures',
+    event:
+      | 'matched_awaiting_signature'
+      | 'skipped_no_deals'
+      | 'skipped_no_eligible_deals',
     meta?: Record<string, unknown>,
   ): Promise<void> {
     try {
       const messages: Record<string, { title: string; message: string }> = {
-        allocated: {
-          title: 'Auto-Invest: Allocation Made',
-          message: `Your auto-invest plan allocated ${meta?.tokenAmount} token(s) ($${meta?.amountUsd}) to deal ${meta?.dealId}.`,
+        matched_awaiting_signature: {
+          title: 'Auto-Invest: Deal Matched',
+          message: `Deal ${meta?.dealId} matches your plan for ${meta?.tokenAmount} token(s) ($${meta?.amountUsd}). Sign the transaction to invest; funds have not been moved.`,
         },
         skipped_no_deals: {
           title: 'Auto-Invest: No Open Deals',
@@ -393,10 +527,6 @@ export class AutoInvestService {
         skipped_no_eligible_deals: {
           title: 'Auto-Invest: No Eligible Deals',
           message: 'Your auto-invest plan ran but no deals matched your risk/commodity filters.',
-        },
-        paused_due_to_failures: {
-          title: 'Auto-Invest Plan Paused',
-          message: `Your auto-invest plan has been paused after ${MAX_CONSECUTIVE_FAILURES} consecutive allocation failures. Please review and resume manually.`,
         },
       };
 
