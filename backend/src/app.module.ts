@@ -64,7 +64,8 @@ import { TracingMiddleware } from './tracing/tracing.middleware';
 import { PlatformIntegrationsModule } from './platform-integrations/platform-integrations.module';
 import { StressTestingModule } from './stress-testing/stress-testing.module';
 import { LetterOfCreditModule } from './letter-of-credit/letter-of-credit.module';
-import { FederatedLearningModule } from './federated-learning/federated-learning.module';
+import { FraudDetectionModule } from './fraud-detection/fraud-detection.module';
+import { AmlMonitoringModule } from './aml/aml-monitoring.module';
 import { DidModule } from './did/did.module';
 import { InsuranceModule } from './insurance/insurance.module';
 
@@ -137,6 +138,8 @@ import { InsuranceModule } from './insurance/insurance.module';
     WatchlistModule,
     DidModule,
     InsuranceModule,
+    FraudDetectionModule,
+    AmlMonitoringModule,
   ],
   providers: [
     {

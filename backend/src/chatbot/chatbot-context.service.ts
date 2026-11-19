@@ -1,14 +1,18 @@
 import { Injectable } from '@nestjs/common';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
 import { User } from '../auth/entities/user.entity';
+import {
+  Investment,
+  InvestmentStatus,
+} from '../investments/entities/investment.entity';
 
 export interface UserContext {
   userId: string;
   userRole: string;
   recentDeals: TradeDeal[];
-  recentInvestments: any[];
+  recentInvestments: Investment[];
   isNewUser: boolean;
   preferredLanguage: string;
 }
@@ -20,12 +24,14 @@ export class ChatbotContextService {
     private readonly dealRepo: Repository<TradeDeal>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    @InjectRepository(Investment)
+    private readonly investmentRepo: Repository<Investment>,
   ) {}
 
   async getUserContext(userId: string): Promise<UserContext> {
     const user = await this.userRepo.findOne({
       where: { id: userId },
-      select: ['id', 'role', 'createdAt', 'language'],
+      select: ['id', 'role', 'createdAt', 'preferredLanguage'],
     });
 
     if (!user) {
@@ -41,10 +47,21 @@ export class ChatbotContextService {
 
     // Get user's recent deals
     const recentDeals = await this.dealRepo.find({
-      where: [
-        { traderId: userId },
-        { farmerUserId: userId },
-      ],
+      where: [{ traderId: userId }, { farmerId: userId }],
+      order: { createdAt: 'DESC' },
+      take: 5,
+    });
+
+    const recentInvestments = await this.investmentRepo.find({
+      where: {
+        investorId: userId,
+        status: In([
+          InvestmentStatus.CONFIRMED,
+          InvestmentStatus.ACTIVE,
+          InvestmentStatus.RELEASING,
+          InvestmentStatus.COMPLETED,
+        ]),
+      },
       order: { createdAt: 'DESC' },
       take: 5,
     });
@@ -55,9 +72,9 @@ export class ChatbotContextService {
       userId,
       userRole: user.role,
       recentDeals,
-      recentInvestments: [], // TODO: Fetch from investments table
+      recentInvestments,
       isNewUser,
-      preferredLanguage: user.language || 'en',
+      preferredLanguage: user.preferredLanguage || 'en',
     };
   }
 
@@ -81,7 +98,9 @@ export class ChatbotContextService {
   }
 
   private isNewUser(createdAt: Date): boolean {
-    const daysSinceCreation = Math.floor((Date.now() - createdAt.getTime()) / (1000 * 60 * 60 * 24));
+    const daysSinceCreation = Math.floor(
+      (Date.now() - createdAt.getTime()) / (1000 * 60 * 60 * 24),
+    );
     return daysSinceCreation < 7;
   }
 
@@ -94,8 +113,16 @@ export class ChatbotContextService {
     ];
 
     const roleTopics: Record<string, string[]> = {
-      trader: ['Create new trade deal', 'Manage milestones', 'Escrow information'],
-      farmer: ['Understand pricing', 'Track harvest deals', 'Settlement process'],
+      trader: [
+        'Create new trade deal',
+        'Manage milestones',
+        'Escrow information',
+      ],
+      farmer: [
+        'Understand pricing',
+        'Track harvest deals',
+        'Settlement process',
+      ],
       investor: ['View returns', 'Investment portfolio', 'Risk assessment'],
       logistics: ['Coordinate shipments', 'Track packages', 'Documentation'],
     };
