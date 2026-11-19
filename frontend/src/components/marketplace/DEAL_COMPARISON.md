@@ -81,28 +81,14 @@ COMPARISON_URL_PARAM: 'compare'
 
 **Integration:**
 ```typescript
-// Restore comparison from URL params or localStorage
+// Restore comparison from URL params or localStorage by fetching those IDs.
 useEffect(() => {
   const compareParam = searchParams.get('compare');
-  if (compareParam) {
-    // Use deep link IDs
-    sessionStorage.setItem('pending-comparison-ids', JSON.stringify(ids));
-  } else {
-    // Restore from localStorage
-    const saved = localStorage.getItem('agri-fi:deal-comparison');
-    if (saved) sessionStorage.setItem('pending-comparison-ids', JSON.stringify(JSON.parse(saved)));
-  }
+  const ids = compareParam?.split(',') ?? JSON.parse(
+    localStorage.getItem('agri-fi:deal-comparison') ?? '[]',
+  );
+  if (ids.length > 0) getDealsByIds(ids.slice(0, 3)).then(setComparisonDeals);
 }, [searchParams]);
-
-// Load deals and restore comparison
-useEffect(() => {
-  getOpenDeals(...).then((res) => {
-    // Filter loaded deals to pending comparison IDs
-    const pendingIds = sessionStorage.getItem('pending-comparison-ids');
-    const dealsToCompare = res.data.filter((d) => compareIds.includes(d.id));
-    setComparisonDeals(prev => [...prev, ...dealsToCompare].slice(0, 3));
-  });
-}, [urlPage]);
 ```
 
 ## Metrics Displayed

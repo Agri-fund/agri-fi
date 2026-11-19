@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { getOpenDeals, Deal } from "@/lib/api";
+import { getDealsByIds, getOpenDeals, Deal } from "@/lib/api";
 import MarketplaceSkeleton from "@/components/marketplace/MarketplaceSkeleton";
 import Pagination from "@/components/ui/Pagination";
 import DealCard from "@/components/marketplace/DealCard";
@@ -38,6 +38,7 @@ function MarketplaceContent() {
   const urlSortOrder = (searchParams.get("sortOrder") ?? "DESC") as
     | "ASC"
     | "DESC";
+  const compareParam = searchParams.get("compare");
 
   const [deals, setDeals] = useState<Deal[]>([]);
   const [total, setTotal] = useState(0);
@@ -46,47 +47,64 @@ function MarketplaceContent() {
   const [comparisonDeals, setComparisonDeals] = useState<Deal[]>([]);
   const [hydrated, setHydrated] = useState(false);
 
-  // Restore comparison from localStorage and deep links on mount
+  // Restore comparison deals independently of the current marketplace page.
   useEffect(() => {
-    setHydrated(true);
     if (typeof window === "undefined") return;
 
+    let active = true;
+    let compareIds: string[] = [];
     try {
-      // Check for deep link (compare=id1,id2,id3)
-      const compareParam = searchParams.get("compare");
       if (compareParam) {
-        const compareIds = compareParam
+        compareIds = compareParam
           .split(",")
           .map((id) => id.trim())
-          .filter((id) => id.length > 0);
-
-        // Fetch and set comparison deals (will be filtered to existing deals by parent)
-        // For now, we'll mark these IDs to be restored when deals load
-        if (compareIds.length > 0) {
-          sessionStorage.setItem(
-            "pending-comparison-ids",
-            JSON.stringify(compareIds),
-          );
-        }
+          .filter(Boolean);
       } else {
-        // Restore from localStorage if no deep link
         const raw = localStorage.getItem("agri-fi:deal-comparison");
         if (raw) {
           const savedIds = JSON.parse(raw) as string[];
-          if (Array.isArray(savedIds) && savedIds.length > 0) {
-            sessionStorage.setItem(
-              "pending-comparison-ids",
-              JSON.stringify(savedIds),
-            );
+          if (Array.isArray(savedIds)) {
+            compareIds = savedIds
+              .filter((id): id is string => typeof id === "string")
+              .map((id) => id.trim())
+              .filter(Boolean);
           }
         }
       }
     } catch {
-      // Silently fail if localStorage/sessionStorage unavailable
+      console.warn("[marketplace] Could not restore saved comparison IDs");
     }
 
+    if (compareIds.length > 0) {
+      getDealsByIds([...new Set(compareIds)].slice(0, 3))
+        .then((restoredDeals) => {
+          if (active) {
+            setComparisonDeals((current) =>
+              [...current, ...restoredDeals]
+                .filter(
+                  (deal, index, all) =>
+                    all.findIndex((item) => item.id === deal.id) === index,
+                )
+                .slice(0, 3),
+            );
+          }
+        })
+        .catch((error) => {
+          console.error("[marketplace] Failed to fetch comparison deals", error);
+        });
+    }
+
+    return () => {
+      active = false;
+    };
+  }, [compareParam]);
+
+  useEffect(() => {
+    setHydrated(true);
+    if (typeof window === "undefined") return;
+
     const hasUrlFilters = searchParams.toString().length > 0;
-    if (!hasUrlFilters && typeof window !== "undefined") {
+    if (!hasUrlFilters) {
       try {
         const raw = sessionStorage.getItem(SESSION_KEY);
         if (raw) {
@@ -112,7 +130,9 @@ function MarketplaceContent() {
 
   useEffect(() => {
     if (!hydrated) return;
-    const query = buildQuery(filters, page);
+    const params = new URLSearchParams(buildQuery(filters, page));
+    if (compareParam) params.set("compare", compareParam);
+    const query = params.toString();
     router.replace(query ? `${pathname}?${query}` : pathname, {
       scroll: false,
     });
@@ -121,7 +141,7 @@ function MarketplaceContent() {
     } catch {
       // Session persistence is best-effort.
     }
-  }, [filters, page, hydrated, pathname, router]);
+  }, [filters, page, hydrated, pathname, router, compareParam]);
 
   useEffect(() => {
     let active = true;
@@ -131,30 +151,6 @@ function MarketplaceContent() {
         if (!active) return;
         setDeals(res.data);
         setTotal(res.total);
-
-        // Restore comparison deals from pending IDs
-        try {
-          const pendingIds = sessionStorage.getItem("pending-comparison-ids");
-          if (pendingIds) {
-            const compareIds = JSON.parse(pendingIds) as string[];
-            const allLoadedDeals = res.data; // Current page deals
-            const dealsToCompare = allLoadedDeals.filter((d) =>
-              compareIds.includes(d.id),
-            );
-            if (dealsToCompare.length > 0) {
-              setComparisonDeals((current) => {
-                const merged = [...current, ...dealsToCompare].filter(
-                  (deal, index, arr) =>
-                    arr.findIndex((d) => d.id === deal.id) === index,
-                );
-                return merged.slice(0, 3);
-              });
-            }
-            sessionStorage.removeItem("pending-comparison-ids");
-          }
-        } catch {
-          // Silently fail
-        }
       })
       .catch(() => setDeals([]))
       .finally(() => setLoading(false));

@@ -125,14 +125,28 @@ export default function DealComparison({
       } catch {
         // Silently fail if localStorage unavailable
       }
-    } else {
+    }
+  }, [deals]);
+
+  const handleRemove = (dealId: string) => {
+    if (deals.length === 1) {
       try {
         localStorage.removeItem(COMPARISON_STORAGE_KEY);
       } catch {
         // Silently fail
       }
     }
-  }, [deals]);
+    onRemove(dealId);
+  };
+
+  const handleClear = () => {
+    try {
+      localStorage.removeItem(COMPARISON_STORAGE_KEY);
+    } catch {
+      // Silently fail
+    }
+    onClear();
+  };
 
   // Generate share link
   useEffect(() => {
@@ -200,7 +214,7 @@ export default function DealComparison({
             </button>
             <button
               type="button"
-              onClick={onClear}
+              onClick={handleClear}
               className="text-xs font-semibold text-slate-500 hover:text-slate-900"
             >
               Clear all
@@ -225,7 +239,7 @@ export default function DealComparison({
                     </Link>
                     <button
                       type="button"
-                      onClick={() => onRemove(deal.id)}
+                      onClick={() => handleRemove(deal.id)}
                       aria-label={`Remove ${deal.commodity} from comparison`}
                       className="text-slate-400 hover:text-slate-900"
                     >

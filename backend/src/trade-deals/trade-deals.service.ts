@@ -360,14 +360,16 @@ export class TradeDealsService {
     status?: 'open' | 'almost funded' | 'fully funded';
     sortBy?: DealSearchSortBy | 'highest_esg';
     q?: string;
+    ids?: string[];
     page?: number;
     limit?: number;
     /** Marks rows this viewer has starred (#1003). */
     viewerId?: string;
   }): Promise<{ data: any[]; total: number; page: number; limit: number }> {
     const page = query.page ?? 1;
-    const limit = query.limit ?? 12;
-    const skip = (page - 1) * limit;
+    const ids = query.ids?.filter(Boolean);
+    const limit = ids?.length || query.limit || 12;
+    const skip = ids?.length ? 0 : (page - 1) * limit;
 
     if (query.commodity && !/^[a-zA-Z0-9 _,-]{1,100}$/.test(query.commodity)) {
       throw new BadRequestException('Invalid commodity search term.');
@@ -409,6 +411,10 @@ export class TradeDealsService {
       ])
       .skip(skip)
       .take(limit);
+
+    if (ids?.length) {
+      qb.andWhere('deal.id IN (:...ids)', { ids });
+    }
 
     const commodityValues = query.commodity
       ?.split(',')

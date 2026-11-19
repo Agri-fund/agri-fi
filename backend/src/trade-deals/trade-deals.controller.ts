@@ -301,6 +301,7 @@ export class TradeDealsController {
   @ApiQuery({ name: 'status', required: false, example: 'almost funded' })
   @ApiQuery({ name: 'sortBy', required: false, example: 'newest' })
   @ApiQuery({ name: 'q', required: false, example: 'cocoa cooperative' })
+  @ApiQuery({ name: 'ids', required: false, example: 'deal-id-1,deal-id-2' })
   @ApiQuery({ name: 'page', required: false, example: 1 })
   @ApiQuery({ name: 'limit', required: false, example: 12 })
   @ApiResponse({ status: 200, description: 'Paginated list of open deals' })
@@ -324,6 +325,10 @@ export class TradeDealsController {
       status: query.status as any,
       sortBy: query.sortBy as any,
       q: query.q,
+      ids: query.ids
+        ?.split(',')
+        .map((id) => id.trim())
+        .filter(Boolean),
       page: query.page ? parseInt(query.page, 10) : undefined,
       limit: query.limit ? parseInt(query.limit, 10) : undefined,
     });

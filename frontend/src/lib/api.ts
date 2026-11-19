@@ -851,6 +851,21 @@ export async function getOpenDeals(
   };
 }
 
+export async function getDealsByIds(ids: string[]): Promise<Deal[]> {
+  if (ids.length === 0) return [];
+
+  const raw = await apiFetch<{ data: any[] }>(
+    `/trade-deals?ids=${ids.map(encodeURIComponent).join(",")}`,
+  );
+  const dealsById = new Map(
+    raw.data.map((deal) => [deal.id, normalizeDeal(deal)]),
+  );
+  return ids.flatMap((id) => {
+    const deal = dealsById.get(id);
+    return deal ? [deal] : [];
+  });
+}
+
 export async function getDealById(id: string): Promise<Deal | null> {
   try {
     const raw = await apiFetch<any>(`/trade-deals/${id}`);
