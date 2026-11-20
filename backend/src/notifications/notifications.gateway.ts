@@ -11,11 +11,12 @@ import {
 import { Server, Socket } from 'socket.io';
 import { OptionalWsJwtGuard } from './ws-jwt.guard';
 import { NotificationsService } from './notifications.service';
+import { websocketCorsOptions } from '../common/websocket-cors';
 /** Rooms that unauthenticated sockets are allowed to join. */
 export const PUBLIC_ROOMS = ['deal_funding_progress'] as const;
 
 @WebSocketGateway({
-  cors: { origin: true, credentials: true },
+  cors: websocketCorsOptions,
   namespace: '/notifications',
 })
 @UseGuards(OptionalWsJwtGuard)

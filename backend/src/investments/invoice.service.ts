@@ -2,7 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { PaymentDistribution } from '../escrow/entities/payment-distribution.entity';
-import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
+import { User } from '../auth/entities/user.entity';
+import { FeeCalculatorService } from './fee-calculator.service';
 import PDFDocument from 'pdfkit';
 
 export interface InvoiceData {
@@ -13,6 +14,7 @@ export interface InvoiceData {
   dealId: string;
   amountUsd: string;
   platformFeeUsd: string;
+  platformFeeRatePercent: string;
   netAmountUsd: string;
   currency: string;
   disbursementDate: string;
@@ -26,8 +28,9 @@ export class InvoiceService {
   constructor(
     @InjectRepository(PaymentDistribution)
     private readonly paymentDistributionRepo: Repository<PaymentDistribution>,
-    @InjectRepository(TradeDeal)
-    private readonly tradeDealRepo: Repository<TradeDeal>,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
+    private readonly feeCalculatorService: FeeCalculatorService,
   ) {}
 
   async getInvoiceData(
@@ -48,9 +51,23 @@ export class InvoiceService {
       throw new Error('Unauthorized access to invoice');
     }
 
-    const platformFeePercent = 0.02; // 2% platform fee
     const amountUsd = parseFloat(paymentDistribution.amountUsd.toString());
-    const platformFeeUsd = amountUsd * platformFeePercent;
+    const investor = await this.userRepo.findOne({ where: { id: investorId } });
+    if (!investor) {
+      throw new Error('Investor not found');
+    }
+    const tradeDeal = paymentDistribution.tradeDeal;
+    if (!tradeDeal) {
+      throw new Error('Trade deal not found for invoice');
+    }
+    const feeBreakdown = await this.feeCalculatorService.calculateFeeBreakdown({
+      dealType: tradeDeal.commodity,
+      investorTier: this.feeCalculatorService.getInvestorTierFromUser(investor),
+      grossAmount: amountUsd,
+      referenceDate: paymentDistribution.createdAt,
+    });
+    const platformSuccessFee = feeBreakdown.platformSuccessFee;
+    const platformFeeUsd = platformSuccessFee?.amount ?? 0;
     const netAmountUsd = amountUsd - platformFeeUsd;
 
     return {
@@ -61,6 +78,7 @@ export class InvoiceService {
       dealId: paymentDistribution.tradeDealId,
       amountUsd: amountUsd.toFixed(2),
       platformFeeUsd: platformFeeUsd.toFixed(2),
+      platformFeeRatePercent: (platformSuccessFee?.ratePercent ?? 0).toString(),
       netAmountUsd: netAmountUsd.toFixed(2),
       currency: 'USD',
       disbursementDate: paymentDistribution.createdAt.toISOString().split('T')[0],
@@ -115,7 +133,7 @@ export class InvoiceService {
     doc.text('Disbursement Amount', 50, tableTop + 40);
     doc.text(`${data.amountUsd} ${data.currency}`, 400, tableTop + 40);
 
-    doc.text('Platform Fee (2%)', 50, tableTop + 60);
+    doc.text(`Platform Fee (${data.platformFeeRatePercent}%)`, 50, tableTop + 60);
     doc.text(`${data.platformFeeUsd} ${data.currency}`, 400, tableTop + 60);
 
     doc.moveTo(50, tableTop + 80).lineTo(550, tableTop + 80).stroke();

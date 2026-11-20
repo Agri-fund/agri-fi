@@ -8,11 +8,12 @@ import {
 import { Server, Socket } from 'socket.io';
 import { Injectable } from '@nestjs/common';
 import { PinoLogger } from 'nestjs-pino';
+import { websocketCorsOptions } from '../common/websocket-cors';
 
 @Injectable()
 @WebSocketGateway({
   namespace: '/milestones',
-  cors: { origin: true, credentials: true },
+  cors: websocketCorsOptions,
 })
 export class MilestonesGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
