@@ -1,4 +1,4 @@
-import { Controller, Get, Version, UseGuards } from '@nestjs/common';
+import { Controller, Get, UseGuards } from '@nestjs/common';
 import {
   HealthCheckService,
   HealthCheck,
