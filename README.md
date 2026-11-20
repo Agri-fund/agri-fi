@@ -180,3 +180,8 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for setup instructions, coding conventi
 ## License
 
 MIT
+
+## Handsoff notes
+
+<!-- handsoff-issue-1317 -->
+- #1317: bug: InsuranceService catch block references undefined 'error' variable in issuePolicy
