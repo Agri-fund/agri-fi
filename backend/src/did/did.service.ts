@@ -3,7 +3,11 @@ import {
   Logger,
   BadRequestException,
   NotFoundException,
+  ConflictException,
+  ForbiddenException,
 } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import * as crypto from 'crypto';
 import {
   DidDocument,
@@ -12,11 +16,14 @@ import {
   KycCredentialSubject,
 } from './did.interface';
 import {
+  CreateDidDocumentDto,
+  UpdateDidDocumentDto,
   GenerateDidDto,
   IssueCredentialDto,
   PresentCredentialDto,
   RevokeCredentialDto,
 } from './dto/did.dto';
+import { DidDocument as DidDocumentEntity } from './entities/did-document.entity';
 
 @Injectable()
 export class DidService {
@@ -25,6 +32,129 @@ export class DidService {
   // In-memory credential registry (in production backed by DB + Stellar contract ledger)
   private readonly credentialStore = new Map<string, VerifiableCredential>();
   private readonly revocationList = new Set<string>();
+
+  constructor(
+    @InjectRepository(DidDocumentEntity)
+    private readonly didDocumentRepository: Repository<DidDocumentEntity>,
+  ) {}
+
+  async createDid(
+    dto: CreateDidDocumentDto,
+    controllerId?: string,
+  ): Promise<DidDocumentEntity> {
+    const controller = controllerId ?? dto.controller;
+    if (!controller) {
+      throw new BadRequestException('A controller user id is required');
+    }
+
+    const did = `did:stellar:${dto.stellarAddress}`;
+    const existing = await this.didDocumentRepository.findOne({
+      where: { did },
+    });
+    if (existing) {
+      throw new ConflictException(`DID document ${did} already exists`);
+    }
+
+    const document = this.generateDid(dto);
+    const record = this.didDocumentRepository.create({
+      did,
+      document,
+      controller,
+    });
+    const saved = await this.didDocumentRepository.save(record);
+
+    this.logger.log(
+      `Persisted DID document ${did} for controller ${controller}`,
+    );
+    return saved;
+  }
+
+  async getDid(did: string): Promise<DidDocumentEntity> {
+    const record = await this.didDocumentRepository.findOne({
+      where: { did },
+    });
+    if (!record) {
+      throw new NotFoundException(`DID document ${did} not found`);
+    }
+    return record;
+  }
+
+  async updateDid(
+    did: string,
+    dto: UpdateDidDocumentDto,
+    controllerId?: string,
+  ): Promise<DidDocumentEntity> {
+    const record = await this.getDid(did);
+    this.assertController(record, controllerId);
+
+    const document: DidDocument = {
+      ...record.document,
+      ...(dto.document ?? {}),
+      id: did,
+      updated: new Date().toISOString(),
+    } as DidDocument;
+
+    record.document = document;
+    const saved = await this.didDocumentRepository.save(record);
+
+    this.logger.log(`Updated DID document ${did}`);
+    return saved;
+  }
+
+  async deactivateDid(
+    did: string,
+    controllerId?: string,
+  ): Promise<{ did: string; deactivated: boolean; deactivatedAt: string }> {
+    const record = await this.getDid(did);
+    this.assertController(record, controllerId);
+
+    const deactivatedAt = new Date();
+    await this.didDocumentRepository.softDelete({ did });
+
+    this.logger.warn(`Deactivated DID document ${did}`);
+    return {
+      did,
+      deactivated: true,
+      deactivatedAt: deactivatedAt.toISOString(),
+    };
+  }
+
+  async createDidDocument(
+    dto: CreateDidDocumentDto,
+    controllerId?: string,
+  ): Promise<DidDocumentEntity> {
+    return this.createDid(dto, controllerId);
+  }
+
+  async findDidDocument(did: string): Promise<DidDocumentEntity> {
+    return this.getDid(did);
+  }
+
+  async updateDidDocument(
+    did: string,
+    dto: UpdateDidDocumentDto,
+    controllerId?: string,
+  ): Promise<DidDocumentEntity> {
+    return this.updateDid(did, dto, controllerId);
+  }
+
+  async deactivateDidDocument(
+    did: string,
+    controllerId?: string,
+  ): Promise<{ did: string; deactivated: boolean; deactivatedAt: string }> {
+    return this.deactivateDid(did, controllerId);
+  }
+
+  private assertController(
+    record: DidDocumentEntity,
+    controllerId?: string,
+  ): void {
+    if (controllerId && record.controller !== controllerId) {
+      throw new ForbiddenException(
+        'Only the controller may modify this DID document',
+      );
+    }
+  }
 
   /**
    * Generates a W3C-compliant DID Document for a Stellar account.
@@ -156,7 +286,10 @@ export class DidService {
     }
 
     // Build selectively disclosed credential subject
-    const fullSubject = cred.credentialSubject as Record<string, unknown>;
+    const fullSubject = cred.credentialSubject as unknown as Record<
+      string,
+      unknown
+    >;
     const maskedSubject: Record<string, unknown> = { id: fullSubject.id };
 
     for (const attr of dto.requestedAttributes) {
@@ -167,7 +300,7 @@ export class DidService {
 
     const selectivelyDisclosedCred: VerifiableCredential = {
       ...cred,
-      credentialSubject: maskedSubject as KycCredentialSubject,
+      credentialSubject: maskedSubject as unknown as KycCredentialSubject,
     };
 
     const presentation: VerifiablePresentation = {
