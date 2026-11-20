@@ -107,8 +107,8 @@ services:
       - ./blockchain:/app/blockchain
       - ./target:/app/target
     environment:
-      - SOROBAN_RPC_HOST=http://soroban-rpc:8000
-      - SOROBAN_RPC_URL=http://soroban-rpc:8000/soroban/rpc
+      - SOROBAN_RPC_HOST=http://soroban-rpc:8000/rpc
+      - SOROBAN_RPC_URL=http://soroban-rpc:8000/rpc
       - NETWORK=standalone
     command: /bin/bash
     stdin_open: true
@@ -119,13 +119,19 @@ services:
       - default
 
   soroban-rpc:
-    image: stellar/soroban-preview:latest
+    image: stellar/quickstart:testing
     container_name: soroban-rpc
     ports:
       - '8000:8000'
     environment:
-      - SOROBAN_RPC_FRIENDBOT_URL=http://localhost:8000
-    command: soroban-rpc --help
+      - SOROBAN_RPC_FRIENDBOT_URL=http://localhost:8000/friendbot
+    command: --local --enable rpc,horizon
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS -X POST -H 'Content-Type: application/json' -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"getHealth\"}' http://localhost:8000/rpc | grep -q healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
     networks:
       - default
 
