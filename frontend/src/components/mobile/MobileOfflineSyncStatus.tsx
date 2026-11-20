@@ -11,6 +11,7 @@ import {
 export const MobileOfflineSyncStatus: React.FC = () => {
   const [isOnline, setIsOnline] = useState(true);
   const [pendingSyncCount, setPendingSyncCount] = useState(0);
+  const [hasInvestmentDraft, setHasInvestmentDraft] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const { trigger } = useHapticFeedback();
 
@@ -18,8 +19,10 @@ export const MobileOfflineSyncStatus: React.FC = () => {
     try {
       const operations = await getOfflineOperations();
       setPendingSyncCount(operations.length);
+      setHasInvestmentDraft(operations.some((operation) => operation.type === 'investment-draft'));
     } catch {
       setPendingSyncCount(0);
+      setHasInvestmentDraft(false);
     }
   }, []);
 
@@ -27,9 +30,9 @@ export const MobileOfflineSyncStatus: React.FC = () => {
     if (!navigator.onLine) return;
     setIsSyncing(true);
     try {
-      await flushOfflineOperations();
+      const result = await flushOfflineOperations();
       await refreshQueueCount();
-      trigger("success");
+      trigger(result.failed > 0 ? "warning" : "success");
     } catch {
       trigger("warning");
     } finally {
@@ -88,7 +91,9 @@ export const MobileOfflineSyncStatus: React.FC = () => {
         <span>
           {!isOnline
             ? "Offline Mode — Changes will sync when network reconnects"
-            : `${pendingSyncCount} offline transaction(s) pending sync`}
+            : hasInvestmentDraft
+              ? 'An old investment draft cannot sync automatically. Reopen the investment while online and sign it.'
+              : `${pendingSyncCount} offline transaction(s) pending sync`}
         </span>
       </div>
 

@@ -52,8 +52,12 @@ import { StorageService } from '../storage/storage.service';
 import { AuditService } from '../audit/audit.service';
 
 class UpdateUserRoleDto {
-  @IsIn(['farmer', 'trader', 'investor', 'company_admin', 'admin'])
-  role: 'farmer' | 'trader' | 'investor' | 'company_admin' | 'admin';
+  @IsIn(['farmer', 'trader', 'investor', 'company_admin', 'admin', 'compliance_officer'])
+  role: 'farmer' | 'trader' | 'investor' | 'company_admin' | 'admin' | 'compliance_officer';
+
+  @IsOptional()
+  @IsString()
+  complianceDomain?: string;
 
   @IsString()
   reason: string;
@@ -370,6 +374,7 @@ export class AdminController {
       dto.role,
       req.user.id,
       dto.reason,
+      dto.complianceDomain,
     );
   }
 

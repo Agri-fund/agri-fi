@@ -11,6 +11,30 @@ async function dismissNextDevErrors(page: Page) {
 }
 
 test.describe('visual regression baselines', () => {
+  test('transparency page renders seeded API data', async ({ page }) => {
+    await page.route('**/api/trade-deals', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([{
+          id: 'visual-deal-1',
+          commodity: 'Cocoa',
+          totalValue: 10000,
+          totalInvested: 2500,
+          status: 'open',
+          sorobanCampaignContractId: null,
+          stellarAssetTxId: null,
+          tokenSymbol: 'COCOA',
+          createdAt: '2026-01-01T00:00:00.000Z',
+        }]),
+      });
+    });
+    await page.goto('/en/transparency');
+    await expect(page.getByRole('heading', { name: 'Blockchain Transparency' })).toBeVisible();
+    await expect(page.getByRole('cell', { name: 'Cocoa' })).toBeVisible();
+    await page.locator('main').screenshot({ path: 'visual-test-results/transparency-seeded.png' });
+  });
+
   test('help center desktop', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/en/help');

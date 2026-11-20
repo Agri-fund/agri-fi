@@ -3,12 +3,14 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { setRequestLocale } from 'next-intl/server';
 import nextDynamic from 'next/dynamic';
-import { getDealById, Milestone } from '@/lib/api';
+import { getDealById, getTraderScorecard, Milestone, TraderScorecard } from '@/lib/api';
 import FundingProgressBar from '@/components/FundingProgressBar';
 import StatusBadge from '@/components/StatusBadge';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import InvestmentSection from '@/components/InvestmentSection';
 import DealStats from '@/components/marketplace/DealStats';
+import TraderScorecardCard from '@/components/traders/TraderScorecardCard';
+import AiSummaryCard from '@/components/deals/AiSummaryCard';
 
 // Heavy client components — loaded as separate chunks that are only fetched
 // when the browser renders this page, not included in the shared JS bundle.
@@ -162,6 +164,12 @@ export default async function DealDetailPage({ params }: { params: { id: string;
   const pct = deal.total_value > 0
     ? Math.min((Number(deal.total_invested) / Number(deal.total_value)) * 100, 100) : 0;
 
+  // Trader scorecard (#1413) — fetched server-side; failures degrade gracefully.
+  let scorecard: TraderScorecard | null = null;
+  if (deal.trader_id) {
+    try { scorecard = await getTraderScorecard(deal.trader_id); } catch { scorecard = null; }
+  }
+
   return (
     <ErrorBoundary>
       {/* Navbar */}
@@ -270,6 +278,12 @@ export default async function DealDetailPage({ params }: { params: { id: string;
 
           {/* Deal Health Indicators — Issue #1002 */}
           <DealHealthWidget dealId={deal.id} />
+
+          {/* Sidebar cards: AI Summary (#1415) + Trader Scorecard (#1413) */}
+          <div className="grid sm:grid-cols-2 gap-5">
+            {deal.ai_summary && <AiSummaryCard summary={deal.ai_summary} />}
+            {scorecard && <TraderScorecardCard scorecard={scorecard} />}
+          </div>
 
           <div className="grid sm:grid-cols-2 gap-5">
             {/* Documents */}

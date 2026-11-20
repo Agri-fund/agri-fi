@@ -46,10 +46,6 @@ export default defineConfig({
     url: baseURL,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
-    env: {
-      NEXT_PUBLIC_API_URL: 'http://localhost:3001',
-      BACKEND_URL: 'http://localhost:3001',
-    },
   },
   timeout: 60_000,
 });

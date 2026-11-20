@@ -1295,12 +1295,17 @@ export class AuthService {
     role: User['role'],
     adminId?: string,
     reason?: string,
+    complianceDomain?: string,
   ): Promise<{ id: string; role: string }> {
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found.');
 
     const previousRole = user.role;
+    if (role === 'compliance_officer' && !complianceDomain?.trim()) {
+      throw new BadRequestException('Compliance officers require a domain.');
+    }
     user.role = role;
+    user.complianceDomain = role === 'compliance_officer' ? complianceDomain!.trim() : null;
     user.tokenVersion = (user.tokenVersion ?? 0) + 1;
     const saved = await this.userRepo.save(user);
 
