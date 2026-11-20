@@ -90,3 +90,9 @@ const dataSourceConfig: any = {
 };
 
 export const AppDataSource = new DataSource(dataSourceConfig);
+
+// NOTE: The `trader_scorecards` materialised view and the
+// `trade_deals.ai_summary` column are introduced by the migration
+// `backend/src/database/migrations/<timestamp>-trader-scorecards-and-ai-summary.ts`.
+// The view is refreshed nightly (REFRESH MATERIALIZED VIEW CONCURRENTLY) and
+// exposes a UNIQUE index on trader_id to support concurrent refreshes.

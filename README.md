@@ -180,3 +180,11 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for setup instructions, coding conventi
 ## License
 
 MIT
+
+## Handsoff notes
+
+<!-- handsoff-issue-1317 -->
+- #1317: bug: InsuranceService catch block references undefined 'error' variable in issuePolicy
+
+<!-- handsoff-issue-1319 -->
+- #1319: bug: InvestmentsService.coolingOffHours() — ConfigService never injected, env var is always ignored

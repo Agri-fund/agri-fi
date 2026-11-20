@@ -65,6 +65,24 @@ services:
       timeout: 5s
       retries: 5
 
+  # ── RabbitMQ vhost bootstrap (#1416) ────────────────────────────────────────
+  # Creates the /staging vhost and grants the default guest user access so
+  # local development traffic is isolated from the default "/" vhost (which
+  # mirrors production). The default vhost is left in place for tooling.
+  rabbitmq-init:
+    image: rabbitmq:3-management-alpine
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        rabbitmqctl -n rabbit@rabbitmq add_vhost /staging || true
+        rabbitmqctl -n rabbit@rabbitmq set_permissions -p /staging guest ".*" ".*" ".*"
+        echo "RabbitMQ vhost /staging ready"
+    restart: "no"
+
   backend:
     build:
       context: ./backend
@@ -72,6 +90,9 @@ services:
     environment:
       - DATABASE_URL=postgres://postgres:postgres@postgres:5432/agric_onchain
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+      # Vhost isolation (#1416): local dev uses /staging so test messages never
+      # reach production consumers bound to the default "/" vhost.
+      - RABBITMQ_VHOST=/staging
       - CLAMAV_HOST=clamav
       - CLAMAV_PORT=3310
       # SEP-10 Stellar Web Auth domain configuration (see docs/auth/sep10-flow.md)
@@ -88,6 +109,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      rabbitmq-init:
+        condition: service_completed_successfully
       clamav:
         condition: service_healthy
       otel-collector:

@@ -1,0 +1,87 @@
+{
+  "common": {
+    "appName": "Stellar",
+    "loading": "Inapakia...",
+    "error": "Hitilafu imetokea",
+    "retry": "Jaribu tena",
+    "cancel": "Ghairi",
+    "confirm": "Thibitisha",
+    "save": "Hifadhi",
+    "close": "Funga",
+    "back": "Rudi",
+    "next": "Endelea",
+    "search": "Tafuta",
+    "noResults": "Hakuna matokeo yaliyopatikana",
+    "yes": "Ndiyo",
+    "no": "Hapana"
+  },
+  "nav": {
+    "home": "Nyumbani",
+    "dashboard": "Dashibodi",
+    "wallet": "Pochi",
+    "transactions": "Miamala",
+    "settings": "Mipangilio",
+    "profile": "Wasifu",
+    "logout": "Toka",
+    "login": "Ingia"
+  },
+  "auth": {
+    "signIn": "Ingia",
+    "signUp": "Jisajili",
+    "email": "Barua pepe",
+    "password": "Nenosiri",
+    "confirmPassword": "Thibitisha nenosiri",
+    "forgotPassword": "Umesahau nenosiri?",
+    "resetPassword": "Weka upya nenosiri",
+    "invalidCredentials": "Barua pepe au nenosiri si sahihi",
+    "sessionExpired": "Kipindi chako kimeisha. Tafadhali ingia tena."
+  },
+  "wallet": {
+    "balance": "Salio",
+    "availableBalance": "Salio linalopatikana",
+    "send": "Tuma",
+    "receive": "Pokea",
+    "swap": "Badilisha",
+    "deposit": "Weka fedha",
+    "withdraw": "Toa fedha",
+    "address": "Anwani",
+    "copyAddress": "Nakili anwani",
+    "copied": "Imenakiliwa",
+    "amount": "Kiasi",
+    "fee": "Ada",
+    "total": "Jumla",
+    "asset": "Mali",
+    "noAssets": "Hakuna mali bado"
+  },
+  "transactions": {
+    "title": "Miamala",
+    "pending": "Inasubiri",
+    "completed": "Imekamilika",
+    "failed": "Imeshindikana",
+    "date": "Tarehe",
+    "status": "Hali",
+    "type": "Aina",
+    "sent": "Imetumwa",
+    "received": "Imepokelewa",
+    "empty": "Hakuna miamala bado",
+    "details": "Maelezo ya muamala",
+    "hash": "Alama ya muamala",
+    "confirmations": "Uthibitisho"
+  },
+  "errors": {
+    "required": "Sehemu hii inahitajika",
+    "invalidEmail": "Tafadhali weka barua pepe sahihi",
+    "invalidAmount": "Tafadhali weka kiasi sahihi",
+    "insufficientFunds": "Fedha hazitoshi",
+    "networkError": "Hitilafu ya mtandao. Tafadhali jaribu tena.",
+    "unknown": "Hitilafu isiyojulikana imetokea"
+  },
+  "settings": {
+    "language": "Lugha",
+    "theme": "Mandhari",
+    "notifications": "Arifa",
+    "security": "Usalama",
+    "account": "Akaunti",
+    "preferences": "Mapendeleo"
+  }
+}

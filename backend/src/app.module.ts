@@ -69,6 +69,8 @@ import { AmlMonitoringModule } from './aml/aml-monitoring.module';
 import { DidModule } from './did/did.module';
 import { InsuranceModule } from './insurance/insurance.module';
 import { MarketAlertsModule } from './market-alerts/market-alerts.module';
+import { TradersModule } from './traders/traders.module';
+import { DealSummaryModule } from './deal-summary/deal-summary.module';
 
 @Module({
   controllers: [AppController, PublicController],
@@ -142,6 +144,8 @@ import { MarketAlertsModule } from './market-alerts/market-alerts.module';
     FraudDetectionModule,
     AmlMonitoringModule,
     MarketAlertsModule,
+    TradersModule,
+    DealSummaryModule,
   ],
   providers: [
     {
