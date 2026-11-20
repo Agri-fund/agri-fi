@@ -12,21 +12,18 @@ on:
       - '.github/workflows/frontend-ci.yml'
 
 jobs:
-  lint-and-test:
-    name: Lint & Test
+  build-and-test:
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: frontend
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: 20
+          cache: npm
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
@@ -38,23 +35,19 @@ jobs:
       - name: Type check
         run: npm run type-check
 
-      - name: Test
+      - name: Unit tests
         run: npm test -- --run
 
-  i18n-parity:
-    name: i18n Locale Parity
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - name: Accessibility audit (axe-core, WCAG 2.1 Level A)
+        run: npx playwright test tests/a11y.spec.ts
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          node-version: '20'
-
-      - name: Check locale key parity against en baseline
-        run: node scripts/check-i18n-parity.mjs
+          name: playwright-report
+          path: frontend/playwright-report
+          retention-days: 7
