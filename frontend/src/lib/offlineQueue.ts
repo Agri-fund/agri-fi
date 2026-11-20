@@ -149,6 +149,9 @@ export async function flushOfflineOperations(
 
   for (const operation of operations) {
     if (operation.type === 'investment-draft') {
+      // Legacy drafts cannot be signed by background sync. Keep them available
+      // for the investor to re-enter manually and report them as unsynced.
+      failed += 1;
       continue;
     }
 

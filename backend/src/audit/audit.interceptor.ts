@@ -27,6 +27,14 @@ export class AuditInterceptor implements NestInterceptor {
     }
 
     const route = `${req.method || 'GET'} ${req.originalUrl || req.url || '/'}`;
+    const action = req.method || 'GET';
+    const resourceType = String(req.originalUrl || req.url || '/')
+      .split('?')[0]
+      .split('/')
+      .filter(Boolean)
+      .find((segment: string) => !['api', 'v1'].includes(segment)) ?? null;
+    const resourceId = req.params?.id ? String(req.params.id) : null;
+    const complianceDomain = req.user?.complianceDomain ?? null;
     const logType = classifyAuditLog(route);
     const actorId =
       req.user?.id || req.user?.sub || req.headers?.['x-actor-id'] || null;
@@ -52,6 +60,10 @@ export class AuditInterceptor implements NestInterceptor {
             actorId,
             actorRole,
             route,
+            action,
+            resourceType,
+            resourceId,
+            complianceDomain,
             statusCode,
             logType,
             retentionPeriod: auditRetentionPeriod(logType),
@@ -65,6 +77,10 @@ export class AuditInterceptor implements NestInterceptor {
             actorId,
             actorRole,
             route,
+            action,
+            resourceType,
+            resourceId,
+            complianceDomain,
             statusCode,
             logType,
             retentionPeriod: auditRetentionPeriod(logType),
