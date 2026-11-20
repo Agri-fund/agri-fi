@@ -33,6 +33,7 @@ import { WalletDto } from './dto/wallet.dto';
 import { SubmitKycDto } from './dto/submit-kyc.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 import { Sep10ChallengeDto } from './dto/sep10-challenge.dto';
 import { Sep10ResponseDto } from './dto/sep10-response.dto';
 import { EnableMfaDto, VerifyMfaDto, DisableMfaDto } from './dto/mfa.dto';
@@ -74,6 +75,20 @@ export class AuthController {
   verifyEmail(@Query('token') token: string) {
     return this.authService.verifyEmail(token);
   }
+
+  @Get('verify-email-change')
+  @ApiOperation({
+    summary: 'Confirm a pending email address change via token link',
+    description:
+      'Swaps the pending email into the live email field and notifies the ' +
+      'previous address. Tokens expire after 24 hours.',
+  })
+  @ApiResponse({ status: 200, description: 'Email address changed successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid or expired token' })
+  verifyEmailChange(@Query('token') token: string) {
+    return this.authService.verifyEmailChange(token);
+  }
+=======
 
   @Post('login')
   @Throttle({ login: {} })
@@ -215,6 +230,27 @@ export class AuthController {
     @Body() draft: Record<string, unknown>,
   ) {
     return this.authService.saveKycDraft(req.user.id, draft);
+  }
+
+  @Patch('users/me')
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth('jwt')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Update the authenticated user profile',
+    description:
+      'Changing the email address does not take effect immediately: the new ' +
+      'address is stored as pending and a verification link is sent to it.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Profile updated; email change pending verification',
+  })
+  @ApiResponse({ status: 400, description: 'Validation error' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 409, description: 'Email already in use' })
+  updateMe(@Request() req: AuthRequest, @Body() dto: UpdateProfileDto) {
+    return this.authService.updateProfile(req.user.id, dto);
   }
 
   @Post('change-password')

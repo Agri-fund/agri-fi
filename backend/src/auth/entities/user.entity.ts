@@ -190,6 +190,38 @@ export class User {
   @Column({ name: 'email_verification_token', nullable: true })
   emailVerificationToken: string | null;
 
+  // #1414 — pending email change (verified before it becomes the live email)
+  @Column({ name: 'email_pending', type: 'varchar', nullable: true })
+  @ApiProperty({
+    description: 'Pending email address awaiting verification',
+    nullable: true,
+    example: 'new-address@agri-fi.com',
+  })
+  emailPending: string | null;
+
+  @Exclude()
+  @Column({
+    name: 'email_change_token',
+    type: 'varchar',
+    nullable: true,
+    unique: true,
+  })
+  emailChangeToken: string | null;
+
+  @Column({
+    name: 'email_change_token_expires_at',
+    type: 'timestamptz',
+    nullable: true,
+  })
+  emailChangeTokenExpiresAt: Date | null;
+
+  @Column({
+    name: 'pending_email_requested_at',
+    type: 'timestamptz',
+    nullable: true,
+  })
+  pendingEmailRequestedAt: Date | null;
+
   // #413 — account lockout
   /**
    * Failed login attempts (#961).

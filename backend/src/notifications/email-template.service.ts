@@ -107,7 +107,39 @@ export class EmailTemplateService {
   }
 
   /**
+   * Renders the email-change verification email (#1414).
+   *
+   * Convenience wrapper around {@link render} that supplies the variables the
+   * `email-change-verification` template expects and guarantees the
+   * confirmation link is passed through raw (never HTML-escaped) so query
+   * strings survive intact.
+   */
+  renderEmailChangeVerification(
+    vars: {
+      newEmail: string;
+      oldEmail: string;
+      verificationUrl: string;
+      expiresInHours?: number;
+      userName?: string;
+    },
+    preferredLanguage?: string | null,
+  ): RenderedEmail {
+    return this.render(
+      'email-change-verification',
+      {
+        userName: vars.userName ?? '',
+        newEmail: vars.newEmail,
+        oldEmail: vars.oldEmail,
+        verificationUrl: vars.verificationUrl,
+        expiresInHours: vars.expiresInHours ?? 24,
+      },
+      preferredLanguage,
+    );
+  }
+
+  /**
    * Localized section headings for the weekly digest (#892), e.g.
+=======
    * { deals: "Funding progress", milestones: "...", ... } — English fallback.
    */
   getSectionHeadings(preferredLanguage?: string | null): {

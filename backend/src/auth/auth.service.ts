@@ -164,6 +164,32 @@ export class AuthService {
     );
   }
 
+  private async sendEmailChangeVerificationEmail(
+    email: string,
+    token: string,
+  ): Promise<void> {
+    const link = `${this.appBaseUrl()}/auth/verify-email-change?token=${token}`;
+    await this.notificationsService.sendEmail(
+      email,
+      'Confirm your new Agri-Fi email address',
+      `Please confirm your new email address by visiting: ${link}`,
+      `<p>Click <a href="${link}">here</a> to confirm your new email address. This link is valid for 24 hours.</p>`,
+    );
+  }
+
+  private async sendEmailChangedNotification(
+    oldEmail: string,
+    newEmail: string,
+  ): Promise<void> {
+    await this.notificationsService.sendEmail(
+      oldEmail,
+      'Your Agri-Fi email address has been changed',
+      `The email address on your Agri-Fi account has been changed to ${newEmail}. If you did not request this change, please contact support immediately.`,
+      `<p>The email address on your Agri-Fi account has been changed to <strong>${newEmail}</strong>.</p>
+       <p>If you did not request this change, please contact support immediately.</p>`,
+    );
+  }
+
   // ── register ───────────────────────────────────────────────────────────────
 
   async register(dto: RegisterDto): Promise<{
@@ -249,6 +275,120 @@ export class AuthService {
     await this.userRepo.save(user);
 
     return { message: 'Email verified successfully.' };
+  }
+
+  // ── email change ───────────────────────────────────────────────────────────
+
+  private static readonly EMAIL_CHANGE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+  /**
+   * Requests a change of the account email address. The new address is stored
+   * in `emailPending` and only becomes live once the user confirms via the
+   * verification link sent to that address (#1414).
+   */
+  async requestEmailChange(
+    userId: string,
+    newEmail: string,
+  ): Promise<{ message: string }> {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found.');
+
+    const normalizedEmail = newEmail.trim().toLowerCase();
+
+    if (normalizedEmail === user.email.toLowerCase()) {
+      throw new BadRequestException(
+        'New email address must differ from the current one.',
+      );
+    }
+
+    const existing = await this.userRepo.findOne({
+      where: { email: normalizedEmail },
+    });
+    if (existing && existing.id !== user.id) {
+      throw new ConflictException({
+        code: 'EMAIL_EXISTS',
+        message: 'Email is already registered.',
+      });
+    }
+
+    const token = this.generateVerificationToken();
+    user.emailPending = normalizedEmail;
+    user.emailChangeToken = token;
+    user.emailChangeTokenExpiresAt = new Date(
+      Date.now() + AuthService.EMAIL_CHANGE_TTL_MS,
+    );
+    await this.userRepo.save(user);
+
+    await this.sendEmailChangeVerificationEmail(normalizedEmail, token);
+
+    return {
+      message:
+        'A verification link has been sent to the new email address. The change will take effect once confirmed.',
+    };
+  }
+
+  /**
+   * Confirms a pending email change. Swaps `emailPending` into `email`, clears
+   * the pending fields and notifies the old address of the change.
+   */
+  async verifyEmailChange(token: string): Promise<{ message: string }> {
+    const user = await this.userRepo.findOne({
+      where: { emailChangeToken: token },
+    });
+
+    if (!user || !user.emailPending) {
+      throw new BadRequestException(
+        'Invalid or expired email change token.',
+      );
+    }
+
+    if (
+      !user.emailChangeTokenExpiresAt ||
+      user.emailChangeTokenExpiresAt.getTime() < Date.now()
+    ) {
+      user.emailPending = null;
+      user.emailChangeToken = null;
+      user.emailChangeTokenExpiresAt = null;
+      await this.userRepo.save(user);
+      throw new BadRequestException(
+        'Invalid or expired email change token.',
+      );
+    }
+
+    const oldEmail = user.email;
+    const newEmail = user.emailPending;
+
+    user.email = newEmail;
+    user.emailPending = null;
+    user.emailChangeToken = null;
+    user.emailChangeTokenExpiresAt = null;
+    // The new address was proven via the confirmation link.
+    user.isEmailVerified = true;
+    await this.userRepo.save(user);
+
+    await this.sendEmailChangedNotification(oldEmail, newEmail);
+
+    return { message: 'Email address updated successfully.' };
+  }
+
+  /**
+   * Clears stale pending-email state for changes that were never confirmed
+   * within the 24-hour window. Intended to be invoked by a scheduled cron.
+   */
+  async cleanupExpiredEmailChanges(): Promise<{ cleared: number }> {
+    const result = await this.userRepo
+      .createQueryBuilder()
+      .update(User)
+      .set({
+        emailPending: null,
+        emailChangeToken: null,
+        emailChangeTokenExpiresAt: null,
+      })
+      .where('email_change_token_expires_at IS NOT NULL')
+      .andWhere('email_change_token_expires_at < :now', { now: new Date() })
+      .execute();
+
+    return { cleared: result.affected ?? 0 };
   }
 
   // ── token pair ─────────────────────────────────────────────────────────────

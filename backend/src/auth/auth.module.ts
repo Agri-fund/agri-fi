@@ -35,6 +35,7 @@ import { EmailSequenceModule } from '../email-sequence/email-sequence.module';
 import { KycRulesModule } from '../kyc-rules/kyc-rules.module';
 import { BehavioralProfile } from '../database/entities/behavioral-profile.entity';
 import { BehavioralRiskService } from './behavioral-risk.service';
+import { EmailChangeCleanupService } from './email-change-cleanup.service';
 
 @Module({
   imports: [
@@ -83,6 +84,7 @@ import { BehavioralRiskService } from './behavioral-risk.service';
     OfacSanctionsCheckService,
     KycCronService,
     BehavioralRiskService,
+    EmailChangeCleanupService,
   ],
   exports: [
     AuthService,
