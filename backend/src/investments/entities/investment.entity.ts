@@ -6,6 +6,7 @@ import {
   JoinColumn,
   CreateDateColumn,
   DeleteDateColumn,
+  Index,
 } from 'typeorm';
 import { ApiProperty } from '@nestjs/swagger';
 import { User } from '../../auth/entities/user.entity';
@@ -23,6 +24,7 @@ export enum InvestmentStatus {
 }
 
 @Entity('investments')
+@Index('idx_investments_user_status', ['investorId', 'status'])
 export class Investment {
   @PrimaryGeneratedColumn('uuid')
   @ApiProperty({
