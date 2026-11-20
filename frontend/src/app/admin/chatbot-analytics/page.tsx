@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { format, subDays } from 'date-fns';
 
 interface Analytics {
   totalConversations: number;
@@ -21,7 +20,8 @@ export default function ChatbotAnalyticsPage() {
       try {
         setLoading(true);
         const endDate = new Date();
-        const startDate = subDays(endDate, days);
+        const startDate = new Date(endDate);
+        startDate.setDate(startDate.getDate() - days);
 
         const res = await fetch(
           `/api/v1/chatbot/analytics?startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`,

@@ -11,7 +11,7 @@ function getFiles(dir, files = []) {
       files.push(name);
     }
   }
-  return files;
+  return files.sort();
 }
 
 const domainMapping = {
