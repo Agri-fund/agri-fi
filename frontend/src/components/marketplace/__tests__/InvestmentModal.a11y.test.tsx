@@ -61,7 +61,7 @@ describe('InvestmentModal accessibility', () => {
     mockUseWallet.mockReturnValue(walletState({ isConnected: true, publicKey: 'GABC' }));
     renderModal();
 
-    expect(screen.getByLabelText('Number of Tokens')).toHaveFocus();
+    expect(screen.getByLabelText(/Number of Tokens/)).toHaveFocus();
   });
 
   it('closes on Escape', async () => {

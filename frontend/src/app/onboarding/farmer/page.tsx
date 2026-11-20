@@ -426,8 +426,8 @@ export default function FarmerOnboardingPage() {
                     <option value="">Select document type</option>
                     <option value="national_id">National ID Card</option>
                     <option value="passport">International Passport</option>
-                    <option value="drivers_license">Driver's License</option>
-                    <option value="voter_card">Voter's Card</option>
+                    <option value="drivers_license">Driver&apos;s License</option>
+                    <option value="voter_card">Voter&apos;s Card</option>
                   </select>
                   {errors.documentType && (
                     <p className="text-xs text-red-600 mt-1">{errors.documentType}</p>

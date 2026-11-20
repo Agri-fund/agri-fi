@@ -11,6 +11,33 @@ erDiagram
     Achievement {
         string id PK
     }
+    AmlAlert {
+        string id PK
+    }
+    AmlCase {
+        string id PK
+    }
+    AmlDispositionFeedback {
+        string id PK
+    }
+    AmlMonitoringRule {
+        string id PK
+    }
+    AmlMonitoringRun {
+        string id PK
+    }
+    AmlRegulatorySubmission {
+        string id PK
+    }
+    AmlSarReport {
+        string id PK
+    }
+    AmlScreeningResult {
+        string id PK
+    }
+    SanctionsListEntry {
+        string id PK
+    }
     AMMLiquidityPosition {
         string id PK
     }
@@ -21,6 +48,24 @@ erDiagram
         string id PK
     }
     AMMSwap {
+        string id PK
+    }
+    InvestmentArchive {
+        string id PK
+    }
+    ShipmentMilestoneArchive {
+        string id PK
+    }
+    TradeDealArchive {
+        string id PK
+    }
+    AuditArchiveRecord {
+        string id PK
+    }
+    AuditArchiveRetrievalRequest {
+        string id PK
+    }
+    SystemAuditLog {
         string id PK
     }
     ApiKey {
@@ -62,163 +107,6 @@ erDiagram
     CollaborationSession {
         string id PK
     }
-    DocumentVersion {
-        string id PK
-    }
-    SignatureRequest {
-        string id PK
-    }
-    EdgeNode {
-        string id PK
-    }
-    EdgeSyncRecord {
-        string id PK
-    }
-    InvestorEmailSequence {
-        string id PK
-    }
-    KycJurisdictionRule {
-        string id PK
-    }
-    NotificationPreference {
-        string id PK
-    }
-    NotificationEntity {
-        string id PK
-    }
-    PushSubscriptionEntity {
-        string id PK
-    }
-    OracleFeed {
-        string id PK
-    }
-    OracleObservation {
-        string id PK
-    }
-    CalendarConnection {
-        string id PK
-    }
-    CalendarEvent {
-        string id PK
-    }
-    FeatureFlagAudit {
-        string id PK
-    }
-    FeatureFlag {
-        string id PK
-    }
-    Shard {
-        string id PK
-    }
-    ApiUsageEvent {
-        string id PK
-    }
-    PartnerApiUsage {
-        string id PK
-    }
-    NettingCycle {
-        string id PK
-    }
-    NettingObligation {
-        string id PK
-    }
-    ContractDispute {
-        string id PK
-    }
-    FarmerCreditScoreDispute {
-        string id PK
-    }
-    FarmerCreditScoreHistory {
-        string id PK
-    }
-    WatchlistItem {
-        string id PK
-    }
-    %% Domain: DEALS
-    MilestoneComment {
-        string id PK
-    }
-    MilestoneVerification {
-        string id PK
-    }
-    ShipmentMilestone {
-        string id PK
-    }
-    ShipmentSensorReading {
-        string id PK
-    }
-    DealCoFarmer {
-        string id PK
-    }
-    DealHealthAlert {
-        string id PK
-    }
-    Document {
-        string id PK
-    }
-    TradeDeal {
-        string id PK
-    }
-    SorobanContractDeployment {
-        string id PK
-    }
-    %% Domain: INVESTMENTS
-    MilestoneReleaseRecord {
-        string id PK
-    }
-    PaymentDistribution {
-        string id PK
-    }
-    AutoInvestPlan {
-        string id PK
-    }
-    InvestmentEvent {
-        string id PK
-    }
-    Investment {
-        string id PK
-    }
-    LiquiditySnapshot {
-        string id PK
-    }
-    PortfolioVaRLimit {
-        string id PK
-    }
-    SecondaryOrder {
-        string id PK
-    }
-    SecondaryTrade {
-        string id PK
-    }
-    OutboxEntity {
-        string id PK
-    }
-    %% Domain: PAYMENTS
-    AccountMergeRecovery {
-        string id PK
-    }
-    Sep24Transaction {
-        string id PK
-    }
-    StellarHistory {
-        string id PK
-    }
-    UnrecognisedPayment {
-        string id PK
-    }
-    %% Domain: COMPLIANCE
-    InvestmentArchive {
-        string id PK
-    }
-    ShipmentMilestoneArchive {
-        string id PK
-    }
-    TradeDealArchive {
-        string id PK
-    }
-    SystemAuditLog {
-        string id PK
-    }
     ComplianceReport {
         string id PK
     }
@@ -249,6 +137,99 @@ erDiagram
     TransactionLog {
         string id PK
     }
+    DocumentVersion {
+        string id PK
+    }
+    SignatureRequest {
+        string id PK
+    }
+    EdgeNode {
+        string id PK
+    }
+    EdgeSyncRecord {
+        string id PK
+    }
+    InvestorEmailSequence {
+        string id PK
+    }
+    MilestoneReleaseRecord {
+        string id PK
+    }
+    PaymentDistribution {
+        string id PK
+    }
+    InsuranceClaim {
+        string id PK
+    }
+    InsurancePolicy {
+        string id PK
+    }
+    InsuranceQuote {
+        string id PK
+    }
+    AutoInvestPlan {
+        string id PK
+    }
+    InvestmentEvent {
+        string id PK
+    }
+    Investment {
+        string id PK
+    }
+    LiquiditySnapshot {
+        string id PK
+    }
+    PortfolioVaRLimit {
+        string id PK
+    }
+    SecondaryOrder {
+        string id PK
+    }
+    SecondaryTrade {
+        string id PK
+    }
+    KycJurisdictionRule {
+        string id PK
+    }
+    NotificationPreference {
+        string id PK
+    }
+    NotificationEntity {
+        string id PK
+    }
+    PushSubscriptionEntity {
+        string id PK
+    }
+    OracleFeed {
+        string id PK
+    }
+    OracleObservation {
+        string id PK
+    }
+    OutboxEntity {
+        string id PK
+    }
+    CalendarConnection {
+        string id PK
+    }
+    CalendarEvent {
+        string id PK
+    }
+    FeatureFlagAudit {
+        string id PK
+    }
+    FeatureFlag {
+        string id PK
+    }
+    Shard {
+        string id PK
+    }
+    ApiUsageEvent {
+        string id PK
+    }
+    PartnerApiUsage {
+        string id PK
+    }
     RemediationAction {
         string id PK
     }
@@ -261,13 +242,83 @@ erDiagram
     SelfHealingIssue {
         string id PK
     }
+    NettingCycle {
+        string id PK
+    }
+    NettingObligation {
+        string id PK
+    }
+    MilestoneComment {
+        string id PK
+    }
+    MilestoneVerification {
+        string id PK
+    }
+    ShipmentMilestone {
+        string id PK
+    }
+    ShipmentSensorReading {
+        string id PK
+    }
+    ContractDispute {
+        string id PK
+    }
+    AccountMergeRecovery {
+        string id PK
+    }
+    Sep24Transaction {
+        string id PK
+    }
+    StellarHistory {
+        string id PK
+    }
+    UnrecognisedPayment {
+        string id PK
+    }
+    StorageContent {
+        string id PK
+    }
+    DealCoFarmer {
+        string id PK
+    }
+    DealHealthAlert {
+        string id PK
+    }
+    Document {
+        string id PK
+    }
+    TradeDeal {
+        string id PK
+    }
+    SorobanContractDeployment {
+        string id PK
+    }
+    FarmerCreditScoreDispute {
+        string id PK
+    }
+    FarmerCreditScoreHistory {
+        string id PK
+    }
+    WatchlistItem {
+        string id PK
+    }
     WebhookSubscription {
         string id PK
     }
+    ZkpProof {
+        string id PK
+    }
+    %% Domain: DEALS
+    %% Domain: INVESTMENTS
+    %% Domain: PAYMENTS
+    %% Domain: COMPLIANCE
 
     %% Relationships
     AnnualInvestmentTotal }o--|| User : "ManyToOne"
     Achievement }o--|| User : "ManyToOne"
+    AmlAlert }o--|| AmlMonitoringRule : "ManyToOne"
+    AmlAlert }o--|| AmlCase : "ManyToOne"
+    AmlSarReport }o--|| AmlCase : "ManyToOne"
     AMMLiquidityPosition }o--|| AMMPool : "ManyToOne"
     AMMLiquidityPosition }o--|| User : "ManyToOne"
     AMMMiningReward }o--|| AMMPool : "ManyToOne"
@@ -298,6 +349,8 @@ erDiagram
     InvestorEmailSequence }o--|| User : "ManyToOne"
     MilestoneReleaseRecord }o--|| TradeDeal : "ManyToOne"
     PaymentDistribution }o--|| TradeDeal : "ManyToOne"
+    InsuranceClaim }o--|| InsurancePolicy : "ManyToOne"
+    InsurancePolicy }o--|| InsuranceQuote : "ManyToOne"
     AutoInvestPlan }o--|| User : "ManyToOne"
     Investment }o--|| TradeDeal : "ManyToOne"
     Investment }o--|| User : "ManyToOne"

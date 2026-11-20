@@ -68,7 +68,11 @@ jobs:
         working-directory: backend
 
       - name: Use CI database credentials
-        run: rm -f .env
+        run: |
+          rm -f .env
+          echo "DATABASE_URL=postgres://agri:agri@localhost:5432/agri_test" >> "$GITHUB_ENV"
+          echo "DATABASE_USER=agri" >> "$GITHUB_ENV"
+          echo "DATABASE_PASSWORD=agri" >> "$GITHUB_ENV"
         working-directory: backend
 
       - name: Run database migrations
