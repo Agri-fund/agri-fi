@@ -180,3 +180,8 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for setup instructions, coding conventi
 ## License
 
 MIT
+
+## Handsoff notes
+
+<!-- handsoff-issue-1309 -->
+- #1309: feat: add Soroban investor payout distribution to escrow contract release()
