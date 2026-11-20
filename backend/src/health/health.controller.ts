@@ -7,6 +7,7 @@ import {
   DiskHealthIndicator,
 } from '@nestjs/terminus';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { ConfigService } from '@nestjs/config';
 import { SkipThrottle } from '@nestjs/throttler';
 import { RabbitmqHealthIndicator } from './rabbitmq.health-indicator';
 import { StellarHealthIndicator } from './stellar.health-indicator';
@@ -27,7 +28,17 @@ export class HealthController {
     private documentScan: DocumentScanHealthIndicator,
     private memory: MemoryHealthIndicator,
     private disk: DiskHealthIndicator,
+    private config: ConfigService,
   ) {}
+
+  private getDiskThresholdPercent(): number {
+    const configured = Number(
+      this.config.get<number>('DISK_HEALTH_THRESHOLD_PERCENT', 0.15),
+    );
+    return Number.isFinite(configured) && configured > 0 && configured < 1
+      ? configured
+      : 0.15;
+  }
 
   @Get()
   @HealthCheck()
@@ -48,7 +59,7 @@ export class HealthController {
       () =>
         this.disk.checkStorage('disk', {
           path: '/',
-          thresholdPercent: 0.05,
+          thresholdPercent: this.getDiskThresholdPercent(),
         }),
     ]);
   }
@@ -158,7 +169,7 @@ export class HealthController {
       () =>
         this.disk.checkStorage('disk', {
           path: '/',
-          thresholdPercent: 0.05,
+          thresholdPercent: this.getDiskThresholdPercent(),
         }),
     ]);
   }
