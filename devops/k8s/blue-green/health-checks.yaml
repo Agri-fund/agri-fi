@@ -1,0 +1,87 @@
+# Health-check resources for blue-green slot verification.
+#
+# Before traffic is shifted to the new slot the CD pipeline runs a dedicated
+# health-check Job against the slot-specific Service.  This manifest defines:
+#
+#   1. PodDisruptionBudgets for both slots — keep at least 1 pod available
+#      during node disruptions so health checks don't race with evictions.
+#   2. A Job template (applied by the deploy script with the target slot
+#      injected) that probes /health and asserts HTTP 200.
+#
+# The deploy script (blue-green-deploy.sh) renders and applies the Job at
+# deploy time; it is not a standing resource.
+---
+# PodDisruptionBudget — blue slot
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: agri-fi-backend-blue-pdb
+  namespace: agri-fi
+  labels:
+    app: agri-fi-backend
+    slot: blue
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: agri-fi-backend
+      slot: blue
+---
+# PodDisruptionBudget — green slot
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: agri-fi-backend-green-pdb
+  namespace: agri-fi
+  labels:
+    app: agri-fi-backend
+    slot: green
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: agri-fi-backend
+      slot: green
+---
+# Slot-specific headless Services used by health-check and smoke-test Jobs.
+# These are permanent resources; the Job connects to the slot by name without
+# needing to know the current active/inactive state.
+apiVersion: v1
+kind: Service
+metadata:
+  name: agri-fi-backend-blue-internal
+  namespace: agri-fi
+  labels:
+    app: agri-fi-backend
+    slot: blue
+    role: health-check
+spec:
+  type: ClusterIP
+  selector:
+    app: agri-fi-backend
+    slot: blue
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agri-fi-backend-green-internal
+  namespace: agri-fi
+  labels:
+    app: agri-fi-backend
+    slot: green
+    role: health-check
+spec:
+  type: ClusterIP
+  selector:
+    app: agri-fi-backend
+    slot: green
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP

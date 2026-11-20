@@ -754,3 +754,134 @@ groups:
             Prometheus cannot scrape span metrics from the OpenTelemetry
             Collector. Traces may be dropped and tracing-based alerts cannot be
             evaluated. Check the collector container/logs.
+
+  # ── Blue-Green Deployment Monitoring ─────────────────────────────────────────
+  # Alerts that fire during and immediately after a blue-green traffic shift.
+  # They are labelled `component: blue-green` so the alert-manager can route
+  # them to the on-call engineer before the automated rollback kicks in.
+  - name: agri_fi_blue_green_deployment
+    interval: 15s
+    rules:
+      # ── Error rate spike during deployment window ──────────────────────────
+      # Fires when the HTTP 5xx rate exceeds 1 % over a 2-minute window on
+      # either slot.  At this threshold the CD pipeline should auto-rollback.
+      - alert: BlueGreenHighErrorRate
+        expr: |
+          (
+            rate(http_request_duration_ms_count{status_code=~"5.."}[2m])
+            /
+            rate(http_request_duration_ms_count[2m])
+          ) * 100 > 1
+        for: 1m
+        labels:
+          severity: critical
+          team: backend
+          component: blue-green
+          pagerduty: "true"
+        annotations:
+          summary: "HTTP error rate > 1% during deployment — rollback may trigger"
+          description: >
+            Slot {{ $labels.slot }} is returning {{ $value | printf "%.2f" }}%
+            HTTP 5xx errors over the last 2 minutes.
+            If a deployment is in progress this will trigger automated rollback.
+            Check the CD pipeline run and application logs immediately.
+
+      # ── Latency regression during deployment window ────────────────────────
+      # p95 latency above 500 ms sustained for 2 minutes suggests the new
+      # version has a performance regression.
+      - alert: BlueGreenLatencyRegression
+        expr: |
+          histogram_quantile(
+            0.95,
+            rate(http_request_duration_ms_bucket[2m])
+          ) > 500
+        for: 2m
+        labels:
+          severity: warning
+          team: backend
+          component: blue-green
+        annotations:
+          summary: "p95 latency > 500ms on slot {{ $labels.slot }}"
+          description: >
+            The p95 request latency on slot {{ $labels.slot }} has exceeded
+            500 ms for 2 minutes (current: {{ $value | printf "%.0f" }}ms).
+            This may indicate a performance regression in the new image.
+            If a deployment is active consider rolling back.
+
+      # ── Both slots receiving traffic simultaneously ────────────────────────
+      # During a normal blue-green switch only one slot should serve traffic.
+      # If both are live for more than 1 minute it may indicate a stuck
+      # canary or a misconfigured service selector.
+      - alert: BlueGreenBothSlotsActive
+        expr: |
+          count(
+            rate(http_request_duration_ms_count[2m]) > 0
+          ) by (job) > 1
+        for: 1m
+        labels:
+          severity: warning
+          team: platform
+          component: blue-green
+        annotations:
+          summary: "Multiple backend slots appear to be receiving traffic"
+          description: >
+            More than one backend slot is reporting non-zero request rates.
+            This is expected during a canary rollout but abnormal at other
+            times.  Verify the agri-fi-backend Service selector and canary
+            ingress state.
+
+      # ── Inactive slot still scaled up after deployment window ─────────────
+      # After a successful promotion the old slot should be scaled to 0.
+      # If replicas remain > 0 beyond 10 minutes the cleanup step likely failed.
+      - alert: BlueGreenInactiveSlotNotScaledDown
+        expr: |
+          kube_deployment_spec_replicas{
+            deployment=~"agri-fi-backend-(blue|green)"
+          } > 0
+          unless on(deployment)
+          kube_deployment_spec_replicas{
+            deployment=~"agri-fi-backend-(blue|green)"
+          }
+          * on(deployment) group_left()
+          label_replace(
+            kube_service_labels{service="agri-fi-backend"},
+            "deployment",
+            "agri-fi-backend-$1",
+            "label_slot",
+            "(.*)"
+          )
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+          component: blue-green
+        annotations:
+          summary: "Inactive blue-green slot still has replicas running"
+          description: >
+            Deployment {{ $labels.deployment }} has {{ $value }} replicas
+            but is not the currently active slot.
+            The post-deployment scale-down step may have failed.
+            Scale it to 0 manually: kubectl -n agri-fi scale deployment/{{ $labels.deployment }} --replicas=0
+
+      # ── Canary weight stuck (not progressing) ─────────────────────────────
+      # If canary traffic share has not changed in 15 minutes the canary
+      # promotion may have stalled.
+      - alert: BlueGreenCanaryStuck
+        expr: |
+          changes(
+            nginx_ingress_controller_requests{ingress="agri-fi-backend-canary"}[15m]
+          ) == 0
+          and
+          nginx_ingress_controller_requests{ingress="agri-fi-backend-canary"} > 0
+        for: 15m
+        labels:
+          severity: warning
+          team: platform
+          component: blue-green
+        annotations:
+          summary: "Canary ingress exists but traffic hasn't changed in 15 minutes"
+          description: >
+            The agri-fi-backend-canary ingress is present and receiving requests
+            but the request count has not changed for 15 minutes.
+            The canary promotion workflow may be stuck. Check the CD pipeline
+            and manually promote or roll back as needed.

@@ -1,0 +1,21 @@
+# Kustomization for blue-green deployment infrastructure.
+#
+# Includes:
+#   - PodDisruptionBudgets for both slots (ensure minAvailable=1 during node disruptions)
+#   - Slot-specific internal Services used by health-check and smoke-test Jobs
+#   - Canary ingress + canary slot Service for gradual traffic shifting
+#   - Deployment analytics ConfigMap, RBAC, and recorder CronJob
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: agri-fi
+
+resources:
+  - health-checks.yaml
+  - canary-ingress.yaml
+  - deployment-analytics.yaml
+
+commonLabels:
+  app.kubernetes.io/part-of: agri-fi
+  app.kubernetes.io/managed-by: argocd
+  app.kubernetes.io/component: blue-green

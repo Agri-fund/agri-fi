@@ -1,0 +1,412 @@
+{
+  "title": "Blue-Green Deployment Monitoring",
+  "uid": "agri-fi-blue-green",
+  "description": "Real-time SLI monitoring during blue-green and canary deployments. Tracks error rate, latency, traffic split, slot health, and deployment analytics.",
+  "tags": ["deployments", "blue-green", "canary", "sli"],
+  "timezone": "browser",
+  "schemaVersion": 37,
+  "version": 1,
+  "refresh": "15s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "slot",
+        "type": "custom",
+        "label": "Active Slot",
+        "options": [
+          { "text": "blue",  "value": "blue",  "selected": false },
+          { "text": "green", "value": "green", "selected": true  },
+          { "text": "both",  "value": ".*",    "selected": false }
+        ],
+        "current": { "text": "both", "value": ".*" }
+      },
+      {
+        "name": "namespace",
+        "type": "query",
+        "label": "Namespace",
+        "datasource": "Prometheus",
+        "query": "label_values(kube_deployment_labels{deployment=~\"agri-fi-backend.*\"}, namespace)",
+        "current": { "text": "agri-fi", "value": "agri-fi" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Active Slot",
+      "type": "stat",
+      "gridPos": { "x": 0, "y": 0, "w": 4, "h": 4 },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "blue",  "value": null },
+              { "color": "green", "value": 1    }
+            ]
+          },
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "BLUE",  "color": "blue"  } } },
+            { "type": "value", "options": { "1": { "text": "GREEN", "color": "green" } } }
+          ]
+        }
+      },
+      "targets": [
+        {
+          "expr": "kube_service_labels{service=\"agri-fi-backend\",label_slot=\"green\"}",
+          "legendFormat": "Active slot"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "HTTP Error Rate — by Slot (%)",
+      "type": "timeseries",
+      "gridPos": { "x": 4, "y": 0, "w": 10, "h": 8 },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": { "mode": "palette-classic" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green",  "value": null },
+              { "color": "yellow", "value": 0.5  },
+              { "color": "red",    "value": 1    }
+            ]
+          },
+          "custom": {
+            "thresholdsStyle": { "mode": "dashed" }
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "rate(http_request_duration_ms_count{status_code=~\"5..\",slot=~\"$slot\"}[2m]) / rate(http_request_duration_ms_count{slot=~\"$slot\"}[2m]) * 100",
+          "legendFormat": "{{slot}} error rate"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "p95 Latency — by Slot (ms)",
+      "type": "timeseries",
+      "gridPos": { "x": 14, "y": 0, "w": 10, "h": 8 },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "color": { "mode": "palette-classic" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green",  "value": null },
+              { "color": "yellow", "value": 300  },
+              { "color": "red",    "value": 500  }
+            ]
+          },
+          "custom": {
+            "thresholdsStyle": { "mode": "dashed" }
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(http_request_duration_ms_bucket{slot=~\"$slot\"}[2m]))",
+          "legendFormat": "{{slot}} p95 latency"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Request Rate — by Slot (req/s)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 7 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "color": { "mode": "palette-classic" }
+        }
+      },
+      "targets": [
+        {
+          "expr": "rate(http_request_duration_ms_count{slot=~\"$slot\"}[1m])",
+          "legendFormat": "{{slot}} req/s"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Canary Traffic Split (%)",
+      "type": "gauge",
+      "gridPos": { "x": 12, "y": 8, "w": 6, "h": 7 },
+      "description": "Percentage of traffic routed to the canary (inactive) slot via the canary ingress. 0 = no canary active.",
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "minVizValue": 0,
+        "maxVizValue": 100
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green",  "value": null },
+              { "color": "yellow", "value": 50   },
+              { "color": "red",    "value": 90   }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "nginx_ingress_controller_requests{ingress=\"agri-fi-backend-canary\"} / ignoring(ingress) nginx_ingress_controller_requests{ingress=\"agri-fi-backend\"} * 100",
+          "legendFormat": "Canary %"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Deployment Replica Count — by Slot",
+      "type": "stat",
+      "gridPos": { "x": 18, "y": 8, "w": 6, "h": 7 },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "sparkline",
+        "textMode": "value_and_name",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red",    "value": 0 },
+              { "color": "yellow", "value": 1 },
+              { "color": "green",  "value": 2 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "kube_deployment_status_replicas_available{deployment=\"agri-fi-backend-blue\",namespace=~\"$namespace\"}",
+          "legendFormat": "blue"
+        },
+        {
+          "expr": "kube_deployment_status_replicas_available{deployment=\"agri-fi-backend-green\",namespace=~\"$namespace\"}",
+          "legendFormat": "green"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Deployment Analytics — Success vs Rollback",
+      "type": "piechart",
+      "gridPos": { "x": 0, "y": 15, "w": 8, "h": 8 },
+      "description": "Deployment outcome distribution sourced from the deployment-analytics ConfigMap via the analytics recorder CronJob.",
+      "options": {
+        "pieType": "donut",
+        "legend": { "displayMode": "list", "placement": "right" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "palette-classic" }
+        }
+      },
+      "targets": [
+        {
+          "expr": "count_over_time({app=\"agri-fi\",component=\"deployment-analytics\",outcome=\"success\"}[7d])",
+          "legendFormat": "Success"
+        },
+        {
+          "expr": "count_over_time({app=\"agri-fi\",component=\"deployment-analytics\",outcome=\"rollback\"}[7d])",
+          "legendFormat": "Rollback"
+        },
+        {
+          "expr": "count_over_time({app=\"agri-fi\",component=\"deployment-analytics\",outcome=\"failure\"}[7d])",
+          "legendFormat": "Failure"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Deployment Success Rate (7d)",
+      "type": "stat",
+      "gridPos": { "x": 8, "y": 15, "w": 4, "h": 4 },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red",    "value": null },
+              { "color": "yellow", "value": 80   },
+              { "color": "green",  "value": 95   }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "count_over_time({app=\"agri-fi\",outcome=\"success\"}[7d]) / (count_over_time({app=\"agri-fi\",outcome=~\"success|rollback|failure\"}[7d])) * 100",
+          "legendFormat": "Success rate"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "MTTR — Mean Time to Rollback (min)",
+      "type": "stat",
+      "gridPos": { "x": 8, "y": 19, "w": 4, "h": 4 },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "reduceOptions": { "calcs": ["mean"] }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "m",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green",  "value": null },
+              { "color": "yellow", "value": 5    },
+              { "color": "red",    "value": 15   }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "avg_over_time(deployment_rollback_duration_seconds[7d]) / 60",
+          "legendFormat": "Avg rollback time"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "title": "Deployment Events Timeline",
+      "type": "logs",
+      "gridPos": { "x": 12, "y": 15, "w": 12, "h": 8 },
+      "description": "Deployment event log from the deployment-analytics-recorder CronJob.",
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending"
+      },
+      "targets": [
+        {
+          "expr": "{app=\"agri-fi\",component=\"deployment-analytics\"}",
+          "legendFormat": "Deployment events"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "title": "PgBouncer Pool — Active Connections by Slot",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 23, "w": 12, "h": 7 },
+      "description": "Database connection pool utilisation on each slot during deployment. A sudden spike may indicate the new slot is not pooling correctly.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "palette-classic" }
+        }
+      },
+      "targets": [
+        {
+          "expr": "pgbouncer_pools_client_active_connections{slot=~\"$slot\"}",
+          "legendFormat": "{{slot}} active connections"
+        },
+        {
+          "expr": "pgbouncer_pools_server_active_connections{slot=~\"$slot\"}",
+          "legendFormat": "{{slot}} server connections"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "title": "Health Check Probe Status — by Slot",
+      "type": "stat",
+      "gridPos": { "x": 12, "y": 23, "w": 6, "h": 7 },
+      "description": "Kubernetes readiness probe success rate. 1 = healthy, 0 = failing.",
+      "options": {
+        "colorMode": "background",
+        "graphMode": "sparkline",
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "textMode": "value_and_name"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "mappings": [
+            { "type": "value", "options": { "1": { "text": "Healthy", "color": "green" } } },
+            { "type": "value", "options": { "0": { "text": "Unhealthy", "color": "red" } } }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red",   "value": null },
+              { "color": "green", "value": 1    }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "kube_pod_status_ready{pod=~\"agri-fi-backend-blue.*\",condition=\"true\",namespace=~\"$namespace\"}",
+          "legendFormat": "blue pod ready"
+        },
+        {
+          "expr": "kube_pod_status_ready{pod=~\"agri-fi-backend-green.*\",condition=\"true\",namespace=~\"$namespace\"}",
+          "legendFormat": "green pod ready"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "title": "Active Blue-Green Alerts",
+      "type": "alertlist",
+      "gridPos": { "x": 18, "y": 23, "w": 6, "h": 7 },
+      "options": {
+        "alertName": "",
+        "dashboardAlerts": false,
+        "groupMode": "default",
+        "maxItems": 10,
+        "sortOrder": 1,
+        "stateFilter": {
+          "firing": true,
+          "pending": true,
+          "inactive": false
+        },
+        "alertInstanceLabelFilter": "component=blue-green"
+      }
+    }
+  ]
+}

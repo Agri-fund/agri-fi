@@ -1,0 +1,188 @@
+# Deployment Analytics — tracks blue-green deployment success/failure rates.
+#
+# Two components:
+#   1. ConfigMap  — seed data store for the analytics schema (pre-created so
+#                   the recorder Job always has a target to patch).
+#   2. CronJob    — runs after every deployment window to scrape Prometheus
+#                   for key SLIs and append a JSON record to the ConfigMap.
+#
+# The ConfigMap is intentionally lightweight.  For production, replace with a
+# proper time-series store (InfluxDB, Loki structured logs, or a Postgres table
+# written by the analytics Job) and use Grafana to visualise the data.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: deployment-analytics
+  namespace: agri-fi
+  labels:
+    app: agri-fi
+    component: deployment-analytics
+  annotations:
+    # Managed by the deployment-analytics-recorder Job; do not edit manually.
+    app.kubernetes.io/managed-by: deployment-analytics-recorder
+data:
+  # Seed schema — the recorder Job appends JSON records under "records".
+  schema_version: "1"
+  records: "[]"
+---
+# RBAC — the recorder Job needs read access to Deployments and Services, and
+# patch access to the analytics ConfigMap.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: deployment-analytics-sa
+  namespace: agri-fi
+  labels:
+    app: agri-fi
+    component: deployment-analytics
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: deployment-analytics-role
+  namespace: agri-fi
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "patch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: deployment-analytics-rb
+  namespace: agri-fi
+subjects:
+  - kind: ServiceAccount
+    name: deployment-analytics-sa
+    namespace: agri-fi
+roleRef:
+  kind: Role
+  name: deployment-analytics-role
+  apiGroup: rbac.authorization.k8s.io
+---
+# CronJob — runs every 5 minutes during active deployment windows.
+# In steady state it is a no-op (skips if no deployment occurred).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: deployment-analytics-recorder
+  namespace: agri-fi
+  labels:
+    app: agri-fi
+    component: deployment-analytics
+spec:
+  # Every 5 minutes.
+  schedule: "*/5 * * * *"
+  # Keep the last 3 successful and 1 failed job for debugging.
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  # Skip if the previous run is still executing.
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      # Fail fast — analytics is best-effort, don't block anything.
+      backoffLimit: 1
+      activeDeadlineSeconds: 120
+      template:
+        metadata:
+          labels:
+            app: agri-fi
+            component: deployment-analytics
+        spec:
+          serviceAccountName: deployment-analytics-sa
+          restartPolicy: Never
+          containers:
+            - name: recorder
+              image: bitnami/kubectl:latest
+              imagePullPolicy: IfNotPresent
+              env:
+                - name: NAMESPACE
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.namespace
+                - name: PROMETHEUS_URL
+                  value: "http://prometheus:9090"
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -euo pipefail
+
+                  NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+                  ACTIVE_SLOT=$(kubectl -n "$NAMESPACE" get svc agri-fi-backend \
+                    -o jsonpath='{.spec.selector.slot}' 2>/dev/null || echo "unknown")
+
+                  # ── Fetch key SLIs from Prometheus ──────────────────────
+                  # Error rate over last 5 minutes (percentage)
+                  ERROR_RATE=$(curl -sf \
+                    "${PROMETHEUS_URL}/api/v1/query?query=rate(http_request_duration_ms_count%7Bstatus_code%3D~%225..%22%7D%5B5m%5D)%2Frate(http_request_duration_ms_count%5B5m%5D)*100" \
+                    | python3 -c "
+                  import json,sys
+                  r=json.load(sys.stdin)
+                  v=r.get('data',{}).get('result',[])
+                  print(v[0]['value'][1] if v else '0')
+                  " 2>/dev/null || echo "0")
+
+                  # p95 latency ms
+                  P95_LATENCY=$(curl -sf \
+                    "${PROMETHEUS_URL}/api/v1/query?query=histogram_quantile(0.95%2C+rate(http_request_duration_ms_bucket%5B5m%5D))" \
+                    | python3 -c "
+                  import json,sys
+                  r=json.load(sys.stdin)
+                  v=r.get('data',{}).get('result',[])
+                  print(v[0]['value'][1] if v else '0')
+                  " 2>/dev/null || echo "0")
+
+                  # Determine deployment outcome: error rate < 1 % = success
+                  OUTCOME="success"
+                  ERROR_INT=$(echo "$ERROR_RATE" | cut -d. -f1)
+                  if [ "${ERROR_INT:-0}" -ge 1 ] 2>/dev/null; then
+                    OUTCOME="degraded"
+                  fi
+
+                  # ── Build JSON record ────────────────────────────────────
+                  RECORD=$(cat <<EOF
+                  {
+                    "timestamp": "${NOW}",
+                    "active_slot": "${ACTIVE_SLOT}",
+                    "outcome": "${OUTCOME}",
+                    "error_rate_pct": "${ERROR_RATE}",
+                    "p95_latency_ms": "${P95_LATENCY}",
+                    "run_id": "${HOSTNAME}"
+                  }
+                  EOF
+                  )
+
+                  # ── Append to ConfigMap (JSON patch) ─────────────────────
+                  CURRENT=$(kubectl -n "$NAMESPACE" get cm deployment-analytics \
+                    -o jsonpath='{.data.records}')
+                  UPDATED=$(echo "$CURRENT" | python3 -c "
+                  import json,sys
+                  records=json.load(sys.stdin)
+                  new_record=json.loads('''${RECORD}''')
+                  records.append(new_record)
+                  # Keep the last 500 records to avoid ConfigMap size limits.
+                  if len(records) > 500:
+                      records = records[-500:]
+                  print(json.dumps(records))
+                  " 2>/dev/null || echo "$CURRENT")
+
+                  kubectl -n "$NAMESPACE" patch cm deployment-analytics \
+                    --type=merge \
+                    -p "{\"data\":{\"records\":$(echo "$UPDATED" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))' 2>/dev/null || echo '\"[]\"')}}"
+
+                  echo "Analytics recorded: slot=${ACTIVE_SLOT} outcome=${OUTCOME} error_rate=${ERROR_RATE}% p95=${P95_LATENCY}ms"
+              resources:
+                requests:
+                  cpu: "50m"
+                  memory: "64Mi"
+                limits:
+                  cpu: "200m"
+                  memory: "128Mi"

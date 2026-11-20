@@ -1,0 +1,77 @@
+# Canary Ingress — Gradual traffic split between blue and green slots.
+#
+# NGINX Ingress Controller supports weighted canary routing via annotations.
+# During a canary rollout the inactive slot is exposed through this ingress at
+# a low weight (e.g. 10 %) while the primary ingress continues to serve the
+# active slot.  The CD pipeline progressively raises the weight until 100 %
+# and then promotes the slot by flipping the main service selector.
+#
+# Usage in CI/CD:
+#   1. Deploy new image to inactive slot.
+#   2. Apply this manifest with CANARY_WEIGHT=10.
+#   3. Watch error-rate / latency for 2 minutes; bump to 25, 50, 75, 100.
+#   4. At 100 flip main service selector and delete this canary ingress.
+#
+# The `nginx.ingress.kubernetes.io/canary-weight` annotation is updated by
+# the blue-green-deploy.sh script using `kubectl annotate --overwrite`.
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: agri-fi-backend-canary
+  namespace: agri-fi
+  annotations:
+    # Mark this ingress as the canary — NGINX will split traffic between the
+    # primary (agri-fi-backend) and this canary ingress by weight.
+    nginx.ingress.kubernetes.io/canary: "true"
+    nginx.ingress.kubernetes.io/canary-weight: "10"
+    # Header-based override: requests with X-Canary: always bypass the weight
+    # and always hit the new slot.  Useful for QA / smoke testing.
+    nginx.ingress.kubernetes.io/canary-by-header: "X-Canary"
+    nginx.ingress.kubernetes.io/canary-by-header-value: "always"
+    # Cookie-based stickiness: once a user is routed to the canary, keep them
+    # there for session consistency.
+    nginx.ingress.kubernetes.io/canary-by-cookie: "canary_session"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - api.agri-fi.example.com
+      secretName: agri-fi-tls-cert
+  rules:
+    - host: api.agri-fi.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              # Points to the slot-specific service (blue or green).
+              # The deploy script patches this name at runtime.
+              service:
+                name: agri-fi-backend-canary-svc
+                port:
+                  number: 80
+---
+# Canary slot service — selector is patched by the deploy script to point at
+# whichever slot is being promoted (blue or green).
+apiVersion: v1
+kind: Service
+metadata:
+  name: agri-fi-backend-canary-svc
+  namespace: agri-fi
+  labels:
+    app: agri-fi-backend
+    role: canary
+spec:
+  type: ClusterIP
+  # slot selector is set dynamically; placeholder ensures the manifest is valid.
+  selector:
+    app: agri-fi-backend
+    slot: green
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
