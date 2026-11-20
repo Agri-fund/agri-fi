@@ -1,0 +1,72 @@
+{
+  "common": {
+    "appName": "Stellar",
+    "loading": "Carregando...",
+    "error": "Ocorreu um erro",
+    "retry": "Tentar novamente",
+    "cancel": "Cancelar",
+    "confirm": "Confirmar",
+    "save": "Salvar",
+    "close": "Fechar",
+    "back": "Voltar",
+    "next": "Próximo",
+    "submit": "Enviar",
+    "search": "Pesquisar",
+    "noResults": "Nenhum resultado encontrado",
+    "required": "Obrigatório",
+    "optional": "Opcional"
+  },
+  "nav": {
+    "home": "Início",
+    "dashboard": "Painel",
+    "wallet": "Carteira",
+    "transactions": "Transações",
+    "settings": "Configurações",
+    "profile": "Perfil",
+    "logout": "Sair",
+    "login": "Entrar"
+  },
+  "auth": {
+    "loginTitle": "Entrar na sua conta",
+    "email": "E-mail",
+    "password": "Senha",
+    "forgotPassword": "Esqueceu a senha?",
+    "signIn": "Entrar",
+    "signUp": "Cadastrar-se",
+    "invalidCredentials": "E-mail ou senha inválidos"
+  },
+  "wallet": {
+    "balance": "Saldo",
+    "available": "Disponível",
+    "send": "Enviar",
+    "receive": "Receber",
+    "address": "Endereço",
+    "copyAddress": "Copiar endereço",
+    "copied": "Copiado",
+    "amount": "Valor",
+    "asset": "Ativo",
+    "fee": "Taxa",
+    "total": "Total",
+    "memo": "Memorando",
+    "destination": "Destino",
+    "insufficientFunds": "Fundos insuficientes"
+  },
+  "transactions": {
+    "title": "Transações",
+    "empty": "Nenhuma transação ainda",
+    "pending": "Pendente",
+    "completed": "Concluída",
+    "failed": "Falhou",
+    "date": "Data",
+    "status": "Status",
+    "type": "Tipo",
+    "sent": "Enviado",
+    "received": "Recebido"
+  },
+  "errors": {
+    "network": "Erro de rede. Verifique sua conexão.",
+    "notFound": "Página não encontrada",
+    "unauthorized": "Não autorizado",
+    "generic": "Algo deu errado. Tente novamente."
+  }
+}
