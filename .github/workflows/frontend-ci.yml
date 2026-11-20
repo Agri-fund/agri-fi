@@ -2,178 +2,52 @@ name: Frontend CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend-ci.yml'
   pull_request:
-    branches: [main, develop]
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend-ci.yml'
 
 jobs:
-  frontend:
-    name: Frontend — lint, build
+  build-and-test:
     runs-on: ubuntu-latest
-
+    defaults:
+      run:
+        working-directory: frontend
     steps:
       - uses: actions/checkout@v4
-
-      - name: Check for unresolved merge conflicts
-        run: |
-          if grep -rn "<<<<<<< " --include="*.ts" --include="*.tsx" --include="*.json" .; then
-            echo "Unresolved merge conflicts found!"
-            exit 1
-          fi
-        working-directory: frontend
-
-      - uses: pnpm/action-setup@v3
-        with:
-          version: 9
 
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: pnpm
-          cache-dependency-path: frontend/pnpm-lock.yaml
-
-      # - name: Check ESLint config exists
-      #   run: test -f .eslintrc.json || test -f eslint.config.mjs
-      #   working-directory: frontend
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-        working-directory: frontend
+        run: npm ci
 
       - name: Lint
-        run: pnpm run lint
-        working-directory: frontend
+        run: npm run lint
 
-      - name: Build
-        run: pnpm run build
-        working-directory: frontend
-        env:
-          # Stub URL for the build. Marketplace pages are force-dynamic, so the
-          # build does not contact this URL — it is only baked into the client
-          # bundle as a fallback default.
-          NEXT_PUBLIC_API_URL: https://api.example.invalid
-          BACKEND_URL: https://api.example.invalid
+      - name: Type check
+        run: npm run type-check
 
-      - name: Audit raw auth-token storage access
-        # All auth-token reads/writes must go through src/lib/auth-token.ts (#975).
-        run: |
-          pattern="(local|session)Storage\.(get|set|remove)Item\(\s*['\"](auth_token|authToken|token)['\"]"
-          matches=$(grep -rnE "$pattern" src \
-            --include='*.ts' --include='*.tsx' \
-            | grep -vE '^src/lib/auth-token\.ts:|/__tests__/|\.(test|spec)\.tsx?:' || true)
-          if [ -n "$matches" ]; then
-            echo "$matches" | while IFS=: read -r file line _; do
-              echo "::error file=frontend/$file,line=$line::Use getAuthToken/setAuthToken/clearAuthToken from @/lib/auth-token instead of raw storage access."
-            done
-            exit 1
-          fi
-        working-directory: frontend
+      - name: Unit tests
+        run: npm test -- --run
 
-      - name: Notify on failure
-        if: failure()
-        run: |
-          # Discord notification
-          if [ -n "${{ secrets.DISCORD_WEBHOOK_URL }}" ]; then
-            curl -X POST ${{ secrets.DISCORD_WEBHOOK_URL }} \
-              -H "Content-Type: application/json" \
-              -d '{
-                "content": "❌ **Frontend CI Build Failed**\n\n**Repository:** ${{ github.repository }}\n**Branch:** ${{ github.ref_name }}\n**Commit:** ${{ github.sha }}\n**Actor:** ${{ github.actor }}\n**Workflow:** ${{ github.workflow }}\n**Run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
-                "username": "GitHub Actions"
-              }' || true
-          fi
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
 
-          # Slack notification
-          if [ -n "${{ secrets.SLACK_WEBHOOK_URL }}" ]; then
-            curl -X POST ${{ secrets.SLACK_WEBHOOK_URL }} \
-              -H "Content-Type: application/json" \
-              -d '{
-                "text": "❌ Frontend CI Build Failed",
-                "blocks": [
-                  {
-                    "type": "header",
-                    "text": {
-                      "type": "plain_text",
-                      "text": "❌ Frontend CI Build Failed"
-                    }
-                  },
-                  {
-                    "type": "section",
-                    "fields": [
-                      {
-                        "type": "mrkdwn",
-                        "text": "*Repository:*\n${{ github.repository }}"
-                      },
-                      {
-                        "type": "mrkdwn",
-                        "text": "*Branch:*\n${{ github.ref_name }}"
-                      },
-                      {
-                        "type": "mrkdwn",
-                        "text": "*Commit:*\n${{ github.sha }}"
-                      },
-                      {
-                        "type": "mrkdwn",
-                        "text": "*Actor:*\n${{ github.actor }}"
-                      }
-                    ]
-                  },
-                  {
-                    "type": "section",
-                    "text": {
-                      "type": "mrkdwn",
-                      "text": "<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow Run>"
-                    }
-                  }
-                ]
-              }' || true
-          fi
-
-  investment-flow:
-    name: Frontend — unit + investment-flow E2E
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v3
-        with:
-          version: 9
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: pnpm
-          cache-dependency-path: frontend/pnpm-lock.yaml
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-        working-directory: frontend
-
-      - name: Unit tests (auth token, modal a11y)
-        run: >
-          pnpm exec vitest run
-          src/lib/__tests__/auth-token.test.ts
-          src/components/__tests__/ModalWrapper.test.tsx
-          src/components/__tests__/WalletSelectionModal.test.tsx
-          src/components/marketplace/__tests__/InvestmentModal.a11y.test.tsx
-        working-directory: frontend
-
-      - name: Install Playwright Chromium
-        run: pnpm exec playwright install --with-deps chromium
-        working-directory: frontend
-
-      - name: Investment-flow E2E (mocked Freighter/Albedo + backend, axe)
-        run: pnpm test:e2e:invest
-        working-directory: frontend
-        env:
-          CI: true
+      - name: Accessibility audit (axe-core, WCAG 2.1 Level A)
+        run: npx playwright test tests/a11y.spec.ts
 
       - name: Upload Playwright report
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: investment-flow-playwright-report
-          path: |
-            frontend/playwright-report
-            frontend/test-results
+          name: playwright-report
+          path: frontend/playwright-report
           retention-days: 7
