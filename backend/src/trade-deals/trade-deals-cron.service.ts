@@ -104,10 +104,37 @@ export class TradeDealsCronService {
       `Found ${pendingOnExpired.length} pending investment(s) to refund on expired deals`,
     );
 
-    const ids = pendingOnExpired.map((inv) => inv.id);
+    const clawbackQueued: typeof pendingOnExpired = [];
+    for (const inv of pendingOnExpired) {
+      try {
+        await this.queueService.emit('stellar.clawback', {
+          investmentId: inv.id,
+          tradeDealId: inv.tradeDealId,
+          investorId: inv.investorId,
+          amountUsd: inv.amountUsd,
+          reason: 'deal_expired',
+        });
+        clawbackQueued.push(inv);
+      } catch (error: any) {
+        this.logger.error(
+          { investmentId: inv.id, error: error.message },
+          'Failed to queue Stellar clawback for expired deal investment — leaving status PENDING',
+        );
+      }
+    }
+
+    if (clawbackQueued.length === 0) {
+      this.logger.error(
+        { count: pendingOnExpired.length },
+        'No Stellar clawback jobs were queued — no investments were marked refunded',
+      );
+      return;
+    }
+
+    const ids = clawbackQueued.map((inv) => inv.id);
     await this.investmentRepo.update(ids, { status: InvestmentStatus.REFUNDED });
 
-    for (const inv of pendingOnExpired) {
+    for (const inv of clawbackQueued) {
       try {
         await this.queueService.emit('email.notification', {
           type: 'investment_refunded_deal_expired',
@@ -123,6 +150,9 @@ export class TradeDealsCronService {
       }
     }
 
-    this.logger.info({ count: ids.length }, 'Refunded pending investments on expired deals');
+    this.logger.info(
+      { count: ids.length },
+      'Queued Stellar clawbacks and refunded pending investments on expired deals',
+    );
   }
 }

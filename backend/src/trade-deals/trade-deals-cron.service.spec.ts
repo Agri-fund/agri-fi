@@ -1,3 +1,5 @@
+jest.mock('./deal-suggestions.service', () => ({}), { virtual: true });
+
 import { TradeDealsCronService } from './trade-deals-cron.service';
 import { InvestmentStatus } from '../investments/entities/investment.entity';
 
@@ -84,7 +86,12 @@ describe('TradeDealsCronService', () => {
     });
   });
 
-  describe('refundPendingInvestmentsOnExpiredDeals (#1007)', () => {
+  describe('refundPendingInvestmentsOnExpiredDeals (#1007, #1318)', () => {
+    const investments = [
+      { id: 'inv-1', investorId: 'user-1', tradeDealId: 'deal-1', amountUsd: 500 },
+      { id: 'inv-2', investorId: 'user-2', tradeDealId: 'deal-1', amountUsd: 250 },
+    ];
+
     it('does nothing when no pending investments exist on expired deals', async () => {
       investmentQb.getMany.mockResolvedValue([]);
 
@@ -107,11 +114,44 @@ describe('TradeDealsCronService', () => {
       });
     });
 
-    it('bulk-updates all matched investments to REFUNDED', async () => {
-      const investments = [
-        { id: 'inv-1', investorId: 'user-1', tradeDealId: 'deal-1', amountUsd: 500 },
-        { id: 'inv-2', investorId: 'user-2', tradeDealId: 'deal-1', amountUsd: 250 },
-      ];
+    it('queues a stellar.clawback job for every investment before marking them REFUNDED (#1318)', async () => {
+      investmentQb.getMany.mockResolvedValue(investments);
+
+      await service.refundPendingInvestmentsOnExpiredDeals();
+
+      expect(queueService.emit).toHaveBeenCalledWith('stellar.clawback', {
+        investmentId: 'inv-1',
+        tradeDealId: 'deal-1',
+        investorId: 'user-1',
+        amountUsd: 500,
+        reason: 'deal_expired',
+      });
+      expect(queueService.emit).toHaveBeenCalledWith('stellar.clawback', {
+        investmentId: 'inv-2',
+        tradeDealId: 'deal-1',
+        investorId: 'user-2',
+        amountUsd: 250,
+        reason: 'deal_expired',
+      });
+
+      const emitMock = queueService.emit as jest.Mock;
+      const clawbackCalls = emitMock.mock.calls.filter(
+        ([pattern]) => pattern === 'stellar.clawback',
+      );
+      expect(clawbackCalls).toHaveLength(2);
+
+      const updateOrder = (investmentRepo.update as jest.Mock).mock
+        .invocationCallOrder[0];
+      emitMock.mock.calls.forEach(([pattern], index) => {
+        if (pattern === 'stellar.clawback') {
+          expect(emitMock.mock.invocationCallOrder[index]).toBeLessThan(
+            updateOrder,
+          );
+        }
+      });
+    });
+
+    it('bulk-updates only investments whose clawback job was queued', async () => {
       investmentQb.getMany.mockResolvedValue(investments);
 
       await service.refundPendingInvestmentsOnExpiredDeals();
@@ -122,16 +162,52 @@ describe('TradeDealsCronService', () => {
       );
     });
 
+    it('never marks an investment REFUNDED when its clawback job cannot be queued (#1318)', async () => {
+      investmentQb.getMany.mockResolvedValue(investments);
+      queueService.emit.mockImplementation(async (pattern: string, payload: any) => {
+        if (pattern === 'stellar.clawback' && payload.investmentId === 'inv-1') {
+          throw new Error('queue down');
+        }
+      });
+
+      await expect(
+        service.refundPendingInvestmentsOnExpiredDeals(),
+      ).resolves.not.toThrow();
+
+      expect(investmentRepo.update).toHaveBeenCalledWith(
+        ['inv-2'],
+        { status: InvestmentStatus.REFUNDED },
+      );
+      expect(queueService.emit).not.toHaveBeenCalledWith(
+        'email.notification',
+        expect.objectContaining({ investorId: 'user-1' }),
+      );
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.objectContaining({ investmentId: 'inv-1' }),
+        expect.any(String),
+      );
+    });
+
+    it('marks nothing REFUNDED when every clawback queue emit fails (#1318)', async () => {
+      investmentQb.getMany.mockResolvedValue(investments);
+      queueService.emit.mockImplementation(async (pattern: string) => {
+        if (pattern === 'stellar.clawback') throw new Error('queue down');
+      });
+
+      await service.refundPendingInvestmentsOnExpiredDeals();
+
+      expect(investmentRepo.update).not.toHaveBeenCalled();
+      expect(queueService.emit).not.toHaveBeenCalledWith(
+        'email.notification',
+        expect.anything(),
+      );
+    });
+
     it('emits an email notification for each refunded investment', async () => {
-      const investments = [
-        { id: 'inv-1', investorId: 'user-1', tradeDealId: 'deal-1', amountUsd: 500 },
-        { id: 'inv-2', investorId: 'user-2', tradeDealId: 'deal-2', amountUsd: 100 },
-      ];
       investmentQb.getMany.mockResolvedValue(investments);
 
       await service.refundPendingInvestmentsOnExpiredDeals();
 
-      expect(queueService.emit).toHaveBeenCalledTimes(2);
       expect(queueService.emit).toHaveBeenCalledWith('email.notification', {
         type: 'investment_refunded_deal_expired',
         investorId: 'user-1',
@@ -141,34 +217,34 @@ describe('TradeDealsCronService', () => {
       expect(queueService.emit).toHaveBeenCalledWith('email.notification', {
         type: 'investment_refunded_deal_expired',
         investorId: 'user-2',
-        tradeDealId: 'deal-2',
-        amountUsd: 100,
+        tradeDealId: 'deal-1',
+        amountUsd: 250,
       });
     });
 
     it('is idempotent — a second run finds no PENDING investments left', async () => {
       investmentQb.getMany
-        .mockResolvedValueOnce([
-          { id: 'inv-1', investorId: 'user-1', tradeDealId: 'deal-1', amountUsd: 200 },
-        ])
+        .mockResolvedValueOnce([investments[0]])
         .mockResolvedValueOnce([]);
 
       await service.refundPendingInvestmentsOnExpiredDeals();
       await service.refundPendingInvestmentsOnExpiredDeals();
 
       expect(investmentRepo.update).toHaveBeenCalledTimes(1);
-      expect(queueService.emit).toHaveBeenCalledTimes(1);
+      expect(
+        (queueService.emit as jest.Mock).mock.calls.filter(
+          ([pattern]) => pattern === 'stellar.clawback',
+        ),
+      ).toHaveLength(1);
     });
 
     it('continues processing remaining investments when a notification emit fails', async () => {
-      const investments = [
-        { id: 'inv-1', investorId: 'user-1', tradeDealId: 'deal-1', amountUsd: 300 },
-        { id: 'inv-2', investorId: 'user-2', tradeDealId: 'deal-2', amountUsd: 400 },
-      ];
       investmentQb.getMany.mockResolvedValue(investments);
-      queueService.emit
-        .mockRejectedValueOnce(new Error('queue down'))
-        .mockResolvedValueOnce(undefined);
+      queueService.emit.mockImplementation(async (pattern: string, payload: any) => {
+        if (pattern === 'email.notification' && payload.investorId === 'user-1') {
+          throw new Error('queue down');
+        }
+      });
 
       await expect(
         service.refundPendingInvestmentsOnExpiredDeals(),
@@ -178,7 +254,10 @@ describe('TradeDealsCronService', () => {
         ['inv-1', 'inv-2'],
         { status: InvestmentStatus.REFUNDED },
       );
-      expect(queueService.emit).toHaveBeenCalledTimes(2);
+      expect(queueService.emit).toHaveBeenCalledWith(
+        'email.notification',
+        expect.objectContaining({ investorId: 'user-2' }),
+      );
       expect(logger.error).toHaveBeenCalledWith(
         expect.objectContaining({ investmentId: 'inv-1' }),
         expect.any(String),

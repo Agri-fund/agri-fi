@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { QueueProcessor } from './queue.processor';
+import { StellarClawbackConsumer } from './stellar-clawback.consumer';
 import { TradeDealsModule } from '../trade-deals/trade-deals.module';
 import { StellarModule } from '../stellar/stellar.module';
 import { SorobanModule } from '../soroban/soroban.module';
@@ -19,6 +20,6 @@ import { IdempotencyService } from './idempotency.service';
     NotificationsModule,
     QueueModule,
   ],
-  providers: [QueueProcessor, IdempotencyService],
+  providers: [QueueProcessor, StellarClawbackConsumer, IdempotencyService],
 })
 export class QueueProcessorModule {}

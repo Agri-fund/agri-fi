@@ -79,6 +79,14 @@ export interface EscrowReleaseNotifyPayload extends BasePayload {
   tradeTokenCode: string;
 }
 
+export interface StellarClawbackPayload extends BasePayload {
+  investmentId: string;
+  tradeDealId: string;
+  investorId: string;
+  amountUsd: number;
+  reason: string;
+}
+
 const EVENTS = {
   DEAL_DELIVERED: 'deal.delivered',
   INVESTMENT_FUND: 'investment.fund',
@@ -86,6 +94,7 @@ const EVENTS = {
   DEAL_PUBLISH: 'deal.publish',
   DEAL_CLEANUP: 'deal.cleanup',
   ESCROW_RELEASE_NOTIFY: 'escrow.release_notify',
+  STELLAR_CLAWBACK: 'stellar.clawback',
 } as const;
 
 @Injectable()
@@ -161,6 +170,13 @@ export class QueueService implements TransactionalQueueService {
   ): Promise<void> {
     const enrichedPayload = this.addCorrelationId(payload);
     await this.emit(EVENTS.INVESTMENT_FUND, enrichedPayload);
+  }
+
+  async enqueueStellarClawback(
+    payload: Omit<StellarClawbackPayload, 'correlationId'>,
+  ): Promise<void> {
+    const enrichedPayload = this.addCorrelationId(payload);
+    await this.emit(EVENTS.STELLAR_CLAWBACK, enrichedPayload);
   }
 
   async enqueueDealFunded(
