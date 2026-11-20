@@ -33,6 +33,7 @@ import { OfacSanctionsCheckService } from '../auth/utils/ofac-sanctions-check';
 import { AnnualCapService } from '../accreditation/annual-cap.service';
 import { ReferralService } from '../auth/referral.service';
 import { NotificationsGateway } from '../notifications/notifications.gateway';
+import { WatchlistService } from '../watchlist/watchlist.service';
 
 export interface CreateInvestmentResult {
   investment: Investment;
@@ -73,6 +74,7 @@ export class InvestmentsService {
     @Optional() private readonly annualCapService?: AnnualCapService,
     @Optional() private readonly referralService?: ReferralService,
     @Optional() private readonly notificationsGateway?: NotificationsGateway,
+    @Optional() private readonly watchlistService?: WatchlistService,
   ) {}
 
   private coolingOffHours(): number {
@@ -361,6 +363,11 @@ export class InvestmentsService {
     // Update total invested on the trade deal using confirmed investments sum
     const tradeDeal = investment.tradeDeal;
     let becameFunded = false;
+    let previousFundingPercent = this.fundingPercent(
+      Number(tradeDeal.totalInvested ?? 0),
+      Number(tradeDeal.totalValue),
+    );
+    let newFundingPercent = previousFundingPercent;
 
     await this.dataSource.transaction(async (manager) => {
       // Update investment status inside the transaction
@@ -385,6 +392,11 @@ export class InvestmentsService {
         totalInvested: newTotalInvested,
       });
 
+      newFundingPercent = this.fundingPercent(
+        newTotalInvested,
+        Number(tradeDeal.totalValue),
+      );
+
       if (newTotalInvested >= Number(tradeDeal.totalValue)) {
         // Generate application trace ID for authorized update
         const appTraceId = `app-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 10)}`;
@@ -400,6 +412,13 @@ export class InvestmentsService {
     if (becameFunded) {
       this.sendFundedNotification(tradeDeal).catch(() => {});
     }
+
+    // #1419 — Notify watchers when funding crosses 50%/75%/100% thresholds
+    this.notifyWatchlistFundingChange(
+      tradeDeal.id,
+      previousFundingPercent,
+      newFundingPercent,
+    );
 
     // Trigger referral reward for first investment
     this.referralService?.triggerReward(investorId)?.catch(() => {});
@@ -672,6 +691,29 @@ export class InvestmentsService {
     );
 
     return { status: 'confirmed', investmentId, stellarTxId };
+  }
+
+  private fundingPercent(totalInvested: number, totalValue: number): number {
+    if (!Number.isFinite(totalValue) || totalValue <= 0) return 0;
+    return (totalInvested / totalValue) * 100;
+  }
+
+  // Fire-and-forget — watchlist notification failures must not affect the
+  // investment confirmation flow.
+  private notifyWatchlistFundingChange(
+    tradeDealId: string,
+    previousPercent: number,
+    newPercent: number,
+  ): void {
+    if (!this.watchlistService) return;
+    this.watchlistService
+      .notifyFundingProgress(tradeDealId, previousPercent, newPercent)
+      .catch((err) => {
+        console.error(
+          '[InvestmentsService] Failed to notify watchlist funding change',
+          err,
+        );
+      });
   }
 
   private async sendFundedNotification(tradeDeal: TradeDeal): Promise<void> {

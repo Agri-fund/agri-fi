@@ -1,6 +1,8 @@
 import { DataSource } from 'typeorm';
 import { join } from 'path';
 import * as dotenv from 'dotenv';
+import { PriceAlert } from '../market/entities/price-alert.entity';
+import { Watchlist } from '../watchlist/entities/watchlist.entity';
 
 dotenv.config();
 
@@ -50,7 +52,11 @@ const dataSourceConfig: any = {
     master: masterConnection,
     slaves: [slaveConnection],
   },
-  entities: [join(__dirname, '..', '**', '*.entity.{ts,js}')],
+  entities: [
+    join(__dirname, '..', '**', '*.entity.{ts,js}'),
+    PriceAlert,
+    Watchlist,
+  ],
   migrations: [join(__dirname, 'migrations', '*.{ts,js}')],
   synchronize: false,
   logging: false,

@@ -70,20 +70,21 @@ k6 run \
 
 ## 3. Scenarios Architecture
 
-The test script defines three distinct concurrent scenarios using k6 multi-scenario execution:
+The test script defines six distinct concurrent scenarios using k6 multi-scenario execution:
 
 ```
                   ┌─────────────────────────────────────────┐
                   │          k6 Load Execution              │
                   └───────────────────┬─────────────────────┘
                                       │
-         ┌────────────────────────────┼────────────────────────────┐
-         ▼                            ▼                            ▼
-┌──────────────────┐        ┌──────────────────┐        ┌──────────────────┐
-│marketplace_deals │        │investment_crea...│        │  escrow_payout   │
-│40 Constant VUs   │        │Ramping VUs (2-12)│        │Ramping VUs (1-6) │
-│List & Detail     │        │Invest & Fund     │        │Importer Milestone│
-└──────────────────┘        └──────────────────┘        └──────────────────┘
+   ┌──────────────┬──────────────┬────┴─────────┬──────────────┬──────────────┐
+   ▼              ▼              ▼              ▼              ▼              ▼
+┌────────────┐┌────────────┐┌────────────┐┌────────────┐┌────────────┐┌────────────┐
+│marketplace_││investment_ ││escrow_payou││investor_   ││escrow_relea││marketplace_│
+│deals       ││creation    ││t           ││journey     ││se_stress   ││browse_filt│
+│40 VUs      ││Ramping 2-12││Ramping 1-6 ││Ramping 1-10││50 VUs      ││200 VUs     │
+│List/Detail ││Invest/Fund ││Milestone   ││Full journey││Release x50 ││Filtered    │
+└────────────┘└────────────┘└────────────┘└────────────┘└────────────┘└────────────┘
 ```
 
 ### Scenario 1: `marketplace_deals`
@@ -122,6 +123,39 @@ The test script defines three distinct concurrent scenarios using k6 multi-scena
   3. Verifies response payload for payout queue dispatch.
 - **Goal**: Exercises final settlement logic, background RabbitMQ outbox publishing, and multi-party payout calculations (98% farmer, proportional investor returns, 2% platform fee).
 
+### Scenario 4: `investor_journey`
+- **Executor**: `ramping-vus`
+- **Stages**:
+  - `30s`: Ramp up from 1 to 10 VUs.
+  - `2m00s`: Steady load at 10 VUs.
+  - `30s`: Ramp down to 1 VU.
+- **Simulated Flow** (full critical user journey):
+  1. `POST /v1/auth/register` with a unique per-VU email (tagged as `RegisterUser`).
+  2. `POST /v1/kyc/verify` KYC stub submission (tagged as `SubmitKyc`).
+  3. `GET /v1/trade-deals?page=1&limit=12` marketplace browse (tagged as `BrowseDeals`).
+  4. `POST /v1/investments` followed by `POST /v1/investments/:id/fund` (tagged as `JourneyInvest`).
+  5. `GET /v1/investments?investorId=me` portfolio check (tagged as `GetPortfolio`).
+- **Goal**: Validates the end-to-end onboarding funnel under concurrency, catching regressions in registration throttling, KYC stub handling, and portfolio read consistency.
+
+### Scenario 5: `escrow_release_stress`
+- **Executor**: `constant-vus`
+- **VUs**: 50 concurrent virtual users
+- **Duration**: 30 seconds (configurable via `DURATION`)
+- **Simulated Flow**:
+  1. Each VU picks a distinct deal from the setup-provided deal pool (one deal per VU, no overlap).
+  2. Submits `POST /v1/escrow/release` for its assigned deal (tagged as `ReleaseEscrow`).
+  3. Asserts the response indicates a queued or completed release.
+- **Goal**: Stress-tests Stellar escrow release throughput across 50 different deals simultaneously, exercising Horizon submission concurrency, nonce/sequence management, and RabbitMQ outbox fan-out.
+
+### Scenario 6: `marketplace_browse_filters`
+- **Executor**: `constant-vus`
+- **VUs**: 200 concurrent virtual users
+- **Duration**: 30 seconds (configurable via `DURATION`)
+- **Simulated Flow**:
+  1. Requests `GET /v1/trade-deals` with randomized filters (`commodity`, `region`, `status`, `minApy`, `page`, `limit`) (tagged as `BrowseFilteredDeals`).
+  2. Requests `GET /v1/trade-deals/:id` for a sampled result (tagged as `BrowseFilteredDetail`).
+- **Goal**: Verifies that filtered catalog queries remain fast at high read concurrency, catching missing composite indexes and cache-key fragmentation.
+
 ---
 
 ## 4. Current Performance Budgets & Thresholds
@@ -136,6 +170,16 @@ Agri-Fi enforces hard thresholds configured directly in the k6 script options. I
 | `http_req_duration{name:CreateInvestment}` | `p(95) < 1500ms` | Deal booking with DB transaction and row-level checks must finish under 1.5s at p95. |
 | `http_req_duration{name:FundEscrow}` | `p(95) < 2000ms` | Escrow verification, cryptographic signature validation, and queue dispatch must complete under 2.0s at p95. |
 | `http_req_duration{name:RecordImporterMilestone}` | `p(95) < 2000ms` | Shipment milestone registration and payout pipeline trigger must complete under 2.0s at p95. |
+| `http_req_duration{name:RegisterUser}` | `p(95) < 2000ms` | Account registration (write) must complete under 2.0s at p95. |
+| `http_req_duration{name:SubmitKyc}` | `p(95) < 2000ms` | KYC stub submission (write) must complete under 2.0s at p95. |
+| `http_req_duration{name:BrowseDeals}` | `p(95) < 500ms` | Marketplace browse (read) must return in under 500ms at p95. |
+| `http_req_duration{name:JourneyInvest}` | `p(95) < 2000ms` | Investment creation + funding within the journey (write) must complete under 2.0s at p95. |
+| `http_req_duration{name:GetPortfolio}` | `p(95) < 500ms` | Portfolio read must return in under 500ms at p95. |
+| `http_req_duration{name:ReleaseEscrow}` | `p(95) < 2000ms` | Stellar escrow release (write) must complete under 2.0s at p95 under 50-way concurrency. |
+| `http_req_duration{name:BrowseFilteredDeals}` | `p(95) < 500ms` | Filtered marketplace browse (read) must return in under 500ms at p95 at 200 VUs. |
+| `http_req_duration{name:BrowseFilteredDetail}` | `p(95) < 500ms` | Filtered deal detail (read) must return in under 500ms at p95 at 200 VUs. |
+
+**Latency budget rule of thumb:** reads must satisfy `p(95) < 500ms`; writes must satisfy `p(95) < 2000ms`.
 
 ---
 
@@ -217,6 +261,55 @@ In GitHub Actions workflows (e.g., `.github/workflows/ci.yml` and `backend-ci.ym
 ```
 
 If any endpoint exceeds its p95 budget (e.g., `ListOpenDeals` exceeding 250ms), the job will fail, preventing broken or regressed code from merging into `main`.
+
+### The `k6-performance-gate.yml` Workflow
+
+The dedicated performance gate lives at `.github/workflows/k6-performance-gate.yml`. It:
+
+1. Boots the backend stack (PostgreSQL, Redis, RabbitMQ, API) via Docker Compose.
+2. Runs `tests/load/k6-performance.js` with all six scenarios enabled.
+3. Relies on k6's built-in threshold enforcement: any breached threshold makes k6 exit with code `99`, which fails the job and blocks the merge.
+4. Publishes the results summary as a PR comment using the k6 GitHub Action.
+
+The gate is triggered on pull requests touching backend code and on a nightly schedule. Because thresholds are declared in the script's `options.thresholds`, the workflow does not need to duplicate them—updating the script is the single source of truth.
+
+### PR Comment Summary
+
+On every PR run, the k6 GitHub Action posts a comment containing:
+- The pass/fail status of each threshold (reads `< 500ms`, writes `< 2s`).
+- p95, p99, and max latency per tagged request.
+- The overall `http_req_failed` rate.
+- A link to the uploaded `k6-summary.json` artifact for deeper inspection.
+
+Reviewers should treat a red threshold in the PR comment as a blocking failure, identical to a failing unit test.
+
+### Running the New Scenarios Locally
+
+Run the full suite (all six scenarios):
+```bash
+k6 run tests/load/k6-performance.js
+```
+
+Run only the full investor journey:
+```bash
+k6 run --env SCENARIO=investor_journey tests/load/k6-performance.js
+```
+
+Run only the 50-way escrow release stress test:
+```bash
+k6 run --env SCENARIO=escrow_release_stress tests/load/k6-performance.js
+```
+
+Run only the 200-VU filtered marketplace browse:
+```bash
+k6 run --env SCENARIO=marketplace_browse_filters -e VUS=200 tests/load/k6-performance.js
+```
+
+### Interpreting the New Scenarios
+
+- **`investor_journey`**: Watch `RegisterUser` and `SubmitKyc` for throttler-induced `429`s (surfacing as a rising `http_req_failed`). A slow `GetPortfolio` usually indicates a missing index on `investments(investor_id)`.
+- **`escrow_release_stress`**: If `ReleaseEscrow` p95 climbs toward 2s, check Horizon submission latency and Stellar account sequence-number contention. RabbitMQ channel saturation will also show up here.
+- **`marketplace_browse_filters`**: A `BrowseFilteredDeals` p95 above 500ms at 200 VUs typically means a missing composite index (e.g. `trade_deals(commodity, region, status)`) or Redis cache-key fragmentation from too many filter permutations.
 
 ---
 

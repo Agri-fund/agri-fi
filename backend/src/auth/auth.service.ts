@@ -43,6 +43,7 @@ import { AdminAction } from '../database/entities/admin-action.entity';
 import { authenticator } from 'otplib';
 import * as QRCode from 'qrcode';
 import { TokenBlocklistService } from './token-blocklist.service';
+import { TokenService } from './token.service';
 import { SecurityThreatService } from './security-threat.service';
 import { EmailSequenceService } from '../email-sequence/email-sequence.service';
 import { KycRulesService } from '../kyc-rules/kyc-rules.service';
@@ -91,6 +92,7 @@ export class AuthService {
     private readonly notificationsService: NotificationsService,
     private readonly ofacSanctionsCheck: OfacSanctionsCheckService,
     private readonly tokenBlocklistService: TokenBlocklistService,
+    private readonly tokenService: TokenService,
     private readonly securityThreat: SecurityThreatService,
     @Optional() private readonly emailSequenceService: EmailSequenceService,
     @Optional() private readonly auditService: AuditService,
@@ -253,59 +255,17 @@ export class AuthService {
 
   // ── token pair ─────────────────────────────────────────────────────────────
 
-  private accessTokenExpiresIn(): string {
-    return (
-      this.configService.get<string>('JWT_ACCESS_EXPIRES_IN') ??
-      this.configService.get<string>('JWT_EXPIRES_IN', '7d')
-    );
-  }
-
-  private refreshTokenExpiresIn(): string {
-    return this.configService.get<string>('JWT_REFRESH_EXPIRES_IN', '7d');
-  }
-
-  /** Parses a JWT-style duration ('15m', '7d', '3600s', or a bare number of seconds). */
-  private durationToSeconds(value: string): number {
-    const match = /^(\d+)\s*(s|m|h|d)?$/i.exec(value.trim());
-    if (!match) return 0;
-    const amount = parseInt(match[1], 10);
-    const unit = (match[2] ?? 's').toLowerCase();
-    const multipliers: Record<string, number> = {
-      s: 1,
-      m: 60,
-      h: 3600,
-      d: 86400,
-    };
-    return amount * multipliers[unit];
-  }
-
   /**
-   * Issues a fresh access/refresh token pair. Every refresh token gets a new
-   * unique jti; `familyId` is preserved across a rotation chain (or started
-   * fresh on login) so replay of a rotated-out token can be detected (#786).
+   * Issues a fresh access/refresh token pair via the shared TokenService.
+   * Every refresh token gets a new unique jti; `familyId` is preserved across
+   * a rotation chain (or started fresh on login) so replay of a rotated-out
+   * token can be detected (#786).
    */
   private issueTokenPair(
     user: User,
     familyId: string = randomUUID(),
   ): { accessToken: string; refreshToken: string } {
-    const base: JwtPayload = {
-      sub: user.id,
-      email: user.email,
-      role: user.role,
-      tokenVersion: user.tokenVersion ?? 0,
-    };
-
-    return {
-      accessToken: this.jwtService.sign(
-        { ...base, typ: 'access' },
-        { expiresIn: this.accessTokenExpiresIn() },
-      ),
-      refreshToken: this.jwtService.sign(
-        { ...base, typ: 'refresh', jti: randomUUID(), familyId },
-        // Sliding expiry: every rotation is granted a full fresh TTL.
-        { expiresIn: this.refreshTokenExpiresIn() },
-      ),
-    };
+    return this.tokenService.issueTokenPair(user, familyId);
   }
 
   /** Secure cookie options for JWT tokens */
@@ -695,10 +655,7 @@ export class AuthService {
         // the token family may be compromised. Shut it down and force the
         // user to re-authenticate on every device (#786).
         if (familyId) {
-          await this.tokenBlocklistService.revokeTokenFamily(
-            familyId,
-            this.durationToSeconds(this.refreshTokenExpiresIn()),
-          );
+          await this.tokenService.revokeTokenFamily(familyId);
         }
         user.tokenVersion = (user.tokenVersion ?? 0) + 1;
         await this.userRepo.save(user);
@@ -707,12 +664,7 @@ export class AuthService {
         );
       }
 
-      const remainingSeconds =
-        (payload.exp ?? 0) - Math.floor(Date.now() / 1000);
-      await this.tokenBlocklistService.markRefreshTokenRotated(
-        jti,
-        Math.max(remainingSeconds, 1),
-      );
+      await this.tokenService.markRefreshTokenRotated(payload);
     }
 
     return this.issueTokenPair(user, familyId);
@@ -728,17 +680,7 @@ export class AuthService {
   async logout(userId: string, token?: string): Promise<{ message: string }> {
     // If a token string is provided, try to blocklist it until expiry.
     if (token) {
-      try {
-        const decoded: any = this.jwtService.decode(token);
-        if (decoded && typeof decoded.exp === 'number') {
-          const remainingSeconds = decoded.exp - Math.floor(Date.now() / 1000);
-          if (remainingSeconds > 0) {
-            await this.tokenBlocklistService.blocklistToken(token, remainingSeconds);
-          }
-        }
-      } catch {
-        // ignore decode errors — still proceed to invalidate sessions
-      }
+      await this.tokenService.blocklistToken(token);
     }
 
     // Bump tokenVersion so all issued JWTs become invalid immediately.
@@ -1412,10 +1354,7 @@ export class AuthService {
    * Token contains userId and is used in the unlock link sent via email.
    */
   private generateUnlockToken(userId: string): string {
-    return this.jwtService.sign(
-      { sub: userId, typ: 'account_unlock' },
-      { expiresIn: '15m' } as any,
-    );
+    return this.tokenService.generateUnlockToken(userId);
   }
 
   /**
@@ -1426,18 +1365,10 @@ export class AuthService {
     token: string,
     meta?: LoginMeta,
   ): Promise<{ message: string }> {
-    let payload: any;
-    try {
-      payload = this.jwtService.verify(token) as any;
-    } catch (err) {
+    const userId = this.tokenService.verifyUnlockToken(token);
+    if (!userId) {
       throw new BadRequestException({ code: 'INVALID_UNLOCK_TOKEN', message: 'Invalid unlock token.' });
     }
-
-    if (!payload || payload.typ !== 'account_unlock' || !payload.sub) {
-      throw new BadRequestException({ code: 'INVALID_UNLOCK_TOKEN', message: 'Invalid unlock token.' });
-    }
-
-    const userId = payload.sub as string;
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found.');
 
@@ -1790,21 +1721,7 @@ export class AuthService {
     }
 
     // Issue JWT
-    const base: JwtPayload = {
-      sub: user.id,
-      email: user.email,
-      role: user.role,
-      tokenVersion: user.tokenVersion ?? 0,
-    };
-
-    const accessToken = this.jwtService.sign(
-      { ...base, typ: 'access' },
-      { expiresIn: this.configService.get<string>('JWT_ACCESS_EXPIRES_IN') ?? this.configService.get<string>('JWT_EXPIRES_IN', '7d') } as any,
-    );
-    const refreshToken = this.jwtService.sign(
-      { ...base, typ: 'refresh' },
-      { expiresIn: '7d' } as any,
-    );
+    const { accessToken, refreshToken } = this.tokenService.issueTokenPair(user);
 
     return { accessToken, refreshToken, publicKey: clientPublicKey };
   }
