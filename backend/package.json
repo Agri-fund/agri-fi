@@ -12,6 +12,7 @@
     "test:all": "npm run test && npm run test:e2e",
     "build": "nest build",
     "build:docs": "npm run build && node generate-openapi.js",
+    "openapi:check": "npm run build && node generate-openapi.js --check",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:prod": "node -r dotenv-vault/config dist/main",

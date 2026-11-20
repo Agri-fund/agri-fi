@@ -268,15 +268,17 @@ The project uses structured logging with `nestjs-pino` for better observability 
 
 The API specification is generated from NestJS route decorators and lives in `backend/openapi.json`. This file is committed to the repo and verified in CI.
 
-**After modifying API routes or DTOs, regenerate the spec:**
+**After modifying API routes or DTOs, regenerate and verify the spec:**
 
 ```bash
-cd backend && node generate-openapi.js
+cd backend
+npm run build:docs
+npm run openapi:check
 ```
 
 Commit the updated `openapi.json` with your changes. PRs that modify routes/DTOs without regenerating the spec will fail CI with a spec drift error.
 
-**Why**: The spec must always match the deployed routes. CI compares the generated spec against the committed version on all PRs — if they differ, the PR is blocked until you regenerate and commit the spec.
+The contract check regenerates the document from NestJS decorators and compares every `/v1` operation with `openapi.json`, including operation IDs, status codes, request schemas, and response schemas. It also fails with the affected route when a request or successful response has no documented schema. Run it before opening a PR; CI runs the same check.
 
 Run the linter before committing:
 
