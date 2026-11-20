@@ -24,12 +24,19 @@ jobs:
           sudo apt-get update && sudo apt-get install -y k6 || true
 
       - name: Run k6 Performance Test Suite with Thresholds
+        # k6 exits non-zero when a threshold is breached (p95 latency, error rate), and that must
+        # fail this step and the workflow, otherwise the gate cannot block a merge. Do not add
+        # `|| true` / `|| echo ...` here: backend/test/ci/k6-performance-gate.spec.ts guards it.
+        continue-on-error: false
         run: |
           mkdir -p test-results
-          k6 run tests/load/k6-performance.js --summary-export=test-results/k6-summary.json || echo "k6 execution completed"
+          k6 run tests/load/k6-performance.js --summary-export=test-results/k6-summary.json
 
       - name: Archive Performance Summary Artifact
+        # Also upload when k6 failed: the summary matters most when a threshold was breached.
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: k6-performance-summary
           path: test-results/k6-summary.json
+          if-no-files-found: warn
