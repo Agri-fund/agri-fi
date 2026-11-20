@@ -921,6 +921,15 @@ export class TradeDealsService {
         (inv) => inv.status === InvestmentStatus.CONFIRMED,
       ) || [];
 
+    this.assertRefundWallets(confirmedInvestments);
+    if (confirmedInvestments.length > 0 && deal.status === 'open' &&
+        (!deal.issuerPublicKey || !deal.issuerSecretKey || !deal.stellarAssetTxId)) {
+      throw new UnprocessableEntityException({
+        code: 'CLAWBACK_NOT_CONFIGURED',
+        message: 'The deal cannot be canceled until its refund asset is configured.',
+      });
+    }
+
     if (
       deal.status === 'open' &&
       deal.issuerPublicKey &&
@@ -928,10 +937,8 @@ export class TradeDealsService {
       deal.stellarAssetTxId
     ) {
       const investorShares: { walletAddress: string; tokenAmount: number }[] =
-        confirmedInvestments
-          .filter((inv) => inv.investor?.walletAddress)
-          .map((inv) => ({
-            walletAddress: inv.investor.walletAddress as string,
+        confirmedInvestments.map((inv) => ({
+            walletAddress: inv.investor!.walletAddress as string,
             tokenAmount: Number(inv.tokenAmount),
           }));
 
@@ -1024,12 +1031,19 @@ export class TradeDealsService {
         (inv) => inv.status === InvestmentStatus.CONFIRMED,
       ) || [];
 
+    this.assertRefundWallets(confirmedInvestments);
+    if (confirmedInvestments.length > 0 &&
+        (!deal.issuerPublicKey || !deal.issuerSecretKey || !deal.stellarAssetTxId)) {
+      throw new UnprocessableEntityException({
+        code: 'CLAWBACK_NOT_CONFIGURED',
+        message: 'The deal cannot expire until its refund asset is configured.',
+      });
+    }
+
     if (deal.issuerPublicKey && deal.issuerSecretKey && deal.stellarAssetTxId) {
       const investorShares: { walletAddress: string; tokenAmount: number }[] =
-        confirmedInvestments
-          .filter((inv) => inv.investor?.walletAddress)
-          .map((inv) => ({
-            walletAddress: inv.investor.walletAddress as string,
+        confirmedInvestments.map((inv) => ({
+            walletAddress: inv.investor!.walletAddress as string,
             tokenAmount: Number(inv.tokenAmount),
           }));
 
@@ -1165,21 +1179,53 @@ export class TradeDealsService {
     deal: TradeDeal,
     confirmedInvestments: Investment[],
   ): Promise<void> {
-    if (!deal.issuerPublicKey || !deal.issuerSecretKey || !deal.stellarAssetTxId) return;
-    const shares = confirmedInvestments
-      .filter((investment) => investment.investor?.walletAddress)
-      .map((investment) => ({
-        walletAddress: investment.investor!.walletAddress as string,
-        tokenAmount: Number(investment.tokenAmount),
-      }));
-    if (shares.length === 0) return;
-    const issuerSecret = await this.stellarService.decryptSecret(deal.issuerSecretKey);
-    await this.stellarService.clawbackTokens(
-      deal.tokenSymbol,
-      deal.issuerPublicKey,
-      issuerSecret,
-      shares,
+    if (confirmedInvestments.length === 0) return;
+    if (!deal.issuerPublicKey || !deal.issuerSecretKey || !deal.stellarAssetTxId) {
+      throw new UnprocessableEntityException({
+        code: 'CLAWBACK_NOT_CONFIGURED',
+        message: 'The deal cannot close until its refund asset is configured.',
+      });
+    }
+    this.assertRefundWallets(confirmedInvestments);
+    const shares = confirmedInvestments.map((investment) => ({
+      walletAddress: investment.investor!.walletAddress as string,
+      tokenAmount: Number(investment.tokenAmount),
+    }));
+    try {
+      const issuerSecret = await this.stellarService.decryptSecret(deal.issuerSecretKey);
+      // One Stellar transaction covers every holder: a failed submission cannot
+      // leave the deal marked expired with only some holders clawed back.
+      await this.stellarService.clawbackTokens(
+        deal.tokenSymbol,
+        deal.issuerPublicKey,
+        issuerSecret,
+        shares,
+      );
+    } catch (error) {
+      this.logger.error(
+        { dealId: deal.id, investmentIds: confirmedInvestments.map((item) => item.id), error },
+        'Clawback failed; deal status remains open for operator retry',
+      );
+      this.queueService.emit('admin.alert', {
+        type: 'deal_clawback_failed',
+        dealId: deal.id,
+        investmentIds: confirmedInvestments.map((item) => item.id),
+        timestamp: new Date().toISOString(),
+      });
+      throw error;
+    }
+  }
+
+  private assertRefundWallets(confirmedInvestments: Investment[]): void {
+    const missingWallet = confirmedInvestments.find(
+      (investment) => !investment.investor?.walletAddress,
     );
+    if (missingWallet) {
+      throw new UnprocessableEntityException({
+        code: 'INVESTOR_WALLET_REQUIRED',
+        message: `Investment ${missingWallet.id} has no wallet address for refund.`,
+      });
+    }
   }
 
   async findByUser(userId: string, role: string): Promise<any[]> {

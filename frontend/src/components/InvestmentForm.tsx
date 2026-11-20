@@ -12,7 +12,6 @@ import { useTranslations } from 'next-intl';
 import { FormField } from './ui/FormField';
 import { WalletSelectionModal } from './wallet/WalletSelectionModal';
 import TxReceiptModal from './wallet/TxReceiptModal';
-import { enqueueOfflineOperation, registerBackgroundSync } from '@/lib/offlineQueue';
 
 interface InvestmentFormProps {
   dealId: string;
@@ -171,15 +170,10 @@ export const InvestmentForm: React.FC<InvestmentFormProps> = ({
     }
 
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
-      await enqueueOfflineOperation({
-        resourceKey: `investment-draft:${dealId}`,
-        type: 'investment-draft',
-        method: 'POST',
-        endpoint: `${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'}/v1/investments`,
-        body: { tradeDealId: dealId, tokenAmount: safeQuantity, amountUsd: totalAmount },
-      });
-      await registerBackgroundSync();
-      toast('Investment draft saved offline. It will submit when you are online.', 'success');
+      const message = 'Investments require an online wallet signature. Reconnect and submit again; no investment was saved.';
+      setError(message);
+      onError?.(message);
+      toast(message, 'warning');
       return;
     }
 

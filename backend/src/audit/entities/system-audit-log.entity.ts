@@ -21,6 +21,18 @@ export class SystemAuditLog {
   @Column({ type: 'varchar' })
   route: string;
 
+  @Column({ type: 'varchar', nullable: true })
+  action: string | null;
+
+  @Column({ name: 'resource_type', type: 'varchar', nullable: true })
+  resourceType: string | null;
+
+  @Column({ name: 'resource_id', type: 'varchar', nullable: true })
+  resourceId: string | null;
+
+  @Column({ name: 'compliance_domain', type: 'varchar', nullable: true })
+  complianceDomain: string | null;
+
   @Column({ name: 'status_code', type: 'int', nullable: true })
   statusCode: number | null;
 
@@ -46,6 +58,9 @@ export class SystemAuditLog {
 
   @CreateDateColumn({ name: 'timestamp' })
   timestamp: Date;
+
+  @CreateDateColumn({ name: 'created_at' })
+  createdAt: Date;
 
   @BeforeUpdate()
   preventUpdate(): void {

@@ -11,7 +11,7 @@ import { Exclude } from 'class-transformer';
 import { encryptionTransformer } from '../../common/encryption.transformer';
 
 export type UserRole =
-  'farmer' | 'trader' | 'investor' | 'company_admin' | 'admin';
+  'farmer' | 'trader' | 'investor' | 'company_admin' | 'admin' | 'compliance_officer';
 export type KycStatus = 'pending' | 'verified' | 'rejected' | 'expired';
 
 // #902 — Investor accreditation tiers
@@ -101,10 +101,13 @@ export class User {
   @Column()
   @ApiProperty({
     description: 'User role',
-    enum: ['farmer', 'trader', 'investor', 'company_admin', 'admin'],
+    enum: ['farmer', 'trader', 'investor', 'company_admin', 'admin', 'compliance_officer'],
     example: 'farmer',
   })
   role: UserRole;
+
+  @Column({ name: 'compliance_domain', type: 'varchar', nullable: true })
+  complianceDomain: string | null;
 
   @Column()
   @ApiProperty({
