@@ -54,6 +54,14 @@ describe('TradeDealsController (public access)', () => {
         limit: 12,
       });
     });
+
+    it('passes requested deal IDs to the marketplace service', async () => {
+      await controller.findOpen({ ids: 'deal-1, deal-2' }, {} as any);
+
+      expect(mockService.findOpen).toHaveBeenCalledWith(
+        expect.objectContaining({ ids: ['deal-1', 'deal-2'] }),
+      );
+    });
   });
 
   describe('GET /trade-deals/:id', () => {

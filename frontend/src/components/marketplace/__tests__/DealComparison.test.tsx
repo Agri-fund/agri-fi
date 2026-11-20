@@ -296,7 +296,7 @@ describe('DealComparison Component', () => {
       });
     });
 
-    it('should clear localStorage when comparison is empty', async () => {
+    it('should preserve saved IDs while comparison deals are being restored', async () => {
       localStorage.setItem(COMPARISON_STORAGE_KEY, JSON.stringify(['deal-1']));
 
       render(
@@ -306,6 +306,24 @@ describe('DealComparison Component', () => {
           onClear={vi.fn()}
         />
       );
+
+      expect(localStorage.getItem(COMPARISON_STORAGE_KEY)).toBe(
+        JSON.stringify(['deal-1']),
+      );
+    });
+
+    it('should clear localStorage when comparison is explicitly cleared', async () => {
+      localStorage.setItem(COMPARISON_STORAGE_KEY, JSON.stringify(['deal-1']));
+
+      render(
+        <DealComparison
+          deals={[mockDeal1]}
+          onRemove={vi.fn()}
+          onClear={vi.fn()}
+        />
+      );
+
+      fireEvent.click(screen.getByText('Clear all'));
 
       await waitFor(() => {
         const stored = localStorage.getItem(COMPARISON_STORAGE_KEY);
