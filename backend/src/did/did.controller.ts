@@ -1,6 +1,21 @@
-import { Controller, Post, Get, Body, Param } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Put,
+  Delete,
+  Body,
+  Param,
+  HttpCode,
+  HttpStatus,
+  UseGuards,
+} from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { DidService } from './did.service';
 import {
+  CreateDidDocumentDto,
+  UpdateDidDocumentDto,
   GenerateDidDto,
   IssueCredentialDto,
   PresentCredentialDto,
@@ -40,5 +55,41 @@ export class DidController {
   @Get('credentials/status/:id')
   getCredentialStatus(@Param('id') id: string) {
     return this.didService.getCredentialStatus(id);
+  }
+
+  @Post()
+  @UseGuards(AuthGuard('jwt'))
+  @HttpCode(HttpStatus.CREATED)
+  createDid(
+    @CurrentUser('id') userId: string,
+    @Body() dto: CreateDidDocumentDto,
+  ) {
+    return this.didService.createDid(dto, userId);
+  }
+
+  @Get(':did')
+  @UseGuards(AuthGuard('jwt'))
+  getDid(@Param('did') did: string) {
+    return this.didService.getDid(did);
+  }
+
+  @Put(':did')
+  @UseGuards(AuthGuard('jwt'))
+  updateDid(
+    @Param('did') did: string,
+    @Body() dto: UpdateDidDocumentDto,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.didService.updateDid(did, dto, userId);
+  }
+
+  @Delete(':did')
+  @UseGuards(AuthGuard('jwt'))
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deactivateDid(
+    @Param('did') did: string,
+    @CurrentUser('id') userId: string,
+  ): Promise<void> {
+    await this.didService.deactivateDid(did, userId);
   }
 }

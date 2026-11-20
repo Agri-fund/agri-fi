@@ -5,7 +5,28 @@ import {
   IsArray,
   IsEnum,
   IsBoolean,
+  IsObject,
 } from 'class-validator';
+
+export class CreateDidDocumentDto {
+  @IsString()
+  @IsNotEmpty()
+  stellarAddress: string;
+
+  @IsOptional()
+  @IsString()
+  alias?: string;
+
+  @IsOptional()
+  @IsString()
+  controller?: string;
+}
+
+export class UpdateDidDocumentDto {
+  @IsOptional()
+  @IsObject()
+  document?: Record<string, unknown>;
+}
 
 export class GenerateDidDto {
   @IsString()
