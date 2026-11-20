@@ -12,6 +12,13 @@ export const validateEnvironment = (config: Record<string, unknown>) => {
     DATABASE_HEALTH_CHECK_INTERVAL_MS: Joi.number().integer().positive(),
     DATABASE_CONNECTION_LEAK_THRESHOLD_MS: Joi.number().integer().positive(),
     DATABASE_STATEMENT_TIMEOUT_MS: Joi.number().integer().positive(),
+    RABBITMQ_VHOST: Joi.string()
+      .trim()
+      .pattern(/^\//)
+      .default('/production')
+      .messages({
+        'string.pattern.base': 'RABBITMQ_VHOST must start with "/"',
+      }),
     CLAM_SCAN_ENABLED: Joi.when('NODE_ENV', {
       is: 'production',
       then: Joi.boolean().truthy('true').valid(true).required(),
