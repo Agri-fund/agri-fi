@@ -237,5 +237,6 @@ async function main() {
 
 main().catch((e) => {
   console.error(e.message || e);
+  process.exitCode = 1;
   process.exit(1);
 });
