@@ -70,6 +70,30 @@ describe('SearchService', () => {
       expect(result.documents).toHaveLength(1);
     });
 
+    it('does not select or return farmer email addresses', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        {
+          id: 'farmer-1',
+          title: 'John Farmer',
+          email: 'john@farm.com',
+          role: 'farmer',
+          score: '0.72',
+          snippet: '',
+        },
+      ]);
+
+      const result = await service.search('john', ['farmers'], 5);
+
+      const sql = dataSource.query.mock.calls[0][0] as string;
+      expect(sql).not.toMatch(/u\.email/);
+
+      expect(result.farmers).toHaveLength(1);
+      const farmer = result.farmers[0];
+      expect(farmer.metadata).toEqual({ role: 'farmer' });
+      expect(JSON.stringify(farmer)).not.toContain('john@farm.com');
+      expect(farmer.snippet).toBe('John Farmer');
+    });
+
     it('rejects queries shorter than 2 characters', async () => {
       await expect(service.search('a')).rejects.toThrow(
         'Search query must be at least 2 characters',

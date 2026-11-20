@@ -135,8 +135,7 @@ export class SearchService {
       `
       SELECT
         u.id,
-        COALESCE(u.full_name, u.email) AS title,
-        u.email,
+        COALESCE(u.full_name, u.company_details->>'companyName', 'Unnamed user') AS title,
         u.role,
         GREATEST(
           ts_rank(u.search_vector, to_tsquery('english', $1)),
@@ -166,9 +165,9 @@ export class SearchService {
       id: row.id as string,
       type: 'farmers' as const,
       title: row.title as string,
-      snippet: (row.snippet as string) || (row.email as string),
+      snippet: (row.snippet as string) || (row.title as string),
       score: parseFloat(String(row.score)),
-      metadata: { email: row.email, role: row.role },
+      metadata: { role: row.role },
     }));
   }
 
