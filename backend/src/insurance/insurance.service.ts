@@ -109,7 +109,7 @@ export class InsuranceService {
       riskScore,
     );
 
-    const results = await Promise.all(
+    const settled = await Promise.allSettled(
       providers.map(async (provider) => {
         try {
           const response = await this.post<ProviderQuote>(
@@ -168,6 +168,16 @@ export class InsuranceService {
         }
       }),
     );
+    const results = settled.map((outcome, index) => {
+      if (outcome.status === 'fulfilled') {
+        return outcome.value;
+      }
+      this.logger.warn(
+        { providerId: providers[index].id, dealId },
+        'Insurance provider quote request rejected',
+      );
+      return null;
+    });
     const quotes = results.filter(
       (quote): quote is NonNullable<typeof quote> => quote !== null,
     );
