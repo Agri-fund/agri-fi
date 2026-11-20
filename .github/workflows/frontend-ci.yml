@@ -168,6 +168,12 @@ jobs:
         env:
           CI: true
 
+      - name: InvestmentForm wallet-flow E2E (#1310)
+        run: pnpm exec playwright test e2e/investment-form.spec.ts
+        working-directory: frontend
+        env:
+          CI: true
+
       - name: Upload Playwright report
         if: failure()
         uses: actions/upload-artifact@v4
