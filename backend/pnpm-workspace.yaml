@@ -1,3 +1,5 @@
+packages:
+  - '.'
 allowBuilds:
   '@apollo/protobufjs': false
   '@scarf/scarf': false

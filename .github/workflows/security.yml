@@ -67,6 +67,10 @@ jobs:
         run: npm ci
         working-directory: backend
 
+      - name: Use CI database credentials
+        run: rm -f .env
+        working-directory: backend
+
       - name: Run database migrations
         run: npm run migration:run
         working-directory: backend
