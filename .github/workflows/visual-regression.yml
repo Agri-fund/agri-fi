@@ -42,8 +42,7 @@ jobs:
         working-directory: frontend
         env:
           CI: true
-          NEXT_PUBLIC_API_URL: http://localhost:3001
-          BACKEND_URL: http://localhost:3001
+          # API-backed visual cases provide deterministic responses with Playwright routes.
 
       - name: Summarize pass rate and flakiness
         if: always()

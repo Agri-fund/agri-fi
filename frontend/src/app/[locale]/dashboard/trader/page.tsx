@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { apiClient, Deal, User, MILESTONE_LABELS } from '../../../../lib/api';
+import { apiClient, Deal, User, TraderScorecard, MILESTONE_LABELS } from '../../../../lib/api';
 import DashboardLayout from '../../../../components/DashboardLayout';
 import StatCard from '../../../../components/StatCard';
 import { useToast } from '../../../../components/ui/ToastProvider';
@@ -27,6 +27,8 @@ export default function TraderDashboard() {
   const [selectedDeal, setSelectedDeal] = useState<string | null>(null);
   const [milestoneForm, setMilestoneForm] = useState({ milestone: 'warehouse', notes: '' });
   const [submitting, setSubmitting] = useState(false);
+  const [scorecard, setScorecard] = useState<TraderScorecard | null>(null);
+  const [scorecardLoading, setScorecardLoading] = useState(true);
 
   useEffect(() => {
     (async () => {
@@ -37,8 +39,16 @@ export default function TraderDashboard() {
       if (u.role !== 'trader') { router.push(`/dashboard/${u.role}`); return; }
       setUser(u);
       loadDeals();
+      loadScorecard(u.id);
     })();
   }, [router]);
+
+  const loadScorecard = async (traderId: string) => {
+    setScorecardLoading(true);
+    try { setScorecard(await apiClient.getTraderScorecard(traderId)); }
+    catch { setScorecard(null); }
+    finally { setScorecardLoading(false); }
+  };
 
   const loadDeals = async () => {
     setLoading(true);
@@ -76,6 +86,46 @@ export default function TraderDashboard() {
         <div>
           <p className="text-sm text-slate-500 mb-1">Trade management</p>
           <h1 className="page-title">Trader Dashboard</h1>
+        </div>
+
+        <div className="card p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="section-title">Performance Scorecard</h2>
+              <p className="text-xs text-slate-500 mt-0.5">Public metrics investors see on your profile</p>
+            </div>
+            {scorecard?.verified_top_trader && (
+              <span className="badge-green inline-flex items-center gap-1">
+                ✅ Verified Top Trader
+              </span>
+            )}
+          </div>
+
+          {scorecardLoading ? (
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              {[1,2,3,4,5,6].map(i => <div key={i} className="h-16 rounded-xl skeleton" />)}
+            </div>
+          ) : !scorecard ? (
+            <p className="text-sm text-slate-500">
+              No scorecard available yet. Complete deals and record milestones to build your track record.
+            </p>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              {[
+                ['On-time Delivery', `${(Number(scorecard.on_time_delivery_rate) * 100).toFixed(1)}%`],
+                ['Avg Deal Duration', `${formatNumber(scorecard.avg_deal_duration_days)} days`],
+                ['Total Capital Raised', formatCurrency(scorecard.total_capital_raised_usd, 'USD', { compact: true })],
+                ['Deals Completed', formatNumber(scorecard.deals_completed)],
+                ['Deals Failed', formatNumber(scorecard.deals_failed)],
+                ['Investor Satisfaction', `${Number(scorecard.investor_satisfaction_score).toFixed(1)} / 5`],
+              ].map(([l, v]) => (
+                <div key={l} className="bg-slate-50 rounded-xl p-3">
+                  <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide">{l}</p>
+                  <p className="text-base font-bold text-slate-900 mt-0.5 truncate">{v}</p>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div data-tour="portfolio-stats" className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4">
