@@ -1,0 +1,52 @@
+{{- if and .Values.tracing.enabled .Values.tracing.elasticsearch.enabled (not .Values.tracing.elasticsearch.externalUrl) }}
+# In-cluster Elasticsearch for Jaeger trace storage (#1308) — dev / staging.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Release.Name }}-trace-es
+spec:
+  serviceName: {{ .Release.Name }}-trace-es
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: trace-es, app.kubernetes.io/instance: {{ .Release.Name }}}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: trace-es, app.kubernetes.io/instance: {{ .Release.Name }}}
+    spec:
+      securityContext:
+        fsGroup: 1000
+      containers:
+        - name: elasticsearch
+          image: {{ .Values.tracing.elasticsearch.image }}
+          ports:
+            - {name: http, containerPort: 9200}
+          env:
+            - {name: discovery.type, value: single-node}
+            # Cluster-internal only (no Ingress; Service is ClusterIP).
+            - {name: xpack.security.enabled, value: "false"}
+            - {name: ES_JAVA_OPTS, value: {{ .Values.tracing.elasticsearch.javaOpts | quote }}}
+          resources: {{- toYaml .Values.tracing.elasticsearch.resources | nindent 12 }}
+          readinessProbe:
+            httpGet: {path: "/_cluster/health?wait_for_status=yellow&timeout=5s", port: http}
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket: {port: http}
+            initialDelaySeconds: 60
+            periodSeconds: 20
+          volumeMounts:
+            - {name: trace-es-data, mountPath: /usr/share/elasticsearch/data}
+  volumeClaimTemplates:
+    - metadata: {name: trace-es-data}
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources: {requests: {storage: {{ .Values.tracing.elasticsearch.storage }}}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: {{ .Release.Name }}-trace-es}
+spec:
+  selector: {app.kubernetes.io/name: trace-es, app.kubernetes.io/instance: {{ .Release.Name }}}
+  ports:
+    - {name: http, port: 9200, targetPort: http}
+{{- end }}

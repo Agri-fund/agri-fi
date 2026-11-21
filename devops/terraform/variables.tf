@@ -156,3 +156,49 @@ variable "redis_num_replicas" {
   type        = number
   default     = 1
 }
+
+# ---------------------------------------------------------------------------
+# Trace storage (Elasticsearch for Jaeger, #1308)
+# ---------------------------------------------------------------------------
+
+variable "trace_es_engine_version" {
+  description = "Elasticsearch engine version for the Jaeger trace store (Jaeger 1.60 supports ES 7.x/8.x; AWS-managed Elasticsearch tops out at 7.10)."
+  type        = string
+  default     = "Elasticsearch_7.10"
+}
+
+variable "trace_es_instance_type" {
+  description = "Data node instance type. Staging: t3.small.search; production: r6g.large.search or larger."
+  type        = string
+  default     = "t3.small.search"
+}
+
+variable "trace_es_instance_count" {
+  description = "Number of data nodes. Use 2+ (with zone awareness) in production."
+  type        = number
+  default     = 1
+}
+
+variable "trace_es_zone_awareness_enabled" {
+  description = "Spread data nodes across two AZs. Requires trace_es_instance_count to be an even number >= 2."
+  type        = bool
+  default     = false
+}
+
+variable "trace_es_volume_size_gb" {
+  description = "EBS volume size per data node, in GiB. Size for ~30 days of traces."
+  type        = number
+  default     = 50
+}
+
+variable "trace_es_master_user" {
+  description = "Master username for fine-grained access control (used by Jaeger)."
+  type        = string
+  default     = "jaeger"
+}
+
+variable "trace_retention_days" {
+  description = "Trace retention enforced by the ILM policy applied by the Helm chart / docker-compose."
+  type        = number
+  default     = 30
+}

@@ -15,6 +15,11 @@ redis:
   storage: 1Gi
 rabbitmq:
   storage: 2Gi
+tracing:
+  retentionDays: 30
+  elasticsearch:
+    enabled: true
+    storage: 30Gi
 ingress:
   frontendHost: staging.agri-fi.example.com
   backendHost: api.staging.agri-fi.example.com

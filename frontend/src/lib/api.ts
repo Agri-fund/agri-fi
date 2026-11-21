@@ -1,6 +1,10 @@
 import { getAuthToken, setAuthToken, clearAuthToken } from "./auth-token";
 import { captureTraceId, traceHeaders } from "./tracing";
 import { enqueueOfflineOperation, registerBackgroundSync } from "./offlineQueue";
+import { dedupedFetch, clearFetchCache } from "./request-dedup";
+
+// #974 — let components bust cached GETs after a mutation / clear on logout.
+export { invalidateFetchCache, clearFetchCache } from "./request-dedup";
 
 export const API_BASE =
   (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001").replace(/\/+$/, "");
@@ -388,7 +392,7 @@ async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   const versionedPath = path.startsWith('/v1') || path.startsWith('/v2')
     ? path
     : `${API_VERSION}${path}`;
-  const res = await fetch(`${API_BASE}${versionedPath}`, {
+  const res = await dedupedFetch(`${API_BASE}${versionedPath}`, {
     ...init,
     credentials: "include",
     headers: traceHeaders({
@@ -502,6 +506,8 @@ export const apiClient = {
 
   clearAuth() {
     clearAuthToken();
+    // #974 — never serve one user's cached/in-flight responses to the next.
+    clearFetchCache();
     localStorage.removeItem("auth_user");
   },
 

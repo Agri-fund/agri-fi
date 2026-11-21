@@ -1,0 +1,9 @@
+# Intermediate build output — only the runtime artifacts under build/ are committed.
+*.r1cs
+*.sym
+*.ptau
+tmp/
+
+# The repo-wide `build` ignore rule must not hide the runtime artifacts.
+!build/
+!build/*
