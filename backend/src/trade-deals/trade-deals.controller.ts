@@ -35,6 +35,7 @@ import { TradeDeal } from './entities/trade-deal.entity';
 import { User } from '../auth/entities/user.entity';
 import { KycGuard, RolesGuard, OptionalJwtGuard } from '../common/guards';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { UpdateTradeDealDto } from './dto/update-trade-deal.dto';
 import { CreateTradeDealDto } from './dto/create-trade-deal.dto';
 import { DealCoFarmersService } from './deal-co-farmers.service';
 import { DealDeploymentService } from './deal-deployment.service';
@@ -93,6 +94,26 @@ export class TradeDealsController {
       dto.trader_id = req.user.id;
     }
     return this.tradeDealsService.createDeal(req.user.id, dto);
+  }
+
+  @Patch(':id')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('trader', 'farmer')
+  @ApiBearerAuth('jwt')
+  @ApiOperation({ summary: 'Edit a trade deal (trader only)' })
+  @ApiParam({ name: 'id', description: 'Trade deal UUID' })
+  @ApiResponse({ status: 200, description: 'Trade deal updated' })
+  @ApiResponse({
+    status: 422,
+    description:
+      'Error code TOTAL_VALUE_BELOW_INVESTED: total_value is below total_invested',
+  })
+  async updateDeal(
+    @Param('id') id: string,
+    @Request() req: AuthRequest,
+    @Body() dto: UpdateTradeDealDto,
+  ): Promise<TradeDeal> {
+    return this.tradeDealsService.update(id, req.user.id, dto);
   }
 
   @Post(':id/publish')

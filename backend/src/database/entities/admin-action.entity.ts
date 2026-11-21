@@ -11,7 +11,9 @@ export type AdminActionType =
   | 'update_user_role'
   | 'freeze_asset'
   | 'verify_document'
-  | 'reject_document';
+  | 'reject_document'
+  | 'soft_delete_user'
+  | 'restore_user';
 
 @Entity('admin_actions')
 export class AdminAction {

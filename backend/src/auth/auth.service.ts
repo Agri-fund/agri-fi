@@ -508,7 +508,13 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
-    const user = await this.userRepo.findOne({ where: { email: dto.email } });
+    const user = await this.userRepo.findOne({
+      where: { email: dto.email },
+      withDeleted: true,
+    });
+    if (user?.deletedAt) {
+      throw new UnauthorizedException('Account deactivated');
+    }
     if (!user) {
       // Unknown emails still feed the detection windows — stuffing attacks
       // rarely target real accounts exclusively.
@@ -1486,6 +1492,48 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     }
 
     return { id: saved.id, role: saved.role };
+  }
+
+  /** Soft-delete (deactivate) a user, preserving audit history (#1386). */
+  async softDeleteUser(userId: string, adminId: string): Promise<void> {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found.');
+    // Invalidate any outstanding tokens, then soft-delete.
+    user.tokenVersion = (user.tokenVersion ?? 0) + 1;
+    await this.userRepo.save(user);
+    await this.userRepo.softDelete(userId);
+    await this.adminActionRepo.save(
+      this.adminActionRepo.create({
+        adminId,
+        targetUserId: userId,
+        action: 'soft_delete_user',
+        payload: {},
+        reason: null,
+      }),
+    );
+  }
+
+  /** Restore a previously soft-deleted user (#1386). */
+  async restoreUser(userId: string, adminId: string): Promise<{ id: string }> {
+    const user = await this.userRepo.findOne({
+      where: { id: userId },
+      withDeleted: true,
+    });
+    if (!user) throw new NotFoundException('User not found.');
+    if (!user.deletedAt) {
+      throw new BadRequestException('User is not deactivated.');
+    }
+    await this.userRepo.restore(userId);
+    await this.adminActionRepo.save(
+      this.adminActionRepo.create({
+        adminId,
+        targetUserId: userId,
+        action: 'restore_user',
+        payload: {},
+        reason: null,
+      }),
+    );
+    return { id: userId };
   }
 
   // ── password ───────────────────────────────────────────────────────────────
