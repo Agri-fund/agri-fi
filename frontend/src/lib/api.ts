@@ -851,6 +851,66 @@ export async function getOpenDeals(
   };
 }
 
+/** Marketplace listing with the filter query string built by `buildQuery`. */
+export async function getDeals(query: string): Promise<PaginatedDeals> {
+  const raw = await apiFetch<{
+    data: any[];
+    total: number;
+    page: number;
+    limit: number;
+  }>(`/trade-deals${query ? `?${query}` : ""}`);
+  return {
+    data: raw.data.map(normalizeDeal),
+    total: raw.total,
+    page: raw.page,
+    limit: raw.limit,
+  };
+}
+
+export interface SavedSearch {
+  id: string;
+  name: string;
+  filters: Record<string, string | number>;
+  notifyInApp: boolean;
+  notifyEmail: boolean;
+}
+
+export interface SearchHistoryEntry {
+  id: string;
+  filters: Record<string, string | number>;
+  resultCount: number;
+  createdAt: string;
+}
+
+export const listSavedSearches = () =>
+  apiFetch<SavedSearch[]>("/v1/deal-discovery/saved-searches");
+
+export const createSavedSearch = (body: {
+  name: string;
+  filters: Record<string, string | number>;
+  notifyInApp: boolean;
+  notifyEmail: boolean;
+}) =>
+  apiFetch<SavedSearch>("/v1/deal-discovery/saved-searches", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
+export const deleteSavedSearch = (id: string) =>
+  apiFetch<{ ok: boolean }>(`/v1/deal-discovery/saved-searches/${id}`, { method: "DELETE" });
+
+export const listSearchHistory = () =>
+  apiFetch<SearchHistoryEntry[]>("/v1/deal-discovery/history");
+
+export const recordSearch = (
+  filters: Record<string, string | number>,
+  resultCount: number,
+) =>
+  apiFetch<unknown>("/v1/deal-discovery/history", {
+    method: "POST",
+    body: JSON.stringify({ filters, resultCount }),
+  });
+
 export async function getDealsByIds(ids: string[]): Promise<Deal[]> {
   if (ids.length === 0) return [];
 

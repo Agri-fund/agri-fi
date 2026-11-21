@@ -50,6 +50,7 @@ import { SettlementModule } from './settlement/settlement.module';
 import { SearchModule } from './search/search.module';
 import { UpgradeModule } from './upgrade/upgrade.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
+import { DealDiscoveryModule } from './deal-discovery/deal-discovery.module';
 import { SecretsModule } from './secrets/secrets.module';
 import { PublicApiModule } from './public-api/public-api.module';
 import { SelfHealingModule } from './self-healing/self-healing.module';
@@ -125,6 +126,7 @@ import { DealSummaryModule } from './deal-summary/deal-summary.module';
     SearchModule,
     UpgradeModule,
     WebhooksModule,
+    DealDiscoveryModule,
     SecretsModule,
     PublicApiModule,
     SelfHealingModule,

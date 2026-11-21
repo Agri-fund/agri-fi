@@ -131,17 +131,50 @@ app.post('/webhooks/agri-fi', (req, res) => {
 
 ---
 
-## 5. Retry Semantics & Back-off
+## 5. Delivery, Retries & Dead Letter Queue
 
-Agri-Fi delivers webhooks with automatic retries for unacknowledged or failing endpoints:
+Every event becomes a durable delivery record (`webhook_deliveries`) that is sent immediately and retried by a worker that runs every minute.
 
-- **Delivery Timeout:** 5000 ms per HTTP request.
-- **Maximum Attempts:** 3 attempts.
-- **Back-off Schedule:** Exponential back-off on delivery failure:
-  - **Attempt 1:** Immediate initial attempt.
-  - **Attempt 2:** Retry after 500 ms.
-  - **Attempt 3:** Retry after 1000 ms.
-- **Success Criteria:** Receiver must respond with HTTP `2xx` status within 5 seconds.
+- **Delivery timeout:** 5000 ms per HTTP request. The receiver must answer with a `2xx` status.
+- **Headers:** `x-webhook-signature` (HMAC-SHA256 of the raw body), `x-webhook-event` (event name) and `x-webhook-delivery` (delivery id, use it to de-duplicate).
+- **Retries:** up to 6 retries after the first attempt, at these delays after each failure:
+
+| Failed attempt | Wait before next attempt |
+|---|---|
+| 1 | 1 minute |
+| 2 | 5 minutes |
+| 3 | 15 minutes |
+| 4 | 1 hour |
+| 5 | 4 hours |
+| 6 | 4 hours |
+
+- **Dead letter queue (DLQ):** after the 7th failed attempt the delivery gets status `failed` and stops retrying. It stays queryable and can be replayed.
+- **Rate limiting:** at most `WEBHOOK_RATE_LIMIT_PER_MIN` (default 60) sends per endpoint per minute and per backend instance. Excess deliveries are deferred by one minute and do not use up a retry.
+- **Event filtering:** `events` takes dotted event names (`deal.funding_progress`) or `*`. An endpoint only receives events it subscribed to.
+
+### Delivery status
+
+| Status | Meaning |
+|---|---|
+| `pending` | Created, first attempt not yet made |
+| `retrying` | At least one attempt failed, next attempt scheduled in `nextAttemptAt` |
+| `delivered` | Receiver answered `2xx` |
+| `failed` | Retries exhausted (in the DLQ) |
+
+Each delivery keeps an `attempts` log with the attempt number, timestamp, HTTP status code, error message and duration.
+
+### Delivery management API (admin)
+
+All routes are under `/admin/webhooks` and need an admin JWT.
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/admin/webhooks/:id/deliveries?status=&limit=` | Delivery log of one endpoint, newest first |
+| GET | `/admin/webhooks/:id/summary` | Counts per status (dashboard) |
+| GET | `/admin/webhooks/dlq/deliveries` | Deliveries in the DLQ across endpoints |
+| POST | `/admin/webhooks/deliveries/:deliveryId/replay` | Retry a `failed` delivery now. Resets the retry counter, keeps the attempt log |
+
+Partner-facing access to these routes is not available yet because partner API keys are not tied to the subscriptions they create.
 
 ---
 

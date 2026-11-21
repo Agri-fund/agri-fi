@@ -26,6 +26,12 @@ import { QueueService } from '../queue/queue.service';
 import { RiskScoringService } from './risk-scoring.service';
 import { SorobanService } from '../soroban/soroban.service';
 import { DealSuggestionsService } from './deal-suggestions.service';
+import {
+  DealDurationBucket,
+  DealSortBy,
+  assertValidDealFilters,
+  bucketToDayRange,
+} from '../deal-discovery/deal-filters';
 
 const VALID_DOC_TYPES: DocumentType[] = [
   'purchase_agreement',
@@ -36,10 +42,7 @@ const VALID_DOC_TYPES: DocumentType[] = [
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
 const PUBLIC_STATUSES: TradeDealStatus[] = ['open', 'funded'];
 
-type DealSearchSortBy =
-  'newest' | 'highest_roi' | 'closing_soon' | 'most_funded';
-type DealDurationBucket =
-  '<3 months' | '3-6 months' | '6-12 months' | '>12 months';
+type DealSearchSortBy = DealSortBy;
 
 export interface TradeDealSearchQuery {
   commodity?: string;
@@ -55,16 +58,6 @@ export interface TradeDealSearchQuery {
   page?: number;
   limit?: number;
   q?: string;
-}
-
-function bucketToDayRange(
-  bucket?: DealDurationBucket,
-): [number, number] | null {
-  if (!bucket) return null;
-  if (bucket === '<3 months') return [0, 90];
-  if (bucket === '3-6 months') return [91, 180];
-  if (bucket === '6-12 months') return [181, 365];
-  return [366, Number.MAX_SAFE_INTEGER];
 }
 
 export interface AddDocumentDto {
@@ -387,7 +380,7 @@ export class TradeDealsService {
     minEsgScore?: number;
     esgRating?: string;
     status?: 'open' | 'almost funded' | 'fully funded';
-    sortBy?: DealSearchSortBy | 'highest_esg';
+    sortBy?: DealSearchSortBy;
     q?: string;
     ids?: string[];
     page?: number;
@@ -399,6 +392,18 @@ export class TradeDealsService {
     const ids = query.ids?.filter(Boolean);
     const limit = ids?.length || query.limit || 12;
     const skip = ids?.length ? 0 : (page - 1) * limit;
+
+    assertValidDealFilters({
+      minAmount: query.minAmount,
+      maxAmount: query.maxAmount,
+      minRoi: query.minRoi,
+      maxRoi: query.maxRoi,
+      duration: query.duration,
+      riskRating: query.riskRating,
+      status: query.status,
+      sortBy: query.sortBy,
+      q: query.q,
+    });
 
     if (query.commodity && !/^[a-zA-Z0-9 _,-]{1,100}$/.test(query.commodity)) {
       throw new BadRequestException('Invalid commodity search term.');
@@ -548,6 +553,12 @@ export class TradeDealsService {
     switch (query.sortBy) {
       case 'highest_esg':
         qb.orderBy('COALESCE(deal.esg_score, 0)', 'DESC').addOrderBy(
+          'deal.created_at',
+          'DESC',
+        );
+        break;
+      case 'largest_amount':
+        qb.orderBy('deal.total_value', 'DESC').addOrderBy(
           'deal.created_at',
           'DESC',
         );
