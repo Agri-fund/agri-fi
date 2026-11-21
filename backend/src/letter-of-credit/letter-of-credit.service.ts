@@ -7,6 +7,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { PinoLogger } from 'nestjs-pino';
 import * as crypto from 'crypto';
+import { LetterOfCreditEntity } from './entities/letter-of-credit.entity';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
 import { User } from '../auth/entities/user.entity';
 import { StellarService } from '../stellar/stellar.service';
@@ -26,9 +27,9 @@ import {
 
 @Injectable()
 export class LetterOfCreditService {
-  private readonly lcs = new Map<string, LetterOfCredit>();
-
   constructor(
+    @InjectRepository(LetterOfCreditEntity)
+    private readonly lcRepo: Repository<LetterOfCreditEntity>,
     @InjectRepository(TradeDeal)
     private readonly tradeDealRepo: Repository<TradeDeal>,
     @InjectRepository(User)
@@ -150,7 +151,7 @@ export class LetterOfCreditService {
       settledAt: null,
     };
 
-    this.lcs.set(lcId, lc);
+    await this.saveLc(lc);
 
     this.logger.info(
       { lcId, lcNumber, dealId, amount, blockchainTxHash },
@@ -168,7 +169,7 @@ export class LetterOfCreditService {
     dto: AmendLetterOfCreditDto,
     requestedBy = 'applicant',
   ): Promise<LcAmendment> {
-    const lc = this.getLc(lcId);
+    const lc = await this.getLc(lcId);
 
     const amendmentNumber = lc.amendments.length + 1;
     const amendmentId = `amend-${Date.now()}-${amendmentNumber}`;
@@ -192,7 +193,7 @@ export class LetterOfCreditService {
 
     lc.amendments.push(amendment);
     lc.updatedAt = new Date().toISOString();
-    this.lcs.set(lcId, lc);
+    await this.saveLc(lc);
 
     this.logger.info(
       { lcId, amendmentId, amendmentNumber },
@@ -211,7 +212,7 @@ export class LetterOfCreditService {
     approved: boolean,
     reason?: string,
   ): Promise<LetterOfCredit> {
-    const lc = this.getLc(lcId);
+    const lc = await this.getLc(lcId);
     const amendment = lc.amendments.find((a) => a.id === amendmentId);
 
     if (!amendment) {
@@ -243,7 +244,7 @@ export class LetterOfCreditService {
     }
 
     lc.updatedAt = new Date().toISOString();
-    this.lcs.set(lcId, lc);
+    await this.saveLc(lc);
 
     return lc;
   }
@@ -255,7 +256,7 @@ export class LetterOfCreditService {
     lcId: string,
     dto: VerifyDocumentDto,
   ): Promise<PresentedDocument> {
-    const lc = this.getLc(lcId);
+    const lc = await this.getLc(lcId);
     const discrepancies: string[] = [];
 
     // UCP 600 Article 14: Examination period & document consistency
@@ -291,7 +292,7 @@ export class LetterOfCreditService {
 
     lc.presentedDocuments.push(presentedDoc);
     lc.updatedAt = new Date().toISOString();
-    this.lcs.set(lcId, lc);
+    await this.saveLc(lc);
 
     return presentedDoc;
   }
@@ -300,7 +301,7 @@ export class LetterOfCreditService {
    * Settle an LC once compliant documents are presented.
    */
   async settleLc(lcId: string): Promise<LetterOfCredit> {
-    const lc = this.getLc(lcId);
+    const lc = await this.getLc(lcId);
 
     if (lc.status === 'SETTLED') {
       throw new BadRequestException(`LC ${lcId} is already settled`);
@@ -330,7 +331,7 @@ export class LetterOfCreditService {
     lc.blockchainTxHash = blockchainTxHash;
     lc.settledAt = new Date().toISOString();
     lc.updatedAt = new Date().toISOString();
-    this.lcs.set(lcId, lc);
+    await this.saveLc(lc);
 
     this.logger.info(
       { lcId, lcNumber: lc.lcNumber, blockchainTxHash },
@@ -344,7 +345,7 @@ export class LetterOfCreditService {
    * Retrieve LC analytics for a portfolio.
    */
   async getAnalytics(): Promise<LcAnalytics> {
-    const all = Array.from(this.lcs.values());
+    const all = (await this.lcRepo.find()).map((row) => row.data);
     const totalValue = all.reduce((sum, lc) => sum + lc.amount, 0);
     const settled = all.filter((lc) => lc.status === 'SETTLED');
 
@@ -360,12 +361,26 @@ export class LetterOfCreditService {
     } as LcAnalytics;
   }
 
-  private getLc(lcId: string): LetterOfCredit {
-    const lc = this.lcs.get(lcId);
-    if (!lc) {
+  async getDealLcs(dealId: string): Promise<LetterOfCredit[]> {
+    const rows = await this.lcRepo.find({ where: { dealId } });
+    return rows.map((row) => row.data);
+  }
+
+  async getLc(lcId: string): Promise<LetterOfCredit> {
+    const row = await this.lcRepo.findOne({ where: { id: lcId } });
+    if (!row) {
       throw new NotFoundException(`Letter of Credit ${lcId} not found`);
     }
-    return lc;
+    return row.data;
+  }
+
+  private async saveLc(lc: LetterOfCredit): Promise<void> {
+    await this.lcRepo.save({
+      id: lc.id,
+      dealId: lc.dealId,
+      status: lc.status,
+      data: lc,
+    });
   }
 
   private generateSwiftMt700(params: {
