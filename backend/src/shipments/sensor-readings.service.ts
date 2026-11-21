@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { PinoLogger } from 'nestjs-pino';
@@ -13,41 +14,87 @@ import {
 import { CreateSensorReadingsDto } from './dto/create-sensor-readings.dto';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
 
-/** Acceptable ranges per sensor type — configurable via env overrides. */
-const RANGE_DEFAULTS: Record<SensorType, { min: number; max: number }> = {
-  TEMPERATURE: {
-    min: parseFloat(process.env.SENSOR_TEMP_MIN ?? '-5'),
-    max: parseFloat(process.env.SENSOR_TEMP_MAX ?? '30'),
-  },
-  HUMIDITY: {
-    min: parseFloat(process.env.SENSOR_HUMIDITY_MIN ?? '20'),
-    max: parseFloat(process.env.SENSOR_HUMIDITY_MAX ?? '85'),
-  },
-  CO2: {
-    min: parseFloat(process.env.SENSOR_CO2_MIN ?? '0'),
-    max: parseFloat(process.env.SENSOR_CO2_MAX ?? '5000'),
-  },
-  VIBRATION: {
-    min: parseFloat(process.env.SENSOR_VIBRATION_MIN ?? '0'),
-    max: parseFloat(process.env.SENSOR_VIBRATION_MAX ?? '10'),
-  },
+interface SensorRange {
+  min: number;
+  max: number;
+}
+
+const RANGE_DEFAULTS: Record<SensorType, SensorRange> = {
+  TEMPERATURE: { min: -5, max: 45 },
+  HUMIDITY: { min: 20, max: 85 },
+  CO2: { min: 350, max: 2500 },
+  VIBRATION: { min: 0, max: 10 },
 };
 
-function isOutOfRange(sensorType: SensorType, value: number): boolean {
-  const range = RANGE_DEFAULTS[sensorType];
-  return value < range.min || value > range.max;
-}
+const RANGE_KEYS: Record<SensorType, { min: string; max: string }> = {
+  TEMPERATURE: { min: 'SENSOR_TEMP_MIN', max: 'SENSOR_TEMP_MAX' },
+  HUMIDITY: { min: 'SENSOR_HUMIDITY_MIN', max: 'SENSOR_HUMIDITY_MAX' },
+  CO2: { min: 'SENSOR_CO2_MIN', max: 'SENSOR_CO2_MAX' },
+  VIBRATION: { min: 'SENSOR_VIBRATION_MIN', max: 'SENSOR_VIBRATION_MAX' },
+};
 
 @Injectable()
 export class SensorReadingsService {
+  private readonly ranges: Record<SensorType, SensorRange>;
+
   constructor(
     private readonly logger: PinoLogger,
     @InjectRepository(ShipmentSensorReading)
     private readonly readingRepo: Repository<ShipmentSensorReading>,
     @InjectRepository(TradeDeal)
     private readonly tradeDealRepo: Repository<TradeDeal>,
+    private readonly config: ConfigService,
   ) {
     (this.logger as any).setContext(SensorReadingsService.name);
+    this.ranges = {
+      TEMPERATURE: this.buildRange('TEMPERATURE'),
+      HUMIDITY: this.buildRange('HUMIDITY'),
+      CO2: this.buildRange('CO2'),
+      VIBRATION: this.buildRange('VIBRATION'),
+    };
+  }
+
+  private readThreshold(key: string, fallback: number): number {
+    const raw = this.config?.get<number | string>(key);
+    if (raw === undefined || raw === null || raw === '') {
+      return fallback;
+    }
+
+    const value = typeof raw === 'number' ? raw : Number(raw);
+    if (!Number.isFinite(value)) {
+      this.logger.error(
+        { key, value: raw },
+        'Invalid numeric sensor threshold — using documented default',
+      );
+      return fallback;
+    }
+
+    return value;
+  }
+
+  private buildRange(sensorType: SensorType): SensorRange {
+    const defaults = RANGE_DEFAULTS[sensorType];
+    const keys = RANGE_KEYS[sensorType];
+    const min = this.readThreshold(keys.min, defaults.min);
+    const max = this.readThreshold(keys.max, defaults.max);
+
+    if (min > max) {
+      this.logger.error(
+        { sensorType, min, max },
+        'Sensor threshold min exceeds max — using documented defaults',
+      );
+      return defaults;
+    }
+
+    return { min, max };
+  }
+
+  private isOutOfRange(sensorType: SensorType, value: number): boolean {
+    const range = this.ranges[sensorType];
+    if (!range) {
+      return false;
+    }
+    return value < range.min || value > range.max;
   }
 
   async ingestBatch(
@@ -67,7 +114,7 @@ export class SensorReadingsService {
     }
 
     const entities = dto.readings.map((r) => {
-      const outOfRange = isOutOfRange(r.sensorType as SensorType, r.value);
+      const outOfRange = this.isOutOfRange(r.sensorType as SensorType, r.value);
       return this.readingRepo.create({
         shipmentId,
         milestoneId: r.milestoneId ?? null,
