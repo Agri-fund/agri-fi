@@ -1,0 +1,270 @@
+name: CD — Production
+
+# Continuous Deployment to Production
+# Triggered on release tags (v*.*.*) or manual workflow_dispatch.
+#
+# Requirements & Safety:
+#   * GitHub Environments manual approval gate ('production' environment)
+#   * Pre-deployment validation of Soroban contract IDs from GitHub Secrets
+#     (rejects placeholder 'CAAA...' values)
+#   * Blue-green zero-downtime slot-flip deployment
+#   * Inactive slot smoke testing before traffic flip
+#   * Automated rollback on deployment failure
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to deploy (e.g. v1.0.0)'
+        required: false
+
+concurrency:
+  group: cd-production
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Resolve image coordinates
+    runs-on: ubuntu-latest
+    outputs:
+      image_prefix: ${{ steps.vars.outputs.image_prefix }}
+      tag: ${{ steps.vars.outputs.tag }}
+    steps:
+      - id: vars
+        run: |
+          echo "image_prefix=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+          RELEASE_TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          echo "tag=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
+
+  validate-secrets:
+    name: Validate production secrets & Soroban contract IDs
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Verify Soroban Contract IDs and required secrets
+        env:
+          SOROBAN_FACTORY: ${{ secrets.SOROBAN_FACTORY_CONTRACT_ID }}
+          SOROBAN_SETTLEMENT: ${{ secrets.SOROBAN_SETTLEMENT_CONTRACT_ID }}
+          SOROBAN_DISTRIBUTOR: ${{ secrets.SOROBAN_DISTRIBUTOR_CONTRACT_ID }}
+          KUBE_CONFIG: ${{ secrets.KUBE_CONFIG_PRODUCTION }}
+        run: |
+          set -euo pipefail
+          echo "Checking production secrets configuration..."
+
+          if [ -z "$SOROBAN_FACTORY" ] || [ -z "$SOROBAN_SETTLEMENT" ] || [ -z "$SOROBAN_DISTRIBUTOR" ]; then
+            echo "::error::One or more Soroban contract IDs are missing from production secrets!"
+            exit 1
+          fi
+
+          # Reject dummy/placeholder values
+          for cid in "$SOROBAN_FACTORY" "$SOROBAN_SETTLEMENT" "$SOROBAN_DISTRIBUTOR"; do
+            if echo "$cid" | grep -Eq '^C(A{10,}|B{10,}|C{10,}|D{10,})'; then
+              echo "::error::Placeholder Soroban contract ID detected in production secrets: $cid"
+              exit 1
+            fi
+            if [ ${#cid} -ne 56 ]; then
+              echo "::error::Invalid StrKey length (${#cid}) for contract ID: $cid"
+              exit 1
+            fi
+          done
+
+          echo "✓ All Soroban production contract IDs verified valid and non-placeholder."
+
+  build:
+    name: Build & push ${{ matrix.component }} image
+    needs: [prepare, validate-secrets]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        component: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./${{ matrix.component }}
+          file: ./${{ matrix.component }}/Dockerfile
+          push: true
+          tags: |
+            ${{ needs.prepare.outputs.image_prefix }}/${{ matrix.component }}:${{ needs.prepare.outputs.tag }}
+            ${{ needs.prepare.outputs.image_prefix }}/${{ matrix.component }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  migrate:
+    name: Run production database migrations
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBE_CONFIG_PRODUCTION }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Run migration job
+        env:
+          IMAGE_PREFIX: ${{ needs.prepare.outputs.image_prefix }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          JOB_NAME="agri-fi-migrate-prod-${TAG//./-}"
+          kubectl -n default delete job "$JOB_NAME" --ignore-not-found=true
+
+          kubectl -n default create job "$JOB_NAME" \
+            --image="${IMAGE_PREFIX}/backend:${TAG}" \
+            -- npm run migration:run
+
+          kubectl -n default wait --for=condition=complete "job/$JOB_NAME" --timeout=300s
+          kubectl -n default delete job "$JOB_NAME"
+
+  deploy:
+    name: Blue-green deployment (Production)
+    needs: [prepare, build, migrate]
+    runs-on: ubuntu-latest
+    environment: production
+    outputs:
+      active_slot: ${{ steps.bluegreen.outputs.active }}
+      inactive_slot: ${{ steps.bluegreen.outputs.inactive }}
+    steps:
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBE_CONFIG_PRODUCTION }}" | base64 -d > "$HOME/.kube/config"
+
+      # Roll out frontend
+      - name: Deploy frontend to production
+        env:
+          IMAGE_PREFIX: ${{ needs.prepare.outputs.image_prefix }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          kubectl -n default set image deployment/agri-fi-frontend \
+            frontend="${IMAGE_PREFIX}/frontend:${TAG}"
+          kubectl -n default rollout status deployment/agri-fi-frontend --timeout=240s
+
+      # Determine active slot and deploy to inactive slot
+      - name: Determine active slot and deploy backend to inactive slot
+        id: bluegreen
+        env:
+          IMAGE_PREFIX: ${{ needs.prepare.outputs.image_prefix }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          SOROBAN_FACTORY: ${{ secrets.SOROBAN_FACTORY_CONTRACT_ID }}
+          SOROBAN_SETTLEMENT: ${{ secrets.SOROBAN_SETTLEMENT_CONTRACT_ID }}
+          SOROBAN_DISTRIBUTOR: ${{ secrets.SOROBAN_DISTRIBUTOR_CONTRACT_ID }}
+        run: |
+          ACTIVE=$(kubectl -n default get svc agri-fi-backend -o jsonpath='{.spec.selector.slot}')
+          if [ "$ACTIVE" = "green" ]; then INACTIVE=blue; else INACTIVE=green; fi
+          echo "Active slot: $ACTIVE - deploying new version to $INACTIVE"
+          echo "active=$ACTIVE" >> "$GITHUB_OUTPUT"
+          echo "inactive=$INACTIVE" >> "$GITHUB_OUTPUT"
+
+          # Update Soroban IDs and image
+          kubectl -n default set env deployment/agri-fi-backend-$INACTIVE \
+            SOROBAN_FACTORY_CONTRACT_ID="$SOROBAN_FACTORY" \
+            SOROBAN_SETTLEMENT_CONTRACT_ID="$SOROBAN_SETTLEMENT" \
+            SOROBAN_DISTRIBUTOR_CONTRACT_ID="$SOROBAN_DISTRIBUTOR" \
+            PROJECT_FACTORY_CONTRACT="$SOROBAN_FACTORY" \
+            MARKETPLACE_SETTLEMENT_CONTRACT="$SOROBAN_SETTLEMENT" \
+            REVENUE_DISTRIBUTOR_CONTRACT="$SOROBAN_DISTRIBUTOR"
+
+          kubectl -n default scale deployment/agri-fi-backend-$INACTIVE --replicas=3
+          kubectl -n default set image deployment/agri-fi-backend-$INACTIVE \
+            backend="${IMAGE_PREFIX}/backend:${TAG}"
+          kubectl -n default rollout status deployment/agri-fi-backend-$INACTIVE --timeout=240s
+
+      # Smoke test inactive slot
+      - name: Smoke test inactive slot
+        run: |
+          SLOT=${{ steps.bluegreen.outputs.inactive }}
+          kubectl -n default delete svc agri-fi-backend-smoke --ignore-not-found=true
+          kubectl -n default create service clusterip agri-fi-backend-smoke --tcp=80:80
+          kubectl -n default patch svc agri-fi-backend-smoke -p "{\"spec\":{\"selector\":{\"slot\":\"$SLOT\"}}}"
+
+          kubectl -n default run smoke-probe-prod --rm -i --restart=Never \
+            --image=curlimages/curl:8.7.1 -- \
+            sh -c '
+              set -e
+              echo "Checking backend health on slot '"$SLOT"'..."
+              curl -sSf --max-time 5 http://agri-fi-backend-smoke/health > /dev/null
+              echo "Checking ready endpoint..."
+              curl -sSf --max-time 5 http://agri-fi-backend-smoke/health/ready > /dev/null
+              echo "Smoke probe passed successfully."
+            '
+
+          kubectl -n default delete svc agri-fi-backend-smoke --ignore-not-found=true
+
+      # Switch traffic
+      - name: Switch production traffic to new slot
+        run: |
+          SLOT=${{ steps.bluegreen.outputs.inactive }}
+          kubectl -n default patch svc agri-fi-backend \
+            -p "{\"spec\":{\"selector\":{\"slot\":\"$SLOT\"}}}"
+          echo "Production traffic switched to $SLOT"
+
+      # Rollback grace window (5 minutes)
+      - name: Keep old slot running for instant rollback window (5 minutes)
+        run: |
+          echo "Previous slot ${{ steps.bluegreen.outputs.active }} stays up for 5 minutes"
+          sleep 300
+
+      # Scale down old slot
+      - name: Scale down previous slot
+        run: |
+          kubectl -n default scale \
+            deployment/agri-fi-backend-${{ steps.bluegreen.outputs.active }} \
+            --replicas=0 || true
+
+  rollback:
+    name: Blue-green production rollback
+    needs: [deploy]
+    if: needs.deploy.result == 'failure'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBE_CONFIG_PRODUCTION }}" | base64 -d > "$HOME/.kube/config"
+
+      - name: Re-point service to previous active slot
+        run: |
+          PREVIOUS="${{ needs.deploy.outputs.active_slot }}"
+          FAILED="${{ needs.deploy.outputs.inactive_slot }}"
+
+          if [ -z "$PREVIOUS" ]; then
+            echo "No previous slot information captured; unable to auto-restore."
+            exit 1
+          fi
+
+          echo "Initiating rollback: reverting $FAILED -> $PREVIOUS"
+          kubectl -n default scale deployment/agri-fi-backend-$PREVIOUS --replicas=3
+          kubectl -n default patch svc agri-fi-backend \
+            -p "{\"spec\":{\"selector\":{\"slot\":\"$PREVIOUS\"}}}"
+          if [ -n "$FAILED" ]; then
+            kubectl -n default scale deployment/agri-fi-backend-$FAILED --replicas=0 || true
+          fi
+          echo "Rollback to slot $PREVIOUS complete."

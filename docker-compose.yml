@@ -2,6 +2,10 @@ services:
   # ── Redis cache with eviction policy (#735) ─────────────────────────────────
   redis:
     image: redis:7-alpine
+    # RDB snapshots enabled for local development (#1307): snapshot every 60s if >= 1 key changed.
+    # Production note: Production deployments should use a hybrid persistence strategy with
+    # both AOF (Append Only File, appendonly yes) and RDB snapshots to ensure durability of
+    # sessions, rate-limit windows, and idempotency leases across restarts.
     command:
       - redis-server
       - --maxmemory
@@ -9,7 +13,10 @@ services:
       - --maxmemory-policy
       - allkeys-lru
       - --save
-      - ""
+      - "60"
+      - "1"
+    volumes:
+      - redis_data:/data
     ports:
       - '6379:6379'
     healthcheck:
@@ -263,6 +270,7 @@ services:
     restart: unless-stopped
 
 volumes:
+  redis_data:
   pgdata:
   pgadmin_data:
   prometheus_data:
