@@ -6,6 +6,10 @@ import { PinoLogger } from 'nestjs-pino';
 import { InjectMetric } from '@willsoto/nestjs-prometheus';
 import { Counter, Histogram } from 'prom-client';
 import { PaymentDistribution } from './entities/payment-distribution.entity';
+import {
+  EscrowMigration,
+  EscrowMigrationStatus,
+} from './entities/escrow-migration.entity';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
 import { DealCoFarmer } from '../trade-deals/entities/deal-co-farmer.entity';
 import { computeFarmerPayoutSplits, PayoutParticipant } from './payout-split';
@@ -29,6 +33,8 @@ export class EscrowService {
   constructor(
     @InjectRepository(PaymentDistribution)
     private readonly paymentDistributionRepo: Repository<PaymentDistribution>,
+    @InjectRepository(EscrowMigration)
+    private readonly escrowMigrationRepo: Repository<EscrowMigration>,
     @InjectRepository(TradeDeal)
     private readonly tradeDealRepo: Repository<TradeDeal>,
     @InjectRepository(Investment)
@@ -342,6 +348,89 @@ export class EscrowService {
       }
       throw error;
     }
+  }
+
+  /**
+   * #1422 — Migrates a live deal's escrow account from the legacy single-sig
+   * scheme to the 3-of-5 multi-sig scheme introduced in #862.
+   *
+   * The migration is idempotent per deal: if a completed migration already
+   * exists it is returned as-is. A `pending` row is persisted before the
+   * Stellar transaction is submitted so operators can see in-flight migrations
+   * and recover from a crash mid-flight.
+   */
+  async migrateEscrow(tradeDealId: string): Promise<EscrowMigration> {
+    const deal = await this.tradeDealRepo.findOne({
+      where: { id: tradeDealId },
+    });
+    if (!deal) {
+      throw new NotFoundException(`Trade deal ${tradeDealId} not found`);
+    }
+
+    const existing = await this.escrowMigrationRepo.findOne({
+      where: { tradeDealId },
+      order: { createdAt: 'DESC' },
+    });
+    if (existing && existing.status === EscrowMigrationStatus.COMPLETED) {
+      this.logger.info(
+        `Escrow for deal ${tradeDealId} is already migrated (tx ${existing.stellarTxHash})`,
+      );
+      return existing;
+    }
+
+    if (!deal.escrowSecretKey) {
+      throw new Error(`Escrow secret key missing for deal ${tradeDealId}`);
+    }
+
+    const migration =
+      existing ??
+      this.escrowMigrationRepo.create({
+        tradeDealId,
+        status: EscrowMigrationStatus.PENDING,
+      });
+    migration.status = EscrowMigrationStatus.PENDING;
+    migration.error = null;
+    migration.startedAt = new Date();
+    await this.escrowMigrationRepo.save(migration);
+
+    try {
+      const escrowSecret = this.stellarService.decryptSecret(
+        deal.escrowSecretKey,
+      );
+
+      const txHash = await this.stellarService.migrateEscrowToMultisig(
+        escrowSecret,
+      );
+
+      migration.status = EscrowMigrationStatus.COMPLETED;
+      migration.stellarTxHash = txHash;
+      migration.completedAt = new Date();
+      await this.escrowMigrationRepo.save(migration);
+
+      this.logger.info(
+        `Escrow migration completed for deal ${tradeDealId} (tx ${txHash})`,
+      );
+      return migration;
+    } catch (error) {
+      migration.status = EscrowMigrationStatus.FAILED;
+      migration.error = error?.message ?? String(error);
+      await this.escrowMigrationRepo.save(migration);
+
+      this.logger.error(
+        `Escrow migration failed for deal ${tradeDealId}: ${migration.error}`,
+      );
+      throw error;
+    }
+  }
+
+  /** #1422 — Returns the latest migration record for a deal, if any. */
+  async getMigrationStatus(
+    tradeDealId: string,
+  ): Promise<EscrowMigration | null> {
+    return this.escrowMigrationRepo.findOne({
+      where: { tradeDealId },
+      order: { createdAt: 'DESC' },
+    });
   }
 
   private recordReleaseOutcome(

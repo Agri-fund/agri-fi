@@ -47,6 +47,14 @@ ${btn('{{linkUrl}}', 'Review on platform')}`),
     html: LAYOUT(`<p>Hi {{name}}, here is what happened:</p>{{{items}}}${btn('{{appUrl}}', 'Open dashboard')}`),
     text: 'Hi {{name}}, here is what happened:\n\n{{itemsText}}\n\n{{appUrl}}',
   },
+  price_alert: {
+    subject: 'Price alert: {{commodity}} is {{direction}} your target of {{thresholdPrice}}',
+    html: LAYOUT(`<p>Hi {{name}},</p>
+<p><strong>{{commodity}}</strong> is now trading at <strong>{{currentPrice}}</strong>, which is {{direction}} your alert threshold of <strong>{{thresholdPrice}}</strong>.</p>
+${btn('{{linkUrl}}', 'View market')}
+<p style="font-size:13px;color:#7a857a">{{recurringNote}}</p>`),
+    text: 'Hi {{name}},\n\n{{commodity}} is now trading at {{currentPrice}}, which is {{direction}} your alert threshold of {{thresholdPrice}}.\n\n{{recurringNote}}\n\nView market: {{linkUrl}}\nUnsubscribe: {{unsubscribeUrl}}',
+  },
 };
 
 const escape = (s: string) =>

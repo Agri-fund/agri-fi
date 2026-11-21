@@ -20,6 +20,7 @@ import { AfricasTalkingProvider } from './providers/africas-talking.provider';
 import { TwilioProvider } from './providers/twilio.provider';
 import { FakeSmsProvider } from './providers/fake-sms.provider';
 import { SmsNotificationHelper } from './sms-notification-helper';
+import { WatchlistNotificationService } from './watchlist-notification.service';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { SmsNotificationHelper } from './sms-notification-helper';
     PushNotificationService,
     SmsRateLimiterService,
     SmsNotificationHelper,
+    WatchlistNotificationService,
     WsJwtGuard,
     OptionalWsJwtGuard,
     {
@@ -69,6 +71,7 @@ import { SmsNotificationHelper } from './sms-notification-helper';
     PushNotificationService,
     SmsRateLimiterService,
     SmsNotificationHelper,
+    WatchlistNotificationService,
   ],
 })
 export class NotificationsModule {}

@@ -23,6 +23,7 @@ import {
   ActivityEventType,
   ActivityFeedResponseDto,
 } from './dto/activity-feed.dto';
+import { WatchlistService } from '../watchlist/watchlist.service';
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 50;
@@ -51,6 +52,7 @@ export class ActivityFeedService {
     @InjectRepository(SystemAuditLog)
     private readonly auditRepo: Repository<SystemAuditLog>,
     private readonly logger: PinoLogger,
+    private readonly watchlistService: WatchlistService,
   ) {
     this.logger.setContext(ActivityFeedService.name);
   }
@@ -62,6 +64,9 @@ export class ActivityFeedService {
     // Validate deal exists
     const deal = await this.tradeDealRepo.findOne({ where: { id: dealId } });
     if (!deal) throw new NotFoundException('Trade deal not found');
+
+    // Issue #1419 — notify watchers of any deal changes surfaced by this feed.
+    await this.watchlistService.notifyWatchersOfDealChanges(deal);
 
     const limit = Math.min(opts.limit ?? DEFAULT_LIMIT, MAX_LIMIT);
     const before: Date | undefined = opts.cursor

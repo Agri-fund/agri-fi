@@ -29,10 +29,44 @@ export class HealthController {
     private disk: DiskHealthIndicator,
   ) {}
 
+  @Get('live')
+  @ApiOperation({
+    summary: 'Liveness probe',
+    description:
+      'Returns 200 as long as the Node.js process is running. Performs no ' +
+      'dependency checks, so a downstream outage never causes Kubernetes to ' +
+      'restart the pod.',
+  })
+  @ApiResponse({ status: 200, description: 'Process is alive' })
+  checkLive() {
+    return { status: 'ok' };
+  }
+
+  @Get('ready')
+  @HealthCheck()
+  @ApiOperation({
+    summary: 'Readiness probe',
+    description:
+      'Checks PostgreSQL, Redis and RabbitMQ. Returns 503 if any dependency ' +
+      'is down so Kubernetes stops routing traffic to the pod.',
+  })
+  @ApiResponse({ status: 200, description: 'All dependencies healthy' })
+  @ApiResponse({ status: 503, description: 'One or more dependencies unavailable' })
+  async checkReady() {
+    return this.health.check([
+      () => this.db.pingCheck('database'),
+      () => this.redis.isHealthy('redis'),
+      () => this.rabbitmq.isHealthy('rabbitmq'),
+    ]);
+  }
+
   @Get()
   @HealthCheck()
   @ApiOperation({
     summary: 'Health check for database, queue, and system resources',
+    description:
+      'Legacy combined health check kept for backward compatibility. ' +
+      'Kubernetes probes should use /health/live and /health/ready instead.',
   })
   @ApiResponse({ status: 200, description: 'All services healthy' })
   @ApiResponse({ status: 503, description: 'Service unavailable' })
