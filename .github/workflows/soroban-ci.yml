@@ -167,3 +167,22 @@ jobs:
           name: soroban-ts-bindings-${{ github.sha }}
           path: frontend/src/lib/contracts/
           retention-days: 30
+
+      # ── Verify Deployed Config Contract IDs (#1305) ───────────────────────────
+      # Ensures that any generated/deployed contract configuration (.env.soroban)
+      # does not contain dummy placeholder IDs (CAAA..., CBBB..., CCCC...)
+      - name: Verify no placeholder contract IDs in deployed config
+        run: |
+          set -euo pipefail
+          echo "Verifying contract configuration IDs..."
+          TARGET_FILES=(".env.soroban" "backend/.env.soroban")
+          for env_file in "${TARGET_FILES[@]}"; do
+            if [ -f "$env_file" ]; then
+              echo "Checking $env_file for placeholder contract IDs..."
+              if grep -E 'C(A{10,}|B{10,}|C{10,}|D{10,})' "$env_file"; then
+                echo "::error::Placeholder contract IDs (CAAA.../CBBB...) found in $env_file!"
+                exit 1
+              fi
+              echo "✓ $env_file verified: all contract IDs are real and non-placeholder."
+            fi
+          done

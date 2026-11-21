@@ -173,7 +173,15 @@ Platform defensive controls, verification procedures, and monitoring coverage ar
 
 ## Contributing
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for setup instructions, coding conventions, branching strategy, and PR guidelines.
+### Smart Contract Deployment
+
+To compile and deploy Soroban smart contracts to testnet and generate live `.env.soroban` configurations without placeholder values:
+
+```bash
+npm run deploy:contracts
+```
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for full setup instructions, coding conventions, branching strategy, and PR guidelines.
 
 ---
 
