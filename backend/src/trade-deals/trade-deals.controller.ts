@@ -309,8 +309,9 @@ export class TradeDealsController {
     @Query() query: Record<string, string | undefined> = {},
     @Request() req: Request,
   ): Promise<{ data: any[]; total: number; page: number; limit: number }> {
-    return this.tradeDealsService.findOpen({
-      viewerId: viewerIdOf(req),
+    const viewerId = viewerIdOf(req);
+    const result = await this.tradeDealsService.findOpen({
+      viewerId,
       commodity: query.commodity,
       country: query.country,
       region: query.region,
@@ -332,6 +333,14 @@ export class TradeDealsController {
       page: query.page ? parseInt(query.page, 10) : undefined,
       limit: query.limit ? parseInt(query.limit, 10) : undefined,
     });
+    if (!viewerId && Array.isArray(result.data)) {
+      result.data = result.data.map((deal) => {
+        if (!deal || typeof deal !== 'object') return deal;
+        const { issuer_public_key, escrow_account, metadata, ...safe } = deal as Record<string, any>;
+        return safe;
+      });
+    }
+    return result;
   }
 
   @Get(':id')

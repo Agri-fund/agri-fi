@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { SystemAuditLog } from './entities/system-audit-log.entity';
@@ -17,6 +17,32 @@ export interface FederatedLearningAuditEvent {
   details?: Record<string, any>;
   actorId?: string;
   ipAddress?: string;
+}
+
+export interface AuditQuery {
+  actorId?: string;
+  action?: string;
+  resourceType?: string;
+  resourceId?: string;
+  startDate?: string;
+  endDate?: string;
+  page?: string;
+  limit?: string;
+}
+
+function positiveInteger(value: string | undefined, fallback: number, max: number): number {
+  if (value === undefined) return fallback;
+  if (!/^\d+$/.test(value) || Number(value) < 1 || Number(value) > max) {
+    throw new BadRequestException(`Expected an integer from 1 to ${max}.`);
+  }
+  return Number(value);
+}
+
+function auditDate(value: string | undefined): Date | undefined {
+  if (value === undefined) return undefined;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) throw new BadRequestException('Invalid audit date.');
+  return date;
 }
 
 @Injectable()
@@ -43,11 +69,32 @@ export class AuditService {
     }
   }
 
-  async findAll(limit = 100): Promise<SystemAuditLog[]> {
-    return this.auditRepository.find({
-      order: { timestamp: 'DESC' },
-      take: limit,
-    });
+  async findAll(
+    query: AuditQuery = {},
+    complianceDomain?: string,
+  ): Promise<{ data: SystemAuditLog[]; total: number; page: number; limit: number }> {
+    const page = positiveInteger(query.page, 1, 1_000_000);
+    const limit = positiveInteger(query.limit, 100, 500);
+    const start = auditDate(query.startDate);
+    const end = auditDate(query.endDate);
+    if (start && end && start > end) {
+      throw new BadRequestException('startDate must be before endDate.');
+    }
+    const qb = this.auditRepository.createQueryBuilder('audit');
+    if (query.actorId) qb.andWhere('audit.actorId = :actorId', { actorId: query.actorId });
+    if (query.action) qb.andWhere('audit.action = :action', { action: query.action });
+    if (query.resourceType) qb.andWhere('audit.resourceType = :resourceType', { resourceType: query.resourceType });
+    if (query.resourceId) qb.andWhere('audit.resourceId = :resourceId', { resourceId: query.resourceId });
+    if (start) qb.andWhere('audit.createdAt >= :start', { start });
+    if (end) qb.andWhere('audit.createdAt <= :end', { end });
+    if (complianceDomain) qb.andWhere('audit.complianceDomain = :complianceDomain', { complianceDomain });
+    const [data, total] = await qb
+      .orderBy('audit.createdAt', 'DESC')
+      .addOrderBy('audit.id', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
+    return { data, total, page, limit };
   }
 
   /**

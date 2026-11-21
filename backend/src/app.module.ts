@@ -68,6 +68,9 @@ import { FraudDetectionModule } from './fraud-detection/fraud-detection.module';
 import { AmlMonitoringModule } from './aml/aml-monitoring.module';
 import { DidModule } from './did/did.module';
 import { InsuranceModule } from './insurance/insurance.module';
+import { DataRetentionModule } from './data-retention/data-retention.module';
+import { TradersModule } from './traders/traders.module';
+import { DealSummaryModule } from './deal-summary/deal-summary.module';
 
 @Module({
   controllers: [AppController, PublicController],
@@ -140,6 +143,9 @@ import { InsuranceModule } from './insurance/insurance.module';
     InsuranceModule,
     FraudDetectionModule,
     AmlMonitoringModule,
+    DataRetentionModule,
+    TradersModule,
+    DealSummaryModule,
   ],
   providers: [
     {

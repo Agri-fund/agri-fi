@@ -1,9 +1,10 @@
 'use client';
 
 import { getAuthToken } from '@/lib/auth-token';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import nextDynamic from 'next/dynamic';
+import { FixedSizeList, ListChildComponentProps } from 'react-window';
 import { apiClient, User, Document } from '@/lib/api';
 import DashboardLayout from '@/components/DashboardLayout';
 import { PdfViewer } from '@/components/ui/PdfViewer';
@@ -38,6 +39,126 @@ function isPdf(url: string) {
   return url.toLowerCase().includes('.pdf') || url.toLowerCase().includes('application/pdf');
 }
 
+/** Lists with more than this many documents are virtualised. */
+export const VIRTUALISATION_THRESHOLD = 10;
+
+/** Fixed row height (px) used by the virtualised list. */
+export const DOCUMENT_ROW_HEIGHT = 76;
+
+interface DocumentCardProps {
+  doc: DealDocument;
+  isOpen: boolean;
+  onToggle: (doc: DealDocument) => void;
+}
+
+function DocumentCard({ doc, isOpen, onToggle }: DocumentCardProps) {
+  const docUrl = doc.storage_url || `https://ipfs.io/ipfs/${doc.ipfs_hash}`;
+  const pdf    = isPdf(docUrl);
+
+  return (
+    <div className="card overflow-hidden" data-testid="document-card">
+      {/* Document row */}
+      <div className="flex items-center gap-4 p-4">
+        <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center text-xl flex-shrink-0">
+          📄
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-slate-900 truncate">
+            {docLabel(doc.doc_type)}
+          </p>
+          {doc.dealCommodity && (
+            <p className="text-xs text-slate-400 capitalize">{doc.dealCommodity}</p>
+          )}
+          <p className="text-xs text-slate-400 mt-0.5">
+            {new Date(doc.created_at).toLocaleDateString('en', {
+              month: 'short', day: 'numeric', year: 'numeric',
+            })}
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {pdf && (
+            <button
+              onClick={() => onToggle(doc)}
+              className={`btn-secondary text-xs px-3 py-1.5 ${isOpen ? 'bg-brand-50 border-brand-200 text-brand-700' : ''}`}
+            >
+              {isOpen ? 'Close' : 'Preview'}
+            </button>
+          )}
+          <a
+            href={docUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            download
+            className="btn-secondary text-xs px-3 py-1.5"
+            aria-label={`Download ${docLabel(doc.doc_type)}`}
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+          </a>
+        </div>
+      </div>
+
+      {/* Inline PDF viewer */}
+      {isOpen && pdf && (
+        <div className="border-t border-slate-100 p-4 space-y-3">
+          <CollaborationPresence
+            resourceType="document"
+            resourceId={doc.id}
+          />
+          <PdfViewer
+            url={docUrl}
+            fileName={`${docLabel(doc.doc_type)}.pdf`}
+            className="w-full"
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface VirtualisedDocumentListProps {
+  docs: DealDocument[];
+  selected: DealDocument | null;
+  onToggle: (doc: DealDocument) => void;
+  height?: number;
+}
+
+function VirtualisedDocumentList({
+  docs,
+  selected,
+  onToggle,
+  height = 600,
+}: VirtualisedDocumentListProps) {
+  const Row = ({ index, style }: ListChildComponentProps) => {
+    const doc = docs[index];
+    return (
+      <div style={style} className="pb-3">
+        <DocumentCard
+          doc={doc}
+          isOpen={selected?.id === doc.id}
+          onToggle={onToggle}
+        />
+      </div>
+    );
+  };
+
+  return (
+    <FixedSizeList
+      height={height}
+      width="100%"
+      itemCount={docs.length}
+      itemSize={DOCUMENT_ROW_HEIGHT}
+      overscanCount={3}
+      data-testid="virtualised-document-list"
+    >
+      {Row}
+    </FixedSizeList>
+  );
+}
+
 export default function DocumentsPage() {
   const router = useRouter();
   const [user, setUser]         = useState<User | null>(null);
@@ -45,6 +166,15 @@ export default function DocumentsPage() {
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState<string | null>(null);
   const [selected, setSelected] = useState<DealDocument | null>(null);
+
+  const handleToggle = (doc: DealDocument) => {
+    setSelected(prev => (prev?.id === doc.id ? null : doc));
+  };
+
+  const shouldVirtualise = useMemo(
+    () => docs.length > VIRTUALISATION_THRESHOLD,
+    [docs.length],
+  );
 
   useEffect(() => {
     (async () => {
@@ -112,76 +242,24 @@ export default function DocumentsPage() {
         )}
 
         {!loading && docs.length > 0 && (
-          <div className="grid gap-3">
-            {docs.map(doc => {
-              const docUrl = doc.storage_url || `https://ipfs.io/ipfs/${doc.ipfs_hash}`;
-              const pdf    = isPdf(docUrl);
-              const isOpen = selected?.id === doc.id;
-
-              return (
-                <div key={doc.id} className="card overflow-hidden">
-                  {/* Document row */}
-                  <div className="flex items-center gap-4 p-4">
-                    <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center text-xl flex-shrink-0">
-                      📄
-                    </div>
-
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-slate-900 truncate">
-                        {docLabel(doc.doc_type)}
-                      </p>
-                      {doc.dealCommodity && (
-                        <p className="text-xs text-slate-400 capitalize">{doc.dealCommodity}</p>
-                      )}
-                      <p className="text-xs text-slate-400 mt-0.5">
-                        {new Date(doc.created_at).toLocaleDateString('en', {
-                          month: 'short', day: 'numeric', year: 'numeric',
-                        })}
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      {pdf && (
-                        <button
-                          onClick={() => setSelected(isOpen ? null : doc)}
-                          className={`btn-secondary text-xs px-3 py-1.5 ${isOpen ? 'bg-brand-50 border-brand-200 text-brand-700' : ''}`}
-                        >
-                          {isOpen ? 'Close' : 'Preview'}
-                        </button>
-                      )}
-                      <a
-                        href={docUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        download
-                        className="btn-secondary text-xs px-3 py-1.5"
-                        aria-label={`Download ${docLabel(doc.doc_type)}`}
-                      >
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                        </svg>
-                      </a>
-                    </div>
-                  </div>
-
-                  {/* Inline PDF viewer */}
-                  {isOpen && pdf && (
-                    <div className="border-t border-slate-100 p-4 space-y-3">
-                      <CollaborationPresence
-                        resourceType="document"
-                        resourceId={doc.id}
-                      />
-                      <PdfViewer
-                        url={docUrl}
-                        fileName={`${docLabel(doc.doc_type)}.pdf`}
-                        className="w-full"
-                      />
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+          shouldVirtualise ? (
+            <VirtualisedDocumentList
+              docs={docs}
+              selected={selected}
+              onToggle={handleToggle}
+            />
+          ) : (
+            <div className="grid gap-3">
+              {docs.map(doc => (
+                <DocumentCard
+                  key={doc.id}
+                  doc={doc}
+                  isOpen={selected?.id === doc.id}
+                  onToggle={handleToggle}
+                />
+              ))}
+            </div>
+          )
         )}
       </div>
     </DashboardLayout>

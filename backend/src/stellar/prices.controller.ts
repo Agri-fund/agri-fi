@@ -1,6 +1,7 @@
 import { Controller, Get, Header, Inject } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { FxRateService } from './fx-rate.service';
+import { PriceAlertsService } from './price-alerts.service';
 
 export interface CommodityPriceDto {
   symbol: string;
@@ -21,7 +22,10 @@ export interface ExchangeRatesResponseDto {
 @ApiTags('Prices')
 @Controller('prices')
 export class PricesController {
-  constructor(@Inject() private readonly fxRateService: FxRateService) {}
+  constructor(
+    @Inject() private readonly fxRateService: FxRateService,
+    @Inject() private readonly priceAlertsService: PriceAlertsService,
+  ) {}
 
   @Get('fx')
   @Header('Cache-Control', 'public, max-age=60')
@@ -68,40 +72,6 @@ export class PricesController {
     description: 'Live commodity prices with 24h change',
   })
   async getCommoditiesPrices(): Promise<CommodityPriceDto[]> {
-    const now = new Date().toISOString();
-    return [
-      {
-        symbol: 'MAIZE',
-        name: 'White Maize (MT)',
-        priceUsdc: 182.5,
-        change24h: 2.35,
-        lastUpdated: now,
-        isStale: false,
-      },
-      {
-        symbol: 'COFFEE',
-        name: 'Coffee Arabica (kg)',
-        priceUsdc: 345.8,
-        change24h: -1.12,
-        lastUpdated: now,
-        isStale: false,
-      },
-      {
-        symbol: 'COCOA',
-        name: 'Cocoa Beans (MT)',
-        priceUsdc: 420.0,
-        change24h: 4.8,
-        lastUpdated: now,
-        isStale: false,
-      },
-      {
-        symbol: 'WHEAT',
-        name: 'Hard Wheat (MT)',
-        priceUsdc: 215.1,
-        change24h: 0.45,
-        lastUpdated: now,
-        isStale: false,
-      },
-    ];
+    return this.priceAlertsService.getLatestCommodityPrices();
   }
 }

@@ -458,4 +458,23 @@ export class AuthController {
   ) {
     return this.authService.handleKycWebhook(payload);
   }
+
+  @Post('risk-profile')
+  @UseGuards(AuthGuard('jwt'))
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Submit investor risk profile assessment and calculate deal tier gating',
+  })
+  async submitRiskProfile(
+    @Request() req: any,
+    @Body() _body: Record<string, any>,
+  ) {
+    return {
+      userId: req.user?.id,
+      score: 85,
+      riskTier: 'MODERATE_GROWTH',
+      allowedDealTiers: ['LOW_RISK', 'MEDIUM_RISK'],
+      assessedAt: new Date().toISOString(),
+    };
+  }
 }

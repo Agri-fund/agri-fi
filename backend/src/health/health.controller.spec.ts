@@ -145,6 +145,94 @@ describe('HealthController', () => {
     });
   });
 
+  describe('checkLive()', () => {
+    it('returns 200 without invoking any dependency indicators', async () => {
+      const result = await controller.checkLive();
+
+      expect(result).toEqual({ status: 'ok' });
+      expect(health.check).not.toHaveBeenCalled();
+      expect(mockDbIndicator.pingCheck).not.toHaveBeenCalled();
+      expect(mockRedisIndicator.isHealthy).not.toHaveBeenCalled();
+      expect(mockRabbitmqIndicator.isHealthy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('checkReady()', () => {
+    it('returns 200 when PostgreSQL, Redis and RabbitMQ are healthy', async () => {
+      mockDbIndicator.pingCheck.mockResolvedValue({
+        database: { status: 'up' },
+      });
+      mockRedisIndicator.isHealthy.mockResolvedValue({
+        redis: { status: 'up' },
+      });
+      mockRabbitmqIndicator.isHealthy.mockResolvedValue({
+        rabbitmq: { status: 'up' },
+      });
+
+      const result = await controller.checkReady();
+
+      expect(health.check).toHaveBeenCalled();
+      expect(mockDbIndicator.pingCheck).toHaveBeenCalledWith('database');
+      expect(mockRedisIndicator.isHealthy).toHaveBeenCalledWith('redis');
+      expect(mockRabbitmqIndicator.isHealthy).toHaveBeenCalledWith('rabbitmq');
+      expect(result).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ database: { status: 'up' } }),
+          expect.objectContaining({ redis: { status: 'up' } }),
+          expect.objectContaining({ rabbitmq: { status: 'up' } }),
+        ]),
+      );
+    });
+
+    it('returns 503 when PostgreSQL is down', async () => {
+      mockDbIndicator.pingCheck.mockRejectedValue(
+        new HealthCheckError('database health check failed', {
+          database: { status: 'down', message: 'connect ECONNREFUSED' },
+        }),
+      );
+      mockRedisIndicator.isHealthy.mockResolvedValue({
+        redis: { status: 'up' },
+      });
+      mockRabbitmqIndicator.isHealthy.mockResolvedValue({
+        rabbitmq: { status: 'up' },
+      });
+
+      await expect(controller.checkReady()).rejects.toThrow(HealthCheckError);
+    });
+
+    it('returns 503 when Redis is down', async () => {
+      mockDbIndicator.pingCheck.mockResolvedValue({
+        database: { status: 'up' },
+      });
+      mockRedisIndicator.isHealthy.mockRejectedValue(
+        new HealthCheckError('redis health check failed', {
+          redis: { status: 'down', message: 'connect ECONNREFUSED' },
+        }),
+      );
+      mockRabbitmqIndicator.isHealthy.mockResolvedValue({
+        rabbitmq: { status: 'up' },
+      });
+
+      await expect(controller.checkReady()).rejects.toThrow(HealthCheckError);
+    });
+
+    it('returns 503 when RabbitMQ is down', async () => {
+      mockDbIndicator.pingCheck.mockResolvedValue({
+        database: { status: 'up' },
+      });
+      mockRedisIndicator.isHealthy.mockResolvedValue({
+        redis: { status: 'up' },
+      });
+      mockRabbitmqIndicator.isHealthy.mockRejectedValue(
+        new HealthCheckError('rabbitmq health check failed', {
+          rabbitmq: { status: 'down', message: 'connect ECONNREFUSED' },
+        }),
+      );
+
+      await expect(controller.checkReady()).rejects.toThrow(HealthCheckError);
+    });
+  });
+
   describe('checkDetail()', () => {
     it('surfaces ClamAV scan availability in degraded mode', async () => {
       mockDbIndicator.pingCheck.mockResolvedValue({

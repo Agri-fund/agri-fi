@@ -31,6 +31,7 @@ import {
   WatermarkOptions,
 } from './watermark.service';
 import { DocumentClassificationService } from './document-classification.service';
+import { DealSummaryService } from '../ai/deal-summary.service';
 
 const ALLOWED_MIME_TYPES = ['application/pdf', 'image/png', 'image/jpeg'];
 
@@ -60,7 +61,19 @@ export class DocumentsService {
     private readonly auditService: AuditService,
     private readonly classificationService: DocumentClassificationService,
     @Optional() private readonly watermarkService?: WatermarkService,
+    @Optional() private readonly dealSummaryService?: DealSummaryService,
   ) {}
+
+  /**
+   * Fire-and-forget AI summary regeneration after a deal's documents change.
+   * Failures are swallowed so they never block the upload request.
+   */
+  private triggerDealSummaryRegeneration(tradeDealId: string): void {
+    if (!this.dealSummaryService) return;
+    this.dealSummaryService
+      .generateForDeal(tradeDealId)
+      .catch(() => undefined);
+  }
 
   /**
    * Whether malware scanning is required for uploads. Defaults to enabled;
@@ -445,6 +458,9 @@ export class DocumentsService {
     await this.classificationService.classify(doc, file.buffer, file.originalname);
     const classifiedDocument = await this.tradeDealsService.getDocument(doc.id);
 
+    // 6. New documents may change the deal's plain-language summary (#1415).
+    this.triggerDealSummaryRegeneration(tradeDealId);
+
     return {
       ...(classifiedDocument ?? doc),
       verificationUrl: this.stellarService.getVerificationUrl(stellarTxId),
@@ -601,6 +617,9 @@ export class DocumentsService {
     }
 
     await this.tradeDealsService.updateDocumentStorage(documentId, hash, url);
+
+    // Re-uploaded document content may change the deal summary (#1415).
+    this.triggerDealSummaryRegeneration(doc.tradeDealId);
 
     return { ipfsHash: hash, storageUrl: url };
   }

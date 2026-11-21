@@ -16,11 +16,12 @@
  * in local development environments that have no Soroban RPC endpoint.
  */
 
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Not, IsNull } from 'typeorm';
+import { Gauge, Registry } from 'prom-client';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
 import { SorobanService } from './soroban.service';
 
@@ -29,9 +30,23 @@ const DEFAULT_WARN_TTL_LEDGERS = 86_400; // ~5 days at 5 s/ledger
 /** Target TTL after a rent-bump: ~30 days at 5 s/ledger on testnet. */
 const DEFAULT_EXTEND_TO_LEDGERS = 535_680;
 
+/**
+ * Gauge tracking the number of ledgers remaining until each Soroban contract's
+ * state expires. Exposed to Prometheus so the `SorobanContractNearExpiry`
+ * alert can fire when a contract is close to expiry (#1311).
+ */
+export const sorobanContractLedgersUntilExpiry = new Gauge({
+  name: 'soroban_contract_ledgers_until_expiry',
+  help: 'Number of ledgers remaining until a Soroban contract state expires',
+  labelNames: ['contract_id'] as const,
+});
+
 @Injectable()
 export class SorobanRentService implements OnModuleInit {
+  private readonly logger = new Logger(SorobanRentService.name);
+  private readonly rpcUrl: string;
   private readonly warnThreshold: number;
+  private readonly archivedContracts = new Set<string>();
 
   constructor(
     private readonly config: ConfigService,
@@ -175,6 +190,8 @@ export class SorobanRentService implements OnModuleInit {
       return;
     }
 
+    this.recordLedgersUntilExpiry(contractId, ttl);
+
     this.logger.debug(
       `Contract ${contractId} has ${ttl} ledgers remaining (~${this.ledgersToHours(ttl)}h).`,
     );
@@ -193,6 +210,20 @@ export class SorobanRentService implements OnModuleInit {
     this.logger.log(
       `Extended TTL for ${contractId} → ${DEFAULT_EXTEND_TO_LEDGERS} ledgers. tx: ${hash}`,
     );
+  }
+
+  /**
+   * Emit the `soroban_contract_ledgers_until_expiry` gauge for a contract.
+   * A value of 0 is recorded when the contract is archived (TTL unknown) so
+   * the `SorobanContractNearExpiry` alert fires immediately.
+   */
+  private recordLedgersUntilExpiry(
+    contractId: string,
+    ledgersUntilExpiry: number | null,
+  ): void {
+    sorobanContractLedgersUntilExpiry
+      .labels(contractId)
+      .set(ledgersUntilExpiry ?? 0);
   }
 
   private async restoreAndExtend(
@@ -234,16 +265,14 @@ export class SorobanRentService implements OnModuleInit {
 
     // Always include the global platform contracts
     const platformContracts = [
-      this.config.get<string>('SOROBAN_FACTORY_CONTRACT_ID'),
-      this.config.get<string>('SOROBAN_SETTLEMENT_CONTRACT_ID'),
-      this.config.get<string>('SOROBAN_DISTRIBUTOR_CONTRACT_ID'),
+      this.config.get<string>('SOROBAN_FACTORY_CONTRACT_ID', ''),
+      this.config.get<string>('SOROBAN_SETTLEMENT_CONTRACT_ID', ''),
     ].filter((id): id is string => Boolean(id));
 
     return [...new Set([...campaignIds, ...platformContracts])];
   }
 
   private ledgersToHours(ledgers: number): number {
-    // Testnet: ~5 seconds per ledger
     return Math.round((ledgers * 5) / 3600);
   }
 }

@@ -1,6 +1,8 @@
 import { DataSource } from 'typeorm';
 import { join } from 'path';
 import * as dotenv from 'dotenv';
+import { PriceAlert } from '../market/entities/price-alert.entity';
+import { Watchlist } from '../watchlist/entities/watchlist.entity';
 
 dotenv.config();
 
@@ -50,7 +52,11 @@ const dataSourceConfig: any = {
     master: masterConnection,
     slaves: [slaveConnection],
   },
-  entities: [join(__dirname, '..', '**', '*.entity.{ts,js}')],
+  entities: [
+    join(__dirname, '..', '**', '*.entity.{ts,js}'),
+    PriceAlert,
+    Watchlist,
+  ],
   migrations: [join(__dirname, 'migrations', '*.{ts,js}')],
   synchronize: false,
   logging: false,
@@ -84,3 +90,9 @@ const dataSourceConfig: any = {
 };
 
 export const AppDataSource = new DataSource(dataSourceConfig);
+
+// NOTE: The `trader_scorecards` materialised view and the
+// `trade_deals.ai_summary` column are introduced by the migration
+// `backend/src/database/migrations/<timestamp>-trader-scorecards-and-ai-summary.ts`.
+// The view is refreshed nightly (REFRESH MATERIALIZED VIEW CONCURRENTLY) and
+// exposes a UNIQUE index on trader_id to support concurrent refreshes.

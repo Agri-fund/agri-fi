@@ -3,6 +3,16 @@ import { RedisConfig } from '../config/redis.config';
 import { RedisClientType } from 'redis';
 import { PinoLogger } from 'nestjs-pino';
 
+/**
+ * Low-level Redis-backed primitives for JWT blocklisting and refresh-token
+ * rotation tracking.
+ *
+ * This service is an internal dependency of `TokenService` (see
+ * `token.service.ts`) and is exported from `TokenModule` so that both
+ * `AuthModule` and `UsersModule` can consume token primitives without
+ * importing each other. It must not depend on `AuthService` or
+ * `UsersService`.
+ */
 @Injectable()
 export class TokenBlocklistService implements OnModuleInit, OnModuleDestroy {
   private redisClient: RedisClientType | null = null;

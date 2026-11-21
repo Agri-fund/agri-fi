@@ -1,0 +1,73 @@
+{
+  "common": {
+    "appName": "Stellar",
+    "loading": "Loading...",
+    "error": "Something went wrong",
+    "retry": "Retry",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "save": "Save",
+    "close": "Close",
+    "back": "Back",
+    "next": "Next",
+    "search": "Search",
+    "noResults": "No results found"
+  },
+  "nav": {
+    "home": "Home",
+    "dashboard": "Dashboard",
+    "wallet": "Wallet",
+    "transactions": "Transactions",
+    "settings": "Settings",
+    "profile": "Profile",
+    "logout": "Log out",
+    "login": "Log in"
+  },
+  "auth": {
+    "signIn": "Sign in",
+    "signUp": "Sign up",
+    "email": "Email",
+    "password": "Password",
+    "forgotPassword": "Forgot password?",
+    "resetPassword": "Reset password",
+    "invalidCredentials": "Invalid email or password"
+  },
+  "wallet": {
+    "balance": "Balance",
+    "send": "Send",
+    "receive": "Receive",
+    "swap": "Swap",
+    "amount": "Amount",
+    "recipient": "Recipient",
+    "address": "Address",
+    "fee": "Fee",
+    "total": "Total",
+    "insufficientFunds": "Insufficient funds",
+    "transactionSent": "Transaction sent successfully",
+    "transactionFailed": "Transaction failed"
+  },
+  "transactions": {
+    "title": "Transactions",
+    "date": "Date",
+    "type": "Type",
+    "status": "Status",
+    "pending": "Pending",
+    "completed": "Completed",
+    "failed": "Failed",
+    "empty": "No transactions yet"
+  },
+  "settings": {
+    "title": "Settings",
+    "language": "Language",
+    "currency": "Currency",
+    "notifications": "Notifications",
+    "security": "Security",
+    "theme": "Theme"
+  },
+  "errors": {
+    "network": "Network error. Please try again.",
+    "notFound": "Page not found",
+    "unauthorized": "You are not authorized to view this page",
+    "validation": "Please check the form for errors"
+  }
+}
