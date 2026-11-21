@@ -4,6 +4,10 @@
  * `startTracing()` must run before any instrumented module is imported so the
  * global tracer provider and W3C propagators are installed early. It is invoked
  * from `main.ts` (and from tests that need an in-memory exporter).
+ *
+ * Manual instrumentation for HTTP (via middleware/interceptor), database queries
+ * (via TypeORM hooks), messaging (via queue service), and Stellar calls (via
+ * TracingService.traceHorizonCall()).
  */
 
 import {
@@ -46,7 +50,10 @@ function parseResourceAttributes(value?: string): Record<string, string> {
   }, {});
 }
 
-function buildSampler(): ParentBasedSampler | AlwaysOnSampler | AlwaysOffSampler {
+function buildSampler():
+  | ParentBasedSampler
+  | AlwaysOnSampler
+  | AlwaysOffSampler {
   const name = (process.env.OTEL_TRACES_SAMPLER || '').trim();
   const arg = Number(process.env.OTEL_TRACES_SAMPLER_ARG ?? '0.1');
 
@@ -140,9 +147,7 @@ export function startTracing(): TracerProvider | undefined {
   }
 
   if (process.env.OTEL_CONSOLE_EXPORT === 'true') {
-    spanProcessors.push(
-      new SimpleSpanProcessor(new ConsoleSpanExporter()),
-    );
+    spanProcessors.push(new SimpleSpanProcessor(new ConsoleSpanExporter()));
   }
 
   provider = new TracerProvider({
@@ -154,7 +159,9 @@ export function startTracing(): TracerProvider | undefined {
   // `TracerProvider` (v2) no longer has `register()` — register the API globals
   // explicitly: async context manager (required for `context.active()` inside
   // async handlers), W3C propagator and the tracer provider itself.
-  context.setGlobalContextManager(new AsyncLocalStorageContextManager().enable());
+  context.setGlobalContextManager(
+    new AsyncLocalStorageContextManager().enable(),
+  );
   propagation.setGlobalPropagator(
     new CompositePropagator({
       propagators: [
@@ -165,6 +172,7 @@ export function startTracing(): TracerProvider | undefined {
   );
   trace.setGlobalTracerProvider(provider);
 
+  // Additional axios instrumentation for trace context injection
   instrumentAxios();
 
   diag.info('OpenTelemetry tracing initialised');
