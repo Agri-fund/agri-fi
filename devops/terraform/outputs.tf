@@ -43,3 +43,17 @@ output "monitored_endpoints" {
   value       = { for k, v in var.monitor_targets : k => v.url }
 }
 
+
+# ---------------------------------------------------------------------------
+# Trace storage (Elasticsearch for Jaeger, #1308)
+# ---------------------------------------------------------------------------
+
+output "trace_es_endpoint" {
+  description = "HTTPS endpoint of the Elasticsearch domain used by Jaeger for trace storage."
+  value       = "https://${aws_opensearch_domain.traces.endpoint}"
+}
+
+output "trace_es_secret_arn" {
+  description = "ARN of the Secrets Manager secret holding the trace Elasticsearch URL and credentials."
+  value       = aws_secretsmanager_secret.trace_es_credentials.arn
+}

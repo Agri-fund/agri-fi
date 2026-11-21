@@ -257,19 +257,89 @@ services:
       - jaeger
     restart: unless-stopped
 
+  # ── Durable trace storage (#1308) ───────────────────────────────────────────
+  # Jaeger used to run with SPAN_STORAGE_TYPE=memory (50k traces, lost on every
+  # restart). Spans are now stored in Elasticsearch with a 30-day ILM
+  # rollover/delete policy (devops/observability/elasticsearch).
+  #
+  # To use an external cluster instead, set JAEGER_ES_SERVER_URLS (and
+  # JAEGER_ES_USERNAME / JAEGER_ES_PASSWORD) and start without the local
+  # `elasticsearch` service:  docker compose up -d --no-deps jaeger ...
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
+    environment:
+      discovery.type: single-node
+      # Local/dev only — production uses the Terraform-provisioned domain.
+      xpack.security.enabled: 'false'
+      ES_JAVA_OPTS: -Xms512m -Xmx512m
+      cluster.routing.allocation.disk.threshold_enabled: 'false'
+    volumes:
+      - jaeger_es_data:/usr/share/elasticsearch/data
+    ports:
+      - '9200:9200'
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -fsS http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s || exit 1']
+      interval: 10s
+      timeout: 10s
+      retries: 15
+      start_period: 30s
+    ulimits:
+      memlock: {soft: -1, hard: -1}
+    restart: unless-stopped
+
+  # One-shot: install the 30-day ILM policy before Jaeger creates its indices.
+  jaeger-es-ilm-policy:
+    image: curlimages/curl:8.10.1
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    volumes:
+      - ./devops/observability/elasticsearch/jaeger-ilm-policy.json:/policy/jaeger-ilm-policy.json:ro
+    entrypoint: ['/bin/sh', '-c']
+    command:
+      - >-
+        curl -fsS -X PUT -H 'Content-Type: application/json'
+        --data-binary @/policy/jaeger-ilm-policy.json
+        "$${JAEGER_ES_SERVER_URLS:-http://elasticsearch:9200}/_ilm/policy/jaeger-ilm-policy"
+    environment:
+      JAEGER_ES_SERVER_URLS: ${JAEGER_ES_SERVER_URLS:-http://elasticsearch:9200}
+    restart: 'no'
+
+  # One-shot: create Jaeger's index templates + rollover aliases wired to ILM.
+  jaeger-es-init:
+    image: jaegertracing/jaeger-es-rollover:1.60
+    depends_on:
+      jaeger-es-ilm-policy:
+        condition: service_completed_successfully
+    command: ['init', '${JAEGER_ES_SERVER_URLS:-http://elasticsearch:9200}']
+    environment:
+      ES_USE_ILM: 'true'
+      ES_ILM_POLICY_NAME: jaeger-ilm-policy
+      ES_USERNAME: ${JAEGER_ES_USERNAME:-}
+      ES_PASSWORD: ${JAEGER_ES_PASSWORD:-}
+    restart: 'no'
+
   jaeger:
     image: jaegertracing/all-in-one:1.60
     environment:
       COLLECTOR_OTLP_ENABLED: 'true'
-      # In-memory storage with a bounded trace count. Production should use a
-      # durable backend (Elasticsearch/Cassandra) — see the tracing docs.
-      SPAN_STORAGE_TYPE: memory
-      MEMORY_MAX_TRACES: '50000'
+      SPAN_STORAGE_TYPE: elasticsearch
+      ES_SERVER_URLS: ${JAEGER_ES_SERVER_URLS:-http://elasticsearch:9200}
+      ES_USERNAME: ${JAEGER_ES_USERNAME:-}
+      ES_PASSWORD: ${JAEGER_ES_PASSWORD:-}
+      # Indices are rolled over / deleted by the ILM policy installed above.
+      ES_USE_ILM: 'true'
+      ES_USE_ALIASES: 'true'
+      ES_CREATE_INDEX_TEMPLATES: 'false'
+    depends_on:
+      jaeger-es-init:
+        condition: service_completed_successfully
     ports:
       - '16686:16686' # Jaeger UI
     restart: unless-stopped
 
 volumes:
+  jaeger_es_data:
   redis_data:
   pgdata:
   pgadmin_data:

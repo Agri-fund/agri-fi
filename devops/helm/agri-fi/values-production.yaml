@@ -15,6 +15,14 @@ redis:
   storage: 10Gi
 rabbitmq:
   storage: 20Gi
+tracing:
+  retentionDays: 30
+  elasticsearch:
+    # Production uses the managed domain from devops/terraform/elasticsearch.tf.
+    enabled: false
+    # Set to the `trace_es_endpoint` Terraform output at deploy time, e.g.
+    #   helm upgrade ... --set tracing.elasticsearch.externalUrl=$(terraform output -raw trace_es_endpoint)
+    externalUrl: "https://CHANGE-ME-trace-es-endpoint"
 ingress:
   frontendHost: agri-fi.example.com
   backendHost: api.agri-fi.example.com

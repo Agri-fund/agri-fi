@@ -183,6 +183,14 @@
 //
 // =============================================================================
 
+import { dedupedFetch } from '../lib/request-dedup';
+
+export {
+  invalidateFetchCache,
+  clearFetchCache,
+  RESPONSE_CACHE_TTL_MS,
+} from '../lib/request-dedup';
+
 export function getBackendUrl(): string {
   const url = process.env.BACKEND_URL;
 
@@ -201,10 +209,10 @@ export const BACKEND_URL = getBackendUrl();
 
 const API_VERSION = '/v1';
 
-// TODO (#974): Add the in-flight dedup Map and TTL responseCache here.
-// All logic described in the documentation block above belongs in this
-// function (or thin helpers called from it) so every fetchBackend() caller
-// benefits automatically without any changes at the call site.
+// #974: in-flight dedup (Map<string, Promise<Response>>) and the 2 s GET
+// response cache live in ../lib/request-dedup so that lib/api.ts can share the
+// same state without importing this server-oriented config module. Every
+// fetchBackend() caller benefits automatically.
 export async function fetchBackend(
   path: string,
   options?: RequestInit
@@ -216,7 +224,7 @@ export async function fetchBackend(
   const url = `${backendUrl}${versionedPath}`;
 
   try {
-    const response = await fetch(url, options);
+    const response = await dedupedFetch(url, options);
     return response;
   } catch (error) {
     throw {

@@ -190,11 +190,38 @@ Prometheus scrapes (`job_name: otel-collector`). Rules in
 
 ## Retention
 
-Jaeger all-in-one in `docker-compose.yml` uses in-memory storage bounded by
-`MEMORY_MAX_TRACES` (`50000`) — fine for development, not durable. For production
-point the collector's `otlp/jaeger` exporter (or an `elasticsearch` exporter) at
-a durable backend (Elasticsearch/Cassandra/Tempo) with an index-retention policy;
-sampling keeps volumes manageable.
+Traces are stored durably in **Elasticsearch** (#1308) — they survive Jaeger and
+container restarts, so post-incident analysis works after an outage that needed
+a restart. Jaeger runs with `SPAN_STORAGE_TYPE=elasticsearch` and
+`ES_USE_ILM=true`; the ILM policy
+([`devops/observability/elasticsearch/jaeger-ilm-policy.json`](../../devops/observability/elasticsearch/jaeger-ilm-policy.json))
+rolls indices over daily (or at 20 GB per shard) and **deletes them after 30
+days**.
+
+| Environment    | Elasticsearch                                                            | ILM policy installed by                          |
+| -------------- | ------------------------------------------------------------------------ | ------------------------------------------------ |
+| docker-compose | `elasticsearch` service (single node, volume `jaeger_es_data`)           | one-shot `jaeger-es-ilm-policy` + `jaeger-es-init` |
+| staging (Helm) | in-cluster StatefulSet (`tracing.elasticsearch.enabled: true`)           | `<release>-jaeger-es-init` Helm hook Job         |
+| production     | AWS domain from `devops/terraform/elasticsearch.tf` (`externalUrl`)      | `<release>-jaeger-es-init` Helm hook Job         |
+
+To use an external cluster with docker-compose set `JAEGER_ES_SERVER_URLS`
+(plus `JAEGER_ES_USERNAME` / `JAEGER_ES_PASSWORD`) and start the stack without
+the local `elasticsearch` service. For Helm, set
+`tracing.elasticsearch.externalUrl` (production's value comes from the
+`trace_es_endpoint` Terraform output; credentials from the
+`trace_es_credentials` secret). Change retention with
+`tracing.retentionDays` (Helm) or the policy JSON (compose).
+
+Verify end to end — emits a trace through the collector, checks it in the
+Jaeger API and Elasticsearch, checks the ILM policy, and (with `--restart`)
+restarts Jaeger to prove the trace survives:
+
+```bash
+docker compose up -d elasticsearch jaeger-es-ilm-policy jaeger-es-init jaeger otel-collector
+./devops/observability/verify-traces.sh --restart
+```
+
+Sampling keeps trace volume manageable.
 
 ## Configuration
 

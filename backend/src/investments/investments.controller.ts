@@ -37,6 +37,7 @@ import {
 } from './portfolio-summary.service';
 import { TaxReportService, TaxReportFormat } from './tax-report.service';
 import { TaxReportQueryDto } from './dto/tax-report-query.dto';
+import { TaxStatementQueryDto } from './dto/tax-statement-query.dto';
 import { CreateInvestmentDto } from './dto/create-investment.dto';
 import { KycGuard, RolesGuard } from '../common/guards';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -581,12 +582,62 @@ export class InvestmentsController {
       return res.send('﻿' + csv); // BOM for Excel compatibility
     }
 
-    // PDF: placeholder — integrate pdfkit in production
-    res.setHeader('Content-Type', 'application/json');
-    return res.json({
-      message: 'PDF generation queued — you will receive an email when ready.',
-      year: query.year,
-    });
+    return this.sendTaxStatement(req.user.id, query.year, res);
+  }
+
+  /**
+   * Issue #1298 — PDF investment tax statement.
+   * Small portfolios are rendered inline; large ones are queued and the
+   * download link is emailed to the investor (HTTP 202).
+   */
+  @Get('tax-statement')
+  @ApiOperation({
+    summary: 'Download the investor tax statement as a PDF (#1298)',
+  })
+  @ApiQuery({ name: 'year', required: false, example: 2024 })
+  @ApiResponse({ status: 200, description: 'PDF tax statement download' })
+  @ApiResponse({
+    status: 202,
+    description:
+      'Large portfolio — generation queued; a download link will be emailed',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @UseGuards(KycGuard, RolesGuard)
+  @Roles('investor')
+  async taxStatement(
+    @Request() req: { user: { id: string } },
+    @Query() query: TaxStatementQueryDto,
+    @Res() res: Response,
+  ) {
+    const year = query.year ?? new Date().getUTCFullYear();
+    return this.sendTaxStatement(req.user.id, year, res);
+  }
+
+  private async sendTaxStatement(
+    investorId: string,
+    year: number,
+    res: Response,
+  ) {
+    const result = await this.taxReportService.requestStatement(
+      investorId,
+      year,
+    );
+
+    if (result.queued) {
+      return res.status(HttpStatus.ACCEPTED).json({
+        message:
+          'Your tax statement is large and is being generated — you will receive an email with a download link when it is ready.',
+        year: result.year,
+      });
+    }
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${result.filename}"`,
+    );
+    res.setHeader('Content-Length', String(result.pdf.length));
+    return res.send(result.pdf);
   }
 
   @Get('buy-orders/:tokenCode/:tokenIssuer')
