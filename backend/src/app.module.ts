@@ -68,7 +68,7 @@ import { FraudDetectionModule } from './fraud-detection/fraud-detection.module';
 import { AmlMonitoringModule } from './aml/aml-monitoring.module';
 import { DidModule } from './did/did.module';
 import { InsuranceModule } from './insurance/insurance.module';
-import { MarketAlertsModule } from './market-alerts/market-alerts.module';
+import { DataRetentionModule } from './data-retention/data-retention.module';
 import { TradersModule } from './traders/traders.module';
 import { DealSummaryModule } from './deal-summary/deal-summary.module';
 
@@ -143,7 +143,7 @@ import { DealSummaryModule } from './deal-summary/deal-summary.module';
     InsuranceModule,
     FraudDetectionModule,
     AmlMonitoringModule,
-    MarketAlertsModule,
+    DataRetentionModule,
     TradersModule,
     DealSummaryModule,
   ],

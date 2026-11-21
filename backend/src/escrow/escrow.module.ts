@@ -18,6 +18,9 @@ import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.enti
 import { ESCROW_METRICS_PROVIDERS } from './escrow-metrics.providers';
 import { EscrowFailedPaymentsMetrics } from './escrow-failed-payments.metrics';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { EscrowMigration } from './entities/escrow-migration.entity';
+import { EscrowMigrationService } from './escrow-migration.service';
+import { EscrowMigrationController } from './escrow-migration.controller';
 
 @Module({
   imports: [
@@ -29,18 +32,20 @@ import { NotificationsModule } from '../notifications/notifications.module';
       Investment,
       User,
       ShipmentMilestone,
+      EscrowMigration,
     ]),
     StellarModule,
     QueueModule,
     EscrowDlqModule,
     NotificationsModule,
   ],
-  controllers: [EscrowConsumer],
+  controllers: [EscrowConsumer, EscrowMigrationController],
   providers: [
     EscrowService,
     FailedPaymentsService,
     EscrowDlqService,
     MilestonePartialReleaseService,
+    EscrowMigrationService,
     EscrowFailedPaymentsMetrics,
     ...ESCROW_METRICS_PROVIDERS,
   ],
@@ -49,6 +54,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     FailedPaymentsService,
     EscrowDlqService,
     MilestonePartialReleaseService,
+    EscrowMigrationService,
   ],
 })
 export class EscrowModule {}

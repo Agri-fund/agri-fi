@@ -28,10 +28,13 @@ jobs:
           sudo apt-get update && sudo apt-get install -y k6 || true
 
       - name: Run k6 Performance Test Suite with Thresholds
-        id: k6-suite
+        # k6 exits non-zero when a threshold is breached (p95 latency, error rate), and that must
+        # fail this step and the workflow, otherwise the gate cannot block a merge. Do not add
+        # `|| true` / `|| echo ...` here: backend/test/ci/k6-performance-gate.spec.ts guards it.
+        continue-on-error: false
         run: |
           mkdir -p test-results
-          k6 run tests/load/k6-performance.js --summary-export=test-results/k6-summary.json || echo "k6 execution completed"
+          k6 run tests/load/k6-performance.js --summary-export=test-results/k6-summary.json
 
       - name: Run Full Investor Journey Scenario
         id: k6-investor-journey
@@ -129,110 +132,10 @@ jobs:
           EOF
 
       - name: Archive Performance Summary Artifact
-        if: always()
+        # Also upload when k6 failed: the summary matters most when a threshold was breached.
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: k6-performance-summary
-          path: test-results/*.json
-
-      - name: Post Results Summary as PR Comment
-        if: always()
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-            const files = [
-              { label: 'Baseline Suite', file: 'test-results/k6-summary.json' },
-              { label: 'Full Investor Journey', file: 'test-results/k6-investor-journey-summary.json' },
-              { label: 'Escrow Release Stress (50 concurrent)', file: 'test-results/k6-escrow-stress-summary.json' },
-              { label: 'Marketplace Browse (200 VU, filters)', file: 'test-results/k6-marketplace-browse-summary.json' },
-            ];
-
-            const READ_P95_MS = 500;
-            const WRITE_P95_MS = 2000;
-
-            const readPatterns = [/^http_req_duration\{.*(GET|browse|portfolio|marketplace|deals).*\}$/i, /^http_req_duration\{.*status.*\}$/i];
-            const writePatterns = [/^http_req_duration\{.*(POST|PUT|PATCH|invest|register|kyc|escrow|release).*\}$/i];
-            const isRead = (name) => readPatterns.some((re) => re.test(name));
-            const isWrite = (name) => writePatterns.some((re) => re.test(name));
-
-            let lines = [];
-            lines.push('## k6 Load Test Performance Gate');
-            lines.push('');
-            lines.push('| Scenario | Metric | p95 (ms) | Threshold (ms) | Status |');
-            lines.push('| --- | --- | ---: | ---: | :---: |');
-
-            let breaches = 0;
-            let anyData = false;
-
-            for (const { label, file } of files) {
-              if (!fs.existsSync(file)) {
-                lines.push(`| ${label} | _summary missing_ | - | - | ⚠️ |`);
-                continue;
-              }
-              let data;
-              try {
-                data = JSON.parse(fs.readFileSync(file, 'utf8'));
-              } catch (err) {
-                lines.push(`| ${label} | _parse error_ | - | - | ⚠️ |`);
-                continue;
-              }
-              const metrics = data.metrics || {};
-              let scenarioRows = 0;
-              for (const [name, metric] of Object.entries(metrics)) {
-                if (!name.startsWith('http_req_duration')) continue;
-                const p95 = (metric.values || {})['p(95)'];
-                if (typeof p95 !== 'number') continue;
-
-                let limit = null;
-                if (isWrite(name)) limit = WRITE_P95_MS;
-                else if (isRead(name)) limit = READ_P95_MS;
-                if (limit === null) continue;
-
-                const ok = p95 <= limit;
-                if (!ok) breaches++;
-                scenarioRows++;
-                anyData = true;
-                lines.push(`| ${label} | \`${name}\` | ${p95.toFixed(1)} | ${limit} | ${ok ? '✅' : '❌'} |`);
-              }
-              if (scenarioRows === 0) {
-                lines.push(`| ${label} | _no matching metrics_ | - | - | ⚠️ |`);
-              }
-            }
-
-            lines.push('');
-            if (breaches > 0) {
-              lines.push(`**Result:** ❌ ${breaches} threshold breach(es) detected.`);
-            } else if (anyData) {
-              lines.push('**Result:** ✅ All p95 thresholds satisfied.');
-            } else {
-              lines.push('**Result:** ⚠️ No threshold metrics were collected.');
-            }
-            lines.push('');
-            lines.push('_Thresholds: reads p95 < 500 ms, writes p95 < 2 s._');
-
-            const body = lines.join('\n');
-            const marker = '## k6 Load Test Performance Gate';
-
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-            });
-            const existing = comments.find((c) => c.body && c.body.startsWith(marker));
-
-            if (existing) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: existing.id,
-                body,
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body,
-              });
-            }
+          path: test-results/k6-summary.json
+          if-no-files-found: warn

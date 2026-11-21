@@ -26,4 +26,15 @@ export class AuditController {
     }
     throw new ForbiddenException('Audit logs require an administrator or scoped compliance officer.');
   }
+
+  @Get('export')
+  @ApiOperation({ summary: 'Export filtered audit logs as CSV' })
+  async exportCsv(@Request() request: AuditRequest, @Query() query: AuditQuery) {
+    const logs = await this.findAll(request, query);
+    return {
+      contentType: 'text/csv',
+      filename: `audit-logs-${Date.now()}.csv`,
+      data: logs,
+    };
+  }
 }

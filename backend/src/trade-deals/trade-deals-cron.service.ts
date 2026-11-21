@@ -82,6 +82,8 @@ export class TradeDealsCronService {
   // #1007 — Auto-refund pending investments left on expired deals.
   // Runs every hour alongside expireOverdueDeals. The query is idempotent:
   // it only touches investments still in PENDING state, so reruns are safe.
+  // #1318 — Funds must be returned on-chain: queue a stellar.clawback job per
+  // investment and only mark REFUNDED once the on-chain job is enqueued.
   @Cron(CronExpression.EVERY_HOUR)
   async refundPendingInvestmentsOnExpiredDeals(): Promise<void> {
     this.logger.info('Running cron job: refund pending investments on expired deals');
@@ -104,10 +106,39 @@ export class TradeDealsCronService {
       `Found ${pendingOnExpired.length} pending investment(s) to refund on expired deals`,
     );
 
-    const ids = pendingOnExpired.map((inv) => inv.id);
-    await this.investmentRepo.update(ids, { status: InvestmentStatus.REFUNDED });
+    const refundedIds: string[] = [];
 
     for (const inv of pendingOnExpired) {
+      try {
+        // Queue the on-chain Stellar clawback so investor funds are actually
+        // returned before the DB record is flipped to REFUNDED.
+        await this.queueService.emit('stellar.clawback', {
+          investmentId: inv.id,
+          investorId: inv.investorId,
+          tradeDealId: inv.tradeDealId,
+          amountUsd: inv.amountUsd,
+          reason: 'deal_expired',
+        });
+        refundedIds.push(inv.id);
+      } catch (error: any) {
+        this.logger.error(
+          { investmentId: inv.id, error: error.message },
+          'Failed to queue stellar clawback for expired deal investment',
+        );
+      }
+    }
+
+    if (refundedIds.length === 0) {
+      this.logger.warn('No stellar clawback jobs could be queued; skipping DB refund update');
+      return;
+    }
+
+    await this.investmentRepo.update(refundedIds, { status: InvestmentStatus.REFUNDED });
+
+    for (const inv of pendingOnExpired) {
+      if (!refundedIds.includes(inv.id)) {
+        continue;
+      }
       try {
         await this.queueService.emit('email.notification', {
           type: 'investment_refunded_deal_expired',
@@ -123,6 +154,9 @@ export class TradeDealsCronService {
       }
     }
 
-    this.logger.info({ count: ids.length }, 'Refunded pending investments on expired deals');
+    this.logger.info(
+      { count: refundedIds.length },
+      'Queued stellar clawback and refunded pending investments on expired deals',
+    );
   }
 }
