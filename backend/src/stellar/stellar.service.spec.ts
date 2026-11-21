@@ -15,6 +15,10 @@ import {
   Account,
 } from '@stellar/stellar-sdk';
 
+jest.mock('../auth/entities/user.entity', () => ({
+  User: class MockUser {},
+}));
+
 /**
  * Unit tests for StellarService — pure logic that doesn't require network calls.
  * Network-dependent methods (createEscrowAccount, issueTradeToken, etc.) are
@@ -128,6 +132,38 @@ describe('StellarService', () => {
 
   it('should initialize with testnet network passphrase', () => {
     expect(service).toBeInstanceOf(StellarService);
+  });
+
+  it('caches a wallet balance for 30 seconds', async () => {
+    mockServer.loadAccount.mockResolvedValue({
+      balances: [{ asset_type: 'native', balance: '42.5' }],
+    });
+
+    await expect(
+      Promise.all([
+        service.getAccountBalance('GTEST'),
+        service.getAccountBalance('GTEST'),
+      ]),
+    ).resolves.toEqual(['42.5', '42.5']);
+    await expect(service.getAccountBalance('GTEST')).resolves.toBe('42.5');
+    expect(mockServer.loadAccount).toHaveBeenCalledTimes(1);
+  });
+
+  it('refreshes a cached wallet balance after 30 seconds', async () => {
+    const now = jest.spyOn(Date, 'now').mockReturnValue(1_000);
+    mockServer.loadAccount
+      .mockResolvedValueOnce({
+        balances: [{ asset_type: 'native', balance: '42.5' }],
+      })
+      .mockResolvedValueOnce({
+        balances: [{ asset_type: 'native', balance: '43' }],
+      });
+
+    await expect(service.getAccountBalance('GTEST')).resolves.toBe('42.5');
+    now.mockReturnValue(31_001);
+    await expect(service.getAccountBalance('GTEST')).resolves.toBe('43');
+    expect(mockServer.loadAccount).toHaveBeenCalledTimes(2);
+    now.mockRestore();
   });
 
   it('should rebuild expired transactions with fresh timebounds and higher fee', async () => {

@@ -12,7 +12,12 @@ import { encryptionTransformer } from '../../common/encryption.transformer';
 
 export type UserRole =
   'farmer' | 'trader' | 'investor' | 'company_admin' | 'admin' | 'compliance_officer';
-export type KycStatus = 'pending' | 'verified' | 'rejected' | 'expired';
+export type KycStatus =
+  | 'pending'
+  | 'verified'
+  | 'rejected'
+  | 'expired'
+  | 'EDD_REQUIRED';
 
 // #902 — Investor accreditation tiers
 export type AccreditationTier = 'retail' | 'accredited' | 'institutional';
@@ -119,10 +124,16 @@ export class User {
   @Column({ name: 'kyc_status', default: 'pending' })
   @ApiProperty({
     description: 'KYC verification status',
-    enum: ['pending', 'verified', 'rejected', 'expired'],
+    enum: ['pending', 'verified', 'rejected', 'expired', 'EDD_REQUIRED'],
     example: 'verified',
   })
   kycStatus: KycStatus;
+
+  @Column({ name: 'kyc_edd_reason', type: 'text', nullable: true })
+  kycEddReason: string | null;
+
+  @Column({ name: 'kyc_edd_triggered_at', type: 'timestamptz', nullable: true })
+  kycEddTriggeredAt: Date | null;
 
   /**
    * JWT token version for invalidation (#961).

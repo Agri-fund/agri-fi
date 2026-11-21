@@ -34,6 +34,9 @@ import { AnnualCapService } from '../accreditation/annual-cap.service';
 import { ReferralService } from '../auth/referral.service';
 import { NotificationsGateway } from '../notifications/notifications.gateway';
 import { WatchlistService } from '../watchlist/watchlist.service';
+import { PricesService } from '../stellar/prices.service';
+import { KycService } from '../kyc/kyc.service';
+import BigNumber from 'bignumber.js';
 
 export interface CreateInvestmentResult {
   investment: Investment;
@@ -65,10 +68,12 @@ export class InvestmentsService {
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly stellarService: StellarService,
+    private readonly pricesService: PricesService,
     private readonly dataSource: DataSource,
     private readonly queueService: QueueService,
     private readonly feeCalculatorService: FeeCalculatorService,
     private readonly ofacCheckService: OfacSanctionsCheckService,
+    private readonly kycService: KycService,
     @Optional() private readonly emailSequenceService: EmailSequenceService,
     @Optional() private readonly eventStore?: InvestmentEventStore,
     @Optional() private readonly annualCapService?: AnnualCapService,
@@ -98,11 +103,33 @@ export class InvestmentsService {
     if (!investor) {
       throw new NotFoundException('Investor not found.');
     }
+    if (investor.kycStatus === 'EDD_REQUIRED') {
+      throw new ForbiddenException({
+        code: 'KYC_EDD_REQUIRED',
+        message:
+          'Additional identity verification is required before making new investments.',
+      });
+    }
     if (!investor.walletAddress) {
       throw new UnprocessableEntityException({
         code: 'NO_WALLET_ADDRESS',
         message:
           'Investor must link a Stellar wallet address before investing.',
+      });
+    }
+
+    const [walletBalance, xlmUsdRate] = await Promise.all([
+      this.stellarService.getAccountBalance(investor.walletAddress),
+      this.pricesService.getXlmUsdcRate(),
+    ]);
+    const requiredXlm = new BigNumber(dto.amountUsd)
+      .dividedBy(xlmUsdRate)
+      .plus(2);
+    if (new BigNumber(walletBalance).lt(requiredXlm)) {
+      throw new UnprocessableEntityException({
+        code: 'INSUFFICIENT_WALLET_BALANCE',
+        message:
+          'Investor wallet does not have enough XLM to cover the investment and the 2 XLM minimum reserve.',
       });
     }
 
@@ -250,6 +277,8 @@ export class InvestmentsService {
 
       return manager.save(newInvestment);
     });
+
+    await this.kycService.checkEddTriggers(investorId, dto.amountUsd);
 
     // Build the unsigned Stellar XDR outside the DB transaction
     // (network I/O should not hold a DB lock)

@@ -1135,6 +1135,8 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
     if (automatedApproval) {
       user.kycStatus = 'verified';
+      user.kycEddReason = null;
+      user.kycEddTriggeredAt = null;
       user.kycDraft = null;
       await this.userRepo.save(user);
       console.log(
@@ -1343,6 +1345,8 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
         submission.articlesOfIncorporationUrl ?? undefined,
     };
     user.kycStatus = 'verified';
+    user.kycEddReason = null;
+    user.kycEddTriggeredAt = null;
     await this.userRepo.save(user);
 
     await this.adminActionRepo.save(
@@ -1391,6 +1395,8 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     }
 
     user.kycStatus = 'verified';
+    user.kycEddReason = null;
+    user.kycEddTriggeredAt = null;
     await this.userRepo.save(user);
 
     await this.adminActionRepo.save(
@@ -1743,6 +1749,8 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
           }
 
           user.kycStatus = 'verified';
+          user.kycEddReason = null;
+          user.kycEddTriggeredAt = null;
           await this.userRepo.save(user);
 
           await this.adminActionRepo.save(

@@ -36,6 +36,7 @@ import { KycRulesModule } from '../kyc-rules/kyc-rules.module';
 import { BehavioralProfile } from '../database/entities/behavioral-profile.entity';
 import { BehavioralRiskService } from './behavioral-risk.service';
 import { TokenModule } from './token.module';
+import { KycModule } from '../kyc/kyc.module';
 
 @Module({
   imports: [
@@ -61,6 +62,7 @@ import { TokenModule } from './token.module';
     DocumentsModule,
     KycRulesModule,
     TokenModule,
+    KycModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

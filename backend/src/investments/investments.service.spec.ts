@@ -15,7 +15,14 @@ import { StellarService } from '../stellar/stellar.service';
 import { QueueService } from '../queue/queue.service';
 import { CreateInvestmentDto } from './dto/create-investment.dto';
 import { FeeCalculatorService } from './fee-calculator.service';
+import { PricesService } from '../stellar/prices.service';
+import { KycService } from '../kyc/kyc.service';
+import { OfacSanctionsCheckService } from '../auth/utils/ofac-sanctions-check';
 import * as fc from 'fast-check';
+
+jest.mock('../auth/entities/user.entity', () => ({
+  User: class MockUser {},
+}));
 
 const VALID_STELLAR_TX_ID =
   'a1b2c3d4e5f67890abcdef1234567890abcdef1234567890abcdef1234567890';
@@ -82,8 +89,15 @@ describe('InvestmentsService', () => {
   let stellarService: {
     fundEscrow: jest.MockedFunction<any>;
     createInvestmentTransaction: jest.MockedFunction<any>;
+    getAccountBalance: jest.MockedFunction<any>;
+    checkUsdcTrustline: jest.MockedFunction<any>;
   };
-  let queueService: { enqueueInvestmentFund: jest.MockedFunction<any> };
+  let kycService: { checkEddTriggers: jest.Mock };
+  let queueService: {
+    enqueueInvestmentFund: jest.MockedFunction<any>;
+    enqueueInvestmentFundTransactional: jest.MockedFunction<any>;
+    enqueueDealFundedTransactional: jest.MockedFunction<any>;
+  };
 
   beforeEach(async () => {
     investmentRepo = {
@@ -102,6 +116,12 @@ describe('InvestmentsService', () => {
       fundEscrow: jest.fn(),
       createInvestmentTransaction: jest.fn().mockResolvedValue('unsigned-xdr'),
       checkUsdcTrustline: jest.fn().mockResolvedValue(true),
+      getAccountBalance: jest.fn().mockResolvedValue('1000'),
+    };
+    kycService = {
+      checkEddTriggers: jest
+        .fn()
+        .mockResolvedValue({ triggered: false, reasons: [] }),
     };
     queueService = {
       enqueueInvestmentFund: jest.fn().mockResolvedValue(undefined),
@@ -118,6 +138,18 @@ describe('InvestmentsService', () => {
         { provide: getRepositoryToken(TradeDeal), useValue: tradeDealRepo },
         { provide: getRepositoryToken(User), useValue: userRepo },
         { provide: StellarService, useValue: stellarService },
+        {
+          provide: OfacSanctionsCheckService,
+          useValue: { isAddressSanctioned: jest.fn().mockResolvedValue(false) },
+        },
+        {
+          provide: PricesService,
+          useValue: { getXlmUsdcRate: jest.fn().mockResolvedValue(100) },
+        },
+        {
+          provide: KycService,
+          useValue: kycService,
+        },
         { provide: QueueService, useValue: queueService },
         {
           provide: DataSource,
@@ -226,6 +258,48 @@ describe('InvestmentsService', () => {
       const result = await service.createInvestment('investor-1', dto);
 
       expect(result.investment.status).toBe(InvestmentStatus.PENDING);
+      expect(stellarService.getAccountBalance).toHaveBeenCalledWith(
+        mockInvestor().walletAddress,
+      );
+      expect(kycService.checkEddTriggers).toHaveBeenCalledWith(
+        'investor-1',
+        1000,
+      );
+    });
+
+    it('rejects investments when XLM balance does not cover the amount and reserve', async () => {
+      stellarService.getAccountBalance.mockResolvedValue('1');
+      stellarService.checkUsdcTrustline.mockResolvedValue(false);
+      tradeDealRepo.findOne.mockResolvedValue(mockTradeDeal());
+
+      await expect(
+        service.createInvestment('investor-1', {
+          tradeDealId: 'deal-1',
+          tokenAmount: 100,
+          amountUsd: 100,
+        }),
+      ).rejects.toMatchObject({
+        response: { code: 'INSUFFICIENT_WALLET_BALANCE' },
+      });
+      expect(investmentRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('blocks new investments while EDD is required', async () => {
+      userRepo.findOne.mockResolvedValue({
+        ...mockInvestor(),
+        kycStatus: 'EDD_REQUIRED',
+      });
+
+      await expect(
+        service.createInvestment('investor-1', {
+          tradeDealId: 'deal-1',
+          tokenAmount: 100,
+          amountUsd: 100,
+        }),
+      ).rejects.toMatchObject({
+        response: { code: 'KYC_EDD_REQUIRED' },
+      });
+      expect(stellarService.getAccountBalance).not.toHaveBeenCalled();
     });
 
     it('throws error when trade deal not found', async () => {

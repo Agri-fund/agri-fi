@@ -23,6 +23,7 @@ import { QueueService } from '../queue/queue.service';
 import { IdempotencyService } from '../queue/idempotency.service';
 import { Keypair } from '@stellar/stellar-sdk';
 import { NotificationsGateway } from '../notifications/notifications.gateway';
+import { KycService } from '../kyc/kyc.service';
 
 interface DealDeliveredPayload {
   tradeDealId: string;
@@ -47,6 +48,7 @@ export class EscrowService {
     private readonly config: ConfigService,
     private readonly dataSource: DataSource,
     private readonly logger: PinoLogger,
+    private readonly kycService: KycService,
     @Optional() private readonly notificationsGateway?: NotificationsGateway,
     @Optional()
     @InjectMetric('escrow_release_attempts_total')
@@ -177,7 +179,7 @@ export class EscrowService {
       // before opening the DB transaction so a Stellar failure leaves the database
       // unchanged. If the DB writes below fail after Stellar succeeds we log the
       // Stellar TX IDs and alert ops so the distributions can be reconstructed.
-      const escrowSecret = this.stellarService.decryptSecret(
+      const escrowSecret = await this.stellarService.decryptSecret(
         deal.escrowSecretKey,
       );
 
@@ -286,7 +288,23 @@ export class EscrowService {
           `Deal ${tradeDealId} committed to completed. Stellar TX: ${stellarTxId}`,
         );
 
-        for (const investment of investments) {
+        for (const [index, investment] of investments.entries()) {
+          try {
+            await this.kycService.checkEddTriggers(
+              investment.investorId,
+              investorAmounts[index],
+              true,
+            );
+          } catch (error) {
+            this.logger.error(
+              {
+                tradeDealId,
+                investorId: investment.investorId,
+                error: error instanceof Error ? error.message : String(error),
+              },
+              'Failed to evaluate EDD triggers after escrow release',
+            );
+          }
           if (investment.investor?.id) {
             this.notificationsGateway?.publishEscrowReleased({
               userId: investment.investor.id,
