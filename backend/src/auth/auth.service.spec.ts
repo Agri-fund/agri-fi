@@ -45,6 +45,8 @@ describe('AuthService', () => {
     create: jest.Mock;
     save: jest.Mock;
     findAndCount: jest.Mock;
+    softDelete: jest.Mock;
+    restore: jest.Mock;
   };
   let kycRepo: { findOne: jest.Mock; create: jest.Mock; save: jest.Mock };
   let loginLogRepo: { find: jest.Mock; save: jest.Mock; create: jest.Mock };
@@ -62,6 +64,8 @@ describe('AuthService', () => {
       create: jest.fn(),
       save: jest.fn(),
       findAndCount: jest.fn(),
+      softDelete: jest.fn(),
+      restore: jest.fn(),
     };
     kycRepo = { findOne: jest.fn(), create: jest.fn(), save: jest.fn() };
     loginLogRepo = { find: jest.fn(), save: jest.fn(), create: jest.fn() };
@@ -1033,6 +1037,43 @@ describe('AuthService', () => {
       await expect(service.updateUserRole('nope', 'trader')).rejects.toThrow(
         NotFoundException,
       );
+    });
+  });
+
+  describe('soft delete (#1386)', () => {
+    it('soft-deletes a user and records an admin action', async () => {
+      userRepo.findOne.mockResolvedValue(mockUser());
+      userRepo.save.mockResolvedValue(undefined);
+      userRepo.softDelete.mockResolvedValue(undefined);
+
+      await service.softDeleteUser('uuid-1', 'admin-id');
+
+      expect(userRepo.softDelete).toHaveBeenCalledWith('uuid-1');
+      expect(adminActionRepo.save).toHaveBeenCalled();
+    });
+
+    it('restores a soft-deleted user', async () => {
+      userRepo.findOne.mockResolvedValue({ ...mockUser(), deletedAt: new Date() });
+      userRepo.restore.mockResolvedValue(undefined);
+
+      await expect(service.restoreUser('uuid-1', 'admin-id')).resolves.toEqual({
+        id: 'uuid-1',
+      });
+      expect(userRepo.restore).toHaveBeenCalledWith('uuid-1');
+    });
+
+    it('refuses to restore a user that is not deactivated', async () => {
+      userRepo.findOne.mockResolvedValue({ ...mockUser(), deletedAt: null });
+      await expect(service.restoreUser('uuid-1', 'admin-id')).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('rejects login for a deactivated account', async () => {
+      userRepo.findOne.mockResolvedValue({ ...mockUser(), deletedAt: new Date() });
+      await expect(
+        service.login({ email: 'a@b.com', password: 'x' } as any),
+      ).rejects.toThrow('Account deactivated');
     });
   });
 

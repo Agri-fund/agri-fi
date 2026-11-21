@@ -223,6 +223,44 @@ describe('TradeDealsService', () => {
     });
   });
 
+  // ─── update (#1384) ───────────────────────────────────────────────────────
+
+  describe('update', () => {
+    const deal = () => ({
+      ...mockDeal(),
+      traderId: 'trader-1',
+      totalValue: 1000,
+      totalInvested: 800,
+    });
+
+    it('rejects total_value below total_invested with 422', async () => {
+      tradeDealRepo.findOne.mockResolvedValue(deal());
+      await expect(
+        service.update('d1', 'trader-1', { total_value: 500 }),
+      ).rejects.toMatchObject({
+        response: { code: 'TOTAL_VALUE_BELOW_INVESTED' },
+        status: 422,
+      });
+      expect(tradeDealRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('accepts total_value equal to total_invested (boundary)', async () => {
+      tradeDealRepo.findOne.mockResolvedValue(deal());
+      tradeDealRepo.save.mockImplementation(async (d) => d);
+      const result = await service.update('d1', 'trader-1', {
+        total_value: 800,
+      });
+      expect(result.totalValue).toBe(800);
+    });
+
+    it('rejects edits from a non-owner', async () => {
+      tradeDealRepo.findOne.mockResolvedValue(deal());
+      await expect(
+        service.update('d1', 'other', { total_value: 900 }),
+      ).rejects.toThrow('Only the deal trader');
+    });
+  });
+
   // ─── findOne ──────────────────────────────────────────────────────────────
 
   describe('findOne', () => {

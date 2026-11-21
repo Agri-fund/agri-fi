@@ -13,6 +13,7 @@ import { TradeDeal, TradeDealStatus } from './entities/trade-deal.entity';
 import { Document, DocumentType } from './entities/document.entity';
 import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.entity';
 import { CreateTradeDealDto } from './dto/create-trade-deal.dto';
+import { UpdateTradeDealDto } from './dto/update-trade-deal.dto';
 import { User } from '../auth/entities/user.entity';
 import { creditTierForScore, CreditScoreTier } from '../users/credit-score.model';
 import {
@@ -223,6 +224,34 @@ export class TradeDealsService {
    */
   async getSuggestionAnalytics(traderId: string) {
     return this.dealSuggestionsService.getAnalytics(traderId);
+  }
+
+  /**
+   * Update editable deal fields (#1384). A deal's total_value may never be
+   * lowered below the amount already invested, otherwise it would be overfunded.
+   */
+  async update(
+    dealId: string,
+    traderId: string,
+    dto: UpdateTradeDealDto,
+  ): Promise<TradeDeal> {
+    const deal = await this.tradeDealRepo.findOne({ where: { id: dealId } });
+    if (!deal) throw new NotFoundException('Trade deal not found.');
+    if (deal.traderId !== traderId) {
+      throw new ForbiddenException('Only the deal trader can edit this deal.');
+    }
+
+    if (dto.total_value !== undefined) {
+      const invested = Number(deal.totalInvested ?? 0);
+      if (Number(dto.total_value) < invested) {
+        throw new UnprocessableEntityException({
+          code: 'TOTAL_VALUE_BELOW_INVESTED',
+          message: `total_value (${dto.total_value}) cannot be below total_invested (${invested}).`,
+        });
+      }
+      deal.totalValue = dto.total_value;
+    }
+    return this.tradeDealRepo.save(deal);
   }
 
   async updateDealStatus(

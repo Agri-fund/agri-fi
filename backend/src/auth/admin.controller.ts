@@ -3,6 +3,8 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
+  HttpCode,
   Param,
   UseGuards,
   Request,
@@ -376,6 +378,25 @@ export class AdminController {
       dto.reason,
       dto.complianceDomain,
     );
+  }
+
+  @Delete('users/:userId')
+  @HttpCode(204)
+  @ApiOperation({ summary: 'Soft-delete (deactivate) a user' })
+  async deleteUser(
+    @Request() req: AuthRequest,
+    @Param('userId') userId: string,
+  ): Promise<void> {
+    await this.authService.softDeleteUser(userId, req.user.id);
+  }
+
+  @Post('users/:userId/restore')
+  @ApiOperation({ summary: 'Restore a soft-deleted user' })
+  async restoreUser(
+    @Request() req: AuthRequest,
+    @Param('userId') userId: string,
+  ) {
+    return this.authService.restoreUser(userId, req.user.id);
   }
 
   @Post('freeze-asset')
