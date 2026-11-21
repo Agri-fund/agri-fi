@@ -295,7 +295,7 @@ export class InsuranceService {
       );
       quote.status = 'issued';
       await this.quoteRepository.save(quote);
-    } catch {
+    } catch (error) {
       await this.quoteRepository.update(quote.id, { status: 'offered' });
       if (error instanceof ConflictException) throw error;
       this.logger.error(
@@ -397,7 +397,7 @@ export class InsuranceService {
             amount: Math.min(dto.lossAmount, Number(policy.coverageAmount)),
             evidence: [`event:${dto.eventId}`, `occurred_at:${dto.occurredAt}`],
           });
-        } catch {
+        } catch (error) {
           if (error instanceof ConflictException) throw error;
           return { policyId: policy.id, status: 'submission_failed' };
         }
@@ -563,6 +563,32 @@ export class InsuranceService {
     return this.completePayout(claim, dto);
   }
 
+  private async getPayoutEscrowSecret(): Promise<string> {
+    const encryptedSecret = this.config.get<string>(
+      'INSURANCE_PAYOUT_ESCROW_SECRET',
+      '',
+    );
+    if (!encryptedSecret) {
+      throw new ServiceUnavailableException(
+        'Insurance payout escrow is not configured.',
+      );
+    }
+    try {
+      const secret = await this.stellarService.decryptSecret(encryptedSecret);
+      if (!secret) {
+        throw new Error('Decrypted insurance payout escrow secret is empty');
+      }
+      return secret;
+    } catch {
+      this.logger.error(
+        'Insurance payout escrow secret could not be decrypted',
+      );
+      throw new ServiceUnavailableException(
+        'Insurance payout escrow secret is invalid.',
+      );
+    }
+  }
+
   private async initiatePayout(claim: InsuranceClaim): Promise<InsuranceClaim> {
     const deal = await this.dealRepository.findOne({
       where: { id: claim.tradeDealId },
@@ -574,15 +600,7 @@ export class InsuranceService {
     if (!farmer?.walletAddress) {
       throw new ConflictException('Farmer has no Stellar payout wallet.');
     }
-    const escrowSecret = this.config.get<string>(
-      'INSURANCE_PAYOUT_ESCROW_SECRET',
-      '',
-    );
-    if (!escrowSecret) {
-      throw new ServiceUnavailableException(
-        'Insurance payout escrow is not configured.',
-      );
-    }
+    const escrowSecret = await this.getPayoutEscrowSecret();
     if (claim.status === 'payout_pending' && claim.providerPayoutId)
       return claim;
     const response = await this.post<{ payout_id: string }>(
@@ -632,6 +650,7 @@ export class InsuranceService {
       throw new ConflictException('Farmer has no Stellar payout wallet.');
     }
 
+    const escrowSecret = await this.getPayoutEscrowSecret();
     const acquired = await this.claimRepository.update(
       { id: claim.id, status: 'payout_pending' },
       { status: 'payout_processing' },
@@ -641,7 +660,7 @@ export class InsuranceService {
     }
     try {
       claim.payoutTxHash = await this.stellarService.releaseInsurancePayout(
-        this.config.get<string>('INSURANCE_PAYOUT_ESCROW_SECRET', ''),
+        escrowSecret,
         farmer.walletAddress,
         payoutAmount,
         claim.id,
