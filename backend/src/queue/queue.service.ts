@@ -79,6 +79,12 @@ export interface EscrowReleaseNotifyPayload extends BasePayload {
   tradeTokenCode: string;
 }
 
+export interface ReconcileEscrowPayload extends BasePayload {
+  tradeDealId: string;
+  stellarTxId?: string;
+  error?: string;
+}
+
 const EVENTS = {
   DEAL_DELIVERED: 'deal.delivered',
   INVESTMENT_FUND: 'investment.fund',
@@ -86,6 +92,7 @@ const EVENTS = {
   DEAL_PUBLISH: 'deal.publish',
   DEAL_CLEANUP: 'deal.cleanup',
   ESCROW_RELEASE_NOTIFY: 'escrow.release_notify',
+  RECONCILE_ESCROW: 'reconcile.escrow',
 } as const;
 
 @Injectable()
@@ -175,6 +182,20 @@ export class QueueService implements TransactionalQueueService {
       `Deal ${enrichedPayload.tradeDealId} fully funded — notifying ${enrichedPayload.investors.length} investor(s)`,
     );
     await this.emit(EVENTS.DEAL_FUNDED, enrichedPayload);
+  }
+
+  async enqueueReconcileEscrow(
+    payload: Omit<ReconcileEscrowPayload, 'correlationId'>,
+  ): Promise<void> {
+    const enrichedPayload = this.addCorrelationId(payload);
+    this.logger.info(
+      {
+        tradeDealId: enrichedPayload.tradeDealId,
+        stellarTxId: enrichedPayload.stellarTxId,
+      },
+      `Enqueuing automated escrow reconciliation for deal ${enrichedPayload.tradeDealId}`,
+    );
+    await this.emit(EVENTS.RECONCILE_ESCROW, enrichedPayload);
   }
 
   // ─── Transactional Outbox Methods ────────────────────────────────────────

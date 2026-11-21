@@ -314,8 +314,22 @@ export class EscrowService {
             error: dbError.message,
           },
           'DB transaction rolled back after successful Stellar release — ' +
-            'manual reconciliation required using the Stellar TX ID above',
+            'enqueuing automated escrow reconciliation (#1306)',
         );
+
+        // Enqueue automated escrow DB reconciliation job (#1306)
+        try {
+          await this.queueService.enqueueReconcileEscrow({
+            tradeDealId,
+            stellarTxId,
+            error: dbError.message,
+          });
+        } catch (enqueueErr) {
+          this.logger.error(
+            { tradeDealId, error: (enqueueErr as Error).message },
+            'Failed to enqueue automated escrow reconciliation',
+          );
+        }
 
         await this.handleEscrowFailure(tradeDealId, dbError);
         this.recordReleaseOutcome('failure', startedAt);

@@ -399,7 +399,7 @@ describe('StellarService', () => {
         );
       });
 
-      it('should NOT write to Redis for a pending (404) transaction', async () => {
+      it('should write "pending" to Redis with 30s TTL for a pending (404) transaction', async () => {
         const mockSetEx = jest.fn().mockResolvedValue('OK');
         (service as any).sequenceRedis = {
           get: jest.fn().mockResolvedValue(null),
@@ -415,7 +415,18 @@ describe('StellarService', () => {
         const status = await service.getTransactionStatus('pending-tx');
 
         expect(status).toBe('pending');
-        expect(mockSetEx).not.toHaveBeenCalled();
+        expect(mockSetEx).toHaveBeenCalledWith(
+          'stellar:tx:pending-tx',
+          30,
+          'pending',
+        );
+      });
+
+      it('should return correct cacheStatusTTLMs for terminal vs non-terminal states', () => {
+        expect(service.cacheStatusTTLMs('success')).toBe(3600 * 1000);
+        expect(service.cacheStatusTTLMs('failed')).toBe(3600 * 1000);
+        expect(service.cacheStatusTTLMs('pending')).toBe(30 * 1000);
+        expect(service.cacheStatusTTLMs('unknown')).toBe(30 * 1000);
       });
     });
 

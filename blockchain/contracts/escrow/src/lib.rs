@@ -1,3 +1,10 @@
+//! # Soroban Escrow Contract (Milestone Audit Layer)
+//!
+//! Architectural Authority Notice (ADR-007 / Issue #1299):
+//! The Horizon-based EscrowService is the authoritative settlement engine in Agri-Fi.
+//! This Soroban contract serves as the on-chain secondary audit layer and milestone
+//! attestation registry.
+
 #![no_std]
 
 #[cfg(test)]

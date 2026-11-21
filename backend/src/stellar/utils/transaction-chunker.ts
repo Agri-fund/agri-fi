@@ -2,35 +2,54 @@
  * Utility for chunking Stellar operations into transaction batches.
  *
  * Stellar enforces a maximum of 100 operations per transaction envelope.
- * This utility splits large operation sets into compliant sub-arrays and
- * provides helpers for sequential submission with correct sequence numbers.
+ * Agri-Fi enforces a hard invariant of at most 98 operations per envelope
+ * to guarantee headroom for platform fees and claimable balance predicates.
  */
 
 /**
- * Maximum operations per Stellar transaction envelope.
- * Stellar protocol limit is 100 operations per transaction.
+ * Maximum operations per Stellar transaction envelope per protocol.
  */
 export const MAX_OPERATIONS_PER_TX = 100;
+
+/**
+ * Hard guard limit for transaction envelopes in Agri-Fi (issue #958).
+ * Never exceed 98 ops per envelope to leave safe headroom.
+ */
+export const MAX_OPS_PER_ENVELOPE = 98;
+
+/**
+ * Default escrow batch size (configurable via ESCROW_BATCH_SIZE env, bounded 1..95).
+ */
+export const DEFAULT_ESCROW_BATCH_SIZE = 95;
+
+/**
+ * Guard that enforces the invariant that total ops per envelope <= MAX_OPS_PER_ENVELOPE (98).
+ * Throws fast if exceeded.
+ */
+export function assertEnvelopeOpCountGuard(opCount: number): void {
+  if (opCount > MAX_OPS_PER_ENVELOPE) {
+    throw new Error(
+      `Envelope operation count guard violation: ${opCount} operations exceeds maximum safe limit of ${MAX_OPS_PER_ENVELOPE}`,
+    );
+  }
+}
 
 /**
  * Splits an array of operations into chunks of at most maxSize operations.
  *
  * @param operations - Array of Stellar operations to chunk
- * @param maxSize - Maximum operations per chunk (default: 100)
+ * @param maxSize - Maximum operations per chunk (default: 95)
  * @returns Array of operation chunks
- *
- * @example
- * const ops = [op1, op2, ..., op150];
- * const chunks = chunkOperations(ops, 100);
- * // Returns [[op1..op100], [op101..op150]]
  */
 export function chunkOperations<T>(
   operations: T[],
-  maxSize: number = MAX_OPERATIONS_PER_TX,
+  maxSize: number = DEFAULT_ESCROW_BATCH_SIZE,
 ): T[][] {
   if (maxSize <= 0) {
     throw new Error(`maxSize must be positive, got ${maxSize}`);
   }
+
+  assertEnvelopeOpCountGuard(maxSize);
 
   if (operations.length === 0) {
     return [];
@@ -65,18 +84,24 @@ export interface ChunkedTransactionPlan {
  * Useful for logging and validation before building transactions.
  *
  * @param totalOperations - Total number of operations to submit
- * @param maxSize - Maximum operations per transaction (default: 100)
+ * @param maxSize - Maximum operations per transaction (default: 95)
  * @returns Plan describing the batch structure
  */
 export function planTransactionBatches(
   totalOperations: number,
-  maxSize: number = MAX_OPERATIONS_PER_TX,
+  maxSize: number = DEFAULT_ESCROW_BATCH_SIZE,
 ): ChunkedTransactionPlan {
   if (totalOperations < 0) {
     throw new Error(
       `totalOperations cannot be negative, got ${totalOperations}`,
     );
   }
+
+  if (maxSize <= 0) {
+    throw new Error(`maxSize must be positive, got ${maxSize}`);
+  }
+
+  assertEnvelopeOpCountGuard(maxSize);
 
   if (totalOperations === 0) {
     return {
@@ -92,7 +117,9 @@ export function planTransactionBatches(
   for (let i = 0; i < batchCount; i++) {
     const start = i * maxSize;
     const remaining = totalOperations - start;
-    operationsPerBatch.push(Math.min(maxSize, remaining));
+    const count = Math.min(maxSize, remaining);
+    assertEnvelopeOpCountGuard(count);
+    operationsPerBatch.push(count);
   }
 
   return {
@@ -106,12 +133,16 @@ export function planTransactionBatches(
  * Validates that a set of operations can be submitted within Stellar limits.
  *
  * @param operations - Array of operations to validate
+ * @param maxAllowed - Maximum allowed operations (defaults to MAX_OPS_PER_ENVELOPE = 98)
  * @throws Error if operations exceed the maximum allowed per transaction
  */
-export function validateOperationCount(operations: any[]): void {
-  if (operations.length > MAX_OPERATIONS_PER_TX) {
+export function validateOperationCount(
+  operations: any[],
+  maxAllowed: number = MAX_OPS_PER_ENVELOPE,
+): void {
+  if (operations.length > maxAllowed) {
     throw new Error(
-      `Transaction exceeds maximum of ${MAX_OPERATIONS_PER_TX} operations. ` +
+      `Transaction exceeds maximum of ${maxAllowed} operations. ` +
         `Received ${operations.length} operations. ` +
         `Use chunkOperations() to split into multiple transactions.`,
     );
@@ -131,14 +162,10 @@ export function generateBatchMemo(
   totalBatches: number,
   prefix: string = 'batch',
 ): string {
-  // Format: "prefix:batchIndex/totalBatches"
-  // Example: "batch:0/5", "batch:1/5"
   const memo = `${prefix}:${batchIndex}/${totalBatches}`;
 
-  // Stellar memo text is limited to 28 bytes
   if (memo.length > 28) {
-    // Truncate prefix if needed
-    const maxPrefixLen = 28 - `:0/999`.length - 1; // reserve space for ":X/Y"
+    const maxPrefixLen = 28 - `:0/999`.length - 1;
     const truncatedPrefix = prefix.slice(0, maxPrefixLen);
     return `${truncatedPrefix}:${batchIndex}/${totalBatches}`;
   }

@@ -24,6 +24,7 @@ export const validateEnvironment = (config: Record<string, unknown>) => {
       then: Joi.boolean().truthy('true').valid(true).required(),
       otherwise: Joi.boolean().default(true),
     }),
+    ESCROW_BATCH_SIZE: Joi.number().integer().min(1).max(95).default(95),
   }).unknown(true); // Allow other env vars that aren't validated
 
   const { error, value } = schema.validate(config, { abortEarly: false });
