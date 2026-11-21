@@ -49,6 +49,7 @@ import { Counter, Histogram } from 'prom-client';
 export const SEQUENCE_REDIS_CLIENT = 'SEQUENCE_REDIS_CLIENT';
 const SEQUENCE_CACHE_TTL = 5; // seconds
 export const TIMEBOUNDS_SECONDS = 300;
+const ACCOUNT_BALANCE_CACHE_TTL_MS = 30_000;
 
 /** TTL for terminal transaction statuses (success / failed) in Redis — 1 hour. */
 const TX_STATUS_CACHE_TTL_SECONDS = 3600;
@@ -89,6 +90,11 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     { seq: string; expiresAt: number }
   >;
   private readonly enableSequenceCache: boolean;
+  private readonly accountBalanceCache = new Map<
+    string,
+    { balance: string; expiresAt: number }
+  >();
+  private readonly accountBalanceRequests = new Map<string, Promise<string>>();
 
   constructor(
     private readonly config: ConfigService,
@@ -1635,6 +1641,38 @@ const anchorsService = this.anchorsService ?? new AnchorsService();
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Returns the wallet's native XLM balance, caching Horizon results briefly
+   * to avoid repeated account lookups during investment submission.
+   */
+  async getAccountBalance(walletAddress: string): Promise<string> {
+    const cached = this.accountBalanceCache.get(walletAddress);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.balance;
+    }
+
+    const pending = this.accountBalanceRequests.get(walletAddress);
+    if (pending) {
+      return pending;
+    }
+
+    const request = this.server
+      .loadAccount(walletAddress)
+      .then((account) => {
+        const balance =
+          account.balances.find((entry) => entry.asset_type === 'native')
+            ?.balance ?? '0';
+        this.accountBalanceCache.set(walletAddress, {
+          balance,
+          expiresAt: Date.now() + ACCOUNT_BALANCE_CACHE_TTL_MS,
+        });
+        return balance;
+      })
+      .finally(() => this.accountBalanceRequests.delete(walletAddress));
+    this.accountBalanceRequests.set(walletAddress, request);
+    return request;
   }
 
   /**

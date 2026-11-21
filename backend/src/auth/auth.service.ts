@@ -1090,6 +1090,8 @@ export class AuthService {
 
     if (automatedApproval) {
       user.kycStatus = 'verified';
+      user.kycEddReason = null;
+      user.kycEddTriggeredAt = null;
       user.kycDraft = null;
       await this.userRepo.save(user);
       console.log(
@@ -1298,6 +1300,8 @@ export class AuthService {
         submission.articlesOfIncorporationUrl ?? undefined,
     };
     user.kycStatus = 'verified';
+    user.kycEddReason = null;
+    user.kycEddTriggeredAt = null;
     await this.userRepo.save(user);
 
     await this.adminActionRepo.save(
@@ -1346,6 +1350,8 @@ export class AuthService {
     }
 
     user.kycStatus = 'verified';
+    user.kycEddReason = null;
+    user.kycEddTriggeredAt = null;
     await this.userRepo.save(user);
 
     await this.adminActionRepo.save(
@@ -1613,6 +1619,8 @@ export class AuthService {
           }
 
           user.kycStatus = 'verified';
+          user.kycEddReason = null;
+          user.kycEddTriggeredAt = null;
           await this.userRepo.save(user);
 
           await this.adminActionRepo.save(

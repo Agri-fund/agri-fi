@@ -34,6 +34,7 @@ import { PortfolioVaRLimit } from './entities/portfolio-var-limit.entity';
 import { OracleFeed } from '../oracles/entities/oracle-feed.entity';
 import { OracleObservation } from '../oracles/entities/oracle-observation.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { KycModule } from '../kyc/kyc.module';
 
 @Module({
   imports: [
@@ -59,6 +60,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     AccreditationModule,
     StressTestingModule,
     NotificationsModule,
+    KycModule,
   ],
   controllers: [
     InvestmentsController,

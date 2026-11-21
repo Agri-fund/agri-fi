@@ -10,6 +10,11 @@ import { User } from '../auth/entities/user.entity';
 import { StellarService } from '../stellar/stellar.service';
 import { QueueService } from '../queue/queue.service';
 import { PinoLogger } from 'nestjs-pino';
+import { KycService } from '../kyc/kyc.service';
+
+jest.mock('../auth/entities/user.entity', () => ({
+  User: class MockUser {},
+}));
 
 describe('EscrowService', () => {
   let service: EscrowService;
@@ -21,6 +26,7 @@ describe('EscrowService', () => {
   let mockQueueService: jest.Mocked<QueueService>;
   let mockConfigService: jest.Mocked<ConfigService>;
   let mockDataSource: jest.Mocked<DataSource>;
+  let mockKycService: { checkEddTriggers: jest.Mock };
 
   beforeEach(async () => {
     jest.useFakeTimers();
@@ -63,6 +69,11 @@ describe('EscrowService', () => {
     mockConfigService = {
       get: jest.fn(),
     } as any;
+    mockKycService = {
+      checkEddTriggers: jest
+        .fn()
+        .mockResolvedValue({ triggered: false, reasons: [] }),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -75,6 +86,10 @@ describe('EscrowService', () => {
             warn: jest.fn(),
             error: jest.fn(),
           },
+        },
+        {
+          provide: KycService,
+          useValue: mockKycService,
         },
         {
           provide: getRepositoryToken(PaymentDistribution),
@@ -171,6 +186,19 @@ describe('EscrowService', () => {
       mockStellarService.releaseEscrow.mockResolvedValue(['stellar-tx-123']);
 
       await service.processDealDelivered(payload);
+
+      expect(mockKycService.checkEddTriggers).toHaveBeenNthCalledWith(
+        1,
+        'investor-1',
+        4900,
+        true,
+      );
+      expect(mockKycService.checkEddTriggers).toHaveBeenNthCalledWith(
+        2,
+        'investor-2',
+        4900,
+        true,
+      );
 
       // Verify Stellar secret was decrypted
       expect(mockStellarService.decryptSecret).toHaveBeenCalledWith(

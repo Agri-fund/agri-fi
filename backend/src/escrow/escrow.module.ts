@@ -20,6 +20,7 @@ import { EscrowFailedPaymentsMetrics } from './escrow-failed-payments.metrics';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { EscrowMigration } from './entities/escrow-migration.entity';
 import { EscrowMigrationService } from './escrow-migration.service';
+import { KycModule } from '../kyc/kyc.module';
 import { EscrowMigrationController } from './escrow-migration.controller';
 
 @Module({
@@ -38,6 +39,7 @@ import { EscrowMigrationController } from './escrow-migration.controller';
     QueueModule,
     EscrowDlqModule,
     NotificationsModule,
+    KycModule,
   ],
   controllers: [EscrowConsumer, EscrowMigrationController],
   providers: [

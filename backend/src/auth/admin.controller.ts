@@ -50,6 +50,7 @@ import { SettlementService } from '../settlement/settlement.service';
 import { DocumentsService } from '../documents/documents.service';
 import { StorageService } from '../storage/storage.service';
 import { AuditService } from '../audit/audit.service';
+import { KycService } from '../kyc/kyc.service';
 
 class UpdateUserRoleDto {
   @IsIn(['farmer', 'trader', 'investor', 'company_admin', 'admin', 'compliance_officer'])
@@ -117,6 +118,7 @@ export class AdminController {
     private readonly documentsService: DocumentsService,
     private readonly storageService: StorageService,
     private readonly auditService: AuditService,
+    private readonly kycService: KycService,
     @InjectRepository(TradeDeal)
     private readonly tradeDealRepo: Repository<TradeDeal>,
     @InjectRepository(Document)
@@ -272,6 +274,15 @@ export class AdminController {
     @Query('reason') reason?: string,
   ) {
     return this.authService.approveKyc(userId, req.user.id, reason);
+  }
+
+  @Get('kyc/edd')
+  @ApiOperation({
+    summary: 'List high-priority enhanced due diligence reviews',
+  })
+  @ApiResponse({ status: 200, description: 'EDD review queue' })
+  async listEddQueue() {
+    return this.kycService.listEddQueue();
   }
 
   @Patch('kyc/bulk')
