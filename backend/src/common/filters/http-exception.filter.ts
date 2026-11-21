@@ -10,8 +10,19 @@ import type { Request, Response } from 'express';
 
 const IS_PROD = process.env.NODE_ENV === 'production';
 
+export interface CanonicalErrorResponse {
+  statusCode: number;
+  error: string;
+  message: string;
+  field?: string;
+  path: string;
+  timestamp: string;
+  errors?: string[];
+}
+
 /**
  * Global exception filter that:
+ * - Normalizes all validation and domain errors into a canonical structured error shape (#964)
  * - Handles both HttpException and unexpected runtime errors.
  * - In production: strips stack traces and raw database messages from 5xx
  *   responses, returning a generic "Internal Server Error" body.
@@ -32,11 +43,14 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
     const isServerError = status >= 500;
 
-    let message: unknown;
+    let message: string;
     let errors: string[] = [];
+    let errorCode: string = HttpStatus[status] ?? 'ERROR';
+    let field: string | undefined = undefined;
 
     if (isServerError && IS_PROD) {
       message = 'Internal Server Error';
+      errorCode = 'INTERNAL_SERVER_ERROR';
       // Log stack trace internally for server errors in production
       if (exception instanceof Error) {
         console.error('[HttpExceptionFilter] Server Error:', exception.stack);
@@ -48,14 +62,30 @@ export class HttpExceptionFilter implements ExceptionFilter {
           ? { message: exceptionResponse }
           : (exceptionResponse as Record<string, unknown>);
 
-      message = responseObj.message ?? exception.message;
+      message =
+        (typeof responseObj.message === 'string'
+          ? responseObj.message
+          : exception.message) || 'Request failed';
 
-      // Handle class-validator validation errors
-      if (Array.isArray(responseObj.message)) {
+      // Handle custom or domain structured error codes (#964)
+      if (
+        responseObj.error === 'INVALID_WALLET_ADDRESS' ||
+        responseObj.code === 'INVALID_WALLET_ADDRESS'
+      ) {
+        errorCode = 'INVALID_WALLET_ADDRESS';
+        field = (responseObj.field as string) || 'walletAddress';
+      } else if (Array.isArray(responseObj.message)) {
         errors = this.flattenValidationErrors(responseObj.message);
         message = 'Validation failed';
-      } else if (typeof responseObj.message === 'string') {
-        message = responseObj.message;
+        errorCode = 'VALIDATION_ERROR';
+      } else if (typeof responseObj.error === 'string') {
+        errorCode = responseObj.error;
+      } else if (typeof responseObj.code === 'string') {
+        errorCode = responseObj.code;
+      }
+
+      if (responseObj.field && typeof responseObj.field === 'string') {
+        field = responseObj.field;
       }
     } else {
       message = IS_PROD
@@ -63,15 +93,20 @@ export class HttpExceptionFilter implements ExceptionFilter {
         : exception instanceof Error
           ? exception.message
           : String(exception);
+      errorCode = 'INTERNAL_SERVER_ERROR';
     }
 
-    response.status(status).json({
+    const payload: CanonicalErrorResponse = {
       statusCode: status,
+      error: errorCode,
       message,
+      field,
       path: request.url,
       timestamp: new Date().toISOString(),
       errors: errors.length > 0 ? errors : undefined,
-    });
+    };
+
+    response.status(status).json(payload);
   }
 
   private flattenValidationErrors(validationErrors: unknown[]): string[] {
