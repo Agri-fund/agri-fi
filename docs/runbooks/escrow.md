@@ -323,3 +323,107 @@ curl -s "https://horizon-testnet.stellar.org/accounts/<ESCROW_ACCOUNT_ID>" | jq 
 - ❌ **DO NOT run DLQ replay in an infinite loop or without `--limit`** if Stellar Horizon is returning 5xx or 429 status codes.
 - ❌ **DO NOT restart PostgreSQL** while large escrow release transactions are actively executing in the worker pool.
 - ❌ **DO NOT bypass `OperationInProgress` locks** by modifying contract WASM storage directly without multi-sig approval.
+
+---
+
+## 8. Escrow Multi-Sig Migration Rollback
+
+Live deals created before the multi-sig scheme (issue #862) run on a single-signer escrow account. The migration tool upgrades them to the 3-of-5 scheme by submitting a `setOptions` transaction that adds co-signers, raises thresholds, and reduces the old single signer's weight to `0`.
+
+> [!WARNING]
+> A `setOptions` transaction is atomic on Stellar: either the whole signer/threshold change applies or none of it does. However, a migration can still be *partially applied* across steps (e.g. `setOptions` succeeded on-chain but the DB status update failed, or the tool was interrupted between deals). Use the procedures below to detect and revert such states.
+
+### 8.1 Verify Migration Status
+
+**Per-deal admin endpoint:**
+
+```bash
+curl -s -X GET "https://api.agri-fi.internal/admin/trade-deals/<DEAL_ID>/migrate-escrow" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" | jq .
+```
+
+The response reports the current `escrow_migrations` row for the deal (`status`, `attempts`, `last_error`, `tx_hash`, `migrated_at`).
+
+**Database query for all in-flight deals:**
+
+```sql
+SELECT m.trade_deal_id, m.status, m.attempts, m.tx_hash, m.last_error, m.migrated_at
+FROM escrow_migrations m
+JOIN trade_deals d ON d.id = m.trade_deal_id
+WHERE d.status IN ('active', 'funded', 'in_progress')
+ORDER BY m.updated_at DESC;
+```
+
+Status values:
+
+| Status | Meaning | Action |
+|---|---|---|
+| `pending` | Migration queued, not yet submitted | None; wait for worker |
+| `in_progress` | `setOptions` submitted, awaiting confirmation | Monitor; do not re-trigger |
+| `completed` | On-chain + DB state consistent | None |
+| `failed` | `setOptions` rejected or errored | Inspect `last_error`, fix, retry |
+| `rolled_back` | Reverted to single-sig scheme | Investigate root cause |
+
+**On-chain verification** (confirm signers and thresholds actually match the 3-of-5 scheme):
+
+```bash
+curl -s "https://horizon-testnet.stellar.org/accounts/<ESCROW_ACCOUNT_ID>" \
+  | jq '{thresholds: {low: .thresholds.low_threshold, med: .thresholds.med_threshold, high: .thresholds.high_threshold}, signers: [.signers[] | {key, weight}]}'
+```
+
+Expected post-migration: `med_threshold = 3`, `high_threshold = 3`, five signers with weight `1` each, and the legacy single signer at weight `0`.
+
+### 8.2 Reverting a Partially Applied `setOptions`
+
+If `setOptions` succeeded on-chain but the migration is marked `failed`/`in_progress` in the DB, or the wrong signer set was applied, revert by submitting a compensating `setOptions` that restores the pre-migration signer weights and thresholds.
+
+1. **Capture the pre-migration state.** The migration tool persists the original signer set and thresholds in `escrow_migrations.before_state` (JSON). Retrieve it:
+
+   ```sql
+   SELECT before_state FROM escrow_migrations WHERE trade_deal_id = '<DEAL_ID>';
+   ```
+
+   If `before_state` is missing, reconstruct it from the last known-good Horizon snapshot (account ledger history) before proceeding.
+
+2. **Build the revert transaction** using the backend admin script (dry-run first):
+
+   ```bash
+   cd backend
+   npx ts-node scripts/revert-escrow-migration.ts --deal=<DEAL_ID> --dry-run
+   ```
+
+   The dry-run prints the `setOptions` operations: restore each original signer's `weight`, remove the newly added co-signers, and reset `low`/`med`/`high` thresholds to their original values.
+
+3. **Submit the revert** (requires multi-sig approval from the current signer set):
+
+   ```bash
+   npx ts-node scripts/revert-escrow-migration.ts --deal=<DEAL_ID> --execute
+   ```
+
+4. **Verify** the account matches the pre-migration snapshot:
+
+   ```bash
+   curl -s "https://horizon-testnet.stellar.org/accounts/<ESCROW_ACCOUNT_ID>" \
+     | jq '{thresholds, signers: [.signers[] | {key, weight}]}'
+   ```
+
+5. **Update the DB** so the deal is flagged for re-migration:
+
+   ```sql
+   UPDATE escrow_migrations
+   SET status = 'rolled_back', last_error = 'manual rollback: <reason>', updated_at = NOW()
+   WHERE trade_deal_id = '<DEAL_ID>';
+   ```
+
+> [!CAUTION]
+> Never remove the *last* signer with non-zero weight or set all thresholds to `0` — this permanently locks the escrow account and strands funds. The revert script refuses to submit such a transaction; do not work around that guard.
+
+### 8.3 Guardrails for In-Flight Deals
+
+- **Never migrate a deal with a pending escrow operation.** Confirm no release/milestone transaction is in flight (`OperationInProgress` unset, no `pending`/`processing` rows in `investments` for the deal) before triggering migration.
+- **Migrate one deal at a time** and verify on-chain state before moving to the next; do not batch-trigger migrations during an incident.
+- **Do not re-trigger a migration** whose status is `in_progress` — wait for confirmation or reconcile via Horizon first, otherwise you risk duplicate `setOptions` submissions and sequence-number races.
+- **Do not roll back a deal that is mid-release.** Complete or abort the release first; reverting signers while a release is authorized can invalidate in-flight signatures.
+- **Rollback requires the current signer set's approval.** If co-signers are unavailable, escalate to `backend-oncall` and the security team — do not attempt to bypass thresholds.
+- **Record every rollback** in the incident ticket with the deal ID, `tx_hash` of both the original and revert transactions, and the reason.
+- **After rollback**, the deal remains on the legacy single-sig scheme; schedule re-migration only after the root cause is fixed and the deal is idle.
