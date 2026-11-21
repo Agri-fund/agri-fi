@@ -4,6 +4,7 @@ import { HttpService } from '@nestjs/axios';
 import { of, throwError } from 'rxjs';
 import { createHmac } from 'crypto';
 import { WebhooksService } from './webhooks.service';
+import { WebhookDeliveryService } from './webhook-delivery.service';
 import { WebhookSubscription } from './entities/webhook-subscription.entity';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
 
@@ -11,6 +12,7 @@ describe('WebhooksService', () => {
   let service: WebhooksService;
   let httpService: jest.Mocked<HttpService>;
   let repo: any;
+  let deliveryService: { enqueue: jest.Mock };
 
   const mockSubscription: WebhookSubscription = {
     id: 'sub-uuid-1',
@@ -42,6 +44,7 @@ describe('WebhooksService', () => {
       remove: jest.fn().mockResolvedValue(undefined),
     };
 
+    deliveryService = { enqueue: jest.fn().mockResolvedValue(undefined) };
     const mockHttpService = {
       post: jest.fn(),
     };
@@ -53,6 +56,7 @@ describe('WebhooksService', () => {
           provide: getRepositoryToken(WebhookSubscription),
           useValue: repo,
         },
+        { provide: WebhookDeliveryService, useValue: deliveryService },
         {
           provide: HttpService,
           useValue: mockHttpService,
@@ -139,12 +143,13 @@ describe('WebhooksService', () => {
   });
 
   describe('dispatchFundingProgress', () => {
-    it('should dispatch event when deal crosses funding threshold', async () => {
-      httpService.post.mockReturnValue(of({ status: 200, data: {} } as any));
-
+    it('enqueues a durable delivery when a deal crosses a funding threshold', async () => {
       await service.dispatchFundingProgress(mockDeal as TradeDeal, 25, 25.0);
 
-      expect(httpService.post).toHaveBeenCalled();
+      expect(deliveryService.enqueue).toHaveBeenCalledWith(
+        'deal.funding_progress',
+        expect.objectContaining({ dealId: 'deal-uuid-1', milestone: 25 }),
+      );
     });
   });
 });

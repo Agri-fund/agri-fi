@@ -65,6 +65,40 @@ export class TradeDeal {
   })
   description: string | null;
 
+  @Column({ name: 'short_description', type: 'text', nullable: true })
+  @ApiProperty({
+    description: 'Short summary of the deal',
+    required: false,
+    nullable: true,
+  })
+  shortDescription: string | null;
+
+  @Column({ name: 'long_description', type: 'text', nullable: true })
+  @ApiProperty({
+    description: 'Long-form story and impact description',
+    required: false,
+    nullable: true,
+  })
+  longDescription: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  @ApiProperty({
+    description: 'Country of origin',
+    required: false,
+    nullable: true,
+    example: 'Nigeria',
+  })
+  country: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  @ApiProperty({
+    description: 'Region or state for the farm location',
+    required: false,
+    nullable: true,
+    example: 'Ogun',
+  })
+  region: string | null;
+
   @Column({ type: 'decimal', precision: 36, scale: 7 })
   @ApiProperty({
     description: 'Quantity of the commodity',
