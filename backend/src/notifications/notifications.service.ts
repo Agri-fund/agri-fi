@@ -384,4 +384,32 @@ export class NotificationsService {
     if (!phone || phone.length < 4) return '***';
     return `***${phone.slice(-4)}`;
   }
+
+  /**
+   * Send referral credit earned email notification.
+   */
+  async sendReferralCreditEarnedEmail(
+    referrer: any,
+    details: {
+      amount: number;
+      referredUserEmail?: string;
+      creditIssuedAt: Date;
+    },
+  ): Promise<void> {
+    const subject = `You earned $${details.amount} referral credit!`;
+    const htmlBody = `
+      <p>Hi ${referrer.email},</p>
+      <p>Great news! Your referral has completed their first investment.</p>
+      <p>You've earned <strong>$${details.amount}</strong> in platform credit, which will be applied to your next platform fee.</p>
+      ${
+        details.referredUserEmail
+          ? `<p>Referred user: ${details.referredUserEmail}</p>`
+          : ''
+      }
+      <p>Credit issued: ${details.creditIssuedAt.toISOString()}</p>
+      <p>Best regards,<br>Agri-Fi Team</p>
+    `;
+
+    await this.sendEmail(referrer.email, subject, htmlBody);
+  }
 }

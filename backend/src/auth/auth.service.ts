@@ -55,6 +55,7 @@ import { KycRulesService } from '../kyc-rules/kyc-rules.service';
 import { KycCustomerType } from '../kyc-rules/entities/kyc-jurisdiction-rule.entity';
 import { BehavioralRiskService } from './behavioral-risk.service';
 import { BehavioralRiskSignalDto } from './dto/behavioral-risk-signal.dto';
+import { ReferralCode } from './entities/referral-code.entity';
 
 const LOCKOUT_MAX_ATTEMPTS = 5;
 const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
@@ -88,6 +89,8 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     private readonly loginLogRepo: Repository<LoginLog>,
     @InjectRepository(AdminAction)
     private readonly adminActionRepo: Repository<AdminAction>,
+    @InjectRepository(ReferralCode)
+    private readonly referralCodeRepo: Repository<ReferralCode>,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly queueService: QueueService,
@@ -133,7 +136,10 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
           await this.redisClient.connect();
         }
       } catch (err: any) {
-        this.loggerWarn('Failed to connect Redis client in AuthService for SEP-10', err);
+        this.loggerWarn(
+          'Failed to connect Redis client in AuthService for SEP-10',
+          err,
+        );
       }
     }
   }
@@ -261,6 +267,17 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     const passwordHash = await this.hashPassword(dto.password);
     const emailVerificationToken = this.generateVerificationToken();
 
+    let referralCodeId: string | null = null;
+    if (dto.ref) {
+      // Validate and lookup referral code
+      const refCode = await this.referralCodeRepo.findOne({
+        where: { code: dto.ref },
+      });
+      if (refCode) {
+        referralCodeId = refCode.id;
+      }
+    }
+
     const user = this.userRepo.create({
       email: dto.email,
       passwordHash,
@@ -269,6 +286,8 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       kycStatus: 'pending',
       isEmailVerified: false,
       emailVerificationToken,
+      referralCodeId,
+      platformCredit: 0,
     });
 
     let saved: User;
@@ -386,9 +405,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     });
 
     if (!user || !user.emailPending) {
-      throw new BadRequestException(
-        'Invalid or expired email change token.',
-      );
+      throw new BadRequestException('Invalid or expired email change token.');
     }
 
     if (
@@ -399,9 +416,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       user.emailChangeToken = null;
       user.emailChangeTokenExpiresAt = null;
       await this.userRepo.save(user);
-      throw new BadRequestException(
-        'Invalid or expired email change token.',
-      );
+      throw new BadRequestException('Invalid or expired email change token.');
     }
 
     const oldEmail = user.email;
@@ -1481,7 +1496,8 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException('Compliance officers require a domain.');
     }
     user.role = role;
-    user.complianceDomain = role === 'compliance_officer' ? complianceDomain!.trim() : null;
+    user.complianceDomain =
+      role === 'compliance_officer' ? complianceDomain!.trim() : null;
     user.tokenVersion = (user.tokenVersion ?? 0) + 1;
     const saved = await this.userRepo.save(user);
 
@@ -1572,8 +1588,6 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-
-
   // ── behavioral biometrics (#1222) ─────────────────────────────────────────
 
   /**
@@ -1648,7 +1662,10 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
   ): Promise<{ message: string }> {
     const userId = this.tokenService.verifyUnlockToken(token);
     if (!userId) {
-      throw new BadRequestException({ code: 'INVALID_UNLOCK_TOKEN', message: 'Invalid unlock token.' });
+      throw new BadRequestException({
+        code: 'INVALID_UNLOCK_TOKEN',
+        message: 'Invalid unlock token.',
+      });
     }
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found.');
@@ -1660,8 +1677,13 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
     // Log unlock attempt to login_logs with metadata
     if (meta?.ip) {
-      const deviceFingerprint = this.computeDeviceFingerprint(meta.userAgent, meta.acceptLanguage);
-      const countryCode = meta.country ? meta.country.toUpperCase().slice(0, 2) : null;
+      const deviceFingerprint = this.computeDeviceFingerprint(
+        meta.userAgent,
+        meta.acceptLanguage,
+      );
+      const countryCode = meta.country
+        ? meta.country.toUpperCase().slice(0, 2)
+        : null;
       await this.loginLogRepo.save(
         this.loginLogRepo.create({
           userId: user.id,
@@ -1675,7 +1697,9 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     }
 
     return {
-      message: wasLocked ? 'Account has been unlocked successfully. You can now log in.' : 'Account unlock token validated.',
+      message: wasLocked
+        ? 'Account has been unlocked successfully. You can now log in.'
+        : 'Account unlock token validated.',
     };
   }
 
@@ -1874,7 +1898,10 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
     const redis = await this.getRedis();
     if (!redis) {
-      this.loggerWarn('Redis unavailable during SEP-10 challenge generation', 'fail-closed');
+      this.loggerWarn(
+        'Redis unavailable during SEP-10 challenge generation',
+        'fail-closed',
+      );
       throw new ServiceUnavailableException(
         'Authentication service temporarily unavailable',
       );
@@ -1988,7 +2015,10 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
     const redis = await this.getRedis();
     if (!redis) {
-      this.loggerWarn('Redis unavailable during SEP-10 challenge validation', 'fail-closed');
+      this.loggerWarn(
+        'Redis unavailable during SEP-10 challenge validation',
+        'fail-closed',
+      );
       throw new ServiceUnavailableException(
         'Authentication service temporarily unavailable',
       );
@@ -2009,7 +2039,11 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       throw new UnauthorizedException('SEP-10 challenge not found or expired');
     }
 
-    let storedChallenge: { nonce: string; transactionXdr?: string; expiresAt: number };
+    let storedChallenge: {
+      nonce: string;
+      transactionXdr?: string;
+      expiresAt: number;
+    };
     try {
       storedChallenge = JSON.parse(challengeRaw);
     } catch {
@@ -2027,7 +2061,9 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       try {
         const hint = Buffer.from(sig.hint as any).toString('hex');
         const clientKeypair = Keypair.fromPublicKey(clientPublicKey);
-        const clientHint = Buffer.from(clientKeypair.signatureHint() as any).toString('hex');
+        const clientHint = Buffer.from(
+          clientKeypair.signatureHint() as any,
+        ).toString('hex');
         if (hint !== clientHint) return false;
         return clientKeypair.verify(txHash, Buffer.from(sig.signature as any));
       } catch {
@@ -2044,7 +2080,10 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     try {
       await redis.del(challengeKey);
     } catch (err: any) {
-      this.loggerWarn('Failed to delete consumed SEP-10 challenge from Redis', err);
+      this.loggerWarn(
+        'Failed to delete consumed SEP-10 challenge from Redis',
+        err,
+      );
     }
 
     // Find or create user by wallet address
@@ -2065,7 +2104,8 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     }
 
     // Issue JWT
-    const { accessToken, refreshToken } = this.tokenService.issueTokenPair(user);
+    const { accessToken, refreshToken } =
+      this.tokenService.issueTokenPair(user);
 
     return { accessToken, refreshToken, publicKey: clientPublicKey };
   }

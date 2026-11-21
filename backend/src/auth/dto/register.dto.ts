@@ -55,4 +55,13 @@ export class RegisterDto {
   @IsString()
   @IsOptional()
   redirect?: string;
+
+  @ApiProperty({
+    example: 'ABC12345',
+    description: 'Referral code from existing user (optional)',
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  ref?: string;
 }

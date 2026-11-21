@@ -20,6 +20,7 @@ import {
   ReferralTrackingService,
   ReferralEvent,
 } from './referral-tracking.service';
+import { ReferralCreditService } from './referral-credit.service';
 import { Referral } from '../auth/entities/referral.entity';
 import { User } from '../auth/entities/user.entity';
 
@@ -85,9 +86,33 @@ function referralsToEvents(referrals: Referral[]): ReferralEvent[] {
 export class ReferralsController {
   constructor(
     private readonly referralTrackingService: ReferralTrackingService,
+    private readonly referralCreditService: ReferralCreditService,
     @InjectRepository(Referral)
     private readonly referralRepo: Repository<Referral>,
   ) {}
+
+  @Get('me')
+  @UseGuards(AuthGuard('jwt'))
+  @ApiOperation({
+    summary: 'Get personal referral code and earnings summary',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'User referral info',
+    schema: {
+      properties: {
+        code: { type: 'string' },
+        codesCount: { type: 'number' },
+        totalEarnings: { type: 'number' },
+        creditsIssued: { type: 'number' },
+        referralsSent: { type: 'number' },
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async getPersonalReferral(@Request() req: AuthRequest) {
+    return this.referralCreditService.getReferralSummary(req.user.id);
+  }
 
   @Get('analytics')
   @UseGuards(AuthGuard('jwt'))
