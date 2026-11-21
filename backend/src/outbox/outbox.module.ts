@@ -8,7 +8,8 @@ import {
 } from '@willsoto/nestjs-prometheus';
 import { OutboxEntity } from './outbox.entity';
 import { OutboxService } from './outbox.service';
-import { OutboxProcessor } from './outbox.processor';
+import { OutboxProcessor, OUTBOX_REDIS_CLIENT } from './outbox.processor';
+import { RedisConfig } from '../config/redis.config';
 
 @Module({
   imports: [
@@ -17,6 +18,20 @@ import { OutboxProcessor } from './outbox.processor';
     PrometheusModule.register(),
   ],
   providers: [
+    RedisConfig,
+    {
+      provide: OUTBOX_REDIS_CLIENT,
+      inject: [RedisConfig],
+      useFactory: (redisConfig: RedisConfig) => redisConfig.createClient(),
+    },
+    makeCounterProvider({
+      name: 'outbox_lease_contention_total',
+      help: 'Ticks skipped because another replica held the outbox lease.',
+    }),
+    makeGaugeProvider({
+      name: 'outbox_processor_active',
+      help: '1 while this instance holds the outbox processor lease.',
+    }),
     OutboxService,
     OutboxProcessor,
     makeGaugeProvider({
