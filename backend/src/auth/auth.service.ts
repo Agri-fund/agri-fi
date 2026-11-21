@@ -679,6 +679,9 @@ export class AuthService {
 
     if (previousLogs.length > 0 && !knownDevice) {
       const revokeToken = randomBytes(32).toString('hex');
+      user.revokeToken = revokeToken;
+      await this.userRepo.save(user);
+
       const revokeUrl = `${this.appBaseUrl()}/auth/revoke-session/${revokeToken}`;
 
       await this.queueService.emit('email.notification', {
@@ -716,6 +719,7 @@ export class AuthService {
     }
 
     user.tokenVersion = (user.tokenVersion ?? 0) + 1;
+    user.revokeToken = null;
     await this.userRepo.save(user);
 
     return { message: 'All sessions have been revoked. Please log in again.' };
@@ -724,24 +728,12 @@ export class AuthService {
   private async findUserByRevokeToken(
     revokeToken: string,
   ): Promise<string | null> {
+    if (!revokeToken) return null;
     try {
-      const log = await this.loginLogRepo
-        .createQueryBuilder('log')
-        .innerJoin(
-          (qb) => {
-            qb.select('user_id')
-              .from('login_logs', 'll')
-              .orderBy('created_at', 'DESC')
-              .limit(1);
-          },
-          'latest',
-          'latest.user_id = log.user_id',
-        )
-        .where(`log.user_agent LIKE :token`, {
-          token: `%revoke:${revokeToken}%`,
-        })
-        .getOne();
-      return log?.userId ?? null;
+      const user = await this.userRepo.findOne({
+        where: { revokeToken },
+      });
+      return user?.id ?? null;
     } catch {
       return null;
     }
@@ -1365,6 +1357,49 @@ export class AuthService {
       type: 'kyc_verified',
       email: user.email,
       userId: user.id,
+    });
+
+    return { kycStatus: user.kycStatus };
+  }
+
+  async rejectKyc(
+    userId: string,
+    adminId?: string,
+    reason?: string,
+  ): Promise<{ kycStatus: string }> {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found.');
+
+    const submission = await this.kycRepo.findOne({
+      where: { userId },
+      order: { createdAt: 'DESC' },
+    });
+    if (submission) {
+      submission.status = 'rejected';
+      (submission as any).rejectionReason = reason ?? null;
+      await this.kycRepo.save(submission);
+    }
+
+    user.kycStatus = 'rejected';
+    await this.userRepo.save(user);
+
+    if (adminId) {
+      await this.adminActionRepo.save(
+        this.adminActionRepo.create({
+          adminId,
+          targetUserId: user.id,
+          action: 'reject_kyc',
+          payload: { submissionId: submission?.id },
+          reason: reason ?? null,
+        }),
+      );
+    }
+
+    this.queueService.emit('email.notification', {
+      type: 'kyc_rejected',
+      email: user.email,
+      userId: user.id,
+      reason: reason ?? 'Submitted documents did not meet requirements',
     });
 
     return { kycStatus: user.kycStatus };

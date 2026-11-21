@@ -1054,16 +1054,48 @@ describe('AuthService', () => {
 
   describe('revokeSession', () => {
     it('throws BadRequestException for invalid revoke token', async () => {
-      // findUserByRevokeToken returns null via loginLogRepo query builder mock
-      const qb: any = {
-        innerJoin: jest.fn().mockReturnThis(),
-        where: jest.fn().mockReturnThis(),
-        getOne: jest.fn().mockResolvedValue(null),
-      };
-      (loginLogRepo as any).createQueryBuilder = jest.fn().mockReturnValue(qb);
+      userRepo.findOne.mockResolvedValue(null);
 
       await expect(service.revokeSession('bad-token')).rejects.toThrow(
         BadRequestException,
+      );
+    });
+
+    it('successfully revokes session, increments tokenVersion and clears revokeToken', async () => {
+      const user = { ...mockUser(), tokenVersion: 1, revokeToken: 'valid-revoke-token' };
+      userRepo.findOne.mockResolvedValue(user);
+      userRepo.save.mockImplementation(async (u) => u);
+
+      const res = await service.revokeSession('valid-revoke-token');
+      expect(res.message).toBe('All sessions have been revoked. Please log in again.');
+      expect(userRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tokenVersion: 2,
+          revokeToken: null,
+        }),
+      );
+    });
+  });
+
+  describe('rejectKyc', () => {
+    it('rejects KYC submission and emits email.notification with type kyc_rejected and reason', async () => {
+      const user = { ...mockUser(), id: 'user-kyc-1', email: 'applicant@example.com', kycStatus: 'pending' };
+      const submission = { id: 'sub-1', userId: 'user-kyc-1', status: 'pending', rejectionReason: null };
+      userRepo.findOne.mockResolvedValue(user);
+      kycRepo.findOne.mockResolvedValue(submission);
+      userRepo.save.mockImplementation(async (u) => u);
+      kycRepo.save.mockImplementation(async (s) => s);
+
+      const res = await service.rejectKyc('user-kyc-1', 'admin-1', 'Document expired');
+      expect(res.kycStatus).toBe('rejected');
+      expect(user.kycStatus).toBe('rejected');
+      expect(submission.status).toBe('rejected');
+      expect(submission.rejectionReason).toBe('Document expired');
+      expect(adminActionRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'reject_kyc',
+          reason: 'Document expired',
+        }),
       );
     });
   });

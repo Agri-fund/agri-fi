@@ -80,6 +80,16 @@ class RejectDocumentDto {
   reason: string;
 }
 
+class RejectKycDto {
+  @IsOptional()
+  @IsString()
+  reason?: string;
+
+  @IsOptional()
+  @IsString()
+  rejectionReason?: string;
+}
+
 class BulkKycDto {
   @IsArray()
   @ArrayMinSize(1)
@@ -272,6 +282,21 @@ export class AdminController {
     @Query('reason') reason?: string,
   ) {
     return this.authService.approveKyc(userId, req.user.id, reason);
+  }
+
+  @Post('kyc/:userId/reject')
+  @ApiOperation({ summary: 'Reject a user KYC submission' })
+  @ApiResponse({ status: 200, description: 'KYC rejected' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
+  @ApiResponse({ status: 404, description: 'User or submission not found' })
+  async rejectKyc(
+    @Request() req: AuthRequest,
+    @Param('userId') userId: string,
+    @Body() dto?: RejectKycDto,
+    @Query('reason') queryReason?: string,
+  ) {
+    const reason = dto?.rejectionReason ?? dto?.reason ?? queryReason;
+    return this.authService.rejectKyc(userId, req.user.id, reason);
   }
 
   @Patch('kyc/bulk')

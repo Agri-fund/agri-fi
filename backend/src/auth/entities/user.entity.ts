@@ -155,6 +155,9 @@ export class User {
   })
   walletAddress: string | null;
 
+  @Column({ name: 'revoke_token', type: 'varchar', length: 128, nullable: true })
+  revokeToken: string | null;
+
   @Column({ name: 'is_company', default: false })
   @ApiProperty({
     description: 'Whether this is a corporate account',

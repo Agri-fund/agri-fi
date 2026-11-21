@@ -137,7 +137,9 @@ async function bootstrap() {
         );
         if (walletError) {
           throw new BadRequestException({
+            error: 'INVALID_WALLET_ADDRESS',
             code: 'INVALID_WALLET_ADDRESS',
+            field: 'walletAddress',
             message: 'walletAddress must be a valid Stellar public key.',
           });
         }
