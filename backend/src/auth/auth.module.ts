@@ -85,6 +85,7 @@ import { TokenModule } from './token.module';
     OfacSanctionsCheckService,
     KycCronService,
     BehavioralRiskService,
+    EmailChangeCleanupService,
   ],
   exports: [
     AuthService,
