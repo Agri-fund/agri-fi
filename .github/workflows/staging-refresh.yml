@@ -46,9 +46,6 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Install ts-node
-        run: npm install -g ts-node typescript
-
       - name: Download latest production backup
         run: |
           TIMESTAMP=$(aws s3 ls "s3://${STAGING_S3_BUCKET}/production-backups/" \
@@ -68,9 +65,12 @@ jobs:
 
       - name: Anonymise dump
         run: |
-          ts-node devops/scripts/anonymise-dump.ts \
-            --input /tmp/production-dump.sql \
-            --output /tmp/anonymised-dump.sql
+          npx --yes -p typescript@5.9.3 -p ts-node@10.9.2 \
+            ts-node --transpile-only \
+            --compiler-options '{"module":"commonjs","moduleResolution":"node","target":"es2021"}' \
+            devops/scripts/anonymise-dump.ts \
+              --input /tmp/production-dump.sql \
+              --output /tmp/anonymised-dump.sql
 
           echo "Anonymised dump size: $(du -h /tmp/anonymised-dump.sql | cut -f1)"
 

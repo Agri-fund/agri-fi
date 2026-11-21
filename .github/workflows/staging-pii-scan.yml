@@ -5,6 +5,7 @@ on:
     paths:
       - 'devops/scripts/anonymise-dump.ts'
       - '.github/workflows/staging-refresh.yml'
+      - '.github/workflows/staging-pii-scan.yml'
 
 permissions:
   contents: read
@@ -40,9 +41,12 @@ jobs:
 
       - name: Run anonymisation
         run: |
-          node devops/scripts/anonymise-dump.ts \
-            --input /tmp/test-dump.sql \
-            --output /tmp/anonymised-test.sql
+          npx --yes -p typescript@5.9.3 -p ts-node@10.9.2 \
+            ts-node --transpile-only \
+            --compiler-options '{"module":"commonjs","moduleResolution":"node","target":"es2021"}' \
+            devops/scripts/anonymise-dump.ts \
+              --input /tmp/test-dump.sql \
+              --output /tmp/anonymised-test.sql
 
       - name: Verify anonymisation
         run: |
