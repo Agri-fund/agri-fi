@@ -11,7 +11,12 @@ import { Exclude } from 'class-transformer';
 import { encryptionTransformer } from '../../common/encryption.transformer';
 
 export type UserRole =
-  'farmer' | 'trader' | 'investor' | 'company_admin' | 'admin' | 'compliance_officer';
+  | 'farmer'
+  | 'trader'
+  | 'investor'
+  | 'company_admin'
+  | 'admin'
+  | 'compliance_officer';
 export type KycStatus =
   | 'pending'
   | 'verified'
@@ -21,10 +26,19 @@ export type KycStatus =
 
 // #902 — Investor accreditation tiers
 export type AccreditationTier = 'retail' | 'accredited' | 'institutional';
-export type AccreditationStatus = 'none' | 'pending' | 'approved' | 'rejected' | 'expired';
+export type AccreditationStatus =
+  | 'none'
+  | 'pending'
+  | 'approved'
+  | 'rejected'
+  | 'expired';
 
 /** Ordered tier values for comparison (higher index = higher tier). */
-export const TIER_ORDER: AccreditationTier[] = ['retail', 'accredited', 'institutional'];
+export const TIER_ORDER: AccreditationTier[] = [
+  'retail',
+  'accredited',
+  'institutional',
+];
 
 /** Returns true if `userTier` meets or exceeds `requiredTier`. */
 export function tierSatisfies(
@@ -106,7 +120,14 @@ export class User {
   @Column()
   @ApiProperty({
     description: 'User role',
-    enum: ['farmer', 'trader', 'investor', 'company_admin', 'admin', 'compliance_officer'],
+    enum: [
+      'farmer',
+      'trader',
+      'investor',
+      'company_admin',
+      'admin',
+      'compliance_officer',
+    ],
     example: 'farmer',
   })
   role: UserRole;
@@ -166,7 +187,12 @@ export class User {
   })
   walletAddress: string | null;
 
-  @Column({ name: 'revoke_token', type: 'varchar', length: 128, nullable: true })
+  @Column({
+    name: 'revoke_token',
+    type: 'varchar',
+    length: 128,
+    nullable: true,
+  })
   revokeToken: string | null;
 
   @Column({ name: 'is_company', default: false })
@@ -438,29 +464,64 @@ export class User {
   })
   accreditationStatus: AccreditationStatus;
 
-  @Column({ name: 'accreditation_submitted_at', type: 'timestamptz', nullable: true })
-  @ApiProperty({ description: 'When the accreditation application was submitted', nullable: true })
+  @Column({
+    name: 'accreditation_submitted_at',
+    type: 'timestamptz',
+    nullable: true,
+  })
+  @ApiProperty({
+    description: 'When the accreditation application was submitted',
+    nullable: true,
+  })
   accreditationSubmittedAt: Date | null;
 
-  @Column({ name: 'accreditation_approved_at', type: 'timestamptz', nullable: true })
-  @ApiProperty({ description: 'When accreditation was approved by admin', nullable: true })
+  @Column({
+    name: 'accreditation_approved_at',
+    type: 'timestamptz',
+    nullable: true,
+  })
+  @ApiProperty({
+    description: 'When accreditation was approved by admin',
+    nullable: true,
+  })
   accreditationApprovedAt: Date | null;
 
   /** Accreditation expires 2 years after approval (#902). */
-  @Column({ name: 'accreditation_expires_at', type: 'timestamptz', nullable: true })
-  @ApiProperty({ description: 'Accreditation expiry date (2 years from approval)', nullable: true })
+  @Column({
+    name: 'accreditation_expires_at',
+    type: 'timestamptz',
+    nullable: true,
+  })
+  @ApiProperty({
+    description: 'Accreditation expiry date (2 years from approval)',
+    nullable: true,
+  })
   accreditationExpiresAt: Date | null;
 
   @Column({ name: 'accreditation_document_url', type: 'text', nullable: true })
-  @ApiProperty({ description: 'URL of supporting document (net-worth statement, broker letter, etc.)', nullable: true })
+  @ApiProperty({
+    description:
+      'URL of supporting document (net-worth statement, broker letter, etc.)',
+    nullable: true,
+  })
   accreditationDocumentUrl: string | null;
 
   @Column({ name: 'accreditation_declaration', type: 'text', nullable: true })
-  @ApiProperty({ description: 'Self-certification declaration text signed by the investor', nullable: true })
+  @ApiProperty({
+    description: 'Self-certification declaration text signed by the investor',
+    nullable: true,
+  })
   accreditationDeclaration: string | null;
 
-  @Column({ name: 'accreditation_rejection_reason', type: 'text', nullable: true })
-  @ApiProperty({ description: 'Admin rejection reason when status is "rejected"', nullable: true })
+  @Column({
+    name: 'accreditation_rejection_reason',
+    type: 'text',
+    nullable: true,
+  })
+  @ApiProperty({
+    description: 'Admin rejection reason when status is "rejected"',
+    nullable: true,
+  })
   accreditationRejectionReason: string | null;
 
   // #1170 — cross-device theme synchronisation
@@ -484,4 +545,28 @@ export class User {
     },
   })
   themePreferences: ThemePreferences | null;
+
+  @Column({
+    name: 'platform_credit',
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    default: 0,
+  })
+  @ApiProperty({
+    description: 'Available platform credit balance in USD',
+    example: 5.0,
+  })
+  platformCredit: number;
+
+  @Column({
+    name: 'referral_code_id',
+    type: 'uuid',
+    nullable: true,
+  })
+  @ApiProperty({
+    description: 'Referral code used during registration (if any)',
+    nullable: true,
+  })
+  referralCodeId: string | null;
 }

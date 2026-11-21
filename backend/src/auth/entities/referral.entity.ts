@@ -75,4 +75,11 @@ export class Referral {
   @CreateDateColumn({ name: 'created_at' })
   @ApiProperty({ description: 'Referral creation timestamp' })
   createdAt: Date;
+
+  @Column({ name: 'credit_issued_at', type: 'timestamptz', nullable: true })
+  @ApiProperty({
+    description: 'Timestamp when $5 credit was issued to referrer',
+    nullable: true,
+  })
+  creditIssuedAt: Date | null;
 }
