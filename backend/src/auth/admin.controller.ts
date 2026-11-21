@@ -3,6 +3,8 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
+  HttpCode,
   Param,
   UseGuards,
   Request,
@@ -79,6 +81,16 @@ class RejectDocumentDto {
   @IsString()
   @MinLength(3)
   reason: string;
+}
+
+class RejectKycDto {
+  @IsOptional()
+  @IsString()
+  reason?: string;
+
+  @IsOptional()
+  @IsString()
+  rejectionReason?: string;
 }
 
 class BulkKycDto {
@@ -276,13 +288,19 @@ export class AdminController {
     return this.authService.approveKyc(userId, req.user.id, reason);
   }
 
-  @Get('kyc/edd')
-  @ApiOperation({
-    summary: 'List high-priority enhanced due diligence reviews',
-  })
-  @ApiResponse({ status: 200, description: 'EDD review queue' })
-  async listEddQueue() {
-    return this.kycService.listEddQueue();
+  @Post('kyc/:userId/reject')
+  @ApiOperation({ summary: 'Reject a user KYC submission' })
+  @ApiResponse({ status: 200, description: 'KYC rejected' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
+  @ApiResponse({ status: 404, description: 'User or submission not found' })
+  async rejectKyc(
+    @Request() req: AuthRequest,
+    @Param('userId') userId: string,
+    @Body() dto?: RejectKycDto,
+    @Query('reason') queryReason?: string,
+  ) {
+    const reason = dto?.rejectionReason ?? dto?.reason ?? queryReason;
+    return this.authService.rejectKyc(userId, req.user.id, reason);
   }
 
   @Patch('kyc/bulk')
@@ -387,6 +405,25 @@ export class AdminController {
       dto.reason,
       dto.complianceDomain,
     );
+  }
+
+  @Delete('users/:userId')
+  @HttpCode(204)
+  @ApiOperation({ summary: 'Soft-delete (deactivate) a user' })
+  async deleteUser(
+    @Request() req: AuthRequest,
+    @Param('userId') userId: string,
+  ): Promise<void> {
+    await this.authService.softDeleteUser(userId, req.user.id);
+  }
+
+  @Post('users/:userId/restore')
+  @ApiOperation({ summary: 'Restore a soft-deleted user' })
+  async restoreUser(
+    @Request() req: AuthRequest,
+    @Param('userId') userId: string,
+  ) {
+    return this.authService.restoreUser(userId, req.user.id);
   }
 
   @Post('freeze-asset')

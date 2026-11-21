@@ -81,7 +81,17 @@ cp backend/.env.example backend/.env
 
 Fill in the required values — see [Environment Variables](#environment-variables) below.
 
-### 4. Run migrations
+### 4. Deploy Soroban smart contracts (Testnet)
+
+By default, `.env.example` contains placeholder contract IDs (`CAAA...`). To deploy contracts to Soroban testnet and populate live addresses into `.env.soroban`:
+
+```bash
+npm run deploy:contracts
+```
+
+This compiles all Soroban contracts with `cargo build --target wasm32-unknown-unknown --release`, uploads and deploys each contract to Soroban testnet, and writes real contract IDs to `.env.soroban`.
+
+### 5. Run migrations
 
 ```bash
 cd backend

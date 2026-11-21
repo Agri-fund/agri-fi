@@ -7,8 +7,10 @@ import {
   BadRequestException,
   UnauthorizedException,
   ForbiddenException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
+import { Keypair, Transaction, Networks } from '@stellar/stellar-sdk';
 import { AuthService } from './auth.service';
 import { User } from './entities/user.entity';
 import { KycSubmission } from './entities/kyc-submission.entity';
@@ -45,6 +47,8 @@ describe('AuthService', () => {
     create: jest.Mock;
     save: jest.Mock;
     findAndCount: jest.Mock;
+    softDelete: jest.Mock;
+    restore: jest.Mock;
   };
   let kycRepo: { findOne: jest.Mock; create: jest.Mock; save: jest.Mock };
   let loginLogRepo: { find: jest.Mock; save: jest.Mock; create: jest.Mock };
@@ -62,6 +66,8 @@ describe('AuthService', () => {
       create: jest.fn(),
       save: jest.fn(),
       findAndCount: jest.fn(),
+      softDelete: jest.fn(),
+      restore: jest.fn(),
     };
     kycRepo = { findOne: jest.fn(), create: jest.fn(), save: jest.fn() };
     loginLogRepo = { find: jest.fn(), save: jest.fn(), create: jest.fn() };
@@ -1036,11 +1042,91 @@ describe('AuthService', () => {
     });
   });
 
+  describe('soft delete (#1386)', () => {
+    it('soft-deletes a user and records an admin action', async () => {
+      userRepo.findOne.mockResolvedValue(mockUser());
+      userRepo.save.mockResolvedValue(undefined);
+      userRepo.softDelete.mockResolvedValue(undefined);
+
+      await service.softDeleteUser('uuid-1', 'admin-id');
+
+      expect(userRepo.softDelete).toHaveBeenCalledWith('uuid-1');
+      expect(adminActionRepo.save).toHaveBeenCalled();
+    });
+
+    it('restores a soft-deleted user', async () => {
+      userRepo.findOne.mockResolvedValue({ ...mockUser(), deletedAt: new Date() });
+      userRepo.restore.mockResolvedValue(undefined);
+
+      await expect(service.restoreUser('uuid-1', 'admin-id')).resolves.toEqual({
+        id: 'uuid-1',
+      });
+      expect(userRepo.restore).toHaveBeenCalledWith('uuid-1');
+    });
+
+    it('refuses to restore a user that is not deactivated', async () => {
+      userRepo.findOne.mockResolvedValue({ ...mockUser(), deletedAt: null });
+      await expect(service.restoreUser('uuid-1', 'admin-id')).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('rejects login for a deactivated account', async () => {
+      userRepo.findOne.mockResolvedValue({ ...mockUser(), deletedAt: new Date() });
+      await expect(
+        service.login({ email: 'a@b.com', password: 'x' } as any),
+      ).rejects.toThrow('Account deactivated');
+    });
+  });
+
   describe('generateSep10Challenge', () => {
     it('throws BadRequestException for invalid public key', async () => {
       await expect(
         service.generateSep10Challenge('invalid-key'),
       ).rejects.toThrow(BadRequestException);
+    });
+
+    it('throws ServiceUnavailableException when Redis is unavailable (fail-closed)', async () => {
+      service.setRedisClient(null);
+      const clientKeypair = Keypair.random();
+      await expect(
+        service.generateSep10Challenge(clientKeypair.publicKey()),
+      ).rejects.toThrow(ServiceUnavailableException);
+    });
+
+    it('stores challenge in Redis with 300s TTL and expected payload', async () => {
+      const redisStore = new Map<string, string>();
+      const mockRedis: any = {
+        isOpen: true,
+        connect: jest.fn().mockResolvedValue(undefined),
+        setEx: jest.fn(async (key: string, ttl: number, val: string) => {
+          expect(ttl).toBe(300);
+          redisStore.set(key, val);
+          return 'OK';
+        }),
+        get: jest.fn(async (key: string) => redisStore.get(key) ?? null),
+        del: jest.fn(async (key: string) => {
+          redisStore.delete(key);
+          return 1;
+        }),
+      };
+
+      service.setRedisClient(mockRedis);
+      const clientKeypair = Keypair.random();
+      const res = await service.generateSep10Challenge(clientKeypair.publicKey());
+
+      expect(res.transactionXdr).toBeDefined();
+      expect(mockRedis.setEx).toHaveBeenCalledWith(
+        `sep10:challenge:${clientKeypair.publicKey()}`,
+        300,
+        expect.any(String),
+      );
+
+      const savedData = JSON.parse(
+        redisStore.get(`sep10:challenge:${clientKeypair.publicKey()}`)!,
+      );
+      expect(savedData.nonce).toBeDefined();
+      expect(savedData.transactionXdr).toBe(res.transactionXdr);
     });
   });
 
@@ -1050,20 +1136,141 @@ describe('AuthService', () => {
         service.validateSep10Response('invalid-xdr'),
       ).rejects.toThrow('Invalid SEP-10 response XDR');
     });
+
+    it('throws ServiceUnavailableException when Redis is down during validation', async () => {
+      service.setRedisClient(null);
+      const clientKeypair = Keypair.random();
+      const serverKeypair = Keypair.random();
+
+      // Build a valid envelope structure
+      const tx = new Transaction(
+        'AAAAAgAAAAAAAAAAAAAAACAAAAAAAAAAAQAAAAEAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAALAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAA',
+        Networks.TESTNET,
+      );
+
+      // When Redis is down, validation must fail closed
+      await expect(service.validateSep10Response(tx.toEnvelope().toXDR('base64'))).rejects.toThrow();
+    });
+
+    it('throws UnauthorizedException if challenge not in Redis or expired', async () => {
+      const mockRedis: any = {
+        isOpen: true,
+        connect: jest.fn().mockResolvedValue(undefined),
+        get: jest.fn().mockResolvedValue(null),
+        del: jest.fn().mockResolvedValue(0),
+      };
+      service.setRedisClient(mockRedis);
+
+      const clientKeypair = Keypair.random();
+      const res = await (async () => {
+        const memStore = new Map<string, string>();
+        const genRedis: any = {
+          isOpen: true,
+          connect: jest.fn().mockResolvedValue(undefined),
+          setEx: jest.fn(async (k: string, ttl: number, v: string) => {
+            memStore.set(k, v);
+          }),
+        };
+        service.setRedisClient(genRedis);
+        return service.generateSep10Challenge(clientKeypair.publicKey());
+      })();
+
+      const clientTx = new Transaction(res.transactionXdr, Networks.TESTNET);
+      clientTx.sign(clientKeypair);
+
+      // Switch back to Redis mock with missing key
+      service.setRedisClient(mockRedis);
+      await expect(
+        service.validateSep10Response(clientTx.toEnvelope().toXDR('base64')),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('validates across independent service instances sharing Redis (multi-instance support)', async () => {
+      const sharedRedisStore = new Map<string, string>();
+      const sharedRedisClient: any = {
+        isOpen: true,
+        connect: jest.fn().mockResolvedValue(undefined),
+        setEx: jest.fn(async (key: string, ttl: number, val: string) => {
+          sharedRedisStore.set(key, val);
+          return 'OK';
+        }),
+        get: jest.fn(async (key: string) => sharedRedisStore.get(key) ?? null),
+        del: jest.fn(async (key: string) => {
+          sharedRedisStore.delete(key);
+          return 1;
+        }),
+      };
+
+      // Instance 1 generates the challenge
+      service.setRedisClient(sharedRedisClient);
+      const clientKeypair = Keypair.random();
+      const challenge = await service.generateSep10Challenge(clientKeypair.publicKey());
+      expect(sharedRedisStore.has(`sep10:challenge:${clientKeypair.publicKey()}`)).toBe(true);
+
+      // Client signs the challenge
+      const clientTx = new Transaction(challenge.transactionXdr, Networks.TESTNET);
+      clientTx.sign(clientKeypair);
+
+      // Instance 2 (simulate by another service or resetting internal state)
+      // verifies with the same shared Redis
+      userRepo.findOne.mockResolvedValue(mockUser());
+      jwtService.sign.mockReturnValue('jwt-token-123');
+
+      const result = await service.validateSep10Response(
+        clientTx.toEnvelope().toXDR('base64'),
+      );
+      expect(result).toBeDefined();
+      expect(result.publicKey).toBe(clientKeypair.publicKey());
+
+      // Challenge is deleted from Redis (single-use)
+      expect(sharedRedisStore.has(`sep10:challenge:${clientKeypair.publicKey()}`)).toBe(false);
+    });
   });
 
   describe('revokeSession', () => {
     it('throws BadRequestException for invalid revoke token', async () => {
-      // findUserByRevokeToken returns null via loginLogRepo query builder mock
-      const qb: any = {
-        innerJoin: jest.fn().mockReturnThis(),
-        where: jest.fn().mockReturnThis(),
-        getOne: jest.fn().mockResolvedValue(null),
-      };
-      (loginLogRepo as any).createQueryBuilder = jest.fn().mockReturnValue(qb);
+      userRepo.findOne.mockResolvedValue(null);
 
       await expect(service.revokeSession('bad-token')).rejects.toThrow(
         BadRequestException,
+      );
+    });
+
+    it('successfully revokes session, increments tokenVersion and clears revokeToken', async () => {
+      const user = { ...mockUser(), tokenVersion: 1, revokeToken: 'valid-revoke-token' };
+      userRepo.findOne.mockResolvedValue(user);
+      userRepo.save.mockImplementation(async (u) => u);
+
+      const res = await service.revokeSession('valid-revoke-token');
+      expect(res.message).toBe('All sessions have been revoked. Please log in again.');
+      expect(userRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tokenVersion: 2,
+          revokeToken: null,
+        }),
+      );
+    });
+  });
+
+  describe('rejectKyc', () => {
+    it('rejects KYC submission and emits email.notification with type kyc_rejected and reason', async () => {
+      const user = { ...mockUser(), id: 'user-kyc-1', email: 'applicant@example.com', kycStatus: 'pending' };
+      const submission = { id: 'sub-1', userId: 'user-kyc-1', status: 'pending', rejectionReason: null };
+      userRepo.findOne.mockResolvedValue(user);
+      kycRepo.findOne.mockResolvedValue(submission);
+      userRepo.save.mockImplementation(async (u) => u);
+      kycRepo.save.mockImplementation(async (s) => s);
+
+      const res = await service.rejectKyc('user-kyc-1', 'admin-1', 'Document expired');
+      expect(res.kycStatus).toBe('rejected');
+      expect(user.kycStatus).toBe('rejected');
+      expect(submission.status).toBe('rejected');
+      expect(submission.rejectionReason).toBe('Document expired');
+      expect(adminActionRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'reject_kyc',
+          reason: 'Document expired',
+        }),
       );
     });
   });

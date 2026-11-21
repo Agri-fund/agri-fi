@@ -2,6 +2,7 @@
   "name": "agri-fi",
   "private": true,
   "scripts": {
+    "deploy:contracts": "ts-node scripts/deploy-soroban-contracts.ts",
     "check:alert-map": "node scripts/check-alert-map.mjs",
     "doc:diagram": "node scripts/generate-schema-diagram.mjs",
     "test": "npm run test:backend && npm run test:frontend",

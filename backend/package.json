@@ -27,6 +27,7 @@
     "dotenv-vault:pull": "dotenv-vault pull",
     "dotenv-vault:keys": "dotenv-vault keys",
     "dotenv-vault:open": "dotenv-vault open",
+    "deploy:contracts": "ts-node scripts/deploy-soroban-contracts.ts",
     "db:seed": "ts-node scripts/seed.ts",
     "db:seed:batch": "ts-node -r tsconfig-paths/register scripts/batch-seed.ts",
     "queue:retry-dlq": "ts-node scripts/retry-dlq.ts",
