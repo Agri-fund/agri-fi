@@ -8,6 +8,7 @@ import {
   NotificationEntity,
   NotificationType,
 } from './entities/notification.entity';
+import { WatchlistActivityType } from '../watchlist/entities/watchlist.entity';
 
 import { Optional, Inject } from '@nestjs/common';
 import {
@@ -155,6 +156,58 @@ export class NotificationsService {
         thresholdAmount: params.thresholdAmount,
         currency,
         ...(params.metadataJson ?? {}),
+      },
+    });
+  }
+
+  /**
+   * Creates a notification for a change on a deal the user is watching.
+   * Used for funding milestones (50%/75%/100%), risk score changes and
+   * status changes on bookmarked deals.
+   */
+  async createWatchlistActivityNotification(params: {
+    userId: string;
+    tradeDealId: string;
+    activityType: WatchlistActivityType;
+    title: string;
+    message: string;
+    metadataJson?: Record<string, unknown>;
+  }): Promise<NotificationEntity> {
+    const linkUrl = `/deals/${params.tradeDealId}`;
+
+    this.logger.info(
+      {
+        userId: params.userId,
+        tradeDealId: params.tradeDealId,
+        activityType: params.activityType,
+      },
+      `Watchlist activity (${params.activityType}) for deal ${params.tradeDealId}`,
+    );
+
+    return this.createNotification({
+      userId: params.userId,
+      type: NotificationType.WATCHLIST_ACTIVITY,
+      title: params.title,
+      message: params.message,
+      linkUrl,
+      metadataJson: {
+        tradeDealId: params.tradeDealId,
+        activityType: params.activityType,
+        ...(params.metadataJson ?? {}),
+      },
+    });
+  }
+
+  /**
+   * Returns the number of unread watchlist activity notifications for a user.
+   * Powers the watchlist count badge in the navigation.
+   */
+  async getUnreadWatchlistCount(userId: string): Promise<number> {
+    return this.notificationRepo.count({
+      where: {
+        userId,
+        type: NotificationType.WATCHLIST_ACTIVITY,
+        notificationReadAt: IsNull(),
       },
     });
   }

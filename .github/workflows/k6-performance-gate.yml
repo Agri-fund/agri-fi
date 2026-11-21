@@ -8,6 +8,10 @@ on:
       - 'backend/**'
       - 'tests/load/**'
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   performance-gate:
     if: "!contains(github.event.pull_request.labels.*.name, 'skip-perf-gate') && !contains(github.event.pull_request.labels.*.name, 'infra-only')"
@@ -31,6 +35,101 @@ jobs:
         run: |
           mkdir -p test-results
           k6 run tests/load/k6-performance.js --summary-export=test-results/k6-summary.json
+
+      - name: Run Full Investor Journey Scenario
+        id: k6-investor-journey
+        run: |
+          mkdir -p test-results
+          k6 run tests/load/k6-investor-journey.js \
+            --summary-export=test-results/k6-investor-journey-summary.json
+
+      - name: Run Escrow Release Stress Scenario (50 concurrent releases)
+        id: k6-escrow-stress
+        run: |
+          mkdir -p test-results
+          k6 run tests/load/k6-escrow-stress.js \
+            --summary-export=test-results/k6-escrow-stress-summary.json
+
+      - name: Run Marketplace Browse Scenario (200 VU with filters)
+        id: k6-marketplace-browse
+        run: |
+          mkdir -p test-results
+          k6 run tests/load/k6-marketplace-browse.js \
+            --summary-export=test-results/k6-marketplace-browse-summary.json
+
+      - name: Enforce p95 Thresholds
+        if: always()
+        run: |
+          node - <<'EOF'
+          const fs = require('fs');
+          const path = require('path');
+
+          const READ_P95_MS = 500;
+          const WRITE_P95_MS = 2000;
+
+          const summaries = [
+            'test-results/k6-summary.json',
+            'test-results/k6-investor-journey-summary.json',
+            'test-results/k6-escrow-stress-summary.json',
+            'test-results/k6-marketplace-browse-summary.json',
+          ];
+
+          const readPatterns = [/^http_req_duration\{.*(GET|browse|portfolio|marketplace|deals).*\}$/i, /^http_req_duration\{.*status.*\}$/i];
+          const writePatterns = [/^http_req_duration\{.*(POST|PUT|PATCH|invest|register|kyc|escrow|release).*\}$/i];
+
+          const isRead = (name) => readPatterns.some((re) => re.test(name));
+          const isWrite = (name) => writePatterns.some((re) => re.test(name));
+
+          let failures = [];
+          let checked = 0;
+
+          for (const file of summaries) {
+            if (!fs.existsSync(file)) {
+              console.log(`::warning::Summary file not found: ${file}`);
+              continue;
+            }
+            let data;
+            try {
+              data = JSON.parse(fs.readFileSync(file, 'utf8'));
+            } catch (err) {
+              console.log(`::warning::Could not parse ${file}: ${err.message}`);
+              continue;
+            }
+            const metrics = data.metrics || {};
+            for (const [name, metric] of Object.entries(metrics)) {
+              if (!name.startsWith('http_req_duration')) continue;
+              const values = metric.values || {};
+              const p95 = values['p(95)'];
+              if (typeof p95 !== 'number') continue;
+
+              let limit = null;
+              let kind = null;
+              if (isWrite(name)) {
+                limit = WRITE_P95_MS;
+                kind = 'write';
+              } else if (isRead(name)) {
+                limit = READ_P95_MS;
+                kind = 'read';
+              }
+              if (limit === null) continue;
+
+              checked++;
+              if (p95 > limit) {
+                failures.push(`${file} :: ${name} (${kind}) p95=${p95.toFixed(1)}ms exceeds ${limit}ms`);
+              }
+            }
+          }
+
+          console.log(`Checked ${checked} p95 metric(s) against thresholds.`);
+          if (failures.length > 0) {
+            for (const f of failures) {
+              console.log(`::error::${f}`);
+            }
+            console.error(`\n${failures.length} threshold breach(es) detected.`);
+            process.exit(1);
+          }
+          console.log('All p95 thresholds satisfied.');
+          EOF
 
       - name: Archive Performance Summary Artifact
         # Also upload when k6 failed: the summary matters most when a threshold was breached.

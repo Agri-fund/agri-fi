@@ -1,4 +1,4 @@
-import { Module, forwardRef } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
@@ -35,6 +35,7 @@ import { EmailSequenceModule } from '../email-sequence/email-sequence.module';
 import { KycRulesModule } from '../kyc-rules/kyc-rules.module';
 import { BehavioralProfile } from '../database/entities/behavioral-profile.entity';
 import { BehavioralRiskService } from './behavioral-risk.service';
+import { TokenModule } from './token.module';
 
 @Module({
   imports: [
@@ -58,7 +59,8 @@ import { BehavioralRiskService } from './behavioral-risk.service';
     EmailSequenceModule,
     SettlementModule,
     DocumentsModule,
-    forwardRef(() => KycRulesModule),
+    KycRulesModule,
+    TokenModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

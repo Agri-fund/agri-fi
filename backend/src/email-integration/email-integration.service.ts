@@ -216,6 +216,32 @@ export class EmailIntegrationService {
     return due.length;
   }
 
+  /** Sends the price-alert email to the alert owner when a threshold is crossed. */
+  async sendPriceAlertEmail(
+    userId: string,
+    alert: { commodity: string; thresholdPrice: number; direction: 'ABOVE' | 'BELOW' },
+    currentPrice: number,
+  ): Promise<EmailMessage | null> {
+    const directionLabel = alert.direction === 'ABOVE' ? 'risen above' : 'fallen below';
+    return this.queue({
+      userId,
+      category: 'alert',
+      template: 'price_alert',
+      sendAt: new Date(),
+      allowReply: true,
+      vars: {
+        commodity: alert.commodity,
+        direction: alert.direction,
+        directionLabel,
+        thresholdPrice: alert.thresholdPrice,
+        currentPrice,
+        triggeredAt: new Date().toUTCString(),
+        linkUrl: `${APP_URL()}/market/${encodeURIComponent(alert.commodity)}`,
+      },
+      context: { commodity: alert.commodity, thresholdPrice: alert.thresholdPrice, direction: alert.direction, currentPrice },
+    });
+  }
+
   /** Email + in-platform notification in one call. */
   async notify(userId: string, category: EmailCategory, title: string, message: string, linkUrl?: string, actionRequired = false) {
     if (['payment', 'kyc', 'deal', 'alert'].includes(category)) {
