@@ -24,6 +24,26 @@ export const validateEnvironment = (config: Record<string, unknown>) => {
       then: Joi.boolean().truthy('true').valid(true).required(),
       otherwise: Joi.boolean().default(true),
     }),
+    PQC_ENABLED: Joi.boolean().truthy('true').falsy('false').default(false),
+    PQC_KEM_ALGORITHM: Joi.string()
+      .trim()
+      .valid('ML-KEM-768', 'ML-KEM-1024')
+      .default('ML-KEM-768'),
+    PQC_SIGNATURE_ALGORITHM: Joi.string()
+      .trim()
+      .valid('ML-DSA-65', 'ML-DSA-87')
+      .default('ML-DSA-65'),
+    PQC_HYBRID_MODE: Joi.boolean().truthy('true').falsy('false').default(true),
+    PQC_FALLBACK_TO_CLASSICAL: Joi.boolean()
+      .truthy('true')
+      .falsy('false')
+      .default(false),
+    PQC_KEY_ROTATION_DAYS: Joi.number().integer().positive().default(90),
+    PQC_KEY_STORE_PATH: Joi.string().trim().when('PQC_ENABLED', {
+      is: true,
+      then: Joi.required(),
+      otherwise: Joi.optional(),
+    }),
   }).unknown(true); // Allow other env vars that aren't validated
 
   const { error, value } = schema.validate(config, { abortEarly: false });
