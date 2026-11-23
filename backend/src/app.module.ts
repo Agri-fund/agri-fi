@@ -73,6 +73,11 @@ import { DataRetentionModule } from './data-retention/data-retention.module';
 import { TradersModule } from './traders/traders.module';
 import { DealSummaryModule } from './deal-summary/deal-summary.module';
 
+const conditionalModules = [];
+if (process.env.NODE_ENV !== 'test') {
+  conditionalModules.push(StellarModule, QueueProcessorModule);
+}
+
 @Module({
   controllers: [AppController, PublicController],
   imports: [
@@ -102,7 +107,7 @@ import { DealSummaryModule } from './deal-summary/deal-summary.module';
     DatabaseModule,
     AuthModule,
     ReferralModule,
-    StellarModule,
+    ...conditionalModules,
     ShipmentsModule,
     TradeDealsModule,
     UsersModule,
@@ -111,7 +116,6 @@ import { DealSummaryModule } from './deal-summary/deal-summary.module';
     StorageModule,
     DocumentsModule,
     NotificationsModule,
-    QueueProcessorModule,
     OutboxModule,
     HealthModule,
     TerminusModule,
