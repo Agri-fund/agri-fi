@@ -37,8 +37,10 @@ export interface IdempotencyAcquireResult {
  * message payload (e.g. "idempotency:deal.publish:<dealId>") — NOT the
  * RabbitMQ delivery tag (which changes on redelivery).
  *
- * Falls back to a no-op (always acquired) when REDIS_URL is not configured,
- * so local dev without Redis keeps working.
+ * Redis is mandatory in production: if REDIS_URL is missing or Redis cannot be
+ * reached at startup, the service throws so that duplicate protection is never
+ * silently disabled for escrow releases or payment distributions. The no-op
+ * fallback is restricted to non-production environments for local development.
  */
 @Injectable()
 export class IdempotencyService implements OnModuleInit, OnModuleDestroy {
@@ -52,18 +54,32 @@ export class IdempotencyService implements OnModuleInit, OnModuleDestroy {
     (this.logger as any).setContext(IdempotencyService.name);
   }
 
+  private isProduction(): boolean {
+    const nodeEnv = this.config.get<string>('NODE_ENV') ?? process.env.NODE_ENV;
+    return nodeEnv === 'production';
+  }
+
   async onModuleInit(): Promise<void> {
     const redisUrl = this.config.get<string>('REDIS_URL', '').trim();
     if (!redisUrl) {
+      if (this.isProduction()) {
+        this.logger.error(
+          'REDIS_URL is required in production — refusing to disable idempotency protection',
+        );
+        throw new Error(
+          'REDIS_URL must be configured in production for IdempotencyService',
+        );
+      }
       this.logger.warn(
         'REDIS_URL is not set — IdempotencyService running in no-op mode (no duplicate protection)',
       );
       return;
     }
 
-    this.client = createClient({ url: redisUrl }) as RedisClientType;
+    const client = createClient({ url: redisUrl }) as RedisClientType;
+    this.client = client;
 
-    this.client.on('error', (err: Error) => {
+    client.on('error', (err: Error) => {
       this.logger.error(
         { error: err.message },
         'IdempotencyService Redis client error',
@@ -71,15 +87,35 @@ export class IdempotencyService implements OnModuleInit, OnModuleDestroy {
     });
 
     try {
-      await this.client.connect();
+      await client.connect();
       this.connected = true;
       this.logger.info('IdempotencyService connected to Redis');
     } catch (err: any) {
+      try {
+        client.disconnect();
+      } catch (disconnectErr: any) {
+        this.logger.warn(
+          { error: disconnectErr.message },
+          'IdempotencyService Redis client disconnect error during failed connect',
+        );
+      }
+      this.client = null;
+      this.connected = false;
+
       this.logger.error(
         { error: err.message },
-        'IdempotencyService failed to connect to Redis — running in no-op mode',
+        'IdempotencyService failed to connect to Redis',
       );
-      this.client = null;
+
+      if (this.isProduction()) {
+        throw new Error(
+          `IdempotencyService cannot start without Redis in production: ${err.message}`,
+        );
+      }
+
+      this.logger.warn(
+        'Continuing without duplicate protection — no-op mode is only allowed outside production',
+      );
     }
   }
 
