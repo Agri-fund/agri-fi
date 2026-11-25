@@ -9,6 +9,7 @@ import {
   CreateWebhookSubscriptionDto,
   UpdateWebhookSubscriptionDto,
 } from './dto/create-webhook-subscription.dto';
+import { WebhookDeliveryService } from './webhook-delivery.service';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
 
 @Injectable()
@@ -19,6 +20,7 @@ export class WebhooksService {
     @InjectRepository(WebhookSubscription)
     private readonly subscriptionRepo: Repository<WebhookSubscription>,
     private readonly httpService: HttpService,
+    private readonly deliveryService: WebhookDeliveryService,
   ) {}
 
   async createSubscription(
@@ -76,40 +78,16 @@ export class WebhooksService {
     milestone: number,
     actualPct: number,
   ): Promise<void> {
-    const subscriptions = await this.subscriptionRepo.find({
-      where: { isActive: true },
+    await this.deliveryService.enqueue('deal.funding_progress', {
+      dealId: deal.id,
+      tokenSymbol: deal.tokenSymbol,
+      commodity: deal.commodity,
+      totalValue: Number(deal.totalValue),
+      totalInvested: Number(deal.totalInvested),
+      milestone,
+      actualPercentage: Number(actualPct.toFixed(2)),
+      status: deal.status,
     });
-
-    const eventSubscribers = subscriptions.filter(
-      (sub) =>
-        sub.events.includes('deal.funding_progress') ||
-        sub.events.includes('*'),
-    );
-
-    if (eventSubscribers.length === 0) {
-      return;
-    }
-
-    const payloadObj = {
-      event: 'deal.funding_progress',
-      timestamp: new Date().toISOString(),
-      data: {
-        dealId: deal.id,
-        tokenSymbol: deal.tokenSymbol,
-        commodity: deal.commodity,
-        totalValue: Number(deal.totalValue),
-        totalInvested: Number(deal.totalInvested),
-        milestone,
-        actualPercentage: Number(actualPct.toFixed(2)),
-        status: deal.status,
-      },
-    };
-
-    const payloadString = JSON.stringify(payloadObj);
-
-    for (const sub of eventSubscribers) {
-      await this.sendPayloadWithRetry(sub, payloadString);
-    }
   }
 
   /**

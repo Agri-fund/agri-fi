@@ -101,3 +101,4 @@ backend/test/CONCURRENCY_TEST_REPORT.md
 # Local env files (explicit paths for clarity)
 backend/.env
 frontend/.env.local
+storybook-static/

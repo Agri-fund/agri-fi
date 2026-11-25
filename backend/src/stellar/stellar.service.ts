@@ -48,10 +48,12 @@ import {
 import { HorizonFailoverClient } from './horizon-failover';
 import { InjectMetric } from '@willsoto/nestjs-prometheus';
 import { Counter, Histogram } from 'prom-client';
+import { TracingService } from '../tracing/tracing.service';
 
 export const SEQUENCE_REDIS_CLIENT = 'SEQUENCE_REDIS_CLIENT';
 const SEQUENCE_CACHE_TTL = 5; // seconds
 export const TIMEBOUNDS_SECONDS = 300;
+const ACCOUNT_BALANCE_CACHE_TTL_MS = 30_000;
 
 /** TTL for terminal transaction statuses (success / failed) in Redis — 1 hour. */
 export const TX_STATUS_TERMINAL_TTL_SECONDS = 3600;
@@ -109,6 +111,11 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     { seq: string; expiresAt: number }
   >;
   private readonly enableSequenceCache: boolean;
+  private readonly accountBalanceCache = new Map<
+    string,
+    { balance: string; expiresAt: number }
+  >();
+  private readonly accountBalanceRequests = new Map<string, Promise<string>>();
 
   constructor(
     private readonly config: ConfigService,
@@ -144,6 +151,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     @Optional()
     @InjectMetric('escrow_stellar_tx_failures_total')
     private readonly stellarTxFailures?: Counter<string>,
+    @Optional() private readonly tracing?: TracingService,
   ) {
     this.localSequenceCache = new Map();
     this.enableSequenceCache = true;
@@ -163,7 +171,11 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       .filter(Boolean);
     const network = config.get<string>('STELLAR_NETWORK', 'testnet');
 
-    this.horizonClient = new HorizonFailoverClient(horizonUrls, this.logger, {});
+    this.horizonClient = new HorizonFailoverClient(
+      horizonUrls,
+      this.logger,
+      {},
+    );
     this.networkPassphrase =
       network === 'mainnet' ? Networks.PUBLIC : Networks.TESTNET;
 
@@ -299,13 +311,16 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     txBuilder.addMemo(Memo.text(`claim:${claimId.slice(0, 22)}`));
     const transaction = txBuilder.build();
     transaction.sign(escrowKeypair);
-    const result = await this.submitWithRetrySigned(transaction, [escrowKeypair]);
+    const result = await this.submitWithRetrySigned(transaction, [
+      escrowKeypair,
+    ]);
     return (result as any).hash as string;
   }
 
-  private getTransactionTimebounds(
-    maxSeconds = TIMEBOUNDS_SECONDS,
-  ): { minTime: number; maxTime: number } {
+  private getTransactionTimebounds(maxSeconds = TIMEBOUNDS_SECONDS): {
+    minTime: number;
+    maxTime: number;
+  } {
     const now = Math.floor(Date.now() / 1000);
     return { minTime: 0, maxTime: now + maxSeconds };
   }
@@ -731,7 +746,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         }),
       )
       .addMemo(Memo.text(`escrow:${tradeDealId.slice(0, 20)}`))
-      
+
       .build();
 
     tx.sign(this.platformKeypair);
@@ -752,7 +767,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
             asset: this.usdcAsset,
           }),
         )
-        
+
         .build();
 
       trustlineTx.sign(escrowKeypair);
@@ -807,7 +822,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         }),
       )
       .addMemo(Memo.text('acct-merge-recovery'))
-      
+
       .build();
 
     tx.sign(this.platformKeypair);
@@ -828,7 +843,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
             asset: this.usdcAsset,
           }),
         )
-        
+
         .build();
 
       trustlineTx.sign(replacementKeypair);
@@ -889,7 +904,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
           setFlags: 10 as any,
         }),
       )
-      
+
       .build();
 
     fundIssuerTx.sign(this.platformKeypair, issuerKeypair);
@@ -915,7 +930,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
           limit: tokenCount.toString(),
         }),
       )
-      
+
       .build();
 
     trustlineTx.sign(escrowKeypair);
@@ -938,7 +953,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
           amount: tokenCount.toString(),
         }),
       )
-      
+
       .build();
 
     mintTx.sign(issuerKeypair);
@@ -1001,7 +1016,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
           amount: amountUSD,
         }),
       )
-      
+
       .build();
 
     // Note: in production the investor signs this via their wallet (Freighter/Albedo)
@@ -1051,7 +1066,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
           amount: tokenAmount.toFixed(7),
         }),
       )
-      
+
       .build();
 
     tx.sign(escrowKeypair);
@@ -1416,10 +1431,9 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
    * Uses stellar.expert — network-aware (testnet vs public).
    */
   getVerificationUrl(txHash: string): string {
-    return (this.stellarQueriesService ?? new StellarQueriesService()).getVerificationUrl(
-      this.networkPassphrase,
-      txHash,
-    );
+    return (
+      this.stellarQueriesService ?? new StellarQueriesService()
+    ).getVerificationUrl(this.networkPassphrase, txHash);
   }
 
   /**
@@ -1512,13 +1526,13 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
     let stellarMemo: Memo;
 
     if (memoType === 'hash') {
-const anchorsService = this.anchorsService ?? new AnchorsService();
-    const hash = anchorsService.buildHashMemo(memo);
-    stellarMemo = Memo.hash(hash.toString('hex'));
-  } else {
-    const memoText = (this.anchorsService ?? new AnchorsService()).truncateMemoText(
-      memo,
-    );
+      const anchorsService = this.anchorsService ?? new AnchorsService();
+      const hash = anchorsService.buildHashMemo(memo);
+      stellarMemo = Memo.hash(hash.toString('hex'));
+    } else {
+      const memoText = (
+        this.anchorsService ?? new AnchorsService()
+      ).truncateMemoText(memo);
       stellarMemo = Memo.text(memoText);
     }
 
@@ -1673,6 +1687,38 @@ const anchorsService = this.anchorsService ?? new AnchorsService();
   }
 
   /**
+   * Returns the wallet's native XLM balance, caching Horizon results briefly
+   * to avoid repeated account lookups during investment submission.
+   */
+  async getAccountBalance(walletAddress: string): Promise<string> {
+    const cached = this.accountBalanceCache.get(walletAddress);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.balance;
+    }
+
+    const pending = this.accountBalanceRequests.get(walletAddress);
+    if (pending) {
+      return pending;
+    }
+
+    const request = this.server
+      .loadAccount(walletAddress)
+      .then((account) => {
+        const balance =
+          account.balances.find((entry) => entry.asset_type === 'native')
+            ?.balance ?? '0';
+        this.accountBalanceCache.set(walletAddress, {
+          balance,
+          expiresAt: Date.now() + ACCOUNT_BALANCE_CACHE_TTL_MS,
+        });
+        return balance;
+      })
+      .finally(() => this.accountBalanceRequests.delete(walletAddress));
+    this.accountBalanceRequests.set(walletAddress, request);
+    return request;
+  }
+
+  /**
    * Calculates the minimum XLM reserve required for an account.
    * Formula: base_reserve = (2 + num_trustlines + num_signers) * 0.5 XLM
    */
@@ -1774,11 +1820,9 @@ const anchorsService = this.anchorsService ?? new AnchorsService();
       )
       .addMemo(
         Memo.text(
-          (this.investmentTxService ?? new InvestmentTxService()).buildInvestmentMemo(
-            assetCode,
-            tokenAmount,
-            investmentMemo,
-          ),
+          (
+            this.investmentTxService ?? new InvestmentTxService()
+          ).buildInvestmentMemo(assetCode, tokenAmount, investmentMemo),
         ),
       );
 
@@ -1903,8 +1947,7 @@ const anchorsService = this.anchorsService ?? new AnchorsService();
           path: pathResult.path,
         }),
       )
-      .addMemo(Memo.text(`path:${assetCode}:${tokenAmount}`))
-      ;
+      .addMemo(Memo.text(`path:${assetCode}:${tokenAmount}`));
 
     this.addComplianceDataOperations(txBuilder, complianceData);
 
@@ -2099,7 +2142,7 @@ const anchorsService = this.anchorsService ?? new AnchorsService();
         }),
       )
       .addMemo(Memo.text(`sell:${tradeTokenCode}`))
-      
+
       .build();
 
     this.logger.info(
@@ -2406,7 +2449,11 @@ const anchorsService = this.anchorsService ?? new AnchorsService();
     const MAX_RETRIES = 3;
     let currentTx = tx;
 
-    for (let attempt = 1; attempt <= STELLAR_RETRY_POLICY.maxAttempts; attempt++) {
+    for (
+      let attempt = 1;
+      attempt <= STELLAR_RETRY_POLICY.maxAttempts;
+      attempt++
+    ) {
       try {
         return await this.server.submitTransaction(currentTx);
       } catch (err: any) {
@@ -2759,7 +2806,7 @@ const anchorsService = this.anchorsService ?? new AnchorsService();
           flags: { authorized: !freeze },
         }),
       )
-      
+
       .build();
 
     tx.sign(issuerKeypair);
@@ -2827,7 +2874,7 @@ const anchorsService = this.anchorsService ?? new AnchorsService();
         }),
       )
       .addMemo(Memo.text(`cleanup:${assetCode}`))
-      
+
       .build();
 
     tx.sign(investorKeypair);
@@ -3081,5 +3128,32 @@ const anchorsService = this.anchorsService ?? new AnchorsService();
         hasMore,
       },
     };
+  }
+
+  /**
+   * Wraps Horizon API calls with distributed tracing.
+   * Traces loadAccount, strictSendPaths and other Horizon operations.
+   */
+  private async callWithTracing<T>(
+    operationName: string,
+    publicKeyOrContext?: string,
+    fn?: () => Promise<T>,
+  ): Promise<T> {
+    // Handle both direct Horizon calls and internal wrapping
+    const tracingFn = fn || (operationName as any as () => Promise<T>);
+
+    if (!this.tracing) {
+      return tracingFn();
+    }
+
+    const attributes: Record<string, string | number | boolean | undefined> = {
+      'stellar.operation': operationName,
+    };
+
+    if (publicKeyOrContext && typeof publicKeyOrContext === 'string') {
+      attributes['stellar.account_id'] = publicKeyOrContext;
+    }
+
+    return this.tracing.traceHorizonCall(operationName, attributes, tracingFn);
   }
 }

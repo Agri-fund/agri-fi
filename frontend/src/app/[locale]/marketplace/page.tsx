@@ -1,51 +1,55 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { getDealsByIds, getOpenDeals, Deal } from "@/lib/api";
+import { getDealsByIds, getDeals, Deal } from "@/lib/api";
 import MarketplaceSkeleton from "@/components/marketplace/MarketplaceSkeleton";
-import Pagination from "@/components/ui/Pagination";
 import DealCard from "@/components/marketplace/DealCard";
 import DealComparison from "@/components/marketplace/DealComparison";
+import SavedSearchesPanel from "@/components/marketplace/SavedSearchesPanel";
 import { useCurrencyFormat } from "@/hooks/useCurrencyFormat";
+import {
+  COMMODITIES,
+  DEFAULT_FILTERS,
+  DURATION_OPTIONS,
+  Filters,
+  RISK_OPTIONS,
+  SORT_OPTIONS,
+  STATUS_OPTIONS,
+  ApiFilters,
+  buildQuery,
+  fromApiFilters,
+  parseFilters,
+  toApiFilters,
+  validateFilters,
+} from "@/lib/deal-filters";
 
 const LIMIT = 12;
 const SEARCH_DEBOUNCE_MS = 300;
-const SKELETON_FALLBACK_COUNT = 6;
-
-function parsePageParam(raw: string | null): number {
-  const parsed = raw ? Number.parseInt(raw, 10) : NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
-}
-
-const SORT_OPTIONS = [
-  { value: "created_at", label: "Launch Date" },
-  { value: "roi", label: "Yield Rate" },
-  { value: "total_value", label: "Total Value" },
-  { value: "progress", label: "Progress" },
-] as const;
 
 function MarketplaceContent() {
   const { formatCurrency } = useCurrencyFormat();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-
-  const urlPage = parsePageParam(searchParams.get("page"));
-  const urlSearch = searchParams.get("q") ?? "";
-  const urlSortBy = searchParams.get("sortBy") ?? "created_at";
-  const urlSortOrder = (searchParams.get("sortOrder") ?? "DESC") as
-    | "ASC"
-    | "DESC";
   const compareParam = searchParams.get("compare");
 
+  const [filters, setFilters] = useState<Filters>(() => parseFilters(searchParams));
+  const [searchInput, setSearchInput] = useState(filters.q);
+  const [page, setPage] = useState(1);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const [reloadNonce, setReloadNonce] = useState(0);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [comparisonDeals, setComparisonDeals] = useState<Deal[]>([]);
-  const [hydrated, setHydrated] = useState(false);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+
+  const filterErrors = useMemo(() => validateFilters(filters), [filters]);
+  const hasMore = deals.length < total;
 
   // Restore comparison deals independently of the current marketplace page.
   useEffect(() => {
@@ -99,67 +103,87 @@ function MarketplaceContent() {
     };
   }, [compareParam]);
 
+  // Debounce the free-text box into the filters.
   useEffect(() => {
-    setHydrated(true);
-    if (typeof window === "undefined") return;
-
-    const hasUrlFilters = searchParams.toString().length > 0;
-    if (!hasUrlFilters) {
-      try {
-        const raw = sessionStorage.getItem(SESSION_KEY);
-        if (raw) {
-          const saved = JSON.parse(raw) as { filters?: Filters; page?: number };
-          if (saved.filters) setFilters(saved.filters);
-          if (saved.page) setPage(saved.page);
-          if (saved.filters?.q) setSearchInput(saved.filters.q);
-        }
-      } catch {
-        // Ignore corrupt session state.
-      }
-    }
-  }, [searchParams]);
-
-  useEffect(() => {
-    if (!hydrated) return;
     const timer = setTimeout(() => {
-      setFilters((current) => ({ ...current, q: searchInput }));
-      setPage(1);
+      setFilters((current) =>
+        current.q === searchInput ? current : { ...current, q: searchInput },
+      );
     }, SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [searchInput, hydrated]);
+  }, [searchInput]);
 
+  // Any filter change restarts the list from page 1.
+  const filtersKey = JSON.stringify(filters);
   useEffect(() => {
-    if (!hydrated) return;
-    const params = new URLSearchParams(buildQuery(filters, page));
+    setPage(1);
+  }, [filtersKey]);
+
+  // Keep the URL shareable; the page number is not part of it (infinite scroll).
+  useEffect(() => {
+    const params = new URLSearchParams(buildQuery(filters, 1));
     if (compareParam) params.set("compare", compareParam);
     const query = params.toString();
-    router.replace(query ? `${pathname}?${query}` : pathname, {
-      scroll: false,
-    });
-    try {
-      sessionStorage.setItem(SESSION_KEY, JSON.stringify({ filters, page }));
-    } catch {
-      // Session persistence is best-effort.
-    }
-  }, [filters, page, hydrated, pathname, router, compareParam]);
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtersKey, compareParam, pathname, router]);
 
+  // Fetch the current page; page 1 replaces the list, later pages append.
   useEffect(() => {
+    if (filterErrors.length > 0) {
+      setDeals([]);
+      setTotal(0);
+      setLoading(false);
+      return;
+    }
     let active = true;
-    setLoading(true);
-    getOpenDeals(urlPage, LIMIT, urlSortBy, urlSortOrder)
+    if (page === 1) setLoading(true);
+    else setLoadingMore(true);
+    setLoadError(false);
+    getDeals(buildQuery(filters, page, LIMIT))
       .then((res) => {
         if (!active) return;
-        setDeals(res.data);
+        setDeals((current) => {
+          if (page === 1) return res.data;
+          const known = new Set(current.map((d) => d.id));
+          return [...current, ...res.data.filter((d) => !known.has(d.id))];
+        });
         setTotal(res.total);
       })
-      .catch(() => setDeals([]))
-      .finally(() => setLoading(false));
+      .catch(() => {
+        if (!active) return;
+        setLoadError(true);
+        if (page === 1) setDeals([]);
+      })
+      .finally(() => {
+        if (!active) return;
+        setLoading(false);
+        setLoadingMore(false);
+      });
     return () => {
       active = false;
     };
-  }, [urlPage, urlSortBy, urlSortOrder]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtersKey, page, reloadNonce]);
 
-  const totalPages = Math.max(1, Math.ceil(total / LIMIT));
+  // Infinite scroll: load the next page when the sentinel scrolls into view.
+  useEffect(() => {
+    const node = sentinelRef.current;
+    if (!node || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0]?.isIntersecting && hasMore && !loading && !loadingMore && !loadError) {
+        setPage((p) => p + 1);
+      }
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [hasMore, loading, loadingMore, loadError]);
+
+  const applyApiFilters = useCallback((api: ApiFilters) => {
+    const next = fromApiFilters(api);
+    setSearchInput(next.q);
+    setFilters(next);
+  }, []);
 
   const activeChips = useMemo(() => {
     const chips: Array<{ key: string; label: string; onRemove: () => void }> =
@@ -271,24 +295,7 @@ function MarketplaceContent() {
     });
   };
 
-  const handleSortChange = (sortBy: string) => {
-    const params = new URLSearchParams(searchParams.toString());
-    params.set("sortBy", sortBy);
-    const query = params.toString();
-    router.replace(query ? `${pathname}?${query}` : pathname, {
-      scroll: false,
-    });
-  };
-
-  const toggleSortOrder = () => {
-    const newOrder = urlSortOrder === "ASC" ? "DESC" : "ASC";
-    const params = new URLSearchParams(searchParams.toString());
-    params.set("sortOrder", newOrder);
-    const query = params.toString();
-    router.replace(query ? `${pathname}?${query}` : pathname, {
-      scroll: false,
-    });
-  };
+  const clearSearch = () => setSearchInput("");
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -352,75 +359,6 @@ function MarketplaceContent() {
               aria-label="Search deals"
             />
           </div>
-
-          {/* Sort dropdown */}
-          <div className="relative">
-            <select
-              className="input pr-8 appearance-none cursor-pointer"
-              value={urlSortBy}
-              onChange={(e) => handleSortChange(e.target.value)}
-              aria-label="Sort deals by"
-            >
-              {SORT_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={2}
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M19 9l-7 7-7-7"
-                />
-              </svg>
-            </span>
-          </div>
-
-          {/* Sort order toggle */}
-          <button
-            onClick={toggleSortOrder}
-            className="btn-secondary text-sm px-4 flex items-center gap-2"
-            aria-label={`Sort ${urlSortOrder === "ASC" ? "ascending" : "descending"}`}
-          >
-            {urlSortOrder === "ASC" ? (
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={2}
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"
-                />
-              </svg>
-            ) : (
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={2}
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M3 4h13M3 8h9m-9 4h9m5-4v12m0 0l-4-4m4 4l4-4"
-                />
-              </svg>
-            )}
-            {urlSortOrder}
-          </button>
 
           {searchInput && (
             <button
@@ -675,6 +613,13 @@ function MarketplaceContent() {
                 </select>
               </div>
             </div>
+
+            <SavedSearchesPanel
+              filters={toApiFilters(filters)}
+              total={total}
+              loading={loading}
+              onApply={applyApiFilters}
+            />
           </aside>
 
           <main>
@@ -732,11 +677,26 @@ function MarketplaceContent() {
               </div>
             )}
 
-            <Pagination
-              page={page}
-              totalPages={totalPages}
-              onChange={setPage}
-            />
+            {filterErrors.length > 0 && (
+              <p className="mt-4 text-sm text-red-600" role="alert">
+                {filterErrors.join(" ")}
+              </p>
+            )}
+            {loadError && (
+              <p className="mt-4 text-sm text-red-600" role="alert">
+                Could not load deals.{" "}
+                <button className="underline" onClick={() => setReloadNonce((n) => n + 1)}>
+                  Retry
+                </button>
+              </p>
+            )}
+            {loadingMore && <MarketplaceSkeleton count={3} />}
+            <div ref={sentinelRef} aria-hidden="true" className="h-8" />
+            {!hasMore && deals.length > 0 && (
+              <p className="mt-2 text-center text-xs text-slate-400">
+                You have seen all {total} deals.
+              </p>
+            )}
           </main>
         </div>
         <DealComparison

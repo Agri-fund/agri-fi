@@ -96,3 +96,30 @@ export class TracingService {
     });
   }
 }
+
+  /**
+   * Traces a Stellar/Horizon API call with custom attributes.
+   * Use this for operations like loadAccount, strictSendPaths, etc.
+   */
+  async traceHorizonCall<T>(
+    operationName: string,
+    attributes: Record<string, string | number | boolean | undefined>,
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    return this.withSpan(
+      `stellar.horizon.${operationName}`,
+      {
+        kind: SpanKind.CLIENT,
+        attributes: {
+          'rpc.system': 'stellar',
+          'rpc.method': operationName,
+          'rpc.service': 'horizon',
+          'db.system': 'stellar',
+          ...Object.fromEntries(
+            Object.entries(attributes).filter(([, v]) => v !== undefined)
+          ),
+        },
+      },
+      fn,
+    );
+  }

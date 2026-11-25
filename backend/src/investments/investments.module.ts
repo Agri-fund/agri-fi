@@ -23,6 +23,7 @@ import { InvestmentEventStore } from './investment-event-store.service';
 import { MarketplaceSettlementService } from './marketplace-settlement.service';
 import { MarketplaceSettlementController } from './marketplace-settlement.controller';
 import { TaxReportService } from './tax-report.service';
+import { TaxStatementConsumer } from './tax-statement.consumer';
 import { ReceiptService } from './receipt.service';
 import { AccreditationModule } from '../accreditation/accreditation.module';
 import { StressTestingModule } from '../stress-testing/stress-testing.module';
@@ -34,6 +35,7 @@ import { PortfolioVaRLimit } from './entities/portfolio-var-limit.entity';
 import { OracleFeed } from '../oracles/entities/oracle-feed.entity';
 import { OracleObservation } from '../oracles/entities/oracle-observation.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { KycModule } from '../kyc/kyc.module';
 
 @Module({
   imports: [
@@ -59,6 +61,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     AccreditationModule,
     StressTestingModule,
     NotificationsModule,
+    KycModule,
   ],
   controllers: [
     InvestmentsController,
@@ -66,6 +69,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     MarketplaceSettlementController,
     AutoInvestController,
     LiquidityRiskController,
+    TaxStatementConsumer,
   ],
   providers: [
     InvestmentsService,

@@ -28,6 +28,15 @@ interface PaginatedFailedPayments {
   meta: { total: number; page: number; limit: number; totalPages: number };
 }
 
+interface EddReview {
+  userId: string;
+  email: string;
+  country: string;
+  reason: string | null;
+  triggeredAt: string | null;
+  priority: 'high';
+}
+
 const ROLE_BADGE: Record<string, string> = {
   farmer: 'badge-green', investor: 'badge-purple', trader: 'badge-blue',
   admin: 'badge-gray', company_admin: 'badge-orange',
@@ -52,6 +61,8 @@ export default function AdminDashboard() {
   const [failedPaymentsLoading, setFailedPaymentsLoading] = useState(false);
   const [failedPaymentsPage, setFailedPaymentsPage] = useState(1);
   const [retryingId, setRetryingId] = useState<string | null>(null);
+  const [eddReviews, setEddReviews] = useState<EddReview[]>([]);
+  const [eddLoading, setEddLoading] = useState(false);
 
   // ── Bulk KYC State (#800) ─────────────────────────────────────────────────
   const [selectedKycIds, setSelectedKycIds] = useState<Set<string>>(new Set());
@@ -109,6 +120,25 @@ export default function AdminDashboard() {
     }
   }, [tab, failedPayments.length, failedPaymentsLoading, loadFailedPayments]);
 
+  const loadEddReviews = useCallback(async () => {
+    setEddLoading(true);
+    try {
+      const token = getStoredToken();
+      const res = await fetch('/api/admin/kyc/edd', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) setEddReviews(await res.json());
+      else toast('Failed to load the EDD review queue', 'error');
+    } catch {
+      toast('Could not fetch the EDD review queue', 'error');
+    }
+    setEddLoading(false);
+  }, [toast]);
+
+  useEffect(() => {
+    if (tab === 'kyc') loadEddReviews();
+  }, [tab, loadEddReviews]);
+
   const retryPayment = async (txId: string) => {
     setRetryingId(txId);
     try {
@@ -138,7 +168,11 @@ export default function AdminDashboard() {
       const res = await fetch(`/api/admin/kyc/${userId}/approve`, {
         method: 'POST', headers: { Authorization: `Bearer ${token}` },
       });
-      if (res.ok) { toast('KYC approved! ✅', 'success'); loadUsers(); }
+      if (res.ok) {
+        toast('KYC approved! ✅', 'success');
+        loadUsers();
+        loadEddReviews();
+      }
       else { const d = await res.json(); toast(d.message ?? 'Failed', 'error'); }
     } catch { toast('Request failed', 'error'); }
     setActionId(null);
@@ -377,6 +411,48 @@ export default function AdminDashboard() {
         {/* KYC review */}
         {tab === 'kyc' && (
           <div className="space-y-4">
+            <section className="card p-5 space-y-3">
+              <div className="flex items-center justify-between">
+                <h2 className="section-title">Enhanced Due Diligence Queue</h2>
+                <span className="badge-red">{eddReviews.length} high priority</span>
+              </div>
+              {eddLoading ? (
+                <div className="h-20 skeleton rounded-xl" />
+              ) : eddReviews.length === 0 ? (
+                <p className="muted">No enhanced due diligence reviews pending.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="table-head">
+                      <tr>
+                        {['Priority', 'Email', 'Country', 'Trigger', 'Since', 'Review'].map(h => (
+                          <th key={h} className="table-th">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {eddReviews.map(review => (
+                        <tr key={review.userId} className="table-row">
+                          <td className="table-td"><span className="badge-red">High</span></td>
+                          <td className="table-td font-medium">{review.email}</td>
+                          <td className="table-td">{review.country}</td>
+                          <td className="table-td">{review.reason ?? 'Enhanced due diligence required'}</td>
+                          <td className="table-td">{review.triggeredAt ? new Date(review.triggeredAt).toLocaleDateString() : '—'}</td>
+                          <td className="table-td">
+                            <button
+                              disabled={actionId === review.userId}
+                              onClick={() => approveKyc(review.userId)}
+                              className="btn-primary text-xs disabled:opacity-50">
+                              Approve documents
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
             <div className="flex items-center justify-between flex-wrap gap-3">
               <h2 className="section-title">Pending KYC Reviews</h2>
               <div className="flex items-center gap-2">

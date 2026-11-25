@@ -225,3 +225,21 @@ kubectl exec <backend-pod> -c pgbouncer -n agri-fi -- pgbouncer -R
 | `devops/prometheus/alerts.yaml` | Replaced `agri_fi_database_pool` group (fixed `datname`, metric, thresholds); added `agri_fi_pgbouncer_pool` group |
 | `devops/prometheus/prometheus.yml` | Added `postgres_exporter` scrape job |
 | `backend/.env.example` | `DATABASE_POOL_MIN` 5→2, `DATABASE_POOL_MAX` 50→5 with sizing comment |
+
+
+---
+
+## Redis Persistence Recommendations (#1307)
+
+### Overview
+Redis stores session state, SEP-10 authentication challenges, rate-limiting windows, and idempotency leases for escrow operations. An unexpected Redis restart without persistence causes active users to be logged out, rate-limit counters to reset, and idempotency leases to vanish (risking duplicate escrow release requests during restart windows).
+
+### Development Environment (Docker Compose)
+- **RDB Snapshots**: Enabled with `--save 60 1` (snapshot to `dump.rdb` every 60 seconds if at least 1 key changed).
+- **Persistent Volume**: Container data directory `/data` is mounted to named volume `redis_data` so datasets survive container recreation and restarts.
+
+### Production Environment Recommendations
+- **Hybrid Persistence (RDB + AOF)**: Production Redis clusters (e.g., AWS ElastiCache, managed Redis, or self-hosted) should configure both RDB snapshots and Append Only File (`appendonly yes`) with `appendfsync everysec` for minimal RPO and fast crash recovery.
+- **Eviction & Memory Cap**: Maintain bounded `maxmemory` (e.g. 75% of available node RAM) and eviction policy (`allkeys-lru` or `volatile-lru`).
+- **Monitoring & Alerts**: Continue monitoring via `redis_exporter` on metrics `redis_memory_used_bytes / redis_memory_max_bytes` with thresholds defined in `devops/prometheus/alerts.yaml`.
+- **High Availability**: Deploy Multi-AZ replication with automatic failover enabled.

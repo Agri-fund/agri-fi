@@ -10,6 +10,10 @@ import { ForbiddenException, NotFoundException, UnprocessableEntityException } f
 import { InvestmentsService } from './investments.service';
 import { InvestmentStatus } from './entities/investment.entity';
 
+jest.mock('../auth/entities/user.entity', () => ({
+  User: class MockUser {},
+}));
+
 function makePendingInvestment(overrides: Partial<Record<string, unknown>> = {}) {
   return {
     id: 'inv-1',
@@ -36,10 +40,12 @@ describe('InvestmentsService.requestCoolingOffCancel', () => {
       {} as any, // tradeDealRepo
       {} as any, // userRepo
       {} as any, // stellarService
+      {} as any, // pricesService
       {} as any, // dataSource
       {} as any, // queueService
       {} as any, // feeCalculatorService
       {} as any, // ofacCheckService
+      {} as any, // kycService
       undefined, // emailSequenceService
       eventStore as any,
       configService as any,

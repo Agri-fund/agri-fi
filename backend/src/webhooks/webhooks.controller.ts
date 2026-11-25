@@ -9,7 +9,10 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  Query,
 } from '@nestjs/common';
+import { WebhookDeliveryService } from './webhook-delivery.service';
+import type { WebhookDeliveryStatus } from './entities/webhook-delivery.entity';
 import { WebhooksService } from './webhooks.service';
 import {
   CreateWebhookSubscriptionDto,
@@ -21,7 +24,10 @@ import { AdminGuard } from '../auth/admin.guard';
 @Controller('admin/webhooks')
 @UseGuards(JwtAuthGuard, AdminGuard)
 export class WebhooksController {
-  constructor(private readonly webhooksService: WebhooksService) {}
+  constructor(
+    private readonly webhooksService: WebhooksService,
+    private readonly deliveryService: WebhookDeliveryService,
+  ) {}
 
   @Post()
   async create(@Body() dto: CreateWebhookSubscriptionDto) {
@@ -31,6 +37,37 @@ export class WebhooksController {
   @Get()
   async findAll() {
     return await this.webhooksService.findAllSubscriptions();
+  }
+
+  /** Dead letter queue across all subscriptions. */
+  @Get('dlq/deliveries')
+  async deadLetters(@Query('limit') limit?: string) {
+    return await this.deliveryService.listDeadLetters(Number(limit) || 50);
+  }
+
+  @Post('deliveries/:deliveryId/replay')
+  async replay(@Param('deliveryId') deliveryId: string) {
+    return await this.deliveryService.replay(deliveryId);
+  }
+
+  @Get(':id/deliveries')
+  async deliveries(
+    @Param('id') id: string,
+    @Query('status') status?: WebhookDeliveryStatus,
+    @Query('limit') limit?: string,
+  ) {
+    await this.webhooksService.findOneSubscription(id);
+    return await this.deliveryService.listForSubscription(
+      id,
+      status,
+      Number(limit) || 50,
+    );
+  }
+
+  @Get(':id/summary')
+  async summary(@Param('id') id: string) {
+    await this.webhooksService.findOneSubscription(id);
+    return await this.deliveryService.summary(id);
   }
 
   @Get(':id')

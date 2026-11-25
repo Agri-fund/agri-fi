@@ -34,4 +34,11 @@ export class ReferralCode {
   @CreateDateColumn({ name: 'created_at' })
   @ApiProperty({ description: 'Code creation timestamp' })
   createdAt: Date;
+
+  @Column({ name: 'uses_count', type: 'int', default: 0 })
+  @ApiProperty({
+    description: 'Number of times this referral code has been used',
+    example: 0,
+  })
+  usesCount: number;
 }

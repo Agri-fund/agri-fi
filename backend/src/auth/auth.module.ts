@@ -11,6 +11,7 @@ import { GoogleStrategy } from './google.strategy';
 import { User } from './entities/user.entity';
 import { KycSubmission } from './entities/kyc-submission.entity';
 import { BiometricCredential } from './entities/biometric-credential.entity';
+import { ReferralCode } from './entities/referral-code.entity';
 import { BiometricController } from './biometric.controller';
 import { BiometricService } from './biometric.service';
 import { KycGuard, RolesGuard } from '../common/guards';
@@ -36,6 +37,7 @@ import { KycRulesModule } from '../kyc-rules/kyc-rules.module';
 import { BehavioralProfile } from '../database/entities/behavioral-profile.entity';
 import { BehavioralRiskService } from './behavioral-risk.service';
 import { TokenModule } from './token.module';
+import { KycModule } from '../kyc/kyc.module';
 
 @Module({
   imports: [
@@ -49,6 +51,7 @@ import { TokenModule } from './token.module';
       SecurityIpBlock,
       BehavioralProfile,
       BiometricCredential,
+      ReferralCode,
     ]),
     ConfigModule,
     QueueModule,
@@ -61,6 +64,7 @@ import { TokenModule } from './token.module';
     DocumentsModule,
     KycRulesModule,
     TokenModule,
+    KycModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

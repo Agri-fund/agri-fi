@@ -8,11 +8,16 @@ import {
   ForbiddenException,
   HttpException,
   HttpStatus,
+  OnModuleInit,
+  OnModuleDestroy,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { RedisClientType } from 'redis';
+import { RedisConfig } from '../config/redis.config';
 import * as bcrypt from 'bcrypt';
 import * as argon2 from 'argon2';
 import { randomBytes, createHash, randomUUID } from 'crypto';
@@ -50,6 +55,7 @@ import { KycRulesService } from '../kyc-rules/kyc-rules.service';
 import { KycCustomerType } from '../kyc-rules/entities/kyc-jurisdiction-rule.entity';
 import { BehavioralRiskService } from './behavioral-risk.service';
 import { BehavioralRiskSignalDto } from './dto/behavioral-risk-signal.dto';
+import { ReferralCode } from './entities/referral-code.entity';
 
 const LOCKOUT_MAX_ATTEMPTS = 5;
 const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
@@ -69,14 +75,11 @@ export interface GoogleIdentity {
 }
 
 @Injectable()
-export class AuthService {
+export class AuthService implements OnModuleInit, OnModuleDestroy {
   private readonly sep10SigningKeypair: Keypair;
   private readonly networkPassphrase: string;
-  private readonly challenges: Map<
-    string,
-    { nonce: string; expiresAt: number }
-  >;
   private readonly sep10Domain: string;
+  private redisClient: RedisClientType | null = null;
 
   constructor(
     @InjectRepository(User) private readonly userRepo: Repository<User>,
@@ -86,6 +89,8 @@ export class AuthService {
     private readonly loginLogRepo: Repository<LoginLog>,
     @InjectRepository(AdminAction)
     private readonly adminActionRepo: Repository<AdminAction>,
+    @InjectRepository(ReferralCode)
+    private readonly referralCodeRepo: Repository<ReferralCode>,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly queueService: QueueService,
@@ -99,6 +104,8 @@ export class AuthService {
     @Optional() private readonly kycRulesService: KycRulesService,
     @Optional()
     private readonly behavioralRiskService?: BehavioralRiskService,
+    @Optional()
+    private readonly redisConfig?: RedisConfig,
   ) {
     const network = this.configService.get<string>(
       'STELLAR_NETWORK',
@@ -115,11 +122,57 @@ export class AuthService {
       ? Keypair.fromSecret(sep10Secret)
       : Keypair.random();
 
-    this.challenges = new Map();
     this.sep10Domain = this.configService.get<string>(
       'SEP10_DOMAIN',
       'agri-fi.com',
     );
+  }
+
+  async onModuleInit(): Promise<void> {
+    if (this.redisConfig && !this.redisClient) {
+      try {
+        this.redisClient = await this.redisConfig.createClient();
+        if (this.redisClient && !this.redisClient.isOpen) {
+          await this.redisClient.connect();
+        }
+      } catch (err: any) {
+        this.loggerWarn(
+          'Failed to connect Redis client in AuthService for SEP-10',
+          err,
+        );
+      }
+    }
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    if (this.redisClient?.isOpen) {
+      await this.redisClient.quit();
+    }
+  }
+
+  public setRedisClient(client: RedisClientType | null): void {
+    this.redisClient = client;
+  }
+
+  private async getRedis(): Promise<RedisClientType | null> {
+    if (!this.redisClient && this.redisConfig) {
+      try {
+        this.redisClient = await this.redisConfig.createClient();
+      } catch (err: any) {
+        this.loggerWarn('Failed to create Redis client for SEP-10', err);
+        return null;
+      }
+    }
+    if (!this.redisClient) return null;
+    if (!this.redisClient.isOpen) {
+      try {
+        await this.redisClient.connect();
+      } catch (err: any) {
+        this.loggerWarn('Failed to reconnect Redis for SEP-10', err);
+        return null;
+      }
+    }
+    return this.redisClient;
   }
 
   // ── helpers ────────────────────────────────────────────────────────────────
@@ -214,6 +267,17 @@ export class AuthService {
     const passwordHash = await this.hashPassword(dto.password);
     const emailVerificationToken = this.generateVerificationToken();
 
+    let referralCodeId: string | null = null;
+    if (dto.ref) {
+      // Validate and lookup referral code
+      const refCode = await this.referralCodeRepo.findOne({
+        where: { code: dto.ref },
+      });
+      if (refCode) {
+        referralCodeId = refCode.id;
+      }
+    }
+
     const user = this.userRepo.create({
       email: dto.email,
       passwordHash,
@@ -222,6 +286,8 @@ export class AuthService {
       kycStatus: 'pending',
       isEmailVerified: false,
       emailVerificationToken,
+      referralCodeId,
+      platformCredit: 0,
     });
 
     let saved: User;
@@ -339,9 +405,7 @@ export class AuthService {
     });
 
     if (!user || !user.emailPending) {
-      throw new BadRequestException(
-        'Invalid or expired email change token.',
-      );
+      throw new BadRequestException('Invalid or expired email change token.');
     }
 
     if (
@@ -352,9 +416,7 @@ export class AuthService {
       user.emailChangeToken = null;
       user.emailChangeTokenExpiresAt = null;
       await this.userRepo.save(user);
-      throw new BadRequestException(
-        'Invalid or expired email change token.',
-      );
+      throw new BadRequestException('Invalid or expired email change token.');
     }
 
     const oldEmail = user.email;
@@ -461,7 +523,13 @@ export class AuthService {
       }
     }
 
-    const user = await this.userRepo.findOne({ where: { email: dto.email } });
+    const user = await this.userRepo.findOne({
+      where: { email: dto.email },
+      withDeleted: true,
+    });
+    if (user?.deletedAt) {
+      throw new UnauthorizedException('Account deactivated');
+    }
     if (!user) {
       // Unknown emails still feed the detection windows — stuffing attacks
       // rarely target real accounts exclusively.
@@ -679,6 +747,9 @@ export class AuthService {
 
     if (previousLogs.length > 0 && !knownDevice) {
       const revokeToken = randomBytes(32).toString('hex');
+      user.revokeToken = revokeToken;
+      await this.userRepo.save(user);
+
       const revokeUrl = `${this.appBaseUrl()}/auth/revoke-session/${revokeToken}`;
 
       await this.queueService.emit('email.notification', {
@@ -716,6 +787,7 @@ export class AuthService {
     }
 
     user.tokenVersion = (user.tokenVersion ?? 0) + 1;
+    user.revokeToken = null;
     await this.userRepo.save(user);
 
     return { message: 'All sessions have been revoked. Please log in again.' };
@@ -724,24 +796,12 @@ export class AuthService {
   private async findUserByRevokeToken(
     revokeToken: string,
   ): Promise<string | null> {
+    if (!revokeToken) return null;
     try {
-      const log = await this.loginLogRepo
-        .createQueryBuilder('log')
-        .innerJoin(
-          (qb) => {
-            qb.select('user_id')
-              .from('login_logs', 'll')
-              .orderBy('created_at', 'DESC')
-              .limit(1);
-          },
-          'latest',
-          'latest.user_id = log.user_id',
-        )
-        .where(`log.user_agent LIKE :token`, {
-          token: `%revoke:${revokeToken}%`,
-        })
-        .getOne();
-      return log?.userId ?? null;
+      const user = await this.userRepo.findOne({
+        where: { revokeToken },
+      });
+      return user?.id ?? null;
     } catch {
       return null;
     }
@@ -1090,6 +1150,8 @@ export class AuthService {
 
     if (automatedApproval) {
       user.kycStatus = 'verified';
+      user.kycEddReason = null;
+      user.kycEddTriggeredAt = null;
       user.kycDraft = null;
       await this.userRepo.save(user);
       console.log(
@@ -1298,6 +1360,8 @@ export class AuthService {
         submission.articlesOfIncorporationUrl ?? undefined,
     };
     user.kycStatus = 'verified';
+    user.kycEddReason = null;
+    user.kycEddTriggeredAt = null;
     await this.userRepo.save(user);
 
     await this.adminActionRepo.save(
@@ -1346,6 +1410,8 @@ export class AuthService {
     }
 
     user.kycStatus = 'verified';
+    user.kycEddReason = null;
+    user.kycEddTriggeredAt = null;
     await this.userRepo.save(user);
 
     await this.adminActionRepo.save(
@@ -1370,6 +1436,49 @@ export class AuthService {
     return { kycStatus: user.kycStatus };
   }
 
+  async rejectKyc(
+    userId: string,
+    adminId?: string,
+    reason?: string,
+  ): Promise<{ kycStatus: string }> {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found.');
+
+    const submission = await this.kycRepo.findOne({
+      where: { userId },
+      order: { createdAt: 'DESC' },
+    });
+    if (submission) {
+      submission.status = 'rejected';
+      (submission as any).rejectionReason = reason ?? null;
+      await this.kycRepo.save(submission);
+    }
+
+    user.kycStatus = 'rejected';
+    await this.userRepo.save(user);
+
+    if (adminId) {
+      await this.adminActionRepo.save(
+        this.adminActionRepo.create({
+          adminId,
+          targetUserId: user.id,
+          action: 'reject_kyc',
+          payload: { submissionId: submission?.id },
+          reason: reason ?? null,
+        }),
+      );
+    }
+
+    this.queueService.emit('email.notification', {
+      type: 'kyc_rejected',
+      email: user.email,
+      userId: user.id,
+      reason: reason ?? 'Submitted documents did not meet requirements',
+    });
+
+    return { kycStatus: user.kycStatus };
+  }
+
   // ── admin ──────────────────────────────────────────────────────────────────
 
   async updateUserRole(
@@ -1387,7 +1496,8 @@ export class AuthService {
       throw new BadRequestException('Compliance officers require a domain.');
     }
     user.role = role;
-    user.complianceDomain = role === 'compliance_officer' ? complianceDomain!.trim() : null;
+    user.complianceDomain =
+      role === 'compliance_officer' ? complianceDomain!.trim() : null;
     user.tokenVersion = (user.tokenVersion ?? 0) + 1;
     const saved = await this.userRepo.save(user);
 
@@ -1404,6 +1514,48 @@ export class AuthService {
     }
 
     return { id: saved.id, role: saved.role };
+  }
+
+  /** Soft-delete (deactivate) a user, preserving audit history (#1386). */
+  async softDeleteUser(userId: string, adminId: string): Promise<void> {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found.');
+    // Invalidate any outstanding tokens, then soft-delete.
+    user.tokenVersion = (user.tokenVersion ?? 0) + 1;
+    await this.userRepo.save(user);
+    await this.userRepo.softDelete(userId);
+    await this.adminActionRepo.save(
+      this.adminActionRepo.create({
+        adminId,
+        targetUserId: userId,
+        action: 'soft_delete_user',
+        payload: {},
+        reason: null,
+      }),
+    );
+  }
+
+  /** Restore a previously soft-deleted user (#1386). */
+  async restoreUser(userId: string, adminId: string): Promise<{ id: string }> {
+    const user = await this.userRepo.findOne({
+      where: { id: userId },
+      withDeleted: true,
+    });
+    if (!user) throw new NotFoundException('User not found.');
+    if (!user.deletedAt) {
+      throw new BadRequestException('User is not deactivated.');
+    }
+    await this.userRepo.restore(userId);
+    await this.adminActionRepo.save(
+      this.adminActionRepo.create({
+        adminId,
+        targetUserId: userId,
+        action: 'restore_user',
+        payload: {},
+        reason: null,
+      }),
+    );
+    return { id: userId };
   }
 
   // ── password ───────────────────────────────────────────────────────────────
@@ -1435,8 +1587,6 @@ export class AuthService {
       message: 'Password updated. All active sessions have been invalidated.',
     };
   }
-
-
 
   // ── behavioral biometrics (#1222) ─────────────────────────────────────────
 
@@ -1512,7 +1662,10 @@ export class AuthService {
   ): Promise<{ message: string }> {
     const userId = this.tokenService.verifyUnlockToken(token);
     if (!userId) {
-      throw new BadRequestException({ code: 'INVALID_UNLOCK_TOKEN', message: 'Invalid unlock token.' });
+      throw new BadRequestException({
+        code: 'INVALID_UNLOCK_TOKEN',
+        message: 'Invalid unlock token.',
+      });
     }
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found.');
@@ -1524,8 +1677,13 @@ export class AuthService {
 
     // Log unlock attempt to login_logs with metadata
     if (meta?.ip) {
-      const deviceFingerprint = this.computeDeviceFingerprint(meta.userAgent, meta.acceptLanguage);
-      const countryCode = meta.country ? meta.country.toUpperCase().slice(0, 2) : null;
+      const deviceFingerprint = this.computeDeviceFingerprint(
+        meta.userAgent,
+        meta.acceptLanguage,
+      );
+      const countryCode = meta.country
+        ? meta.country.toUpperCase().slice(0, 2)
+        : null;
       await this.loginLogRepo.save(
         this.loginLogRepo.create({
           userId: user.id,
@@ -1539,7 +1697,9 @@ export class AuthService {
     }
 
     return {
-      message: wasLocked ? 'Account has been unlocked successfully. You can now log in.' : 'Account unlock token validated.',
+      message: wasLocked
+        ? 'Account has been unlocked successfully. You can now log in.'
+        : 'Account unlock token validated.',
     };
   }
 
@@ -1613,6 +1773,8 @@ export class AuthService {
           }
 
           user.kycStatus = 'verified';
+          user.kycEddReason = null;
+          user.kycEddTriggeredAt = null;
           await this.userRepo.save(user);
 
           await this.adminActionRepo.save(
@@ -1734,6 +1896,17 @@ export class AuthService {
       throw new BadRequestException('Invalid Stellar public key');
     }
 
+    const redis = await this.getRedis();
+    if (!redis) {
+      this.loggerWarn(
+        'Redis unavailable during SEP-10 challenge generation',
+        'fail-closed',
+      );
+      throw new ServiceUnavailableException(
+        'Authentication service temporarily unavailable',
+      );
+    }
+
     const nonce = crypto.randomBytes(32).toString('hex');
     const manageDataKey = `${this.sep10Domain} SEP-10 Web Auth`;
     const now = Math.floor(Date.now() / 1000);
@@ -1765,8 +1938,22 @@ export class AuthService {
 
     tx.sign(this.sep10SigningKeypair);
 
-    // Store challenge for later validation
-    this.challenges.set(clientPublicKey, { nonce, expiresAt: expiry });
+    // Store challenge in Redis with 300s TTL (fail-closed if Redis write fails)
+    const challengeKey = `sep10:challenge:${clientPublicKey}`;
+    const payload = JSON.stringify({
+      nonce,
+      transactionXdr: tx.toXDR(),
+      expiresAt: expiry,
+    });
+
+    try {
+      await redis.setEx(challengeKey, 300, payload);
+    } catch (err: any) {
+      this.loggerWarn('Failed to write SEP-10 challenge to Redis', err);
+      throw new ServiceUnavailableException(
+        'Authentication service temporarily unavailable',
+      );
+    }
 
     return {
       transactionXdr: tx.toXDR(),
@@ -1826,13 +2013,57 @@ export class AuthService {
       );
     }
 
+    const redis = await this.getRedis();
+    if (!redis) {
+      this.loggerWarn(
+        'Redis unavailable during SEP-10 challenge validation',
+        'fail-closed',
+      );
+      throw new ServiceUnavailableException(
+        'Authentication service temporarily unavailable',
+      );
+    }
+
+    const challengeKey = `sep10:challenge:${clientPublicKey}`;
+    let challengeRaw: string | null = null;
+    try {
+      challengeRaw = await redis.get(challengeKey);
+    } catch (err: any) {
+      this.loggerWarn('Failed to fetch SEP-10 challenge from Redis', err);
+      throw new ServiceUnavailableException(
+        'Authentication service temporarily unavailable',
+      );
+    }
+
+    if (!challengeRaw) {
+      throw new UnauthorizedException('SEP-10 challenge not found or expired');
+    }
+
+    let storedChallenge: {
+      nonce: string;
+      transactionXdr?: string;
+      expiresAt: number;
+    };
+    try {
+      storedChallenge = JSON.parse(challengeRaw);
+    } catch {
+      throw new UnauthorizedException('Malformed SEP-10 challenge stored');
+    }
+
+    const opValue = (manageDataOp as any).value?.toString();
+    if (storedChallenge.nonce && opValue && opValue !== storedChallenge.nonce) {
+      throw new UnauthorizedException('SEP-10 challenge nonce mismatch');
+    }
+
     // Verify client signature
     const txHash = tx.hash();
     const clientVerified = tx.signatures.some((sig) => {
       try {
         const hint = Buffer.from(sig.hint as any).toString('hex');
         const clientKeypair = Keypair.fromPublicKey(clientPublicKey);
-        const clientHint = Buffer.from(clientKeypair.signatureHint() as any).toString('hex');
+        const clientHint = Buffer.from(
+          clientKeypair.signatureHint() as any,
+        ).toString('hex');
         if (hint !== clientHint) return false;
         return clientKeypair.verify(txHash, Buffer.from(sig.signature as any));
       } catch {
@@ -1845,8 +2076,15 @@ export class AuthService {
       );
     }
 
-    // Clean up stored challenge
-    this.challenges.delete(clientPublicKey);
+    // Clean up stored challenge from Redis (single-use challenge consumed)
+    try {
+      await redis.del(challengeKey);
+    } catch (err: any) {
+      this.loggerWarn(
+        'Failed to delete consumed SEP-10 challenge from Redis',
+        err,
+      );
+    }
 
     // Find or create user by wallet address
     let user = await this.userRepo.findOne({
@@ -1866,7 +2104,8 @@ export class AuthService {
     }
 
     // Issue JWT
-    const { accessToken, refreshToken } = this.tokenService.issueTokenPair(user);
+    const { accessToken, refreshToken } =
+      this.tokenService.issueTokenPair(user);
 
     return { accessToken, refreshToken, publicKey: clientPublicKey };
   }

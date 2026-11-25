@@ -1,0 +1,60 @@
+name: ZKP CI — Circuit Compile & Proof Verification
+
+# Verifies that the circom circuits under backend/circuits compile cleanly and
+# that the committed .wasm/.zkey artifacts still generate and verify a real
+# Groth16 proof (#1300).
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'backend/circuits/**'
+      - 'backend/scripts/build-circuits.mjs'
+      - 'backend/scripts/circom-runner.cjs'
+      - 'backend/src/zkp/**'
+      - 'backend/package.json'
+      - 'backend/package-lock.json'
+      - '.github/workflows/zkp-ci.yml'
+  pull_request:
+    paths:
+      - 'backend/circuits/**'
+      - 'backend/scripts/build-circuits.mjs'
+      - 'backend/scripts/circom-runner.cjs'
+      - 'backend/src/zkp/**'
+      - 'backend/package.json'
+      - 'backend/package-lock.json'
+      - '.github/workflows/zkp-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  circuits:
+    name: Compile circuits & verify proofs
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      # Pure-JS/WASM circom compiler — fails the build on any circuit error.
+      - name: Compile circuits (no artifacts written)
+        run: npm run zkp:compile
+
+      # Uses the committed artifacts in circuits/build — generates a real
+      # proof and verifies it, plus negative / tamper cases.
+      - name: Generate & verify proofs with the real circuit files
+        run: npm run test:zkp
+        env:
+          ZKP_CIRCUITS_DIR: ./circuits

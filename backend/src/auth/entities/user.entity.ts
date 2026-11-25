@@ -11,15 +11,34 @@ import { Exclude } from 'class-transformer';
 import { encryptionTransformer } from '../../common/encryption.transformer';
 
 export type UserRole =
-  'farmer' | 'trader' | 'investor' | 'company_admin' | 'admin' | 'compliance_officer';
-export type KycStatus = 'pending' | 'verified' | 'rejected' | 'expired';
+  | 'farmer'
+  | 'trader'
+  | 'investor'
+  | 'company_admin'
+  | 'admin'
+  | 'compliance_officer';
+export type KycStatus =
+  | 'pending'
+  | 'verified'
+  | 'rejected'
+  | 'expired'
+  | 'EDD_REQUIRED';
 
 // #902 — Investor accreditation tiers
 export type AccreditationTier = 'retail' | 'accredited' | 'institutional';
-export type AccreditationStatus = 'none' | 'pending' | 'approved' | 'rejected' | 'expired';
+export type AccreditationStatus =
+  | 'none'
+  | 'pending'
+  | 'approved'
+  | 'rejected'
+  | 'expired';
 
 /** Ordered tier values for comparison (higher index = higher tier). */
-export const TIER_ORDER: AccreditationTier[] = ['retail', 'accredited', 'institutional'];
+export const TIER_ORDER: AccreditationTier[] = [
+  'retail',
+  'accredited',
+  'institutional',
+];
 
 /** Returns true if `userTier` meets or exceeds `requiredTier`. */
 export function tierSatisfies(
@@ -101,7 +120,14 @@ export class User {
   @Column()
   @ApiProperty({
     description: 'User role',
-    enum: ['farmer', 'trader', 'investor', 'company_admin', 'admin', 'compliance_officer'],
+    enum: [
+      'farmer',
+      'trader',
+      'investor',
+      'company_admin',
+      'admin',
+      'compliance_officer',
+    ],
     example: 'farmer',
   })
   role: UserRole;
@@ -119,10 +145,16 @@ export class User {
   @Column({ name: 'kyc_status', default: 'pending' })
   @ApiProperty({
     description: 'KYC verification status',
-    enum: ['pending', 'verified', 'rejected', 'expired'],
+    enum: ['pending', 'verified', 'rejected', 'expired', 'EDD_REQUIRED'],
     example: 'verified',
   })
   kycStatus: KycStatus;
+
+  @Column({ name: 'kyc_edd_reason', type: 'text', nullable: true })
+  kycEddReason: string | null;
+
+  @Column({ name: 'kyc_edd_triggered_at', type: 'timestamptz', nullable: true })
+  kycEddTriggeredAt: Date | null;
 
   /**
    * JWT token version for invalidation (#961).
@@ -154,6 +186,14 @@ export class User {
     example: 'GDQP2KPQGKIHYJGXNUIYOMHARUARCA7DJT5FO2FFOOKY3B2WSQHG4W37',
   })
   walletAddress: string | null;
+
+  @Column({
+    name: 'revoke_token',
+    type: 'varchar',
+    length: 128,
+    nullable: true,
+  })
+  revokeToken: string | null;
 
   @Column({ name: 'is_company', default: false })
   @ApiProperty({
@@ -336,6 +376,197 @@ export class User {
   })
   @ApiProperty({
     description: 'Preferred language for emails and notifications',
-    enum: ['en', 'es', 'fr', 'pt', 's
+    enum: ['en', 'es', 'fr', 'pt', 'sw'],
+    example: 'en',
+  })
+  preferredLanguage: string;
 
-/* … truncated 4666 chars — edit only what you need near the top … */
+  /** IANA timezone used for timezone-aware scheduling, e.g. weekly digests (#892). */
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  @ApiProperty({
+    description: 'IANA timezone for scheduled notifications',
+    example: 'Africa/Nairobi',
+    required: false,
+  })
+  timezone: string | null;
+
+  /**
+   * Whether the user opted in to the weekly deal digest email (#892).
+   * Toggled from notification preferences or the unsubscribe link.
+   */
+  @Column({ name: 'email_digest_enabled', type: 'boolean', default: true })
+  @ApiProperty({
+    description: 'Whether the weekly digest email is enabled',
+    example: true,
+  })
+  emailDigestEnabled: boolean;
+
+  /**
+   * Set to true when the investor clicks the unsubscribe link in any drip
+   * email. Stops further sequence steps from being dispatched (GDPR / CAN-SPAM).
+   */
+  @Column({
+    name: 'email_sequence_unsubscribed',
+    type: 'boolean',
+    default: false,
+  })
+  @ApiProperty({
+    description:
+      'Whether the user has unsubscribed from the onboarding email sequence',
+    example: false,
+  })
+  emailSequenceUnsubscribed: boolean;
+
+  @DeleteDateColumn({ name: 'deleted_at', nullable: true })
+  deletedAt: Date | null;
+
+  @Column({
+    name: 'gdpr_erasure_requested_at',
+    type: 'timestamptz',
+    nullable: true,
+  })
+  gdprErasureRequestedAt: Date | null;
+
+  @Column({ name: 'gdpr_erasure_due_at', type: 'timestamptz', nullable: true })
+  gdprErasureDueAt: Date | null;
+
+  @Column({ name: 'gdpr_status', type: 'varchar', default: 'active' })
+  gdprStatus: 'active' | 'pending_erasure' | 'erased';
+
+  // #902 — Investor accreditation tier management
+  /**
+   * The investor's current accreditation tier.
+   * Retail (default) → max $5,000/deal, $10,000/year.
+   * Accredited (self-cert + document) → max $50,000/deal.
+   * Institutional (manual admin review) → no cap.
+   */
+  @Column({
+    name: 'accreditation_tier',
+    type: 'varchar',
+    default: 'retail',
+  })
+  @ApiProperty({
+    description: 'Investor accreditation tier',
+    enum: ['retail', 'accredited', 'institutional'],
+    example: 'retail',
+  })
+  accreditationTier: AccreditationTier;
+
+  @Column({
+    name: 'accreditation_status',
+    type: 'varchar',
+    default: 'none',
+  })
+  @ApiProperty({
+    description: 'Accreditation application status',
+    enum: ['none', 'pending', 'approved', 'rejected', 'expired'],
+    example: 'none',
+  })
+  accreditationStatus: AccreditationStatus;
+
+  @Column({
+    name: 'accreditation_submitted_at',
+    type: 'timestamptz',
+    nullable: true,
+  })
+  @ApiProperty({
+    description: 'When the accreditation application was submitted',
+    nullable: true,
+  })
+  accreditationSubmittedAt: Date | null;
+
+  @Column({
+    name: 'accreditation_approved_at',
+    type: 'timestamptz',
+    nullable: true,
+  })
+  @ApiProperty({
+    description: 'When accreditation was approved by admin',
+    nullable: true,
+  })
+  accreditationApprovedAt: Date | null;
+
+  /** Accreditation expires 2 years after approval (#902). */
+  @Column({
+    name: 'accreditation_expires_at',
+    type: 'timestamptz',
+    nullable: true,
+  })
+  @ApiProperty({
+    description: 'Accreditation expiry date (2 years from approval)',
+    nullable: true,
+  })
+  accreditationExpiresAt: Date | null;
+
+  @Column({ name: 'accreditation_document_url', type: 'text', nullable: true })
+  @ApiProperty({
+    description:
+      'URL of supporting document (net-worth statement, broker letter, etc.)',
+    nullable: true,
+  })
+  accreditationDocumentUrl: string | null;
+
+  @Column({ name: 'accreditation_declaration', type: 'text', nullable: true })
+  @ApiProperty({
+    description: 'Self-certification declaration text signed by the investor',
+    nullable: true,
+  })
+  accreditationDeclaration: string | null;
+
+  @Column({
+    name: 'accreditation_rejection_reason',
+    type: 'text',
+    nullable: true,
+  })
+  @ApiProperty({
+    description: 'Admin rejection reason when status is "rejected"',
+    nullable: true,
+  })
+  accreditationRejectionReason: string | null;
+
+  // #1170 — cross-device theme synchronisation
+  /**
+   * Persisted appearance preferences. Stored as JSONB so new appearance
+   * knobs can be added without a schema migration; the API validates the
+   * payload against the allow-lists before persisting it.
+   */
+  @Column({ name: 'theme_preferences', type: 'jsonb', nullable: true })
+  @ApiProperty({
+    description:
+      'Persisted appearance preferences (theme variant, accent, font size, contrast)',
+    required: false,
+    nullable: true,
+    example: {
+      variant: 'dark',
+      accent: 'emerald',
+      fontSize: 'medium',
+      contrast: 'normal',
+      updatedAt: '2026-01-15T10:30:00.000Z',
+    },
+  })
+  themePreferences: ThemePreferences | null;
+
+  @Column({
+    name: 'platform_credit',
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    default: 0,
+  })
+  @ApiProperty({
+    description: 'Available platform credit balance in USD',
+    example: 5.0,
+  })
+  platformCredit: number;
+
+  @Column({
+    name: 'referral_code_id',
+    type: 'uuid',
+    nullable: true,
+  })
+  @ApiProperty({
+    description: 'Referral code used during registration (if any)',
+    nullable: true,
+  })
+  referralCodeId: string | null;
+}

@@ -65,6 +65,40 @@ export class TradeDeal {
   })
   description: string | null;
 
+  @Column({ name: 'short_description', type: 'text', nullable: true })
+  @ApiProperty({
+    description: 'Short summary of the deal',
+    required: false,
+    nullable: true,
+  })
+  shortDescription: string | null;
+
+  @Column({ name: 'long_description', type: 'text', nullable: true })
+  @ApiProperty({
+    description: 'Long-form story and impact description',
+    required: false,
+    nullable: true,
+  })
+  longDescription: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  @ApiProperty({
+    description: 'Country of origin',
+    required: false,
+    nullable: true,
+    example: 'Nigeria',
+  })
+  country: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  @ApiProperty({
+    description: 'Region or state for the farm location',
+    required: false,
+    nullable: true,
+    example: 'Ogun',
+  })
+  region: string | null;
+
   @Column({ type: 'decimal', precision: 36, scale: 7 })
   @ApiProperty({
     description: 'Quantity of the commodity',
@@ -86,6 +120,26 @@ export class TradeDeal {
     example: '50000.00',
   })
   totalValue: number;
+
+  @Column({ name: 'display_currency', type: 'varchar', length: 3, default: 'USD' })
+  @ApiProperty({
+    description: 'Display currency (GHS, KES, NGN or USD); amounts are stored in USD',
+    example: 'GHS',
+  })
+  displayCurrency: string;
+
+  @Column({
+    name: 'fx_rate_at_creation',
+    type: 'decimal',
+    precision: 20,
+    scale: 8,
+    default: 1,
+  })
+  @ApiProperty({
+    description: 'Units of display_currency per 1 USD at deal creation',
+    example: '15.20000000',
+  })
+  fxRateAtCreation: number;
 
   @Column({
     name: 'expected_roi',
