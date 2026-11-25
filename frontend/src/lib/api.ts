@@ -941,3 +941,48 @@ export async function getDealById(id: string): Promise<Deal | null> {
     throw err;
   }
 }
+
+// ── Price Negotiations (#1378) ──────────────────────────────────────────────
+
+export interface PriceNegotiation {
+  id: string;
+  dealId: string;
+  proposerId: string;
+  proposedPrice: number;
+  message: string | null;
+  status: 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'COUNTERED';
+  createdAt: string;
+  proposer?: {
+    id: string;
+    fullName?: string;
+    email: string;
+    role: string;
+  };
+}
+
+export async function getPriceNegotiations(dealId: string): Promise<PriceNegotiation[]> {
+  return apiFetch<PriceNegotiation[]>(`/trade-deals/${dealId}/negotiations`);
+}
+
+export async function submitPriceNegotiation(
+  dealId: string,
+  proposedPrice: number,
+  message?: string,
+): Promise<PriceNegotiation> {
+  return apiFetch<PriceNegotiation>(`/trade-deals/${dealId}/negotiations`, {
+    method: 'POST',
+    body: JSON.stringify({ proposed_price: proposedPrice, message }),
+  });
+}
+
+export async function respondToPriceNegotiation(
+  dealId: string,
+  negotiationId: string,
+  status: 'ACCEPTED' | 'REJECTED',
+  message?: string,
+): Promise<PriceNegotiation> {
+  return apiFetch<PriceNegotiation>(`/trade-deals/${dealId}/negotiations/${negotiationId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status, message }),
+  });
+}
