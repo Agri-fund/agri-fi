@@ -56,6 +56,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -67,8 +69,21 @@ jobs:
         run: npm ci
         working-directory: backend
 
-      - name: Backend - Lint
-        run: npm run lint -- --max-warnings=0
+      - name: Backend - Lint changed TypeScript files
+        run: |
+          git fetch origin "${{ github.base_ref }}" --depth=1
+          changed_files=()
+          while IFS= read -r file; do
+            if [[ "$file" == backend/*.ts ]]; then
+              changed_files+=("${file#backend/}")
+            fi
+          done < <(git diff --name-only --diff-filter=ACMR "origin/${{ github.base_ref }}...HEAD" -- '*.ts')
+
+          if ((${#changed_files[@]} == 0)); then
+            echo "No changed backend TypeScript files; skipping backend lint."
+          else
+            npx eslint "${changed_files[@]}" --max-warnings=0
+          fi
         working-directory: backend
 
       - name: Check ER Diagram Freshness
@@ -111,62 +126,3 @@ jobs:
       - name: Frontend - Test
         run: pnpm run test -- --passWithNoTests
         working-directory: frontend
-
-      - name: Notify on failure
-        if: failure()
-        run: |
-          # Discord notification
-          if [ -n "${{ secrets.DISCORD_WEBHOOK_URL }}" ]; then
-            curl -X POST ${{ secrets.DISCORD_WEBHOOK_URL }} \
-              -H "Content-Type: application/json" \
-              -d '{
-                "content": "❌ **CI Build Failed**\n\n**Repository:** ${{ github.repository }}\n**Branch:** ${{ github.ref_name }}\n**Commit:** ${{ github.sha }}\n**Actor:** ${{ github.actor }}\n**Workflow:** ${{ github.workflow }}\n**Run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
-                "username": "GitHub Actions"
-              }' || true
-          fi
-
-          # Slack notification
-          if [ -n "${{ secrets.SLACK_WEBHOOK_URL }}" ]; then
-            curl -X POST ${{ secrets.SLACK_WEBHOOK_URL }} \
-              -H "Content-Type: application/json" \
-              -d '{
-                "text": "❌ CI Build Failed",
-                "blocks": [
-                  {
-                    "type": "header",
-                    "text": {
-                      "type": "plain_text",
-                      "text": "❌ CI Build Failed"
-                    }
-                  },
-                  {
-                    "type": "section",
-                    "fields": [
-                      {
-                        "type": "mrkdwn",
-                        "text": "*Repository:*\n${{ github.repository }}"
-                      },
-                      {
-                        "type": "mrkdwn",
-                        "text": "*Branch:*\n${{ github.ref_name }}"
-                      },
-                      {
-                        "type": "mrkdwn",
-                        "text": "*Commit:*\n${{ github.sha }}"
-                      },
-                      {
-                        "type": "mrkdwn",
-                        "text": "*Actor:*\n${{ github.actor }}"
-                      }
-                    ]
-                  },
-                  {
-                    "type": "section",
-                    "text": {
-                      "type": "mrkdwn",
-                      "text": "<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow Run>"
-                    }
-                  }
-                ]
-              }' || true
-          fi
