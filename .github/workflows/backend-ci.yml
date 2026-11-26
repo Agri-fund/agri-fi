@@ -53,6 +53,7 @@ jobs:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       ENCRYPTION_KEY: ci-test-encryption-key-32chars!!
       RABBITMQ_URL: amqp://localhost:5672
+      REDIS_URL: redis://localhost:6379
       NOTIFICATIONS_ENABLED: "false"
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
@@ -96,6 +97,10 @@ jobs:
 
       - name: Verify .env.example coverage
         run: npm run check:env
+        working-directory: backend
+
+      - name: Verify .env.example schema sync
+        run: npm run check:env-schema
         working-directory: backend
 
       - name: Verify production seed safety

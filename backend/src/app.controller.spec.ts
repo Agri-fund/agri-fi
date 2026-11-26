@@ -1,10 +1,17 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
-import { AppController } from './app.controller';
+import { getRepositoryToken } from '@nestjs/typeorm';
+import { CacheModule } from '@nestjs/cache-manager';
+import { AppController, PublicController } from './app.controller';
+import { TradeDeal } from './trade-deals/entities/trade-deal.entity';
+import { Investment } from './investments/entities/investment.entity';
+import { PublicStatsService } from './public-stats/public-stats.service';
 
-describe('AppController (Issue #1013)', () => {
+describe('AppController & PublicController', () => {
   let controller: AppController;
+  let publicController: PublicController;
   let configService: Partial<ConfigService>;
+  let publicStatsService: { getPublicStats: jest.Mock };
 
   beforeEach(async () => {
     configService = {
@@ -23,17 +30,39 @@ describe('AppController (Issue #1013)', () => {
       }),
     };
 
+    publicStatsService = {
+      getPublicStats: jest.fn().mockResolvedValue({
+        total_deals_completed: 142,
+        active_deals: 24,
+        total_capital_deployed_usd: 2840000,
+        avg_yield_pct: 14.8,
+        on_time_delivery_rate: 94.5,
+        top_5_commodities: [],
+        monthly_capital_deployed: [],
+        cache_ttl_seconds: 300,
+        updated_at: '2026-11-26T08:00:00.000Z',
+      }),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
-      controllers: [AppController],
+      imports: [CacheModule.register()],
+      controllers: [AppController, PublicController],
       providers: [
+        { provide: ConfigService, useValue: configService },
         {
-          provide: ConfigService,
-          useValue: configService,
+          provide: getRepositoryToken(TradeDeal),
+          useValue: { count: jest.fn() },
         },
+        {
+          provide: getRepositoryToken(Investment),
+          useValue: { count: jest.fn(), createQueryBuilder: jest.fn() },
+        },
+        { provide: PublicStatsService, useValue: publicStatsService },
       ],
     }).compile();
 
     controller = module.get<AppController>(AppController);
+    publicController = module.get<PublicController>(PublicController);
   });
 
   it('should return platform public configuration', () => {
@@ -59,5 +88,11 @@ describe('AppController (Issue #1013)', () => {
     // Second call should return cached instance
     const stats2 = controller.getPlatformStats();
     expect(stats2.updatedAt).toBe(stats.updatedAt);
+  });
+
+  it('GET /public/stats delegates to PublicStatsService', async () => {
+    const result = await publicController.getPublicStats();
+    expect(result.total_deals_completed).toBe(142);
+    expect(publicStatsService.getPublicStats).toHaveBeenCalledTimes(1);
   });
 });

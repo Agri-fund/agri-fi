@@ -52,6 +52,7 @@ jobs:
       STELLAR_INTEGRATION_TESTS: ${{ secrets.STELLAR_PLATFORM_SECRET_TESTNET != '' && 'true' || 'false' }}
       ENCRYPTION_KEY: ci-test-encryption-key-32chars!!
       RABBITMQ_URL: amqp://localhost:5672
+      REDIS_URL: redis://localhost:6379
       NOTIFICATIONS_ENABLED: "false"
 
     steps:
@@ -93,6 +94,10 @@ jobs:
 
       - name: Backend - Verify .env.example coverage
         run: npm run check:env
+        working-directory: backend
+
+      - name: Backend - Verify .env.example schema sync
+        run: npm run check:env-schema
         working-directory: backend
 
       - name: Run database migrations

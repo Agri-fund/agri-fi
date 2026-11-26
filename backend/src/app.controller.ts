@@ -1,4 +1,5 @@
-import { Controller, Get, UseInterceptors, CacheInterceptor, CacheTTL } from '@nestjs/common';
+import { Controller, Get, UseInterceptors } from '@nestjs/common';
+import { CacheInterceptor, CacheTTL } from '@nestjs/cache-manager';
 import { ConfigService } from '@nestjs/config';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
@@ -7,6 +8,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { TradeDeal } from './trade-deals/entities/trade-deal.entity';
 import { Investment } from './investments/entities/investment.entity';
+import { PublicStatsService } from './public-stats/public-stats.service';
+import { PublicStatsResponseDto } from './public-stats/public-stats.dto';
 
 export interface PublicPlatformStats {
   totalFunded: number;
@@ -117,12 +120,28 @@ export class PublicController {
     private readonly tradeDealRepo: Repository<TradeDeal>,
     @InjectRepository(Investment)
     private readonly investmentRepo: Repository<Investment>,
+    private readonly publicStatsService: PublicStatsService,
   ) {}
+
+  @Get('stats')
+  @Throttle({ default: { limit: 120, ttl: 60000 } })
+  @ApiOperation({
+    summary: 'Get public platform performance statistics (5-min TTL) - #1396',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Cached aggregate platform metrics (5-minute TTL)',
+    type: PublicStatsResponseDto,
+  })
+  @ApiResponse({ status: 429, description: 'Rate limit exceeded' })
+  async getPublicStats(): Promise<PublicStatsResponseDto> {
+    return this.publicStatsService.getPublicStats();
+  }
 
   @Get('market')
   @Throttle({ default: { limit: 120, ttl: 60000 } })
   @UseInterceptors(CacheInterceptor)
-  @CacheTTL(60)
+  @CacheTTL(60000)
   @ApiOperation({
     summary: 'Get public market data (prices, volume, deal counts) - #1027',
   })

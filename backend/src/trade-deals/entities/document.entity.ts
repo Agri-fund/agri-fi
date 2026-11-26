@@ -14,7 +14,8 @@ export type DocumentType =
   | 'bill_of_lading'
   | 'export_certificate'
   | 'warehouse_receipt'
-  | 'harvest_completion';
+  | 'harvest_completion'
+  | 'dispute_evidence';
 
 export interface DocumentMetadata {
   dimensions?: {

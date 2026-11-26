@@ -1,28 +1,46 @@
 import * as Joi from 'joi';
 
-export const validateEnvironment = (config: Record<string, unknown>) => {
-  const schema = Joi.object({
-    JWT_SECRET: Joi.string().required().trim(),
-    STELLAR_NETWORK: Joi.string().required().trim(),
-    DATABASE_PASSWORD: Joi.string().required().trim(),
-    DATABASE_POOL_MIN: Joi.number().integer().min(0),
-    DATABASE_POOL_MAX: Joi.number().integer().positive(),
-    DATABASE_POOL_IDLE_TIMEOUT_MS: Joi.number().integer().positive(),
-    DATABASE_POOL_CONNECTION_TIMEOUT_MS: Joi.number().integer().positive(),
-    DATABASE_HEALTH_CHECK_INTERVAL_MS: Joi.number().integer().positive(),
-    DATABASE_CONNECTION_LEAK_THRESHOLD_MS: Joi.number().integer().positive(),
-    DATABASE_STATEMENT_TIMEOUT_MS: Joi.number().integer().positive(),
-    RABBITMQ_VHOST: Joi.string()
-      .trim()
-      .pattern(/^\//)
-      .default('/production')
-      .messages({
-        'string.pattern.base': 'RABBITMQ_VHOST must start with "/"',
-      }),
-    CLAM_SCAN_ENABLED: Joi.when('NODE_ENV', {
-      is: 'production',
-      then: Joi.boolean().truthy('true').valid(true).required(),
-      otherwise: Joi.boolean().default(true),
+export const REQUIRED_ENV_VARS = [
+  'DATABASE_URL',
+  'JWT_SECRET',
+  'STELLAR_PLATFORM_SECRET',
+  'RABBITMQ_URL',
+  'REDIS_URL',
+  'ENCRYPTION_KEY',
+] as const;
+
+export class ConfigValidationError extends Error {
+  public readonly invalidKeys: string[];
+
+  constructor(message: string, invalidKeys: string[] = []) {
+    super(message);
+    this.name = 'ConfigValidationError';
+    this.invalidKeys = invalidKeys;
+  }
+}
+
+export const envValidationSchema = Joi.object({
+  DATABASE_URL: Joi.string().required().trim(),
+  JWT_SECRET: Joi.string().required().trim(),
+  STELLAR_PLATFORM_SECRET: Joi.string().required().trim(),
+  RABBITMQ_URL: Joi.string().required().trim(),
+  REDIS_URL: Joi.string().required().trim(),
+  ENCRYPTION_KEY: Joi.string().required().trim(),
+  STELLAR_NETWORK: Joi.string().default('testnet').trim(),
+  DATABASE_PASSWORD: Joi.string().optional().allow('').trim(),
+  DATABASE_POOL_MIN: Joi.number().integer().min(0),
+  DATABASE_POOL_MAX: Joi.number().integer().positive(),
+  DATABASE_POOL_IDLE_TIMEOUT_MS: Joi.number().integer().positive(),
+  DATABASE_POOL_CONNECTION_TIMEOUT_MS: Joi.number().integer().positive(),
+  DATABASE_HEALTH_CHECK_INTERVAL_MS: Joi.number().integer().positive(),
+  DATABASE_CONNECTION_LEAK_THRESHOLD_MS: Joi.number().integer().positive(),
+  DATABASE_STATEMENT_TIMEOUT_MS: Joi.number().integer().positive(),
+  RABBITMQ_VHOST: Joi.string()
+    .trim()
+    .pattern(/^\//)
+    .default('/production')
+    .messages({
+      'string.pattern.base': 'RABBITMQ_VHOST must start with "/"',
     }),
     PQC_ENABLED: Joi.boolean().truthy('true').falsy('false').default(false),
     PQC_KEM_ALGORITHM: Joi.string()
@@ -54,20 +72,29 @@ export const validateEnvironment = (config: Record<string, unknown>) => {
     SENSOR_VIBRATION_MAX: Joi.number().default(10),
   }).unknown(true); // Allow other env vars that aren't validated
 
-  const { error, value } = schema.validate(config, { abortEarly: false });
+  const errors: string[] = [];
+  const invalidKeys = new Set<string>();
 
   if (error) {
-    throw new Error(`Config validation error: ${error.message}`);
+    for (const detail of error.details) {
+      errors.push(detail.message);
+      const key = detail.path?.[0];
+      if (typeof key === 'string' && key.length > 0) {
+        invalidKeys.add(key);
+      }
+    }
   }
 
+  const candidate = value ?? config;
+
   if (
-    value.DATABASE_POOL_MIN !== undefined &&
-    value.DATABASE_POOL_MAX !== undefined &&
-    value.DATABASE_POOL_MIN > value.DATABASE_POOL_MAX
+    candidate.DATABASE_POOL_MIN !== undefined &&
+    candidate.DATABASE_POOL_MAX !== undefined &&
+    Number(candidate.DATABASE_POOL_MIN) > Number(candidate.DATABASE_POOL_MAX)
   ) {
-    throw new Error(
-      'Config validation error: DATABASE_POOL_MIN must not exceed DATABASE_POOL_MAX',
-    );
+    errors.push('DATABASE_POOL_MIN must not exceed DATABASE_POOL_MAX');
+    invalidKeys.add('DATABASE_POOL_MIN');
+    invalidKeys.add('DATABASE_POOL_MAX');
   }
 
   const sensorRanges: Array<[string, string]> = [
@@ -78,11 +105,22 @@ export const validateEnvironment = (config: Record<string, unknown>) => {
   ];
 
   for (const [minKey, maxKey] of sensorRanges) {
-    if (value[minKey] > value[maxKey]) {
-      throw new Error(
-        `Config validation error: ${minKey} must not exceed ${maxKey}`,
-      );
+    if (
+      candidate[minKey] !== undefined &&
+      candidate[maxKey] !== undefined &&
+      Number(candidate[minKey]) > Number(candidate[maxKey])
+    ) {
+      errors.push(`${minKey} must not exceed ${maxKey}`);
+      invalidKeys.add(minKey);
+      invalidKeys.add(maxKey);
     }
+  }
+
+  if (errors.length > 0) {
+    throw new ConfigValidationError(
+      `Config validation error: ${errors.join('; ')}`,
+      Array.from(invalidKeys),
+    );
   }
 
   return value;

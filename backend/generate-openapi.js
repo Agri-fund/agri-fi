@@ -16,7 +16,12 @@ async function generateOpenApiDocument() {
   process.env.PORT = '0'; // Don't actually listen
   process.env.DATABASE_URL = 'postgresql://localhost/dummy'; // Dummy URL
   process.env.JWT_SECRET = 'dummy-secret-for-spec-generation';
+  process.env.STELLAR_PLATFORM_SECRET =
+    'SXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX';
   process.env.RABBITMQ_URL = 'amqp://localhost:5672';
+  process.env.REDIS_URL = 'redis://localhost:6379';
+  process.env.ENCRYPTION_KEY =
+    '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
   process.env.LOG_LEVEL = 'error';
 
   // Import after env vars set

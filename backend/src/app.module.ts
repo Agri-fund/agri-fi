@@ -1,4 +1,5 @@
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
+import { CacheModule } from '@nestjs/cache-manager';
 import { APP_GUARD } from '@nestjs/core';
 import { AppController, PublicController } from './app.controller';
 import { ConfigModule, ConfigService } from '@nestjs/config';
@@ -34,7 +35,10 @@ import {
 import { SorobanModule } from './soroban/soroban.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { ReferralsModule } from './referrals/referrals.module';
-import { validateEnvironment } from './config/env.validation';
+import {
+  envValidationSchema,
+  validateEnvironment,
+} from './config/env.validation';
 import { ScheduleModule } from '@nestjs/schedule';
 import { APP_FILTER } from '@nestjs/core';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
@@ -43,6 +47,8 @@ import { AuditRetentionModule } from './audit/audit-retention.module';
 import { GraphQLApiModule } from './graphql/graphql.module';
 import { TradeDeal } from './trade-deals/entities/trade-deal.entity';
 import { Investment } from './investments/entities/investment.entity';
+import { ShipmentMilestone } from './shipments/entities/shipment-milestone.entity';
+import { PublicStatsService } from './public-stats/public-stats.service';
 
 import { AchievementModule } from './achievements/achievement.module';
 import { EmailSequenceModule } from './email-sequence/email-sequence.module';
@@ -72,6 +78,7 @@ import { InsuranceModule } from './insurance/insurance.module';
 import { DataRetentionModule } from './data-retention/data-retention.module';
 import { TradersModule } from './traders/traders.module';
 import { DealSummaryModule } from './deal-summary/deal-summary.module';
+import { DisputesModule } from './disputes/disputes.module';
 
 const conditionalModules = [];
 if (process.env.NODE_ENV !== 'test') {
@@ -85,7 +92,8 @@ if (process.env.NODE_ENV !== 'test') {
     // to guarantee ordering: ClsMiddleware runs before CorrelationIdMiddleware
     ClsModule.forRoot({ global: true }),
     ScheduleModule.forRoot(),
-    TypeOrmModule.forFeature([TradeDeal, Investment]),
+    CacheModule.register({ ttl: 300_000 }),
+    TypeOrmModule.forFeature([TradeDeal, Investment, ShipmentMilestone]),
     ThrottlerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -96,6 +104,11 @@ if (process.env.NODE_ENV !== 'test') {
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
+      validationSchema: envValidationSchema,
+      validationOptions: {
+        abortEarly: false,
+        allowUnknown: true,
+      },
       validate: validateEnvironment,
     }),
     TypeOrmModule.forRootAsync({
@@ -152,8 +165,10 @@ if (process.env.NODE_ENV !== 'test') {
     DataRetentionModule,
     TradersModule,
     DealSummaryModule,
+    DisputesModule,
   ],
   providers: [
+    PublicStatsService,
     {
       provide: APP_FILTER,
       useClass: HttpExceptionFilter,

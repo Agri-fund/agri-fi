@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, Optional } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  Optional,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, QueryRunner } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
@@ -366,6 +371,145 @@ export class EscrowService {
       }
       throw error;
     }
+  }
+
+  /**
+   * #1387 — Releases escrow to the farmer/investors when an admin resolves a
+   * shipment dispute in the farmer's favor. Transitions a DISPUTED deal to
+   * `delivered` and delegates to `processDealDelivered`.
+   */
+  async releaseDisputedEscrowToFarmer(tradeDealId: string): Promise<void> {
+    const deal = await this.tradeDealRepo.findOne({
+      where: { id: tradeDealId },
+    });
+    if (!deal) {
+      throw new NotFoundException(`Trade deal ${tradeDealId} not found`);
+    }
+
+    if (deal.status !== 'DISPUTED' && deal.status !== 'delivered') {
+      throw new UnprocessableEntityException({
+        code: 'INVALID_DISPUTE_DEAL_STATUS',
+        message: `Cannot release disputed escrow for deal in "${deal.status}" status.`,
+      });
+    }
+
+    if (deal.status === 'DISPUTED') {
+      const appTraceId = `app-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 10)}`;
+      await this.tradeDealRepo.update(tradeDealId, {
+        status: 'delivered',
+        appTraceId,
+      });
+    }
+
+    await this.processDealDelivered({ tradeDealId });
+  }
+
+  /**
+   * #1387 — Refunds confirmed investors when an admin resolves a shipment
+   * dispute in the investors' favor. Performs Stellar token clawback when
+   * configured, updates investments to REFUNDED, and marks the deal failed.
+   */
+  async refundDisputedEscrowToInvestors(tradeDealId: string): Promise<void> {
+    const deal = await this.tradeDealRepo.findOne({
+      where: { id: tradeDealId },
+      relations: ['investments', 'investments.investor'],
+    });
+    if (!deal) {
+      throw new NotFoundException(`Trade deal ${tradeDealId} not found`);
+    }
+
+    if (deal.status !== 'DISPUTED') {
+      throw new UnprocessableEntityException({
+        code: 'INVALID_DISPUTE_DEAL_STATUS',
+        message: `Cannot refund disputed escrow for deal in "${deal.status}" status.`,
+      });
+    }
+
+    const refundableInvestments = (deal.investments ?? []).filter(
+      (inv) =>
+        inv.status === InvestmentStatus.CONFIRMED ||
+        inv.status === InvestmentStatus.ACTIVE,
+    );
+
+    if (
+      refundableInvestments.length > 0 &&
+      deal.issuerPublicKey &&
+      deal.issuerSecretKey &&
+      deal.stellarAssetTxId
+    ) {
+      const investorShares: { walletAddress: string; tokenAmount: number }[] =
+        [];
+      for (const inv of refundableInvestments) {
+        if (!inv.investor?.walletAddress) {
+          throw new UnprocessableEntityException({
+            code: 'INVESTOR_WALLET_MISSING',
+            message: `Investor ${inv.investorId} is missing a wallet address for refund.`,
+          });
+        }
+        investorShares.push({
+          walletAddress: inv.investor.walletAddress,
+          tokenAmount: Number(inv.tokenAmount),
+        });
+      }
+
+      const tokensSold = investorShares.reduce(
+        (acc, curr) => acc + curr.tokenAmount,
+        0,
+      );
+      const unsoldTokens = Number(deal.tokenCount) - tokensSold;
+      if (unsoldTokens > 0 && deal.escrowPublicKey) {
+        investorShares.push({
+          walletAddress: deal.escrowPublicKey,
+          tokenAmount: unsoldTokens,
+        });
+      }
+
+      if (investorShares.length > 0) {
+        const issuerSecret = await this.stellarService.decryptSecret(
+          deal.issuerSecretKey,
+        );
+        await this.stellarService.clawbackTokens(
+          deal.tokenSymbol,
+          deal.issuerPublicKey,
+          issuerSecret,
+          investorShares,
+        );
+      }
+    }
+
+    const qr: QueryRunner = this.dataSource.createQueryRunner();
+    await qr.connect();
+    await qr.startTransaction();
+
+    try {
+      if (refundableInvestments.length > 0) {
+        await qr.manager.update(
+          Investment,
+          refundableInvestments.map((inv) => inv.id),
+          { status: InvestmentStatus.REFUNDED },
+        );
+      }
+
+      const appTraceId = `app-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 10)}`;
+      await qr.manager.update(TradeDeal, tradeDealId, {
+        status: 'failed',
+        appTraceId,
+      });
+
+      await qr.commitTransaction();
+    } catch (error) {
+      await qr.rollbackTransaction();
+      throw error;
+    } finally {
+      await qr.release();
+    }
+
+    this.notificationsGateway?.publishDealStatusChanged({
+      dealId: tradeDealId,
+      status: 'failed',
+      title: 'Dispute resolved — investors refunded',
+      message: 'Escrow dispute resolved in favor of investors; refunds issued.',
+    });
   }
 
   /**
