@@ -14,6 +14,7 @@ import { Exclude } from 'class-transformer';
 import { User } from '../../auth/entities/user.entity';
 import { Document } from './document.entity';
 import { Investment } from '../../investments/entities/investment.entity';
+import { PriceNegotiation } from './price-negotiation.entity';
 import type { AccreditationTier } from '../../auth/entities/user.entity';
 
 export type TradeDealStatus =
@@ -361,6 +362,9 @@ export class TradeDeal {
 
   @OneToMany(() => Document, (document) => document.tradeDeal)
   documents: Document[];
+
+  @OneToMany(() => PriceNegotiation, (neg) => neg.deal)
+  priceNegotiations: PriceNegotiation[];
 
   @OneToMany(() => Investment, (investment) => investment.tradeDeal)
   investments: Investment[];
