@@ -38,6 +38,7 @@ const VALID_DOC_TYPES: DocumentType[] = [
   'bill_of_lading',
   'export_certificate',
   'warehouse_receipt',
+  'dispute_evidence',
 ];
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
 const PUBLIC_STATUSES: TradeDealStatus[] = ['open', 'funded'];

@@ -35,6 +35,7 @@
     "db:seed:batch": "ts-node -r tsconfig-paths/register scripts/batch-seed.ts",
     "queue:retry-dlq": "ts-node scripts/retry-dlq.ts",
     "check:env": "node scripts/check-env-coverage.js",
+    "check:env-schema": "node scripts/check-env-schema-sync.js",
     "check:seed-safety": "bash scripts/verify-seed-safety.sh",
     "check:migration-linearity": "node scripts/check-migration-linearity.js",
     "migrate:status": "ts-node -r tsconfig-paths/register src/database/migration-tooling/migrate.ts status",

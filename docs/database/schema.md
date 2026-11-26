@@ -11,6 +11,33 @@ erDiagram
     Achievement {
         string id PK
     }
+    AmlAlert {
+        string id PK
+    }
+    AmlCase {
+        string id PK
+    }
+    AmlDispositionFeedback {
+        string id PK
+    }
+    AmlMonitoringRule {
+        string id PK
+    }
+    AmlMonitoringRun {
+        string id PK
+    }
+    AmlRegulatorySubmission {
+        string id PK
+    }
+    AmlSarReport {
+        string id PK
+    }
+    AmlScreeningResult {
+        string id PK
+    }
+    SanctionsListEntry {
+        string id PK
+    }
     AMMLiquidityPosition {
         string id PK
     }
@@ -62,6 +89,18 @@ erDiagram
     CollaborationSession {
         string id PK
     }
+    SavedSearch {
+        string id PK
+    }
+    SearchHistory {
+        string id PK
+    }
+    DidDocument {
+        string id PK
+    }
+    Dispute {
+        string id PK
+    }
     DocumentVersion {
         string id PK
     }
@@ -77,7 +116,19 @@ erDiagram
     InvestorEmailSequence {
         string id PK
     }
+    InsuranceClaim {
+        string id PK
+    }
+    InsurancePolicy {
+        string id PK
+    }
+    InsuranceQuote {
+        string id PK
+    }
     KycJurisdictionRule {
+        string id PK
+    }
+    LetterOfCreditEntity {
         string id PK
     }
     NotificationPreference {
@@ -125,6 +176,9 @@ erDiagram
     ContractDispute {
         string id PK
     }
+    StorageContent {
+        string id PK
+    }
     FarmerCreditScoreDispute {
         string id PK
     }
@@ -132,6 +186,9 @@ erDiagram
         string id PK
     }
     WatchlistItem {
+        string id PK
+    }
+    ZkpProof {
         string id PK
     }
     %% Domain: DEALS
@@ -163,6 +220,9 @@ erDiagram
         string id PK
     }
     %% Domain: INVESTMENTS
+    EscrowMigration {
+        string id PK
+    }
     MilestoneReleaseRecord {
         string id PK
     }
@@ -216,10 +276,19 @@ erDiagram
     TradeDealArchive {
         string id PK
     }
+    AuditArchiveRecord {
+        string id PK
+    }
+    AuditArchiveRetrievalRequest {
+        string id PK
+    }
     SystemAuditLog {
         string id PK
     }
     ComplianceReport {
+        string id PK
+    }
+    DataRetentionLog {
         string id PK
     }
     RegulatoryRuleExecution {
@@ -261,6 +330,9 @@ erDiagram
     SelfHealingIssue {
         string id PK
     }
+    WebhookDelivery {
+        string id PK
+    }
     WebhookSubscription {
         string id PK
     }
@@ -268,6 +340,9 @@ erDiagram
     %% Relationships
     AnnualInvestmentTotal }o--|| User : "ManyToOne"
     Achievement }o--|| User : "ManyToOne"
+    AmlAlert }o--|| AmlMonitoringRule : "ManyToOne"
+    AmlAlert }o--|| AmlCase : "ManyToOne"
+    AmlSarReport }o--|| AmlCase : "ManyToOne"
     AMMLiquidityPosition }o--|| AMMPool : "ManyToOne"
     AMMLiquidityPosition }o--|| User : "ManyToOne"
     AMMMiningReward }o--|| AMMPool : "ManyToOne"
@@ -293,11 +368,16 @@ erDiagram
     ChatParticipant }o--|| User : "ManyToOne"
     TransactionLog }o--|| User : "ManyToOne"
     TransactionLog }o--|| TradeDeal : "ManyToOne"
+    DidDocument }o--|| User : "ManyToOne"
+    Dispute }o--|| TradeDeal : "ManyToOne"
+    Dispute }o--|| User : "ManyToOne"
     SignatureRequest }o--|| Document : "ManyToOne"
     SignatureRequest }o--|| User : "ManyToOne"
     InvestorEmailSequence }o--|| User : "ManyToOne"
     MilestoneReleaseRecord }o--|| TradeDeal : "ManyToOne"
     PaymentDistribution }o--|| TradeDeal : "ManyToOne"
+    InsuranceClaim }o--|| InsurancePolicy : "ManyToOne"
+    InsurancePolicy }o--|| InsuranceQuote : "ManyToOne"
     AutoInvestPlan }o--|| User : "ManyToOne"
     Investment }o--|| TradeDeal : "ManyToOne"
     Investment }o--|| User : "ManyToOne"

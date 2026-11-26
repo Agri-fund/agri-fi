@@ -59,6 +59,9 @@ function setupDefaultTestEnv() {
   if (!process.env.DATABASE_NAME) {
     process.env.DATABASE_NAME = 'agric_onchain_test';
   }
+  if (!process.env.DATABASE_URL) {
+    process.env.DATABASE_URL = `postgres://${process.env.DATABASE_USER}:${process.env.DATABASE_PASSWORD}@${process.env.DATABASE_HOST}:${process.env.DATABASE_PORT}/${process.env.DATABASE_NAME}`;
+  }
 
   // JWT - use test secret (not for production)
   if (!process.env.JWT_SECRET) {
@@ -70,9 +73,18 @@ function setupDefaultTestEnv() {
     process.env.RABBITMQ_URL = 'amqp://guest:guest@localhost:5672';
   }
 
+  // Redis
+  if (!process.env.REDIS_URL) {
+    process.env.REDIS_URL = 'redis://localhost:6379';
+  }
+
   // Stellar - use testnet
   if (!process.env.STELLAR_NETWORK) {
     process.env.STELLAR_NETWORK = 'testnet';
+  }
+  if (!process.env.STELLAR_PLATFORM_SECRET) {
+    process.env.STELLAR_PLATFORM_SECRET =
+      'SXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX';
   }
   if (!process.env.STELLAR_HORIZON_URL) {
     process.env.STELLAR_HORIZON_URL = 'https://horizon-testnet.stellar.org';

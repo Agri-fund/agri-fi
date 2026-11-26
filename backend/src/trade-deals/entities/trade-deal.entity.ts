@@ -24,7 +24,8 @@ export type TradeDealStatus =
   | 'completed'
   | 'failed'
   | 'canceled'
-  | 'expired';
+  | 'expired'
+  | 'DISPUTED';
 
 export type SettlementStatus =
   | 'pending'
@@ -211,6 +212,7 @@ export class TradeDeal {
       'failed',
       'canceled',
       'expired',
+      'DISPUTED',
     ],
     example: 'open',
   })

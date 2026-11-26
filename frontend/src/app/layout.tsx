@@ -6,6 +6,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { ToastProvider } from "@/components/ui/ToastProvider";
 import { PWAInstallBanner } from "@/components/PWAInstallBanner";
 import { BehavioralBiometricsProvider } from "@/components/behavioral/BehavioralBiometricsProvider";
+import { SupportChatWidget } from "@/components/support/SupportChatWidget";
 
 export const metadata: Metadata = {
   title: "AgriFi — Agricultural Finance Platform",
@@ -41,6 +42,27 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const supportChatEnabled =
+    (
+      process.env.SUPPORT_CHAT_ENABLED ??
+      process.env.NEXT_PUBLIC_SUPPORT_CHAT_ENABLED ??
+      "true"
+    )
+      .trim()
+      .toLowerCase() !== "false";
+  const supportChatProvider = (
+    process.env.SUPPORT_CHAT_PROVIDER ??
+    process.env.NEXT_PUBLIC_SUPPORT_CHAT_PROVIDER ??
+    "crisp"
+  )
+    .trim()
+    .toLowerCase();
+  const supportChatWebsiteId =
+    process.env.SUPPORT_CHAT_WEBSITE_ID ??
+    process.env.NEXT_PUBLIC_CRISP_WEBSITE_ID ??
+    process.env.NEXT_PUBLIC_INTERCOM_APP_ID ??
+    "";
+
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -76,6 +98,11 @@ export default function RootLayout({
                 </div>
               </div>
               {children}
+              <SupportChatWidget
+                enabled={supportChatEnabled}
+                provider={supportChatProvider}
+                websiteId={supportChatWebsiteId}
+              />
             </BehavioralBiometricsProvider>
           </ToastProvider>
         </ThemeProvider>
