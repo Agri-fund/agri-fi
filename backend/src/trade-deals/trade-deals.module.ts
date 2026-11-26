@@ -15,6 +15,8 @@ import { DealSuggestionEvent } from './entities/deal-suggestion-event.entity';
 import { DealTemplate } from './entities/deal-template.entity';
 import { Document } from './entities/document.entity';
 import { DealHealthAlert } from './entities/deal-health-alert.entity';
+import { PriceNegotiation } from './entities/price-negotiation.entity';
+import { PriceNegotiationsService } from './price-negotiations.service';
 import { Investment } from '../investments/entities/investment.entity';
 import { InvestmentsModule } from '../investments/investments.module';
 import { ShipmentMilestone } from '../shipments/entities/shipment-milestone.entity';
@@ -54,6 +56,7 @@ const DEALS_CACHE_TTL_MS = 30_000;
       User,
       DealCoFarmer,
       DealHealthAlert,
+      PriceNegotiation,
       SystemAuditLog,
       WatchlistItem,
     ]),
@@ -111,6 +114,7 @@ const DEALS_CACHE_TTL_MS = 30_000;
     DealHealthService,
     ActivityFeedService,
     DealSuggestionService,
+    PriceNegotiationsService,
     makeGaugeProvider({
       name: 'deal_health_alerts_active_total',
       help: 'Total number of active (unresolved) deal health alerts, labelled by alert type.',
@@ -126,6 +130,7 @@ const DEALS_CACHE_TTL_MS = 30_000;
     DealHealthService,
     ActivityFeedService,
     DealSuggestionService,
+    PriceNegotiationsService,
   ],
 })
 export class TradeDealsModule {}

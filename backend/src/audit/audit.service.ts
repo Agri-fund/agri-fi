@@ -30,6 +30,18 @@ export interface AuditQuery {
   limit?: string;
 }
 
+export interface QuantumResistanceAuditResult {
+  compliant: boolean;
+  totalSensitiveRecords: number;
+  nonCompliantRecordIds: string[];
+  checkedAt: Date;
+}
+
+export const QUANTUM_RESISTANT_ALGORITHMS = [
+  'ML-KEM-768+X25519',
+  'ML-DSA-65',
+] as const;
+
 function positiveInteger(value: string | undefined, fallback: number, max: number): number {
   if (value === undefined) return fallback;
   if (!/^\d+$/.test(value) || Number(value) < 1 || Number(value) > max) {
@@ -180,5 +192,59 @@ export class AuditService {
       roundId,
       details,
     });
+  }
+
+  /**
+   * Record the algorithm suite used to protect a sensitive resource so that
+   * quantum-resistance coverage can be verified later.
+   */
+  async logCryptoSuite(
+    resourceType: string,
+    resourceId: string,
+    suite: string,
+    actorId?: string,
+  ): Promise<SystemAuditLog | null> {
+    return this.logEvent({
+      action: 'crypto.suite_applied',
+      actorId,
+      resourceType,
+      resourceId,
+      metadata: { suite, quantumResistant: this.isQuantumResistantSuite(suite) },
+    } as Partial<SystemAuditLog>);
+  }
+
+  isQuantumResistantSuite(suite: string): boolean {
+    return (QUANTUM_RESISTANT_ALGORITHMS as readonly string[]).some((alg) =>
+      suite.includes(alg),
+    );
+  }
+
+  /**
+   * Verify that every sensitive audit record was protected with a
+   * quantum-resistant suite. Records lacking a recorded suite are reported
+   * as non-compliant.
+   */
+  async verifyQuantumResistance(
+    resourceType?: string,
+  ): Promise<QuantumResistanceAuditResult> {
+    const qb = this.auditRepository
+      .createQueryBuilder('audit')
+      .where('audit.complianceDomain IS NOT NULL');
+    if (resourceType) {
+      qb.andWhere('audit.resourceType = :resourceType', { resourceType });
+    }
+    const records = await qb.getMany();
+    const nonCompliantRecordIds = records
+      .filter((r) => {
+        const suite = (r.metadata as any)?.suite;
+        return typeof suite !== 'string' || !this.isQuantumResistantSuite(suite);
+      })
+      .map((r) => String(r.id));
+    return {
+      compliant: nonCompliantRecordIds.length === 0,
+      totalSensitiveRecords: records.length,
+      nonCompliantRecordIds,
+      checkedAt: new Date(),
+    };
   }
 }

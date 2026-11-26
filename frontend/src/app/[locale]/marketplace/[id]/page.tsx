@@ -45,6 +45,14 @@ const DealHealthWidget = nextDynamic(
   },
 );
 
+const PriceNegotiationThread = nextDynamic(
+  () => import('@/components/deals/PriceNegotiationThread').then(m => ({ default: m.PriceNegotiationThread })),
+  {
+    ssr: false,
+    loading: () => <div className="h-40 skeleton rounded-2xl" aria-label="Loading price negotiations…" />,
+  },
+);
+
 // Real-time collaboration presence (#1234) — client-only, connects over WebSocket.
 const CollaborationPresence = nextDynamic(
   () => import('@/components/collaboration/CollaborationPresence').then(m => ({ default: m.CollaborationPresence })),
@@ -278,6 +286,15 @@ export default async function DealDetailPage({ params }: { params: { id: string;
 
           {/* Deal Health Indicators — Issue #1002 */}
           <DealHealthWidget dealId={deal.id} />
+
+          {/* Price Negotiation Thread — Issue #1378 (Farmer & Trader only, hidden from investors) */}
+          <PriceNegotiationThread
+            dealId={deal.id}
+            farmerId={deal.farmer_id}
+            traderId={deal.trader_id}
+            dealStatus={deal.status}
+            currentTotalValue={Number(deal.total_value)}
+          />
 
           {/* Sidebar cards: AI Summary (#1415) + Trader Scorecard (#1413) */}
           <div className="grid sm:grid-cols-2 gap-5">

@@ -42,25 +42,35 @@ export const envValidationSchema = Joi.object({
     .messages({
       'string.pattern.base': 'RABBITMQ_VHOST must start with "/"',
     }),
-  CLAM_SCAN_ENABLED: Joi.when('NODE_ENV', {
-    is: 'production',
-    then: Joi.boolean().truthy('true').valid(true).required(),
-    otherwise: Joi.boolean().default(true),
-  }),
-  SENSOR_TEMP_MIN: Joi.number().default(-5),
-  SENSOR_TEMP_MAX: Joi.number().default(45),
-  SENSOR_HUMIDITY_MIN: Joi.number().default(20),
-  SENSOR_HUMIDITY_MAX: Joi.number().default(85),
-  SENSOR_CO2_MIN: Joi.number().default(350),
-  SENSOR_CO2_MAX: Joi.number().default(2500),
-  SENSOR_VIBRATION_MIN: Joi.number().default(0),
-  SENSOR_VIBRATION_MAX: Joi.number().default(10),
-}).unknown(true); // Allow other env vars that aren't validated
-
-export const validateEnvironment = (config: Record<string, unknown>) => {
-  const { error, value } = envValidationSchema.validate(config, {
-    abortEarly: false,
-  });
+    PQC_ENABLED: Joi.boolean().truthy('true').falsy('false').default(false),
+    PQC_KEM_ALGORITHM: Joi.string()
+      .trim()
+      .valid('ML-KEM-768', 'ML-KEM-1024')
+      .default('ML-KEM-768'),
+    PQC_SIGNATURE_ALGORITHM: Joi.string()
+      .trim()
+      .valid('ML-DSA-65', 'ML-DSA-87')
+      .default('ML-DSA-65'),
+    PQC_HYBRID_MODE: Joi.boolean().truthy('true').falsy('false').default(true),
+    PQC_FALLBACK_TO_CLASSICAL: Joi.boolean()
+      .truthy('true')
+      .falsy('false')
+      .default(false),
+    PQC_KEY_ROTATION_DAYS: Joi.number().integer().positive().default(90),
+    PQC_KEY_STORE_PATH: Joi.string().trim().when('PQC_ENABLED', {
+      is: true,
+      then: Joi.required(),
+      otherwise: Joi.optional(),
+    }),
+    SENSOR_TEMP_MIN: Joi.number().default(-5),
+    SENSOR_TEMP_MAX: Joi.number().default(45),
+    SENSOR_HUMIDITY_MIN: Joi.number().default(20),
+    SENSOR_HUMIDITY_MAX: Joi.number().default(85),
+    SENSOR_CO2_MIN: Joi.number().default(350),
+    SENSOR_CO2_MAX: Joi.number().default(2500),
+    SENSOR_VIBRATION_MIN: Joi.number().default(0),
+    SENSOR_VIBRATION_MAX: Joi.number().default(10),
+  }).unknown(true); // Allow other env vars that aren't validated
 
   const errors: string[] = [];
   const invalidKeys = new Set<string>();

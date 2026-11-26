@@ -12,6 +12,7 @@ import {
   Request,
   HttpCode,
   Inject,
+  Optional,
 } from '@nestjs/common';
 import {
   CACHE_MANAGER,
@@ -46,6 +47,12 @@ import {
 import { DealCoFarmer } from './entities/deal-co-farmer.entity';
 import { ActivityFeedResponseDto } from './dto/activity-feed.dto';
 import { ActivityFeedService } from './activity-feed.service';
+import { PriceNegotiationsService } from './price-negotiations.service';
+import { PriceNegotiation } from './entities/price-negotiation.entity';
+import {
+  CreateNegotiationDto,
+  UpdateNegotiationDto,
+} from './dto/price-negotiation.dto';
 
 import { TradeDealAccessRequest, TradeDealsGuard } from './trade-deals.guard';
 
@@ -71,6 +78,8 @@ export class TradeDealsController {
     private readonly riskScoringService: RiskScoringService,
     private readonly dealSuggestionsService: DealSuggestionsService,
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
+    @Optional()
+    private readonly priceNegotiationsService?: PriceNegotiationsService,
   ) {}
 
   @Post()
@@ -114,6 +123,104 @@ export class TradeDealsController {
     @Body() dto: UpdateTradeDealDto,
   ): Promise<TradeDeal> {
     return this.tradeDealsService.update(id, req.user.id, dto);
+  }
+
+  // ── Price Negotiation Thread (#1378) ──────────────────────────────────────
+
+  @Post(':id/negotiations')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('trader', 'farmer')
+  @ApiBearerAuth('jwt')
+  @ApiOperation({
+    summary:
+      'Submit a price proposal or counter-offer for a trade deal (farmer or trader)',
+  })
+  @ApiParam({ name: 'id', description: 'Trade deal UUID' })
+  @ApiResponse({ status: 201, description: 'Price proposal submitted' })
+  @ApiResponse({ status: 400, description: 'Validation error or round limit exceeded' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Not a farmer/trader on this deal' })
+  @ApiResponse({ status: 404, description: 'Trade deal not found' })
+  async submitNegotiationProposal(
+    @Param('id') id: string,
+    @Request() req: AuthRequest,
+    @Body() dto: CreateNegotiationDto,
+  ): Promise<PriceNegotiation> {
+    if (!this.priceNegotiationsService) {
+      throw new Error('PriceNegotiationsService not available');
+    }
+    const result = await this.priceNegotiationsService.submitProposal(
+      id,
+      req.user.id,
+      req.user.role,
+      dto,
+    );
+    await (this.cacheManager.stores[0] as any).reset();
+    return result;
+  }
+
+  @Patch(':id/negotiations/:negotiation_id')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('trader', 'farmer')
+  @ApiBearerAuth('jwt')
+  @ApiOperation({
+    summary:
+      'Accept or reject a price proposal (counterpart only; updates total_value on accept)',
+  })
+  @ApiParam({ name: 'id', description: 'Trade deal UUID' })
+  @ApiParam({ name: 'negotiation_id', description: 'Negotiation record UUID' })
+  @ApiResponse({ status: 200, description: 'Price proposal accepted or rejected' })
+  @ApiResponse({ status: 400, description: 'Validation error or invalid state' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Not authorized or proposer cannot accept self' })
+  @ApiResponse({ status: 404, description: 'Trade deal or negotiation not found' })
+  async respondToNegotiation(
+    @Param('id') id: string,
+    @Param('negotiation_id') negotiationId: string,
+    @Request() req: AuthRequest,
+    @Body() dto: UpdateNegotiationDto,
+  ): Promise<PriceNegotiation> {
+    if (!this.priceNegotiationsService) {
+      throw new Error('PriceNegotiationsService not available');
+    }
+    const result = await this.priceNegotiationsService.respondToProposal(
+      id,
+      negotiationId,
+      req.user.id,
+      req.user.role,
+      dto,
+    );
+    await (this.cacheManager.stores[0] as any).reset();
+    return result;
+  }
+
+  @Get(':id/negotiations')
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth('jwt')
+  @ApiOperation({
+    summary:
+      'Get price negotiation history thread for a trade deal (farmer & trader only, not investors)',
+  })
+  @ApiParam({ name: 'id', description: 'Trade deal UUID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Negotiation thread history',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden: not visible to investors' })
+  @ApiResponse({ status: 404, description: 'Trade deal not found' })
+  async getNegotiations(
+    @Param('id') id: string,
+    @Request() req: AuthRequest,
+  ): Promise<PriceNegotiation[]> {
+    if (!this.priceNegotiationsService) {
+      throw new Error('PriceNegotiationsService not available');
+    }
+    return this.priceNegotiationsService.getNegotiations(
+      id,
+      req.user.id,
+      req.user.role,
+    );
   }
 
   @Post(':id/publish')
