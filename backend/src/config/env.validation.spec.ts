@@ -118,4 +118,29 @@ describe('validateEnvironment', () => {
       DATABASE_HEALTH_CHECK_INTERVAL_MS: 15000,
     });
   });
+
+  it('validates ESCROW_BATCH_SIZE bounds (1..95) and defaults to 95', () => {
+    const defaultRes = validateEnvironment({ ...required });
+    expect(defaultRes.ESCROW_BATCH_SIZE).toBe(95);
+
+    const validCustom = validateEnvironment({
+      ...required,
+      ESCROW_BATCH_SIZE: 50,
+    });
+    expect(validCustom.ESCROW_BATCH_SIZE).toBe(50);
+
+    expect(() =>
+      validateEnvironment({
+        ...required,
+        ESCROW_BATCH_SIZE: 0,
+      }),
+    ).toThrow();
+
+    expect(() =>
+      validateEnvironment({
+        ...required,
+        ESCROW_BATCH_SIZE: 96,
+      }),
+    ).toThrow();
+  });
 });

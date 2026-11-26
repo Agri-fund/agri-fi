@@ -7,12 +7,14 @@ import { SorobanModule } from '../soroban/soroban.module';
 import { TradeDeal } from '../trade-deals/entities/trade-deal.entity';
 import { Investment } from '../investments/entities/investment.entity';
 import { User } from '../auth/entities/user.entity';
+import { PaymentDistribution } from '../escrow/entities/payment-distribution.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { IdempotencyService } from './idempotency.service';
+import { QueueModule } from './queue.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([TradeDeal, Investment, User]),
+    TypeOrmModule.forFeature([TradeDeal, Investment, User, PaymentDistribution]),
     TradeDealsModule,
     StellarModule,
     SorobanModule,

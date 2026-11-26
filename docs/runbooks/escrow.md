@@ -57,6 +57,15 @@ This runbook guides on-call engineers through diagnosing, triaging, and recoveri
 [Ack Message]             [Dead-Letter Queue: escrow.dlq]
 ```
 
+### Batch Size Tuning & Operations Guard (`ESCROW_BATCH_SIZE`)
+
+- **Stellar Protocol Limit**: 100 operations per transaction envelope.
+- **Platform Invariant**: At most 98 operations per envelope (`MAX_OPS_PER_ENVELOPE = 98`), enforced with a fail-fast hard guard.
+- **Configuration**: `ESCROW_BATCH_SIZE` (default `95`, valid range `1..95`).
+- **Tuning Guidance**:
+  - In high network congestion or when deals contain many investors requiring Claimable Balances, you may lower `ESCROW_BATCH_SIZE` to `50`-`75` to reduce envelope byte size and base fee volatility.
+  - Never attempt to configure `ESCROW_BATCH_SIZE > 95`; validation rejects values over 95 at application startup to ensure envelope headroom.
+
 ---
 
 ## 2. Symptoms-by-Metric Matrix

@@ -1,5 +1,10 @@
 # Soroban Escrow Smart Contract
 
+> [!NOTE]
+> **Architectural Authority Note (ADR-007 / Issue #1299)**:
+> In Agri-Fi's production dual-path architecture, **the Horizon-based EscrowService is the sole authoritative financial settlement path** because it performs proportional payouts to all investors and issues Stellar Claimable Balances for wallets lacking trustlines.
+> This Soroban contract functions as an on-chain **secondary audit layer and milestone attestation registry**.
+
 ## Overview
 
 The Escrow Smart Contract is a Soroban WASM contract that manages the automatic settlement of deals based on shipping milestones. It removes platform escrow custody risk by enforcing milestone verification and automatic fund distribution through smart contract execution.

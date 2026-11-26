@@ -571,6 +571,31 @@ groups:
             Check the outbox relay process and RabbitMQ connectivity.
             See runbook: docs/runbooks/escrow.md
 
+      # ── Unreconciled escrow events alert (#1306) ───────────────────────────
+      - alert: EscrowUnreconciledEvents
+        expr: |
+          (
+            increase(escrow_reconciliation_failures_total[5m]) > 0
+            or
+            escrow_unreconciled_events_total > 0
+          )
+        for: 5m
+        labels:
+          severity: critical
+          team: backend
+          owner: backend-oncall
+          component: escrow
+          runbook: "docs/runbooks/escrow.md"
+          pagerduty: "true"
+        annotations:
+          summary: "Unreconciled escrow events detected"
+          runbook_url: "docs/runbooks/escrow.md"
+          description: >
+            On-chain Stellar escrow release succeeded but database reconciliation
+            has unreconciled events. Immediate investigation required to prevent
+            inconsistent investor and farmer payout records.
+            See runbook: docs/runbooks/escrow.md
+
   # ── Stellar Horizon Failover Alerts ──────────────────────────────────────────
   - name: agri_fi_stellar_horizon
     interval: 30s

@@ -1,7 +1,8 @@
-import { Controller, OnApplicationShutdown } from '@nestjs/common';
+import { Controller, OnApplicationShutdown, Optional } from '@nestjs/common';
 import { Ctx, EventPattern, Payload, RmqContext } from '@nestjs/microservices';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
+import { reconcileEscrowDeal } from '../../scripts/reconcile-onchain-db';
 import { PinoLogger } from 'nestjs-pino';
 import { ConfigService } from '@nestjs/config';
 import { StellarService } from '../stellar/stellar.service';
@@ -20,6 +21,7 @@ import {
   InvestmentFundPayload,
   DealFundedPayload,
   DealCleanupPayload,
+  ReconcileEscrowPayload,
   BasePayload,
   QueueService,
 } from './queue.service';
@@ -60,6 +62,7 @@ export class QueueProcessor implements OnApplicationShutdown {
     'deal.funded',
     'email.notification',
     'deal.cleanup',
+    'reconcile.escrow',
   ];
   /**
    * Tracks all in-flight handler promises so onApplicationShutdown can await
@@ -85,6 +88,7 @@ export class QueueProcessor implements OnApplicationShutdown {
     private readonly emailTemplates: EmailTemplateService,
     private readonly logger: PinoLogger,
     private readonly idempotency: IdempotencyService,
+    @Optional() private readonly dataSource?: DataSource,
   ) {
     (this.logger as any).setContext(QueueProcessor.name);
   }
@@ -1100,6 +1104,69 @@ export class QueueProcessor implements OnApplicationShutdown {
     });
 
     this.logger.info({ dealId, txHash }, 'Soroban FarmCampaign initialized');
+  }
+
+  // ── Reconcile Escrow Handler (#1306) ──────────────────────────────────────
+
+  @EventPattern('reconcile.escrow')
+  handleReconcileEscrow(
+    @Payload() encrypted: string,
+    @Ctx() context: RmqContext,
+  ): void {
+    const channel = context.getChannelRef();
+    const originalMsg = context.getMessage();
+
+    this.track(
+      () => this.processReconcileEscrow(encrypted, channel, originalMsg),
+      channel,
+      originalMsg,
+      'reconcile.escrow',
+    );
+  }
+
+  private async processReconcileEscrow(
+    encrypted: string,
+    channel: any,
+    originalMsg: any,
+  ): Promise<void> {
+    const data = this.unwrap<ReconcileEscrowPayload>(
+      encrypted,
+      'reconcile.escrow',
+      channel,
+      originalMsg,
+    );
+    if (!data) return;
+
+    this.setCorrelationId(data);
+
+    try {
+      this.logger.info(
+        { tradeDealId: data.tradeDealId, stellarTxId: data.stellarTxId },
+        'Automated escrow reconciliation triggered',
+      );
+
+      const result = await reconcileEscrowDeal(
+        this.dataSource,
+        this.stellarService,
+        data.tradeDealId,
+        data.stellarTxId,
+      );
+
+      this.logger.info(
+        result,
+        'Automated escrow reconciliation completed successfully',
+      );
+      channel.ack(originalMsg);
+    } catch (err: any) {
+      this.logger.error(
+        { tradeDealId: data.tradeDealId, error: err.message },
+        'Automated escrow reconciliation failed',
+      );
+      this.nackWithRetryLimit(channel, originalMsg, 'reconcile.escrow', {
+        tradeDealId: data.tradeDealId,
+        error: err.message,
+      });
+    }
   }
 }
 

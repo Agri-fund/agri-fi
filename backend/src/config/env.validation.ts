@@ -62,6 +62,7 @@ export const envValidationSchema = Joi.object({
       then: Joi.required(),
       otherwise: Joi.optional(),
     }),
+    ESCROW_BATCH_SIZE: Joi.number().integer().min(1).max(95).default(95),
     SENSOR_TEMP_MIN: Joi.number().default(-5),
     SENSOR_TEMP_MAX: Joi.number().default(45),
     SENSOR_HUMIDITY_MIN: Joi.number().default(20),
@@ -70,6 +71,7 @@ export const envValidationSchema = Joi.object({
     SENSOR_CO2_MAX: Joi.number().default(2500),
     SENSOR_VIBRATION_MIN: Joi.number().default(0),
     SENSOR_VIBRATION_MAX: Joi.number().default(10),
+
   }).unknown(true); // Allow other env vars that aren't validated
 
   const errors: string[] = [];

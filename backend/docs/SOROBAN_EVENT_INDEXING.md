@@ -2,6 +2,12 @@
 
 The Soroban Event Indexing Service provides real-time synchronization of on-chain state changes from Soroban smart contracts to the local database.
 
+## Dual Escrow Architecture & Settlement Authority (ADR-007)
+
+Agri-Fi employs a unified dual-path architecture:
+- **Horizon Path (Authoritative Settlement)**: Handled by `EscrowService.processDealDelivered()` and `StellarService.releaseEscrow()`. This path is authoritative for investor proportional distributions, claimable balances for untrusted wallets, farmer/co-farmer splits, and platform fees.
+- **Soroban Path (Audit & Milestone Layer)**: Deployed campaign and milestone contracts provide an immutable on-chain event ledger. Soroban event indexing synchronizes milestone completions and campaign states into the database without duplicating financial distribution execution.
+
 ## Overview
 
 This service:

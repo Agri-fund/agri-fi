@@ -39,6 +39,9 @@ import { createAsset } from './utils/asset-helper';
 import {
   chunkOperations,
   MAX_OPERATIONS_PER_TX,
+  MAX_OPS_PER_ENVELOPE,
+  DEFAULT_ESCROW_BATCH_SIZE,
+  assertEnvelopeOpCountGuard,
   planTransactionBatches,
   generateBatchMemo,
 } from './utils/transaction-chunker';
@@ -53,7 +56,24 @@ export const TIMEBOUNDS_SECONDS = 300;
 const ACCOUNT_BALANCE_CACHE_TTL_MS = 30_000;
 
 /** TTL for terminal transaction statuses (success / failed) in Redis — 1 hour. */
-const TX_STATUS_CACHE_TTL_SECONDS = 3600;
+export const TX_STATUS_TERMINAL_TTL_SECONDS = 3600;
+/** TTL for non-terminal / pending transaction statuses in Redis — 30 seconds. */
+export const TX_STATUS_PENDING_TTL_SECONDS = 30;
+
+/**
+ * Returns cache TTL in milliseconds based on transaction status state.
+ * Terminal states (success, failed) are cached for 1h (3,600,000 ms).
+ * Non-terminal states (pending, unknown) are cached for 30s (30,000 ms).
+ */
+export function cacheStatusTTLMs(
+  status: 'success' | 'failed' | 'pending' | string,
+): number {
+  if (status === 'success' || status === 'failed') {
+    return TX_STATUS_TERMINAL_TTL_SECONDS * 1000;
+  }
+  return TX_STATUS_PENDING_TTL_SECONDS * 1000;
+}
+
 /** Redis key prefix for cached transaction status lookups. */
 const TX_STATUS_CACHE_PREFIX = 'stellar:tx:';
 export interface InvestorShare {
@@ -1193,7 +1213,18 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
         (trustlineResults[i] as PromiseFulfilledResult<boolean>).value,
     );
 
-    const BATCH_SIZE = 98;
+    const envBatchSize = this.config.get<number | string>(
+      'ESCROW_BATCH_SIZE',
+      DEFAULT_ESCROW_BATCH_SIZE,
+    );
+    const parsedBatchSize = Number(envBatchSize);
+    const BATCH_SIZE =
+      Number.isInteger(parsedBatchSize) &&
+      parsedBatchSize >= 1 &&
+      parsedBatchSize <= 95
+        ? parsedBatchSize
+        : DEFAULT_ESCROW_BATCH_SIZE;
+
     const txIds: string[] = [];
     let distributedToInvestors = 0;
     const batchCount = Math.max(
@@ -1217,6 +1248,10 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       const capturedBatchStart = batchStart;
       const isLastBatch = batchIdx === batchCount - 1;
       const batchStartedAt = process.hrtime.bigint();
+
+      // Enforce envelope op-count guard (hard guard invariant <= 98)
+      const totalOpsInEnvelope = capturedBatch.length + (isLastBatch ? 1 : 0);
+      assertEnvelopeOpCountGuard(totalOpsInEnvelope);
 
       try {
         // #826 — use fee-bump retry to handle tx_insufficient_fee on congested networks
@@ -2603,13 +2638,18 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
    * On Horizon error, returns the last cached status (if any) with a stale: true flag
    * instead of throwing, allowing consumers to proceed with last-known state.
    */
+  /** Helper returning TTL in ms for a given transaction status */
+  cacheStatusTTLMs(status: string): number {
+    return cacheStatusTTLMs(status);
+  }
+
   async getTransactionStatus(
     txId: string,
   ): Promise<
     | 'success'
     | 'failed'
     | 'pending'
-    | { status: 'success' | 'failed'; stale: true }
+    | { status: 'success' | 'failed' | 'pending'; stale: true }
   > {
     // 1. Cache read — skip Horizon if we already have a terminal result.
     const cached = await this.getCachedTxStatus(txId);
@@ -2632,6 +2672,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       return status;
     } catch (err: any) {
       if (err?.response?.status === 404) {
+        await this.setCachedTxStatus(txId, 'pending');
         return 'pending';
       }
 
@@ -2680,7 +2721,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
    */
   private async getCachedTxStatus(
     txId: string,
-  ): Promise<'success' | 'failed' | null> {
+  ): Promise<'success' | 'failed' | 'pending' | null> {
     if (!this.sequenceRedis) {
       return null;
     }
@@ -2688,7 +2729,7 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
       const raw = (await this.sequenceRedis.get(
         this.txStatusCacheKey(txId),
       )) as string | null;
-      if (raw === 'success' || raw === 'failed') {
+      if (raw === 'success' || raw === 'failed' || raw === 'pending') {
         return raw;
       }
       return null;
@@ -2702,20 +2743,22 @@ export class StellarService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Write a terminal transaction status to Redis with a 1-hour TTL.
+   * Write a transaction status to Redis with appropriate TTL.
+   * Terminal statuses (success, failed) use 1 hour; pending uses 30 seconds.
    * Failures are logged but never propagate — caching is best-effort.
    */
   private async setCachedTxStatus(
     txId: string,
-    status: 'success' | 'failed',
+    status: 'success' | 'failed' | 'pending',
   ): Promise<void> {
     if (!this.sequenceRedis) {
       return;
     }
+    const ttlSeconds = Math.floor(cacheStatusTTLMs(status) / 1000);
     try {
       await this.sequenceRedis.setEx(
         this.txStatusCacheKey(txId),
-        TX_STATUS_CACHE_TTL_SECONDS,
+        ttlSeconds,
         status,
       );
     } catch (err) {
